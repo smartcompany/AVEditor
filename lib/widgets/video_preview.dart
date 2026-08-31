@@ -1,8 +1,11 @@
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/utils/overlay_event_log.dart';
+import 'package:aveditor/widgets/overlay_geometry.dart';
 import 'package:aveditor/widgets/overflow_hit_stack.dart';
 import 'package:flutter/material.dart';
+
+export 'overlay_geometry.dart' show OverlayGeometry;
 
 const double minOverlayFontSize = 16;
 const double maxOverlayFontSize = 64;
@@ -15,7 +18,7 @@ const double maxOverlayBoxHeight = 900;
 const double maxOverlayOffset = 3.5;
 
 /// 9:16 preview with time-bound, draggable text overlays.
-class VideoPreviewWithOverlays extends StatelessWidget {
+class VideoPreviewWithOverlays extends StatefulWidget {
   const VideoPreviewWithOverlays({
     super.key,
     required this.videoChild,
@@ -38,7 +41,6 @@ class VideoPreviewWithOverlays extends StatelessWidget {
   final List<TextOverlay> overlays;
   final Duration position;
   final String? selectedOverlayId;
-  /// When set, that overlay shows an inline [TextField] with keyboard focus.
   final String? editingOverlayId;
   final String? textHint;
   final void Function(TextOverlay overlay, Offset offset)? onOverlayOffsetChanged;
@@ -54,74 +56,442 @@ class VideoPreviewWithOverlays extends StatelessWidget {
   final ValueChanged<TextOverlay>? onRequestEdit;
 
   @override
+  State<VideoPreviewWithOverlays> createState() =>
+      VideoPreviewWithOverlaysState();
+}
+
+/// Public state for [GlobalKey] pointer routing from [EditorScreen].
+class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
+  /// Travel below this stays a tap instead of becoming a drag.
+  static const _tapSlop = 4.0;
+
+  OverlayDrag? _activeDrag;
+  int? _activePointer;
+  TextOverlay? _tapTarget;
+  Offset? _lastLocal;
+  bool _pointerMoved = false;
+  double _pointerTravel = 0;
+  int _moveLogCounter = 0;
+  double? _liveWidth;
+  double? _liveHeight;
+  Offset? _liveOffset;
+  double? _resizeStartWidth;
+  double? _resizeStartHeight;
+  Offset? _resizeStartOffset;
+  Offset _resizeAccumulated = Offset.zero;
+  double _previewW = 0;
+  double _previewH = 0;
+  double _maxBoxW = 0;
+  double _maxBoxH = 0;
+
+  TextOverlay? _overlayById(String? id) {
+    if (id == null) return null;
+    for (final overlay in widget.overlays) {
+      if (overlay.id == id) return overlay;
+    }
+    return null;
+  }
+
+  TextOverlay? get _selectedOverlay => _overlayById(widget.selectedOverlayId);
+
+  TextOverlay? get _editingOverlay => _overlayById(widget.editingOverlayId);
+
+  List<TextOverlay> get _visibleOverlays => widget.overlays
+      .where((o) => o.isVisibleAt(widget.position))
+      .toList(growable: false);
+
+  void _clearLiveGeometry() {
+    _liveWidth = null;
+    _liveHeight = null;
+    _liveOffset = null;
+  }
+
+  void _clearDragState() {
+    _activeDrag = null;
+    _activePointer = null;
+    _tapTarget = null;
+    _lastLocal = null;
+    _pointerMoved = false;
+    _pointerTravel = 0;
+    _moveLogCounter = 0;
+    _resizeStartWidth = null;
+    _resizeStartHeight = null;
+    _resizeStartOffset = null;
+    _resizeAccumulated = Offset.zero;
+    _clearLiveGeometry();
+  }
+
+  @override
+  void didUpdateWidget(covariant VideoPreviewWithOverlays oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.editingOverlayId != null && widget.editingOverlayId == null) {
+      _clearDragState();
+    }
+    if (oldWidget.selectedOverlayId != widget.selectedOverlayId &&
+        _activePointer == null) {
+      _clearLiveGeometry();
+    }
+  }
+
+  double _boxWidth(TextOverlay overlay) =>
+      _liveWidth ?? overlay.boxWidth;
+
+  double _boxHeight(TextOverlay overlay) =>
+      _liveHeight ?? overlay.boxHeight;
+
+  Offset _boxOffset(TextOverlay overlay) =>
+      _liveOffset ?? overlay.offset;
+
+  void _moveBy(TextOverlay overlay, Offset delta) {
+    final current = _boxOffset(overlay);
+    final nextDx = (current.dx + delta.dx / (_previewW / 2))
+        .clamp(-maxOverlayOffset, maxOverlayOffset);
+    final nextDy = (current.dy + delta.dy / (_previewH / 2))
+        .clamp(-maxOverlayOffset, maxOverlayOffset);
+    setState(() => _liveOffset = Offset(nextDx, nextDy));
+  }
+
+  void _resizeBy(
+    TextOverlay overlay, {
+    required Offset delta,
+    required bool fromLeft,
+    required bool fromTop,
+    required double maxBoxW,
+    required double maxBoxH,
+    required double previewW,
+    required double previewH,
+  }) {
+    _resizeAccumulated += delta;
+    final startW = _resizeStartWidth ?? overlay.boxWidth;
+    final startH = _resizeStartHeight ?? overlay.boxHeight;
+    final startOffset = _resizeStartOffset ?? overlay.offset;
+    _resizeStartWidth ??= startW;
+    _resizeStartHeight ??= startH;
+    _resizeStartOffset ??= startOffset;
+
+    final outwardW = fromLeft ? -_resizeAccumulated.dx : _resizeAccumulated.dx;
+    final outwardH = fromTop ? -_resizeAccumulated.dy : _resizeAccumulated.dy;
+
+    final nextW = (startW + outwardW).clamp(minOverlayBoxWidth, maxBoxW);
+    final nextH = (startH + outwardH).clamp(minOverlayBoxHeight, maxBoxH);
+
+    final appliedW = nextW - startW;
+    final appliedH = nextH - startH;
+    final signX = fromLeft ? -1.0 : 1.0;
+    final signY = fromTop ? -1.0 : 1.0;
+    final nextOffset = Offset(
+      (startOffset.dx + signX * appliedW / previewW)
+          .clamp(-maxOverlayOffset, maxOverlayOffset),
+      (startOffset.dy + signY * appliedH / previewH)
+          .clamp(-maxOverlayOffset, maxOverlayOffset),
+    );
+
+    setState(() {
+      _liveWidth = nextW;
+      _liveHeight = nextH;
+      _liveOffset = nextOffset;
+    });
+  }
+
+  void _beginDrag(TextOverlay overlay, OverlayDrag drag) {
+    OverlayEventLog.log('PreviewDrag', 'dragBegin', {
+      'id': overlay.id.substring(0, 8),
+      'drag': drag.label,
+      'boxW': _boxWidth(overlay),
+      'boxH': _boxHeight(overlay),
+    });
+    _activeDrag = drag;
+    if (drag.isResize) {
+      _resizeStartWidth = _boxWidth(overlay);
+      _resizeStartHeight = _boxHeight(overlay);
+      _resizeStartOffset = _boxOffset(overlay);
+      _resizeAccumulated = Offset.zero;
+    }
+  }
+
+  void _commitDrag(TextOverlay overlay, bool moved) {
+    final drag = _activeDrag;
+    if (!moved || drag == null) return;
+
+    final w = _boxWidth(overlay);
+    final h = _boxHeight(overlay);
+    final o = _boxOffset(overlay);
+    OverlayEventLog.log('PreviewDrag', 'commitGeometry', {
+      'id': overlay.id.substring(0, 8),
+      'drag': drag.label,
+      'boxW': w,
+      'boxH': h,
+      'offset': o,
+    });
+    if (drag.isResize) {
+      widget.onOverlayBoxChanged?.call(overlay, w, h, o);
+    } else {
+      widget.onOverlayOffsetChanged?.call(overlay, o);
+    }
+    _clearLiveGeometry();
+  }
+
+  TextOverlay? _topmostBodyAt(Offset local) {
+    for (final overlay in _visibleOverlays.reversed) {
+      final isSelected = overlay.id == widget.selectedOverlayId;
+      final body = OverlayGeometry.bodyRect(
+        previewW: _previewW,
+        previewH: _previewH,
+        overlay: overlay,
+        liveW: isSelected ? _liveWidth : null,
+        liveH: isSelected ? _liveHeight : null,
+        liveOffset: isSelected ? _liveOffset : null,
+      );
+      if (body.contains(local)) return overlay;
+    }
+    return null;
+  }
+
+  /// Single pointer entry point — the editor shell forwards every pointer in
+  /// the preview slot here, including taps beside/outside the 9:16 canvas.
+  void handlePointerDown(PointerDownEvent event) {
+    final local = _toPreviewLocal(event);
+    OverlayEventLog.log('PreviewCanvas', 'pointerDown', {
+      'local': local,
+      'pointer': event.pointer,
+      'previewW': _previewW,
+      'previewH': _previewH,
+      'selectedId': widget.selectedOverlayId,
+      'editingId': widget.editingOverlayId,
+    });
+    if (local == null) return;
+
+    final editing = _editingOverlay;
+    if (editing != null) {
+      final chrome = OverlayGeometry.chromeRect(
+        previewW: _previewW,
+        previewH: _previewH,
+        overlay: editing,
+      );
+      if (chrome.contains(local)) return;
+      OverlayEventLog.log('PreviewCanvas', 'dismissEditing', {'local': local});
+      widget.onEditingComplete?.call('preview_outside');
+      return;
+    }
+
+    if (_activePointer != null) return;
+
+    final selected = _selectedOverlay;
+    if (selected != null) {
+      final drag = OverlayGeometry.hitTestPreviewPoint(
+        local,
+        previewW: _previewW,
+        previewH: _previewH,
+        overlay: selected,
+        editing: false,
+        liveW: _liveWidth,
+        liveH: _liveHeight,
+        liveOffset: _liveOffset,
+      );
+      if (drag != null) {
+        OverlayEventLog.log('PreviewCanvas', 'dragStart', {
+          'local': local,
+          'drag': drag.label,
+        });
+        _activePointer = event.pointer;
+        _lastLocal = local;
+        _pointerMoved = false;
+        _pointerTravel = 0;
+        _moveLogCounter = 0;
+        // A body press that never travels is a tap → open the inline editor.
+        _tapTarget = drag.isResize ? null : selected;
+        _beginDrag(selected, drag);
+        return;
+      }
+    }
+
+    final tapped = _topmostBodyAt(local);
+    OverlayEventLog.log('PreviewCanvas', 'bodyProbe', {
+      'local': local,
+      'hit': tapped?.id,
+    });
+    if (tapped == null) return;
+    _activePointer = event.pointer;
+    _lastLocal = local;
+    _pointerMoved = false;
+    _pointerTravel = 0;
+    _tapTarget = tapped;
+  }
+
+  void handlePointerMove(PointerMoveEvent event) {
+    if (event.pointer != _activePointer) return;
+    _pointerTravel += event.delta.distance;
+    if (_pointerTravel > _tapSlop) _pointerMoved = true;
+    final overlay = _selectedOverlay;
+    if (overlay == null || _activeDrag == null) return;
+    _onPreviewPointerMoveAt(event, overlay);
+  }
+
+  void handlePointerUp(int pointer) {
+    if (pointer != _activePointer) return;
+    final target = _tapTarget;
+    final moved = _pointerMoved;
+    final drag = _activeDrag;
+
+    if (drag != null) {
+      final overlay = _selectedOverlay;
+      if (overlay != null) {
+        _onPreviewPointerEnd(overlay, pointer);
+      }
+    }
+
+    _activePointer = null;
+    _tapTarget = null;
+    _lastLocal = null;
+    _pointerMoved = false;
+    _pointerTravel = 0;
+
+    if (moved || target == null) return;
+
+    if (target.id == widget.selectedOverlayId) {
+      OverlayEventLog.log('PreviewCanvas', 'tapRequestEdit', {'id': target.id});
+      widget.onRequestEdit?.call(target);
+    } else {
+      OverlayEventLog.log('PreviewCanvas', 'tapSelect', {'id': target.id});
+      widget.onOverlaySelected?.call(target);
+    }
+  }
+
+  void handlePointerCancel(int pointer) {
+    if (pointer != _activePointer) return;
+    final overlay = _selectedOverlay;
+    if (overlay != null && _activeDrag != null) {
+      _onPreviewPointerEnd(overlay, pointer);
+    }
+    _activePointer = null;
+    _tapTarget = null;
+    _lastLocal = null;
+    _pointerMoved = false;
+    _pointerTravel = 0;
+  }
+
+  Offset? _toPreviewLocal(PointerEvent event) {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+    return box.globalToLocal(event.position);
+  }
+
+  void _onPreviewPointerMoveAt(
+    PointerMoveEvent event,
+    TextOverlay overlay,
+  ) {
+    if (event.pointer != _activePointer || _activeDrag == null) return;
+
+    // Deltas are measured in preview coordinates, not screen pixels: the editor
+    // scales the canvas down with a FittedBox, so raw deltas move too slowly.
+    final local = _toPreviewLocal(event);
+    final last = _lastLocal;
+    if (local == null || last == null) return;
+    final delta = local - last;
+    _lastLocal = local;
+    if (delta == Offset.zero) return;
+
+    _moveLogCounter++;
+    if (_moveLogCounter == 1 || _moveLogCounter % 12 == 0) {
+      OverlayEventLog.log('PreviewDrag', 'pointerMove', {
+        'pointer': event.pointer,
+        'delta': delta,
+        'drag': _activeDrag!.label,
+        'count': _moveLogCounter,
+      });
+    }
+
+    final drag = _activeDrag!;
+    if (drag.kind == OverlayDragKind.move) {
+      _moveBy(overlay, delta);
+    } else {
+      _resizeBy(
+        overlay,
+        delta: delta,
+        fromLeft: drag.fromLeft!,
+        fromTop: drag.fromTop!,
+        maxBoxW: _maxBoxW,
+        maxBoxH: _maxBoxH,
+        previewW: _previewW,
+        previewH: _previewH,
+      );
+    }
+  }
+
+  void _onPreviewPointerEnd(TextOverlay overlay, int pointer) {
+    if (pointer != _activePointer) return;
+    final moved = _pointerMoved;
+    OverlayEventLog.log('PreviewDrag', 'pointerUp', {
+      'pointer': pointer,
+      'moved': moved,
+      'moveCount': _moveLogCounter,
+    });
+    _commitDrag(overlay, moved);
+    if (!moved && _liveWidth != null) {
+      setState(_clearLiveGeometry);
+    }
+    _activeDrag = null;
+    _activePointer = null;
+    _lastLocal = null;
+    _pointerMoved = false;
+    _pointerTravel = 0;
+    _moveLogCounter = 0;
+    _resizeStartWidth = null;
+    _resizeStartHeight = null;
+    _resizeStartOffset = null;
+    _resizeAccumulated = Offset.zero;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final visible = overlays.where((o) => o.isVisibleAt(position)).toList();
+    final visible = _visibleOverlays;
 
-    return AspectRatio(
-      aspectRatio: 9 / 16,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final previewW = constraints.maxWidth;
-          final previewH = constraints.maxHeight;
-          // Full preview canvas — includes letterbox, not just the video rect.
-          final maxBoxW = previewW + 96;
-          final maxBoxH = previewH + 96;
+    return OverflowHitBox(
+      child: AspectRatio(
+        aspectRatio: 9 / 16,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            _previewW = constraints.maxWidth;
+            _previewH = constraints.maxHeight;
+            _maxBoxW = _previewW + 96;
+            _maxBoxH = _previewH + 96;
 
-          return OverflowHitStack(
-            clipBehavior: Clip.none,
-            fit: StackFit.expand,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: ColoredBox(
-                  color: Colors.black,
-                  child: Center(
-                    child: AspectRatio(
-                      aspectRatio: videoAspectRatio,
-                      child: videoChild,
-                    ),
+            return OverflowHitStack(
+              clipBehavior: Clip.none,
+              fit: StackFit.expand,
+              children: [
+                IgnorePointer(
+                  child: _VideoCanvasBackground(
+                    videoAspectRatio: widget.videoAspectRatio,
+                    videoChild: widget.videoChild,
                   ),
                 ),
-              ),
-              if (editingOverlayId != null)
-                Positioned.fill(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.translucent,
-                    onTap: () {
-                      OverlayEventLog.log(
-                        'Preview',
-                        'tapOutsideDismiss',
-                        {'source': 'letterbox'},
-                      );
-                      onEditingComplete?.call('letterbox');
-                    },
-                  ),
+                ...visible.map(
+                  (overlay) {
+                    final isSelected = overlay.id == widget.selectedOverlayId;
+                    return _DraggableOverlayLabel(
+                      key: ValueKey(overlay.id),
+                      overlay: overlay,
+                      previewWidth: _previewW,
+                      previewHeight: _previewH,
+                      maxBoxWidth: _maxBoxW,
+                      maxBoxHeight: _maxBoxH,
+                      selected: isSelected,
+                      editing: overlay.id == widget.editingOverlayId,
+                      textHint: widget.textHint,
+                      liveWidth: isSelected ? _liveWidth : null,
+                      liveHeight: isSelected ? _liveHeight : null,
+                      liveOffset: isSelected ? _liveOffset : null,
+                      onTextChanged: (text) =>
+                          widget.onOverlayTextChanged?.call(overlay, text),
+                      onEditingComplete: widget.onEditingComplete,
+                    );
+                  },
                 ),
-              ...visible.map(
-                (overlay) => _DraggableOverlayLabel(
-                  key: ValueKey(overlay.id),
-                  overlay: overlay,
-                  previewWidth: previewW,
-                  previewHeight: previewH,
-                  maxBoxWidth: maxBoxW,
-                  maxBoxHeight: maxBoxH,
-                  selected: overlay.id == selectedOverlayId,
-                  editing: overlay.id == editingOverlayId,
-                  textHint: textHint,
-                  onSelected: () => onOverlaySelected?.call(overlay),
-                  onRequestEdit: () => onRequestEdit?.call(overlay),
-                  onOffsetChanged: (offset) =>
-                      onOverlayOffsetChanged?.call(overlay, offset),
-                  onBoxChanged: (width, height, offset) =>
-                      onOverlayBoxChanged?.call(overlay, width, height, offset),
-                  onTextChanged: (text) =>
-                      onOverlayTextChanged?.call(overlay, text),
-                  onEditingComplete: onEditingComplete,
-                ),
-              ),
-            ],
-          );
-        },
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -137,13 +507,12 @@ class _DraggableOverlayLabel extends StatefulWidget {
     required this.maxBoxHeight,
     required this.selected,
     required this.editing,
-    required this.onSelected,
-    required this.onRequestEdit,
-    required this.onOffsetChanged,
-    required this.onBoxChanged,
     required this.onTextChanged,
     this.onEditingComplete,
     this.textHint,
+    this.liveWidth,
+    this.liveHeight,
+    this.liveOffset,
   });
 
   final TextOverlay overlay;
@@ -154,10 +523,9 @@ class _DraggableOverlayLabel extends StatefulWidget {
   final bool selected;
   final bool editing;
   final String? textHint;
-  final VoidCallback onSelected;
-  final VoidCallback onRequestEdit;
-  final ValueChanged<Offset> onOffsetChanged;
-  final void Function(double width, double height, Offset offset) onBoxChanged;
+  final double? liveWidth;
+  final double? liveHeight;
+  final Offset? liveOffset;
   final ValueChanged<String> onTextChanged;
   final void Function(String source)? onEditingComplete;
 
@@ -168,28 +536,6 @@ class _DraggableOverlayLabel extends StatefulWidget {
 class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
   late final TextEditingController _controller;
   late final FocusNode _focusNode;
-  double? _resizeStartWidth;
-  double? _resizeStartHeight;
-  Offset? _resizeStartOffset;
-  Offset _resizeAccumulated = Offset.zero;
-  _OverlayDrag? _activeDrag;
-  bool _wasEditingBeforeDrag = false;
-  int? _activePointer;
-  bool _pointerMoved = false;
-  int _moveLogCounter = 0;
-  double? _liveWidth;
-  double? _liveHeight;
-  Offset? _liveOffset;
-
-  double get _boxWidth => _liveWidth ?? widget.overlay.boxWidth;
-  double get _boxHeight => _liveHeight ?? widget.overlay.boxHeight;
-  Offset get _boxOffset => _liveOffset ?? widget.overlay.offset;
-
-  void _clearLiveGeometry() {
-    _liveWidth = null;
-    _liveHeight = null;
-    _liveOffset = null;
-  }
 
   static const _logTag = 'OverlayLabel';
 
@@ -207,12 +553,12 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
       ...?data,
     });
   }
-  static const _handleHit = 56.0;
-  static const _knobSize = 14.0;
-  static const _knobOutset = 22.0;
-  /// Must fit corner knob + hit slop inside the padded listener bounds.
-  static const _handlePad =
-      _knobOutset + _knobSize / 2 + _handleHit / 2 + 4;
+
+  double get _boxWidth =>
+      widget.liveWidth ?? widget.overlay.boxWidth;
+
+  double get _boxHeight =>
+      widget.liveHeight ?? widget.overlay.boxHeight;
 
   @override
   void initState() {
@@ -229,36 +575,16 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
 
   void _onFocusChangedForRebuild() {
     _log('focusChanged', {'hasFocus': _focusNode.hasFocus});
-    if (mounted) setState(() {});
   }
 
   @override
   void didUpdateWidget(covariant _DraggableOverlayLabel oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.editing && !widget.editing) {
-      _log('editingEnded', {
-        'clearedDrag': _activeDrag != null || _activePointer != null,
-      });
-      _activePointer = null;
-      _activeDrag = null;
-      _wasEditingBeforeDrag = false;
-      _pointerMoved = false;
-      _moveLogCounter = 0;
-      _suppressBodyTapUntil = null;
-      _resizeStartWidth = null;
-      _resizeStartHeight = null;
-      _resizeStartOffset = null;
-      _resizeAccumulated = Offset.zero;
-      _clearLiveGeometry();
+      _log('editingEnded');
     }
     if (!oldWidget.editing && widget.editing) {
       _log('editingStarted');
-    }
-    if (_activeDrag == null &&
-        (oldWidget.overlay.boxWidth != widget.overlay.boxWidth ||
-            oldWidget.overlay.boxHeight != widget.overlay.boxHeight ||
-            oldWidget.overlay.offset != widget.overlay.offset)) {
-      _clearLiveGeometry();
     }
     if (!widget.editing && _controller.text != widget.overlay.text) {
       _controller.text = widget.overlay.text;
@@ -285,16 +611,6 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
     super.dispose();
   }
 
-  double _pointerScale(BuildContext context) {
-    final box = context.findRenderObject() as RenderBox?;
-    if (box == null || !box.hasSize) return 1;
-    return box.getTransformTo(null).getMaxScaleOnAxis().clamp(0.001, 100);
-  }
-
-  Offset _scaledDelta(BuildContext context, Offset delta) {
-    return delta / _pointerScale(context);
-  }
-
   TextStyle get _textStyle => TextStyle(
         color: widget.overlay.color,
         fontSize: widget.overlay.fontSize,
@@ -303,64 +619,6 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
           Shadow(blurRadius: 8, color: Colors.black54),
         ],
       );
-
-  void _moveBy(BuildContext context, Offset delta) {
-    final scaled = _scaledDelta(context, delta);
-    const sensitivity = 180.0;
-    final current = _boxOffset;
-    final nextDx =
-        (current.dx + scaled.dx / sensitivity).clamp(-maxOverlayOffset, maxOverlayOffset);
-    final nextDy =
-        (current.dy + scaled.dy / sensitivity).clamp(-maxOverlayOffset, maxOverlayOffset);
-    setState(() => _liveOffset = Offset(nextDx, nextDy));
-  }
-
-  /// Corner drag: opposite corner stays fixed; box can grow into letterbox.
-  void _resizeBy(
-    BuildContext context,
-    Offset delta, {
-    required bool fromLeft,
-    required bool fromTop,
-  }) {
-    final scaled = _scaledDelta(context, delta);
-    _resizeAccumulated += scaled;
-    final startW = _resizeStartWidth ?? widget.overlay.boxWidth;
-    final startH = _resizeStartHeight ?? widget.overlay.boxHeight;
-    final startOffset = _resizeStartOffset ?? widget.overlay.offset;
-    _resizeStartWidth ??= startW;
-    _resizeStartHeight ??= startH;
-    _resizeStartOffset ??= startOffset;
-
-    final outwardW = fromLeft ? -_resizeAccumulated.dx : _resizeAccumulated.dx;
-    final outwardH = fromTop ? -_resizeAccumulated.dy : _resizeAccumulated.dy;
-
-    final nextW =
-        (startW + outwardW).clamp(minOverlayBoxWidth, widget.maxBoxWidth);
-    final nextH =
-        (startH + outwardH).clamp(minOverlayBoxHeight, widget.maxBoxHeight);
-
-    // Shift center so the corner opposite the handle stays anchored.
-    final appliedW = nextW - startW;
-    final appliedH = nextH - startH;
-    final signX = fromLeft ? -1.0 : 1.0;
-    final signY = fromTop ? -1.0 : 1.0;
-    final nextOffset = Offset(
-      (startOffset.dx + signX * appliedW / widget.previewWidth)
-          .clamp(-maxOverlayOffset, maxOverlayOffset),
-      (startOffset.dy + signY * appliedH / widget.previewHeight)
-          .clamp(-maxOverlayOffset, maxOverlayOffset),
-    );
-
-    if ((nextW - _boxWidth).abs() >= 0.5 ||
-        (nextH - _boxHeight).abs() >= 0.5 ||
-        nextOffset != _boxOffset) {
-      setState(() {
-        _liveWidth = nextW;
-        _liveHeight = nextH;
-        _liveOffset = nextOffset;
-      });
-    }
-  }
 
   Widget _buildBody() {
     final textWidget = widget.editing
@@ -409,224 +667,10 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
     );
   }
 
-  _OverlayDrag? _hitTestDrag(Offset local, double boxW, double boxH) {
-    final pad = _handlePad;
-    final knobRadius = _knobSize / 2;
-    final hit = _handleHit / 2;
-
-    // Match visual knob centers (Positioned ±22 from box edge, 14px knob).
-    final corners = <(Offset, _OverlayDrag)>[
-      (
-        Offset(pad - _knobOutset + knobRadius, pad - _knobOutset + knobRadius),
-        _OverlayDrag.resize(fromLeft: true, fromTop: true),
-      ),
-      (
-        Offset(
-          pad + boxW + _knobOutset - knobRadius,
-          pad - _knobOutset + knobRadius,
-        ),
-        _OverlayDrag.resize(fromLeft: false, fromTop: true),
-      ),
-      (
-        Offset(
-          pad - _knobOutset + knobRadius,
-          pad + boxH + _knobOutset - knobRadius,
-        ),
-        _OverlayDrag.resize(fromLeft: true, fromTop: false),
-      ),
-      (
-        Offset(
-          pad + boxW + _knobOutset - knobRadius,
-          pad + boxH + _knobOutset - knobRadius,
-        ),
-        _OverlayDrag.resize(fromLeft: false, fromTop: false),
-      ),
-    ];
-
-    for (final (anchor, drag) in corners) {
-      if ((local - anchor).distance <= hit) return drag;
-    }
-
-    // Bottom-center move grip inside the box (white bar in the column footer).
-    final moveCenter = Offset(pad + boxW / 2, pad + boxH - 14);
-    if ((local - moveCenter).distance <= hit) {
-      return _OverlayDrag.move;
-    }
-
-    // Body drag moves the overlay when not editing (most of the box interior).
-    if (!widget.editing &&
-        local.dx >= pad &&
-        local.dx <= pad + boxW &&
-        local.dy >= pad &&
-        local.dy <= pad + boxH) {
-      return _OverlayDrag.move;
-    }
-
-    return null;
-  }
-
-  String _dragLabel(_OverlayDrag drag) {
-    if (drag.kind == _OverlayDragKind.move) return 'move';
-    return 'resize_${drag.fromLeft == true ? 'L' : 'R'}${drag.fromTop == true ? 'T' : 'B'}';
-  }
-
-  void _beginDrag(_OverlayDrag drag) {
-    _log('dragBegin', {
-      'drag': _dragLabel(drag),
-      'boxW': _boxWidth,
-      'boxH': _boxHeight,
-    });
-    _activeDrag = drag;
-    _wasEditingBeforeDrag = widget.editing;
-    if (drag.isResize) {
-      _resizeStartWidth = _boxWidth;
-      _resizeStartHeight = _boxHeight;
-      _resizeStartOffset = _boxOffset;
-      _resizeAccumulated = Offset.zero;
-    }
-    if (widget.editing) {
-      _focusNode.unfocus();
-    }
-  }
-
-  void _commitDragToParent(bool moved) {
-    final drag = _activeDrag;
-    if (!moved || drag == null) return;
-
-    final w = _boxWidth;
-    final h = _boxHeight;
-    final o = _boxOffset;
-    _log('commitGeometry', {
-      'drag': _dragLabel(drag),
-      'boxW': w,
-      'boxH': h,
-      'offset': o,
-    });
-    if (drag.isResize) {
-      widget.onBoxChanged(w, h, o);
-    } else {
-      widget.onOffsetChanged(o);
-    }
-    _clearLiveGeometry();
-  }
-
-  void _endDrag(bool moved) {
-    final wasEditing = _wasEditingBeforeDrag;
-    final drag = _activeDrag;
-    _log('dragEnd', {
-      'drag': drag == null ? 'none' : _dragLabel(drag),
-      'moved': moved,
-      'wasEditing': wasEditing,
-    });
-    _activeDrag = null;
-    _wasEditingBeforeDrag = false;
-    _resizeStartWidth = null;
-    _resizeStartHeight = null;
-    _resizeStartOffset = null;
-    _resizeAccumulated = Offset.zero;
-    if (wasEditing) {
-      widget.onEditingComplete?.call('drag_end');
-    }
-  }
-
-  void _onPointerDown(PointerDownEvent event) {
-    if (!widget.selected && !widget.editing) {
-      _log('pointerDownIgnored', {
-        'reason': 'not_selected',
-        'local': event.localPosition,
-        'pointer': event.pointer,
-      });
-      return;
-    }
-    if (_activePointer != null) {
-      _log('pointerDownIgnored', {
-        'reason': 'pointer_busy',
-        'local': event.localPosition,
-        'pointer': event.pointer,
-        'activePointer': _activePointer,
-      });
-      return;
-    }
-
-    final drag = _hitTestDrag(
-      event.localPosition,
-      _boxWidth,
-      _boxHeight,
-    );
-    if (drag == null) {
-      _log('pointerDownMiss', {
-        'local': event.localPosition,
-        'pointer': event.pointer,
-        'boxW': _boxWidth,
-        'boxH': _boxHeight,
-        'blockTextField': _blockTextFieldPointer,
-      });
-      return;
-    }
-
-    _log('pointerDownHit', {
-      'local': event.localPosition,
-      'pointer': event.pointer,
-      'drag': _dragLabel(drag),
-    });
-
-    _activePointer = event.pointer;
-    _pointerMoved = false;
-    _moveLogCounter = 0;
-    _beginDrag(drag);
-  }
-
-  void _onPointerMove(BuildContext context, PointerMoveEvent event) {
-    if (event.pointer != _activePointer || _activeDrag == null) return;
-    if (event.delta != Offset.zero) {
-      _pointerMoved = true;
-      _moveLogCounter++;
-      if (_moveLogCounter == 1 || _moveLogCounter % 12 == 0) {
-        _log('pointerMove', {
-          'pointer': event.pointer,
-          'delta': event.delta,
-          'drag': _dragLabel(_activeDrag!),
-          'count': _moveLogCounter,
-          'scale': _pointerScale(context),
-        });
-      }
-    }
-    final drag = _activeDrag!;
-    if (drag.kind == _OverlayDragKind.move) {
-      _moveBy(context, event.delta);
-    } else {
-      _resizeBy(
-        context,
-        event.delta,
-        fromLeft: drag.fromLeft!,
-        fromTop: drag.fromTop!,
-      );
-    }
-  }
-
-  void _onPointerEnd(int pointer) {
-    if (pointer != _activePointer) return;
-    final moved = _pointerMoved;
-    final moveCount = _moveLogCounter;
-    _activePointer = null;
-    _pointerMoved = false;
-    _moveLogCounter = 0;
-    _log('pointerUp', {'pointer': pointer, 'moved': moved, 'moveCount': moveCount});
-    _commitDragToParent(moved);
-    _endDrag(moved);
-    if (moved) {
-      _suppressBodyTapUntil =
-          DateTime.now().add(const Duration(milliseconds: 120));
-      _log('tapSuppressed', {'untilMs': 120});
-    }
-  }
-
-  DateTime? _suppressBodyTapUntil;
-
   Widget _buildHandleKnob() {
     return SizedBox(
-      width: _knobSize,
-      height: _knobSize,
+      width: OverlayGeometry.knobSize,
+      height: OverlayGeometry.knobSize,
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -640,171 +684,138 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
     );
   }
 
-  bool get _blockTextFieldPointer =>
-      _activeDrag != null || (widget.editing && !_focusNode.hasFocus);
-
   @override
   Widget build(BuildContext context) {
     final showChrome = widget.selected || widget.editing;
 
-    final offset = _boxOffset;
-    final centerX = widget.previewWidth / 2 + offset.dx * (widget.previewWidth / 2);
-    final centerY = widget.previewHeight / 2 + offset.dy * (widget.previewHeight / 2);
-    final left = centerX - _boxWidth / 2 - _handlePad;
-    final top = centerY - _boxHeight / 2 - _handlePad;
+    final topLeft = OverlayGeometry.chromeTopLeft(
+      previewW: widget.previewWidth,
+      previewH: widget.previewHeight,
+      overlay: widget.overlay,
+      liveW: widget.liveWidth,
+      liveH: widget.liveHeight,
+      liveOffset: widget.liveOffset,
+    );
 
     final boxW = _boxWidth;
     final boxH = _boxHeight;
 
-    final box = Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerDown: _onPointerDown,
-      onPointerMove: (event) => _onPointerMove(context, event),
-      onPointerUp: (event) => _onPointerEnd(event.pointer),
-      onPointerCancel: (event) => _onPointerEnd(event.pointer),
-      child: Padding(
-        padding: const EdgeInsets.all(_handlePad),
-        child: Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.center,
-          children: [
-            GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTap: () {
-                if (_activeDrag != null) {
-                  _log('bodyTapIgnored', {'reason': 'active_drag'});
-                  return;
-                }
-                final suppressUntil = _suppressBodyTapUntil;
-                if (suppressUntil != null &&
-                    DateTime.now().isBefore(suppressUntil)) {
-                  _log('bodyTapIgnored', {'reason': 'suppress_after_drag'});
-                  return;
-                }
-                if (widget.editing) {
-                  _log('bodyTapIgnored', {'reason': 'editing'});
-                  return;
-                }
-                if (widget.selected) {
-                  _log('bodyTap', {'action': 'request_edit'});
-                  widget.onRequestEdit();
-                } else {
-                  _log('bodyTap', {'action': 'select'});
-                  widget.onSelected();
-                }
-              },
-              child: DecoratedBox(
-                decoration: showChrome
-                    ? BoxDecoration(
-                        border: Border.all(color: AppTheme.accent, width: 2),
-                        borderRadius: BorderRadius.circular(8),
-                      )
-                    : const BoxDecoration(),
-                child: SizedBox(
-                  width: boxW,
-                  height: boxH,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.max,
-                    children: [
-                      Expanded(
-                        child: IgnorePointer(
-                          ignoring: _blockTextFieldPointer,
-                          child: _buildBody(),
-                        ),
-                      ),
-                      if (showChrome)
-                        IgnorePointer(
-                          child: Padding(
-                            padding: const EdgeInsets.only(top: 8, bottom: 2),
-                            child: SizedBox(
-                              width: 44,
-                              height: 28,
-                              child: Center(
-                                child: DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.all(
-                                      Radius.circular(2),
-                                    ),
-                                  ),
-                                  child: const SizedBox(width: 24, height: 5),
+    Widget chrome = Padding(
+      padding: const EdgeInsets.all(OverlayGeometry.handlePad),
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          DecoratedBox(
+            decoration: showChrome
+                ? BoxDecoration(
+                    border: Border.all(color: AppTheme.accent, width: 2),
+                    borderRadius: BorderRadius.circular(8),
+                  )
+                : const BoxDecoration(),
+            child: SizedBox(
+              width: boxW,
+              height: boxH,
+              child: Column(
+                mainAxisSize: MainAxisSize.max,
+                children: [
+                  Expanded(child: _buildBody()),
+                  if (showChrome)
+                    IgnorePointer(
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 8, bottom: 2),
+                        child: SizedBox(
+                          width: 44,
+                          height: 28,
+                          child: Center(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.all(
+                                  Radius.circular(2),
                                 ),
                               ),
+                              child: const SizedBox(width: 24, height: 5),
                             ),
                           ),
                         ),
-                    ],
-                  ),
-                ),
+                      ),
+                    ),
+                ],
               ),
             ),
-            if (showChrome) ...[
-              Positioned(
-                left: -_knobOutset,
-                top: -_knobOutset,
-                child: _buildHandleKnob(),
-              ),
-              Positioned(
-                right: -_knobOutset,
-                top: -_knobOutset,
-                child: _buildHandleKnob(),
-              ),
-              Positioned(
-                left: -_knobOutset,
-                bottom: -_knobOutset,
-                child: _buildHandleKnob(),
-              ),
-              Positioned(
-                right: -_knobOutset,
-                bottom: -_knobOutset,
-                child: _buildHandleKnob(),
-              ),
-            ],
+          ),
+          if (showChrome) ...[
+            Positioned(
+              left: -OverlayGeometry.knobOutset,
+              top: -OverlayGeometry.knobOutset,
+              child: _buildHandleKnob(),
+            ),
+            Positioned(
+              right: -OverlayGeometry.knobOutset,
+              top: -OverlayGeometry.knobOutset,
+              child: _buildHandleKnob(),
+            ),
+            Positioned(
+              left: -OverlayGeometry.knobOutset,
+              bottom: -OverlayGeometry.knobOutset,
+              child: _buildHandleKnob(),
+            ),
+            Positioned(
+              right: -OverlayGeometry.knobOutset,
+              bottom: -OverlayGeometry.knobOutset,
+              child: _buildHandleKnob(),
+            ),
           ],
-        ),
+        ],
       ),
     );
 
+    if (widget.editing) {
+      chrome = TapRegion(
+        onTapOutside: (_) {
+          _log('tapOutsideDismiss', {'source': 'tap_region'});
+          widget.onEditingComplete?.call('tap_region');
+        },
+        child: chrome,
+      );
+    }
+
+    // Only the text field takes pointers; selection, move and resize are hit
+    // tested in preview coordinates by [VideoPreviewWithOverlaysState].
     return Positioned(
-      left: left,
-      top: top,
-      child: OverflowHitBox(
-        child: widget.editing
-            ? TapRegion(
-                onTapOutside: (_) {
-                  if (_activeDrag == null) {
-                    _log('tapOutsideDismiss', {'source': 'tap_region'});
-                    widget.onEditingComplete?.call('tap_region');
-                  } else {
-                    _log('tapOutsideIgnored', {'reason': 'active_drag'});
-                  }
-                },
-                child: box,
-              )
-            : box,
+      left: topLeft.dx,
+      top: topLeft.dy,
+      child: IgnorePointer(
+        ignoring: !widget.editing,
+        child: chrome,
       ),
     );
   }
 }
 
-enum _OverlayDragKind { move, resize }
+class _VideoCanvasBackground extends StatelessWidget {
+  const _VideoCanvasBackground({
+    required this.videoAspectRatio,
+    required this.videoChild,
+  });
 
-class _OverlayDrag {
-  const _OverlayDrag._(this.kind, {this.fromLeft, this.fromTop});
+  final double videoAspectRatio;
+  final Widget videoChild;
 
-  final _OverlayDragKind kind;
-  final bool? fromLeft;
-  final bool? fromTop;
-
-  static const move = _OverlayDrag._(_OverlayDragKind.move);
-
-  static _OverlayDrag resize({required bool fromLeft, required bool fromTop}) {
-    return _OverlayDrag._(
-      _OverlayDragKind.resize,
-      fromLeft: fromLeft,
-      fromTop: fromTop,
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: ColoredBox(
+        color: Colors.black,
+        child: Center(
+          child: AspectRatio(
+            aspectRatio: videoAspectRatio,
+            child: videoChild,
+          ),
+        ),
+      ),
     );
   }
-
-  bool get isResize => kind == _OverlayDragKind.resize;
 }

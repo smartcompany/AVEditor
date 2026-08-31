@@ -32,21 +32,22 @@ class _EditorScreenState extends State<EditorScreen> {
   VideoPlayerController? _controller;
   VideoProject? _project;
   String? _selectedOverlayId;
+
   /// Overlay currently edited inline on the preview (keyboard open).
   String? _editingOverlayId;
   bool _ready = false;
   bool _exporting = false;
   String? _errorMessage;
+
   /// Optimistic playhead while `seekTo` is in flight (avoids timeline jitter).
   Duration? _scrubPlayhead;
 
   final _export = ExportService();
   final _exportSave = ExportSaveService();
+  final _previewKey = GlobalKey<VideoPreviewWithOverlaysState>();
 
   Duration get _playhead {
-    return _scrubPlayhead ??
-        _controller?.value.position ??
-        Duration.zero;
+    return _scrubPlayhead ?? _controller?.value.position ?? Duration.zero;
   }
 
   @override
@@ -357,9 +358,9 @@ class _EditorScreenState extends State<EditorScreen> {
 
       if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.exportSuccess)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.exportSuccess)));
     } catch (e) {
       if (!mounted) return;
       Navigator.of(context).pop();
@@ -369,16 +370,14 @@ class _EditorScreenState extends State<EditorScreen> {
         return;
       }
       if (message.contains('photos_permission_denied')) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.permissionPhotosDenied)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(l10n.permissionPhotosDenied)));
         return;
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(l10n.exportFailedWithMessage(message)),
-        ),
+        SnackBar(content: Text(l10n.exportFailedWithMessage(message))),
       );
     } finally {
       progress.dispose();
@@ -407,10 +406,7 @@ class _EditorScreenState extends State<EditorScreen> {
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
-            child: Text(
-              l10n.videoLoadError,
-              textAlign: TextAlign.center,
-            ),
+            child: Text(l10n.videoLoadError, textAlign: TextAlign.center),
           ),
         ),
       );
@@ -457,54 +453,78 @@ class _EditorScreenState extends State<EditorScreen> {
                 builder: (context, constraints) {
                   final targetWidth = constraints.maxWidth;
                   final targetHeight = targetWidth * 16 / 9;
-                  return OverflowHitBox(
-                    child: FittedBox(
-                      fit: BoxFit.contain,
-                      clipBehavior: Clip.none,
-                      alignment: Alignment.topCenter,
-                      child: SizedBox(
-                        width: targetWidth,
-                        height: targetHeight,
-                        child: VideoPreviewWithOverlays(
-                          videoAspectRatio: aspectRatio,
-                          videoChild: VideoPlayer(controller),
-                          overlays: project.overlays,
-                          position: _playhead,
-                          selectedOverlayId: _selectedOverlayId,
-                          editingOverlayId: _editingOverlayId,
-                          textHint: l10n.textOverlayHint,
-                          onOverlaySelected: (overlay) {
-                            if (_editingOverlayId != null &&
-                                _editingOverlayId != overlay.id) {
-                              _finishInlineEditing('select_other_overlay');
-                            }
-                            setState(() => _selectedOverlayId = overlay.id);
-                          },
-                          onRequestEdit: _startInlineEditing,
-                          onOverlayTextChanged: _onOverlayTextChanged,
-                          onEditingComplete: _finishInlineEditing,
-                          onOverlayOffsetChanged: (overlay, offset) {
-                            _patchOverlay(
-                              overlay.id,
-                              (current) => current.copyWith(offset: offset),
-                            );
-                          },
-                          onOverlayBoxChanged: (overlay, width, height, offset) {
-                            OverlayEventLog.log('Editor', 'overlayBoxChanged', {
-                              'id': overlay.id,
-                              'width': width.toStringAsFixed(1),
-                              'height': height.toStringAsFixed(1),
-                              'offset': offset,
-                            });
-                            _patchOverlay(
-                              overlay.id,
-                              (current) => current.copyWith(
-                                boxWidth: width,
-                                boxHeight: height,
-                                offset: offset,
-                              ),
-                            );
-                          },
+                  return Listener(
+                    behavior: HitTestBehavior.opaque,
+                    onPointerDown: (e) {
+                      OverlayEventLog.log('EditorShell', 'pointerDown', {
+                        'global': e.position,
+                        'hasPreviewState': _previewKey.currentState != null,
+                      });
+                      _previewKey.currentState?.handlePointerDown(e);
+                    },
+                    onPointerMove: (e) =>
+                        _previewKey.currentState?.handlePointerMove(e),
+                    onPointerUp: (e) =>
+                        _previewKey.currentState?.handlePointerUp(e.pointer),
+                    onPointerCancel: (e) => _previewKey.currentState
+                        ?.handlePointerCancel(e.pointer),
+                    // FittedBox shrink-wraps to the scaled canvas, which would
+                    // leave the black gutter beside it outside the Listener.
+                    child: SizedBox.expand(
+                      child: FittedBox(
+                        fit: BoxFit.contain,
+                        clipBehavior: Clip.none,
+                        alignment: Alignment.topCenter,
+                        child: OverflowSizedBox(
+                          width: targetWidth,
+                          height: targetHeight,
+                          child: VideoPreviewWithOverlays(
+                            key: _previewKey,
+                            videoAspectRatio: aspectRatio,
+                            videoChild: VideoPlayer(controller),
+                            overlays: project.overlays,
+                            position: _playhead,
+                            selectedOverlayId: _selectedOverlayId,
+                            editingOverlayId: _editingOverlayId,
+                            textHint: l10n.textOverlayHint,
+                            onOverlaySelected: (overlay) {
+                              if (_editingOverlayId != null &&
+                                  _editingOverlayId != overlay.id) {
+                                _finishInlineEditing('select_other_overlay');
+                              }
+                              setState(() => _selectedOverlayId = overlay.id);
+                            },
+                            onRequestEdit: _startInlineEditing,
+                            onOverlayTextChanged: _onOverlayTextChanged,
+                            onEditingComplete: _finishInlineEditing,
+                            onOverlayOffsetChanged: (overlay, offset) {
+                              _patchOverlay(
+                                overlay.id,
+                                (current) => current.copyWith(offset: offset),
+                              );
+                            },
+                            onOverlayBoxChanged:
+                                (overlay, width, height, offset) {
+                                  OverlayEventLog.log(
+                                    'Editor',
+                                    'overlayBoxChanged',
+                                    {
+                                      'id': overlay.id,
+                                      'width': width.toStringAsFixed(1),
+                                      'height': height.toStringAsFixed(1),
+                                      'offset': offset,
+                                    },
+                                  );
+                                  _patchOverlay(
+                                    overlay.id,
+                                    (current) => current.copyWith(
+                                      boxWidth: width,
+                                      boxHeight: height,
+                                      offset: offset,
+                                    ),
+                                  );
+                                },
+                          ),
                         ),
                       ),
                     ),
@@ -518,16 +538,10 @@ class _EditorScreenState extends State<EditorScreen> {
               onPointerDown: (_) =>
                   _finishInlineEditing('timeline_pointer_down'),
               behavior: HitTestBehavior.translucent,
-              child: _buildTimeline(
-                project: project,
-                controller: controller,
-              ),
+              child: _buildTimeline(project: project, controller: controller),
             )
           else
-            _buildTimeline(
-              project: project,
-              controller: controller,
-            ),
+            _buildTimeline(project: project, controller: controller),
           const SizedBox(height: 8),
           if (isInlineEditing)
             Listener(

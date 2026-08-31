@@ -19,7 +19,7 @@ class OverflowHitStack extends Stack {
   RenderStack createRenderObject(BuildContext context) {
     return RenderOverflowHitStack(
       alignment: alignment,
-      textDirection: textDirection,
+      textDirection: textDirection ?? Directionality.of(context),
       fit: fit,
       clipBehavior: clipBehavior,
     );
@@ -32,7 +32,7 @@ class OverflowHitStack extends Stack {
   ) {
     renderObject
       ..alignment = alignment
-      ..textDirection = textDirection
+      ..textDirection = textDirection ?? Directionality.of(context)
       ..fit = fit
       ..clipBehavior = clipBehavior;
   }
@@ -74,5 +74,65 @@ class RenderOverflowHitBox extends RenderProxyBox {
       return true;
     }
     return hitTestSelf(position);
+  }
+}
+
+/// Fixed layout size, but forwards hit tests outside [size] to the child.
+///
+/// [SizedBox] rejects touches beyond its bounds — this breaks overlay handles
+/// that extend into letterbox / past the preview edge.
+class OverflowSizedBox extends SingleChildRenderObjectWidget {
+  const OverflowSizedBox({
+    super.key,
+    required this.width,
+    required this.height,
+    super.child,
+  });
+
+  final double width;
+  final double height;
+
+  @override
+  RenderOverflowSizedBox createRenderObject(BuildContext context) {
+    return RenderOverflowSizedBox(width: width, height: height);
+  }
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant RenderOverflowSizedBox renderObject,
+  ) {
+    renderObject
+      ..width = width
+      ..height = height;
+  }
+}
+
+class RenderOverflowSizedBox extends RenderProxyBox {
+  RenderOverflowSizedBox({required double width, required double height})
+      : _width = width,
+        _height = height;
+
+  double _width;
+  double _height;
+
+  set width(double value) => _width = value;
+  set height(double value) => _height = value;
+
+  @override
+  void performLayout() {
+    size = constraints.constrain(Size(_width, _height));
+    if (child != null) {
+      child!.layout(BoxConstraints.tight(size));
+    }
+  }
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    if (hitTestChildren(result, position: position)) {
+      result.add(BoxHitTestEntry(this, position));
+      return true;
+    }
+    return false;
   }
 }
