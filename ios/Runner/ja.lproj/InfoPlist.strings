@@ -1,0 +1,6 @@
+/* Localized Info.plist strings — Japanese */
+"CFBundleDisplayName" = "AVEditor";
+"NSCameraUsageDescription" = "Shorts編集のため、動画撮影にカメラへのアクセスが必要です。";
+"NSMicrophoneUsageDescription" = "動画撮影時の音声録音のため、マイクへのアクセスが必要です。";
+"NSPhotoLibraryUsageDescription" = "編集する動画を選択するため、写真ライブラリへのアクセスが必要です。";
+"NSPhotoLibraryAddUsageDescription" = "書き出したShortsを端末に保存するため、写真ライブラリへのアクセスが必要です。";

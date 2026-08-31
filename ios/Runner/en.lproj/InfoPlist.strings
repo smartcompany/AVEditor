@@ -1,0 +1,6 @@
+/* Localized Info.plist strings — English */
+"CFBundleDisplayName" = "AVEditor";
+"NSCameraUsageDescription" = "Camera access is needed to record videos for Shorts editing.";
+"NSMicrophoneUsageDescription" = "Microphone access is needed to record audio when capturing video.";
+"NSPhotoLibraryUsageDescription" = "Photo library access is needed to choose videos for editing.";
+"NSPhotoLibraryAddUsageDescription" = "Photo library access is needed to save exported Shorts to your device.";

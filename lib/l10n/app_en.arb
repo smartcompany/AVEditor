@@ -1,0 +1,68 @@
+{
+  "@@locale": "en",
+  "appTitle": "AVEditor",
+  "homeTagline": "Text on your timeline — upload Shorts in one app.",
+  "pickFromGallery": "Choose from gallery",
+  "pickFromFiles": "Choose video file",
+  "recordVideo": "Record video",
+  "youtubeSignIn": "Sign in with YouTube",
+  "youtubeSignedIn": "YouTube connected",
+  "youtubeSignOut": "Sign out",
+  "editorTitle": "Edit",
+  "addText": "Add text",
+  "export": "Export",
+  "uploadShorts": "Upload Shorts",
+  "saveToGallery": "Save to gallery",
+  "cancel": "Cancel",
+  "videoNotSelected": "No video selected.",
+  "videoPickError": "Could not open video: {message}",
+  "@videoPickError": {
+    "placeholders": {
+      "message": {"type": "String"}
+    }
+  },
+  "permissionPhotosDenied": "Photo library access is off. Enable it in Settings.",
+  "permissionCameraDenied": "Camera access is off. Enable it in Settings.",
+  "openSettings": "Settings",
+  "comingSoon": "Coming soon",
+  "trimStart": "Trim start",
+  "trimEnd": "Trim end",
+  "textOverlayHint": "Enter text",
+  "uploadTitleHint": "Short title",
+  "uploadDescriptionHint": "Description (#Shorts recommended)",
+  "privacyPublic": "Public",
+  "privacyUnlisted": "Unlisted",
+  "privacyPrivate": "Private",
+  "videoLoadError": "Could not load video.",
+  "editText": "Edit text",
+  "deleteText": "Delete",
+  "fontSize": "Size",
+  "textColor": "Color",
+  "timelineClip": "Clip",
+  "timelineText": "Text tracks",
+  "selectedText": "Selected text",
+  "noTextSelected": "Tap a text bar to edit timing",
+  "durationTotal": "Total {duration}",
+  "@durationTotal": {
+    "placeholders": {
+      "duration": {"type": "String"}
+    }
+  },
+  "trimmedDuration": "Clip {duration}",
+  "@trimmedDuration": {
+    "placeholders": {
+      "duration": {"type": "String"}
+    }
+  },
+  "save": "Save",
+  "exporting": "Exporting video…",
+  "exportSuccess": "Saved to your library.",
+  "exportFailed": "Export failed.",
+  "exportFailedWithMessage": "Export failed: {message}",
+  "@exportFailedWithMessage": {
+    "placeholders": {
+      "message": {"type": "String"}
+    }
+  },
+  "saveCancelled": "Save cancelled."
+}
