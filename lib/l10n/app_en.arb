@@ -10,6 +10,7 @@
   "youtubeSignOut": "Sign out",
   "editorTitle": "Edit",
   "addText": "Add text",
+  "rotateVideo": "Rotate video",
   "export": "Export",
   "uploadShorts": "Upload Shorts",
   "saveToGallery": "Save to gallery",
@@ -64,5 +65,59 @@
       "message": {"type": "String"}
     }
   },
-  "saveCancelled": "Save cancelled."
+  "saveCancelled": "Save cancelled.",
+  "hideTimeline": "Hide timeline",
+  "showTimeline": "Show timeline",
+  "resumeEditing": "Continue editing",
+  "resumeEditingSubtitle": "{count, plural, =0{No text layers · updated {updated}} other{{count} text layers · updated {updated}}}",
+  "@resumeEditingSubtitle": {
+    "placeholders": {
+      "count": {"type": "int"},
+      "updated": {"type": "String"}
+    }
+  },
+  "projectNotFound": "Saved project could not be found.",
+  "settingsTitle": "Settings",
+  "exportQualitySection": "Export quality",
+  "exportQualityRecommendedTitle": "Recommended",
+  "exportQualityRecommendedBody": "1080p cap, no upscale. Stream copy when only trimming — like CapCut's default.",
+  "exportQualityHighTitle": "Higher quality",
+  "exportQualityHighBody": "Best detail (CRF 18). Always re-encodes; takes longer.",
+  "exportQualitySmallerTitle": "Smaller file",
+  "exportQualitySmallerBody": "Faster export and smaller files. Stream copy when only trimming.",
+  "exportQualityOriginalTitle": "Match original",
+  "exportQualityOriginalBody": "Keeps the source bitstream when possible. Light encode only when text or rotation is added.",
+  "addMusic": "Add music",
+  "importMusicFile": "Import audio file",
+  "searchMusicHint": "Search royalty-free music",
+  "musicCatalogAttribution": "Music by Jamendo — Creative Commons. Attribution may be required.",
+  "musicCatalogUnavailable": "Online catalog is off. Import an audio file, or build with JAMENDO_CLIENT_ID.",
+  "musicLocalOnlyHint": "Import an MP3, M4A, or WAV file from your device.",
+  "musicNoResults": "No tracks found.",
+  "musicImportFailed": "Could not add music: {message}",
+  "@musicImportFailed": {
+    "placeholders": {
+      "message": {"type": "String"}
+    }
+  },
+  "removeMusic": "Remove music",
+  "retry": "Retry",
+  "musicCatalogSection": "Music catalog",
+  "musicCatalogBody": "Jamendo provides free Creative Commons tracks. Register at devportal.jamendo.com and pass --dart-define=JAMENDO_CLIENT_ID=your_id when building.",
+  "splitVideo": "Split clip",
+  "deleteSegment": "Delete segment",
+  "splitOutOfRange": "Move the playhead inside the clip to split.",
+  "splitTooShort": "Each part must be at least 1 second.",
+  "splitFailed": "Could not split the clip.",
+  "splitSuccess": "Split at {time}",
+  "@splitSuccess": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "cannotDeleteLastSegment": "At least one clip segment must remain.",
+  "undo": "Undo",
+  "redo": "Redo"
 }

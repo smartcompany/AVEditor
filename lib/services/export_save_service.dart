@@ -3,11 +3,15 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:gal/gal.dart';
 import 'package:path/path.dart' as p;
-import 'package:permission_handler/permission_handler.dart';
 
 /// Saves exported videos to the photo library or a user-chosen file path.
 class ExportSaveService {
+  /// Rejects exports that never materialised on disk.
+  static const minExportBytes = 1024;
+
   Future<void> saveExportedVideo(String filePath) async {
+    await _assertExportReady(filePath);
+
     if (Platform.isMacOS) {
       await _saveOnMacOS(filePath);
       return;
@@ -21,32 +25,35 @@ class ExportSaveService {
     await _saveOnMacOS(filePath);
   }
 
+  Future<void> _assertExportReady(String filePath) async {
+    final file = File(filePath);
+    if (!await file.exists()) {
+      throw StateError('export_file_missing');
+    }
+    if (await file.length() < minExportBytes) {
+      throw StateError('export_file_empty');
+    }
+  }
+
   Future<void> _saveToGallery(String filePath) async {
-    if (Platform.isAndroid) {
-      final photos = await Permission.photos.request();
-      final videos = await Permission.videos.request();
-      if (!photos.isGranted && !videos.isGranted) {
+    try {
+      // Camera-roll save only needs add access. `toAlbum: true` asks for read
+      // access to arbitrary albums and fails when the user picks "Add Photos
+      // Only" on iOS.
+      if (!await Gal.hasAccess()) {
+        final granted = await Gal.requestAccess();
+        if (!granted) {
+          throw StateError('photos_permission_denied');
+        }
+      }
+
+      await Gal.putVideo(filePath);
+    } on GalException catch (e) {
+      if (e.type == GalExceptionType.accessDenied) {
         throw StateError('photos_permission_denied');
       }
+      throw StateError('gallery_save_failed:${e.type.code}');
     }
-
-    if (Platform.isIOS) {
-      final addOnly = await Permission.photosAddOnly.request();
-      final photos = await Permission.photos.request();
-      if (!addOnly.isGranted && !photos.isGranted) {
-        throw StateError('photos_permission_denied');
-      }
-    }
-
-    final hasAccess = await Gal.hasAccess(toAlbum: true);
-    if (!hasAccess) {
-      final granted = await Gal.requestAccess(toAlbum: true);
-      if (!granted) {
-        throw StateError('photos_permission_denied');
-      }
-    }
-
-    await Gal.putVideo(filePath);
   }
 
   Future<void> _saveOnMacOS(String filePath) async {

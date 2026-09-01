@@ -75,10 +75,14 @@ class _TextOverlayEditorSheetState extends State<_TextOverlayEditorSheet> {
     if (text.isEmpty) {
       return;
     }
+    // Box and font stay locked together, so growing the font grows the frame.
+    final factor = _fontSize / widget.overlay.fontSize;
     widget.onSave(
       widget.overlay.copyWith(
         text: text,
         fontSize: _fontSize,
+        boxWidth: widget.overlay.boxWidth * factor,
+        boxHeight: widget.overlay.boxHeight * factor,
         color: _color,
       ),
     );
@@ -113,7 +117,7 @@ class _TextOverlayEditorSheetState extends State<_TextOverlayEditorSheet> {
             value: _fontSize.clamp(minOverlayFontSize, maxOverlayFontSize),
             min: minOverlayFontSize,
             max: maxOverlayFontSize,
-            divisions: 24,
+            divisions: 36,
             label: _fontSize.round().toString(),
             onChanged: (v) => setState(() => _fontSize = v),
           ),

@@ -3,16 +3,26 @@ import 'package:aveditor/utils/duration_format.dart';
 const minTrimDuration = Duration(seconds: 1);
 const minOverlayDuration = Duration(milliseconds: 500);
 const handleHitWidth = 18.0;
-const playheadHitWidth = 22.0;
 
 /// Minimum zoom: timeline content width = 2/3 of the viewport width.
 const minTimelineZoom = 2 / 3;
 const maxTimelineZoom = 24.0;
 
-/// Horizontal inset when content is narrower than the viewport (zoom < 1).
-double timelineContentInsetX(double contentWidth, double viewportWidth) {
-  if (contentWidth >= viewportWidth) return 0;
-  return (viewportWidth - contentWidth) / 2;
+/// The playhead is pinned to the middle of the viewport and the strip scrolls
+/// under it, so the content is padded by half a viewport at both ends: at time
+/// zero the clip starts under the indicator rather than at the left edge.
+double timelineContentInsetX(double viewportWidth) => viewportWidth / 2;
+
+/// Scroll offset that parks [playhead] under the fixed centre indicator.
+///
+/// Scroll is derived from the playhead rather than tracked separately — that
+/// is what keeps the indicator from drifting.
+double scrollPxForPlayhead({
+  required Duration playhead,
+  required Duration total,
+  required double contentWidth,
+}) {
+  return durationToContentX(playhead, total, contentWidth);
 }
 
 /// Maps absolute time → x within a zoomed content strip of [contentWidth].
@@ -64,11 +74,6 @@ Duration snapDuration(Duration value, {int stepMs = 50}) {
 
 bool nearX(double a, double b, {double threshold = handleHitWidth}) {
   return (a - b).abs() <= threshold;
-}
-
-double clampScrollPx(double scrollPx, double contentWidth, double viewportWidth) {
-  final maxScroll = (contentWidth - viewportWidth).clamp(0.0, double.infinity);
-  return scrollPx.clamp(0.0, maxScroll);
 }
 
 String formatTimelineRange(Duration start, Duration end) {

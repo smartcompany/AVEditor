@@ -1,21 +1,49 @@
+import 'dart:math' as math;
+
+import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/text_overlay.dart';
+import 'package:aveditor/utils/clip_segment_ops.dart';
 import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/utils/overlay_event_log.dart';
 import 'package:aveditor/widgets/overlay_geometry.dart';
+import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/widgets/overflow_hit_stack.dart';
 import 'package:flutter/material.dart';
 
-export 'overlay_geometry.dart' show OverlayGeometry;
+export 'overlay_geometry.dart' show OverlayGeometry, OverlayBox;
 
-const double minOverlayFontSize = 16;
-const double maxOverlayFontSize = 64;
-const double minOverlayBoxWidth = 64;
-const double minOverlayBoxHeight = 48;
-/// Fallback caps; overlays use [VideoPreviewWithOverlays] layout size when available.
-const double maxOverlayBoxWidth = 800;
-const double maxOverlayBoxHeight = 900;
+/// Limits in frame pixels — see [kOverlayFrameWidth].
+const double minOverlayFontSize = 24;
+const double maxOverlayFontSize = 240;
+const double minOverlayBoxWidth = 120;
+const double minOverlayBoxHeight = 96;
+const double maxOverlayBoxWidth = kOverlayFrameWidth * 1.3;
+const double maxOverlayBoxHeight = kOverlayFrameHeight * 1.3;
+
 /// Normalized offset from center — allows placing boxes into letterbox / past edges.
 const double maxOverlayOffset = 3.5;
+
+/// An overlay's geometry after a drag, in frame pixels.
+@immutable
+class OverlayTransform {
+  const OverlayTransform({
+    required this.width,
+    required this.height,
+    required this.fontSize,
+    required this.offset,
+    required this.rotation,
+  });
+
+  final double width;
+  final double height;
+  final double fontSize;
+  final Offset offset;
+  final double rotation;
+}
+
+/// Reports a drag result: box and font always scale by the same factor.
+typedef OverlayBoxChanged =
+    void Function(TextOverlay overlay, OverlayTransform transform);
 
 /// 9:16 preview with time-bound, draggable text overlays.
 class VideoPreviewWithOverlays extends StatefulWidget {
@@ -25,6 +53,8 @@ class VideoPreviewWithOverlays extends StatefulWidget {
     required this.videoAspectRatio,
     required this.overlays,
     required this.position,
+    this.segments = const [],
+    this.clipRotation = 0,
     this.selectedOverlayId,
     this.editingOverlayId,
     this.textHint,
@@ -34,26 +64,38 @@ class VideoPreviewWithOverlays extends StatefulWidget {
     this.onOverlayTextChanged,
     this.onEditingComplete,
     this.onRequestEdit,
+    this.onBackgroundTap,
+    this.onOverlayDeleted,
+    this.onOverlayDuplicated,
   });
 
   final Widget videoChild;
   final double videoAspectRatio;
   final List<TextOverlay> overlays;
   final Duration position;
+  final List<ClipSegment> segments;
+
+  /// Clockwise tilt of the video frame, in radians.
+  final double clipRotation;
   final String? selectedOverlayId;
   final String? editingOverlayId;
   final String? textHint;
-  final void Function(TextOverlay overlay, Offset offset)? onOverlayOffsetChanged;
-  final void Function(
-    TextOverlay overlay,
-    double width,
-    double height,
-    Offset offset,
-  )? onOverlayBoxChanged;
+  final void Function(TextOverlay overlay, Offset offset)?
+  onOverlayOffsetChanged;
+  final OverlayBoxChanged? onOverlayBoxChanged;
   final ValueChanged<TextOverlay>? onOverlaySelected;
   final void Function(TextOverlay overlay, String text)? onOverlayTextChanged;
   final void Function(String source)? onEditingComplete;
   final ValueChanged<TextOverlay>? onRequestEdit;
+
+  /// Tap that landed on the canvas but on no overlay.
+  final VoidCallback? onBackgroundTap;
+
+  /// Top-left corner handle.
+  final ValueChanged<TextOverlay>? onOverlayDeleted;
+
+  /// Bottom-left corner handle.
+  final ValueChanged<TextOverlay>? onOverlayDuplicated;
 
   @override
   State<VideoPreviewWithOverlays> createState() =>
@@ -72,17 +114,20 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
   bool _pointerMoved = false;
   double _pointerTravel = 0;
   int _moveLogCounter = 0;
-  double? _liveWidth;
-  double? _liveHeight;
-  Offset? _liveOffset;
-  double? _resizeStartWidth;
-  double? _resizeStartHeight;
-  Offset? _resizeStartOffset;
+  OverlayBox? _liveBox;
+  OverlayBox? _resizeStartBox;
   Offset _resizeAccumulated = Offset.zero;
+
+  /// Pointer vector from the box centre when a resize+rotate drag began.
+  Offset? _rotateStartVector;
+
+  /// Every pointer currently down, in canvas coordinates. A second finger
+  /// cancels any in-progress overlay gesture without affecting the video.
+  final Map<int, Offset> _downPointers = {};
   double _previewW = 0;
   double _previewH = 0;
-  double _maxBoxW = 0;
-  double _maxBoxH = 0;
+
+  double get _clipRotation => widget.clipRotation;
 
   TextOverlay? _overlayById(String? id) {
     if (id == null) return null;
@@ -97,13 +142,35 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
   TextOverlay? get _editingOverlay => _overlayById(widget.editingOverlayId);
 
   List<TextOverlay> get _visibleOverlays => widget.overlays
-      .where((o) => o.isVisibleAt(widget.position))
+      .where((overlay) {
+        if (widget.segments.isEmpty) {
+          return overlay.isVisibleAt(widget.position);
+        }
+        return isOverlayVisibleAt(overlay, widget.segments, widget.position);
+      })
       .toList(growable: false);
 
+  /// Preview-canvas pixels per frame pixel.
+  double get _frameScale => _previewW / kOverlayFrameWidth;
+
+  /// [overlay]'s box in canvas pixels, including any in-progress drag.
+  OverlayBox _boxOf(TextOverlay overlay) {
+    if (overlay.id == widget.selectedOverlayId) {
+      final live = _liveBox;
+      if (live != null) return live;
+    }
+    final scale = _frameScale;
+    return OverlayBox(
+      width: overlay.boxWidth * scale,
+      height: overlay.boxHeight * scale,
+      fontSize: overlay.fontSize * scale,
+      offset: overlay.offset,
+      rotation: overlay.rotation,
+    );
+  }
+
   void _clearLiveGeometry() {
-    _liveWidth = null;
-    _liveHeight = null;
-    _liveOffset = null;
+    _liveBox = null;
   }
 
   void _clearDragState() {
@@ -114,10 +181,9 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
     _pointerMoved = false;
     _pointerTravel = 0;
     _moveLogCounter = 0;
-    _resizeStartWidth = null;
-    _resizeStartHeight = null;
-    _resizeStartOffset = null;
+    _resizeStartBox = null;
     _resizeAccumulated = Offset.zero;
+    _rotateStartVector = null;
     _clearLiveGeometry();
   }
 
@@ -133,79 +199,145 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
     }
   }
 
-  double _boxWidth(TextOverlay overlay) =>
-      _liveWidth ?? overlay.boxWidth;
-
-  double _boxHeight(TextOverlay overlay) =>
-      _liveHeight ?? overlay.boxHeight;
-
-  Offset _boxOffset(TextOverlay overlay) =>
-      _liveOffset ?? overlay.offset;
-
   void _moveBy(TextOverlay overlay, Offset delta) {
-    final current = _boxOffset(overlay);
-    final nextDx = (current.dx + delta.dx / (_previewW / 2))
-        .clamp(-maxOverlayOffset, maxOverlayOffset);
-    final nextDy = (current.dy + delta.dy / (_previewH / 2))
-        .clamp(-maxOverlayOffset, maxOverlayOffset);
-    setState(() => _liveOffset = Offset(nextDx, nextDy));
+    final box = _boxOf(overlay);
+    final next = Offset(
+      (box.offset.dx + delta.dx / (_previewW / 2)).clamp(
+        -maxOverlayOffset,
+        maxOverlayOffset,
+      ),
+      (box.offset.dy + delta.dy / (_previewH / 2)).clamp(
+        -maxOverlayOffset,
+        maxOverlayOffset,
+      ),
+    );
+    setState(() => _liveBox = box.copyWith(offset: next));
   }
 
+  /// Corner drags scale the box and the font by one factor, so the text keeps
+  /// filling the box and never distorts.
   void _resizeBy(
     TextOverlay overlay, {
     required Offset delta,
     required bool fromLeft,
     required bool fromTop,
-    required double maxBoxW,
-    required double maxBoxH,
-    required double previewW,
-    required double previewH,
   }) {
+    final start = _resizeStartBox ?? _boxOf(overlay);
+    _resizeStartBox ??= start;
     _resizeAccumulated += delta;
-    final startW = _resizeStartWidth ?? overlay.boxWidth;
-    final startH = _resizeStartHeight ?? overlay.boxHeight;
-    final startOffset = _resizeStartOffset ?? overlay.offset;
-    _resizeStartWidth ??= startW;
-    _resizeStartHeight ??= startH;
-    _resizeStartOffset ??= startOffset;
 
-    final outwardW = fromLeft ? -_resizeAccumulated.dx : _resizeAccumulated.dx;
-    final outwardH = fromTop ? -_resizeAccumulated.dy : _resizeAccumulated.dy;
+    final outward = Offset(
+      fromLeft ? -_resizeAccumulated.dx : _resizeAccumulated.dx,
+      fromTop ? -_resizeAccumulated.dy : _resizeAccumulated.dy,
+    );
+    // Project the drag onto the box diagonal so both axes contribute.
+    final diagonal = Offset(start.width, start.height);
+    final along =
+        (outward.dx * diagonal.dx + outward.dy * diagonal.dy) /
+        diagonal.distanceSquared;
 
-    final nextW = (startW + outwardW).clamp(minOverlayBoxWidth, maxBoxW);
-    final nextH = (startH + outwardH).clamp(minOverlayBoxHeight, maxBoxH);
+    final scale = (1 + along).clamp(
+      _minResizeScale(start),
+      _maxResizeScale(start),
+    );
+    final next = start.scaled(scale);
 
-    final appliedW = nextW - startW;
-    final appliedH = nextH - startH;
+    // Keep the opposite corner pinned. The box may be rotated, so the shift is
+    // computed along the box's own axes and then rotated into canvas space.
     final signX = fromLeft ? -1.0 : 1.0;
     final signY = fromTop ? -1.0 : 1.0;
+    final grow = Offset(
+      signX * (next.width - start.width) / 2,
+      signY * (next.height - start.height) / 2,
+    );
+    final rotated = _rotateVector(grow, start.rotation);
     final nextOffset = Offset(
-      (startOffset.dx + signX * appliedW / previewW)
-          .clamp(-maxOverlayOffset, maxOverlayOffset),
-      (startOffset.dy + signY * appliedH / previewH)
-          .clamp(-maxOverlayOffset, maxOverlayOffset),
+      (start.offset.dx + rotated.dx / (_previewW / 2)).clamp(
+        -maxOverlayOffset,
+        maxOverlayOffset,
+      ),
+      (start.offset.dy + rotated.dy / (_previewH / 2)).clamp(
+        -maxOverlayOffset,
+        maxOverlayOffset,
+      ),
     );
 
-    setState(() {
-      _liveWidth = nextW;
-      _liveHeight = nextH;
-      _liveOffset = nextOffset;
-    });
+    setState(() => _liveBox = next.copyWith(offset: nextOffset));
   }
 
-  void _beginDrag(TextOverlay overlay, OverlayDrag drag) {
+  /// Bottom-right corner: distance from the centre scales, angle rotates.
+  ///
+  /// The centre stays pinned so the box turns under the finger instead of
+  /// swinging away from it.
+  void _resizeRotateTo(TextOverlay overlay, Offset local) {
+    final start = _resizeStartBox ?? _boxOf(overlay);
+    _resizeStartBox ??= start;
+
+    final centre = OverlayGeometry.boxCenter(
+      previewW: _previewW,
+      previewH: _previewH,
+      box: start,
+    );
+    final from = _rotateStartVector;
+    final to = local - centre;
+    if (from == null || from.distance < 1 || to.distance < 1) return;
+
+    final scale = (to.distance / from.distance).clamp(
+      _minResizeScale(start),
+      _maxResizeScale(start),
+    );
+    final rotation = start.rotation + (to.direction - from.direction);
+
+    setState(
+      () => _liveBox = start.scaled(scale).copyWith(rotation: rotation),
+    );
+  }
+
+  static Offset _rotateVector(Offset v, double radians) {
+    if (radians == 0) return v;
+    final cos = math.cos(radians);
+    final sin = math.sin(radians);
+    return Offset(v.dx * cos - v.dy * sin, v.dx * sin + v.dy * cos);
+  }
+
+  double _minResizeScale(OverlayBox start) {
+    final scale = _frameScale;
+    return [
+      minOverlayBoxWidth * scale / start.width,
+      minOverlayBoxHeight * scale / start.height,
+      minOverlayFontSize * scale / start.fontSize,
+    ].reduce((a, b) => a > b ? a : b);
+  }
+
+  double _maxResizeScale(OverlayBox start) {
+    final scale = _frameScale;
+    return [
+      maxOverlayBoxWidth * scale / start.width,
+      maxOverlayBoxHeight * scale / start.height,
+      maxOverlayFontSize * scale / start.fontSize,
+    ].reduce((a, b) => a < b ? a : b);
+  }
+
+  void _beginDrag(TextOverlay overlay, OverlayDrag drag, Offset local) {
+    final box = _boxOf(overlay);
     OverlayEventLog.log('PreviewDrag', 'dragBegin', {
       'id': overlay.id.substring(0, 8),
       'drag': drag.label,
-      'boxW': _boxWidth(overlay),
-      'boxH': _boxHeight(overlay),
+      'boxW': box.width,
+      'boxH': box.height,
     });
     _activeDrag = drag;
     if (drag.isResize) {
-      _resizeStartWidth = _boxWidth(overlay);
-      _resizeStartHeight = _boxHeight(overlay);
-      _resizeStartOffset = _boxOffset(overlay);
+      _resizeStartBox = box;
       _resizeAccumulated = Offset.zero;
+      // Anchored on the press, not the first move, so a single large move
+      // still rotates by the angle the finger actually swept.
+      _rotateStartVector = local -
+          OverlayGeometry.boxCenter(
+            previewW: _previewW,
+            previewH: _previewH,
+            box: box,
+          );
     }
   }
 
@@ -213,38 +345,51 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
     final drag = _activeDrag;
     if (!moved || drag == null) return;
 
-    final w = _boxWidth(overlay);
-    final h = _boxHeight(overlay);
-    final o = _boxOffset(overlay);
+    final box = _boxOf(overlay);
+    final scale = _frameScale;
     OverlayEventLog.log('PreviewDrag', 'commitGeometry', {
       'id': overlay.id.substring(0, 8),
       'drag': drag.label,
-      'boxW': w,
-      'boxH': h,
-      'offset': o,
+      'frameW': box.width / scale,
+      'frameH': box.height / scale,
+      'font': box.fontSize / scale,
+      'offset': box.offset,
+      'rotation': box.rotation,
     });
     if (drag.isResize) {
-      widget.onOverlayBoxChanged?.call(overlay, w, h, o);
+      widget.onOverlayBoxChanged?.call(
+        overlay,
+        OverlayTransform(
+          width: box.width / scale,
+          height: box.height / scale,
+          fontSize: box.fontSize / scale,
+          offset: box.offset,
+          rotation: box.rotation,
+        ),
+      );
     } else {
-      widget.onOverlayOffsetChanged?.call(overlay, o);
+      widget.onOverlayOffsetChanged?.call(overlay, box.offset);
     }
     _clearLiveGeometry();
   }
 
   TextOverlay? _topmostBodyAt(Offset local) {
     for (final overlay in _visibleOverlays.reversed) {
-      final isSelected = overlay.id == widget.selectedOverlayId;
-      final body = OverlayGeometry.bodyRect(
+      final hit = OverlayGeometry.bodyContains(
+        local,
         previewW: _previewW,
         previewH: _previewH,
-        overlay: overlay,
-        liveW: isSelected ? _liveWidth : null,
-        liveH: isSelected ? _liveHeight : null,
-        liveOffset: isSelected ? _liveOffset : null,
+        box: _boxOf(overlay),
       );
-      if (body.contains(local)) return overlay;
+      if (hit) return overlay;
     }
     return null;
+  }
+
+  /// A second finger means the user is pinching — abandon any overlay drag
+  /// without committing and leave the video frame untouched.
+  void _cancelForMultiTouch() {
+    _clearDragState();
   }
 
   /// Single pointer entry point — the editor shell forwards every pointer in
@@ -261,14 +406,21 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
     });
     if (local == null) return;
 
+    _downPointers[event.pointer] = local;
+    if (_downPointers.length >= 2) {
+      _cancelForMultiTouch();
+      return;
+    }
+
     final editing = _editingOverlay;
     if (editing != null) {
-      final chrome = OverlayGeometry.chromeRect(
+      final insideChrome = OverlayGeometry.chromeContains(
+        local,
         previewW: _previewW,
         previewH: _previewH,
-        overlay: editing,
+        box: _boxOf(editing),
       );
-      if (chrome.contains(local)) return;
+      if (insideChrome) return;
       OverlayEventLog.log('PreviewCanvas', 'dismissEditing', {'local': local});
       widget.onEditingComplete?.call('preview_outside');
       return;
@@ -282,11 +434,8 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
         local,
         previewW: _previewW,
         previewH: _previewH,
-        overlay: selected,
+        box: _boxOf(selected),
         editing: false,
-        liveW: _liveWidth,
-        liveH: _liveHeight,
-        liveOffset: _liveOffset,
       );
       if (drag != null) {
         OverlayEventLog.log('PreviewCanvas', 'dragStart', {
@@ -299,8 +448,9 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
         _pointerTravel = 0;
         _moveLogCounter = 0;
         // A body press that never travels is a tap → open the inline editor.
-        _tapTarget = drag.isResize ? null : selected;
-        _beginDrag(selected, drag);
+        // Corner presses are resolved from the drag kind on release instead.
+        _tapTarget = drag.kind == OverlayDragKind.move ? selected : null;
+        _beginDrag(selected, drag, local);
         return;
       }
     }
@@ -310,7 +460,7 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
       'local': local,
       'hit': tapped?.id,
     });
-    if (tapped == null) return;
+    // A null hit is still tracked: releasing without travel is a canvas tap.
     _activePointer = event.pointer;
     _lastLocal = local;
     _pointerMoved = false;
@@ -319,6 +469,12 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
   }
 
   void handlePointerMove(PointerMoveEvent event) {
+    if (_downPointers.containsKey(event.pointer)) {
+      final local = _toPreviewLocal(event);
+      if (local != null) _downPointers[event.pointer] = local;
+    }
+    if (_downPointers.length >= 2) return;
+
     if (event.pointer != _activePointer) return;
     _pointerTravel += event.delta.distance;
     if (_pointerTravel > _tapSlop) _pointerMoved = true;
@@ -328,16 +484,17 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
   }
 
   void handlePointerUp(int pointer) {
+    _downPointers.remove(pointer);
+    if (_downPointers.isNotEmpty) return;
+
     if (pointer != _activePointer) return;
     final target = _tapTarget;
     final moved = _pointerMoved;
     final drag = _activeDrag;
+    final dragged = _selectedOverlay;
 
-    if (drag != null) {
-      final overlay = _selectedOverlay;
-      if (overlay != null) {
-        _onPreviewPointerEnd(overlay, pointer);
-      }
+    if (drag != null && dragged != null) {
+      _onPreviewPointerEnd(dragged, pointer);
     }
 
     _activePointer = null;
@@ -346,7 +503,28 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
     _pointerMoved = false;
     _pointerTravel = 0;
 
-    if (moved || target == null) return;
+    if (moved) return;
+
+    if (drag != null && drag.isTapAction && dragged != null) {
+      OverlayEventLog.log('PreviewCanvas', 'cornerAction', {
+        'id': dragged.id,
+        'drag': drag.label,
+      });
+      if (drag.kind == OverlayDragKind.delete) {
+        widget.onOverlayDeleted?.call(dragged);
+      } else {
+        widget.onOverlayDuplicated?.call(dragged);
+      }
+      return;
+    }
+
+    if (target == null) {
+      // Corner presses also clear the tap target, so check no drag ran.
+      if (drag != null) return;
+      OverlayEventLog.log('PreviewCanvas', 'tapBackground', {});
+      widget.onBackgroundTap?.call();
+      return;
+    }
 
     if (target.id == widget.selectedOverlayId) {
       OverlayEventLog.log('PreviewCanvas', 'tapRequestEdit', {'id': target.id});
@@ -358,6 +536,9 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
   }
 
   void handlePointerCancel(int pointer) {
+    _downPointers.remove(pointer);
+    if (_downPointers.isNotEmpty) return;
+
     if (pointer != _activePointer) return;
     final overlay = _selectedOverlay;
     if (overlay != null && _activeDrag != null) {
@@ -376,10 +557,7 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
     return box.globalToLocal(event.position);
   }
 
-  void _onPreviewPointerMoveAt(
-    PointerMoveEvent event,
-    TextOverlay overlay,
-  ) {
+  void _onPreviewPointerMoveAt(PointerMoveEvent event, TextOverlay overlay) {
     if (event.pointer != _activePointer || _activeDrag == null) return;
 
     // Deltas are measured in preview coordinates, not screen pixels: the editor
@@ -402,19 +580,22 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
     }
 
     final drag = _activeDrag!;
-    if (drag.kind == OverlayDragKind.move) {
-      _moveBy(overlay, delta);
-    } else {
-      _resizeBy(
-        overlay,
-        delta: delta,
-        fromLeft: drag.fromLeft!,
-        fromTop: drag.fromTop!,
-        maxBoxW: _maxBoxW,
-        maxBoxH: _maxBoxH,
-        previewW: _previewW,
-        previewH: _previewH,
-      );
+    switch (drag.kind) {
+      case OverlayDragKind.move:
+        _moveBy(overlay, delta);
+      case OverlayDragKind.resizeRotate:
+        _resizeRotateTo(overlay, local);
+      case OverlayDragKind.resize:
+        _resizeBy(
+          overlay,
+          delta: delta,
+          fromLeft: drag.fromLeft!,
+          fromTop: drag.fromTop!,
+        );
+      case OverlayDragKind.delete:
+      case OverlayDragKind.duplicate:
+        // Corner buttons: travel is ignored, the action fires on release.
+        break;
     }
   }
 
@@ -427,7 +608,7 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
       'moveCount': _moveLogCounter,
     });
     _commitDrag(overlay, moved);
-    if (!moved && _liveWidth != null) {
+    if (!moved && _liveBox != null) {
       setState(_clearLiveGeometry);
     }
     _activeDrag = null;
@@ -436,10 +617,9 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
     _pointerMoved = false;
     _pointerTravel = 0;
     _moveLogCounter = 0;
-    _resizeStartWidth = null;
-    _resizeStartHeight = null;
-    _resizeStartOffset = null;
+    _resizeStartBox = null;
     _resizeAccumulated = Offset.zero;
+    _rotateStartVector = null;
   }
 
   @override
@@ -453,8 +633,6 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
           builder: (context, constraints) {
             _previewW = constraints.maxWidth;
             _previewH = constraints.maxHeight;
-            _maxBoxW = _previewW + 96;
-            _maxBoxH = _previewH + 96;
 
             return OverflowHitStack(
               clipBehavior: Clip.none,
@@ -464,29 +642,23 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
                   child: _VideoCanvasBackground(
                     videoAspectRatio: widget.videoAspectRatio,
                     videoChild: widget.videoChild,
+                    rotation: _clipRotation,
                   ),
                 ),
                 ...visible.map(
-                  (overlay) {
-                    final isSelected = overlay.id == widget.selectedOverlayId;
-                    return _DraggableOverlayLabel(
-                      key: ValueKey(overlay.id),
-                      overlay: overlay,
-                      previewWidth: _previewW,
-                      previewHeight: _previewH,
-                      maxBoxWidth: _maxBoxW,
-                      maxBoxHeight: _maxBoxH,
-                      selected: isSelected,
-                      editing: overlay.id == widget.editingOverlayId,
-                      textHint: widget.textHint,
-                      liveWidth: isSelected ? _liveWidth : null,
-                      liveHeight: isSelected ? _liveHeight : null,
-                      liveOffset: isSelected ? _liveOffset : null,
-                      onTextChanged: (text) =>
-                          widget.onOverlayTextChanged?.call(overlay, text),
-                      onEditingComplete: widget.onEditingComplete,
-                    );
-                  },
+                  (overlay) => _DraggableOverlayLabel(
+                    key: ValueKey(overlay.id),
+                    overlay: overlay,
+                    box: _boxOf(overlay),
+                    previewWidth: _previewW,
+                    previewHeight: _previewH,
+                    selected: overlay.id == widget.selectedOverlayId,
+                    editing: overlay.id == widget.editingOverlayId,
+                    textHint: widget.textHint,
+                    onTextChanged: (text) =>
+                        widget.onOverlayTextChanged?.call(overlay, text),
+                    onEditingComplete: widget.onEditingComplete,
+                  ),
                 ),
               ],
             );
@@ -501,31 +673,25 @@ class _DraggableOverlayLabel extends StatefulWidget {
   const _DraggableOverlayLabel({
     super.key,
     required this.overlay,
+    required this.box,
     required this.previewWidth,
     required this.previewHeight,
-    required this.maxBoxWidth,
-    required this.maxBoxHeight,
     required this.selected,
     required this.editing,
     required this.onTextChanged,
     this.onEditingComplete,
     this.textHint,
-    this.liveWidth,
-    this.liveHeight,
-    this.liveOffset,
   });
 
   final TextOverlay overlay;
+
+  /// Size, font and offset already resolved into canvas pixels.
+  final OverlayBox box;
   final double previewWidth;
   final double previewHeight;
-  final double maxBoxWidth;
-  final double maxBoxHeight;
   final bool selected;
   final bool editing;
   final String? textHint;
-  final double? liveWidth;
-  final double? liveHeight;
-  final Offset? liveOffset;
   final ValueChanged<String> onTextChanged;
   final void Function(String source)? onEditingComplete;
 
@@ -539,10 +705,9 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
 
   static const _logTag = 'OverlayLabel';
 
-  String get _overlayIdShort =>
-      widget.overlay.id.length <= 8
-          ? widget.overlay.id
-          : widget.overlay.id.substring(0, 8);
+  String get _overlayIdShort => widget.overlay.id.length <= 8
+      ? widget.overlay.id
+      : widget.overlay.id.substring(0, 8);
 
   void _log(String event, [Map<String, Object?>? data]) {
     OverlayEventLog.log(_logTag, event, {
@@ -553,12 +718,6 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
       ...?data,
     });
   }
-
-  double get _boxWidth =>
-      widget.liveWidth ?? widget.overlay.boxWidth;
-
-  double get _boxHeight =>
-      widget.liveHeight ?? widget.overlay.boxHeight;
 
   @override
   void initState() {
@@ -611,14 +770,10 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
     super.dispose();
   }
 
-  TextStyle get _textStyle => TextStyle(
-        color: widget.overlay.color,
-        fontSize: widget.overlay.fontSize,
-        fontWeight: FontWeight.w700,
-        shadows: const [
-          Shadow(blurRadius: 8, color: Colors.black54),
-        ],
-      );
+  TextStyle get _textStyle => overlayTextStyle(
+    color: widget.overlay.color,
+    fontSize: widget.box.fontSize,
+  );
 
   Widget _buildBody() {
     final textWidget = widget.editing
@@ -652,6 +807,7 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
                 ? (widget.textHint ?? '')
                 : widget.overlay.text,
             textAlign: TextAlign.center,
+            textScaler: TextScaler.noScaling,
             maxLines: null,
             overflow: TextOverflow.visible,
             style: widget.overlay.text.isEmpty
@@ -661,9 +817,18 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
                 : _textStyle,
           );
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-      child: Center(child: textWidget),
+    // System text scaling must not change layout, or the export would drift.
+    return MediaQuery.withNoTextScaling(child: Center(child: textWidget));
+  }
+
+  Widget _buildMoveGrip() {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.all(Radius.circular(3)),
+        boxShadow: [BoxShadow(blurRadius: 3, color: Colors.black54)],
+      ),
+      child: const SizedBox(width: 28, height: 6),
     );
   }
 
@@ -676,11 +841,49 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
           color: Colors.white,
           borderRadius: BorderRadius.circular(3),
           border: Border.all(color: AppTheme.accent, width: 2),
-          boxShadow: const [
-            BoxShadow(blurRadius: 3, color: Colors.black54),
-          ],
+          boxShadow: const [BoxShadow(blurRadius: 3, color: Colors.black54)],
         ),
       ),
+    );
+  }
+
+  static const _iconKnobSize = 24.0;
+
+  Widget _buildIconKnob(IconData icon) {
+    return Container(
+      width: _iconKnobSize,
+      height: _iconKnobSize,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        border: Border.all(color: AppTheme.accent, width: 1.5),
+        boxShadow: const [BoxShadow(blurRadius: 3, color: Colors.black54)],
+      ),
+      child: Center(
+        child: Icon(icon, size: 14, color: AppTheme.accent),
+      ),
+    );
+  }
+
+  /// Distance from the box edge to a corner handle's centre.
+  static const _anchorOutset =
+      OverlayGeometry.knobOutset - OverlayGeometry.knobSize / 2;
+
+  /// Centres [child] on the corner anchor that [OverlayGeometry] hit tests,
+  /// whatever its size.
+  Widget _corner({
+    required Widget child,
+    required double size,
+    required bool left,
+    required bool top,
+  }) {
+    final inset = -_anchorOutset - size / 2;
+    return Positioned(
+      left: left ? inset : null,
+      right: left ? null : inset,
+      top: top ? inset : null,
+      bottom: top ? null : inset,
+      child: child,
     );
   }
 
@@ -691,14 +894,11 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
     final topLeft = OverlayGeometry.chromeTopLeft(
       previewW: widget.previewWidth,
       previewH: widget.previewHeight,
-      overlay: widget.overlay,
-      liveW: widget.liveWidth,
-      liveH: widget.liveHeight,
-      liveOffset: widget.liveOffset,
+      box: widget.box,
     );
 
-    final boxW = _boxWidth;
-    final boxH = _boxHeight;
+    final boxW = widget.box.width;
+    final boxH = widget.box.height;
 
     Widget chrome = Padding(
       padding: const EdgeInsets.all(OverlayGeometry.handlePad),
@@ -713,63 +913,46 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
                     borderRadius: BorderRadius.circular(8),
                   )
                 : const BoxDecoration(),
-            child: SizedBox(
-              width: boxW,
-              height: boxH,
-              child: Column(
-                mainAxisSize: MainAxisSize.max,
-                children: [
-                  Expanded(child: _buildBody()),
-                  if (showChrome)
-                    IgnorePointer(
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 8, bottom: 2),
-                        child: SizedBox(
-                          width: 44,
-                          height: 28,
-                          child: Center(
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.all(
-                                  Radius.circular(2),
-                                ),
-                              ),
-                              child: const SizedBox(width: 24, height: 5),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
+            child: SizedBox(width: boxW, height: boxH, child: _buildBody()),
           ),
           if (showChrome) ...[
+            // Grip lives in the padding ring so it never steals text space.
             Positioned(
-              left: -OverlayGeometry.knobOutset,
-              top: -OverlayGeometry.knobOutset,
+              bottom: -OverlayGeometry.gripOutset - 3,
+              child: IgnorePointer(child: _buildMoveGrip()),
+            ),
+            _corner(
+              left: true,
+              top: true,
+              size: _iconKnobSize,
+              child: _buildIconKnob(Icons.close),
+            ),
+            _corner(
+              left: false,
+              top: true,
+              size: OverlayGeometry.knobSize,
               child: _buildHandleKnob(),
             ),
-            Positioned(
-              right: -OverlayGeometry.knobOutset,
-              top: -OverlayGeometry.knobOutset,
-              child: _buildHandleKnob(),
+            _corner(
+              left: true,
+              top: false,
+              size: _iconKnobSize,
+              child: _buildIconKnob(Icons.content_copy),
             ),
-            Positioned(
-              left: -OverlayGeometry.knobOutset,
-              bottom: -OverlayGeometry.knobOutset,
-              child: _buildHandleKnob(),
-            ),
-            Positioned(
-              right: -OverlayGeometry.knobOutset,
-              bottom: -OverlayGeometry.knobOutset,
-              child: _buildHandleKnob(),
+            _corner(
+              left: false,
+              top: false,
+              size: _iconKnobSize,
+              child: _buildIconKnob(Icons.rotate_right),
             ),
           ],
         ],
       ),
     );
+
+    if (widget.box.rotation != 0) {
+      chrome = Transform.rotate(angle: widget.box.rotation, child: chrome);
+    }
 
     if (widget.editing) {
       chrome = TapRegion(
@@ -786,10 +969,7 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
     return Positioned(
       left: topLeft.dx,
       top: topLeft.dy,
-      child: IgnorePointer(
-        ignoring: !widget.editing,
-        child: chrome,
-      ),
+      child: IgnorePointer(ignoring: !widget.editing, child: chrome),
     );
   }
 }
@@ -798,24 +978,35 @@ class _VideoCanvasBackground extends StatelessWidget {
   const _VideoCanvasBackground({
     required this.videoAspectRatio,
     required this.videoChild,
+    required this.rotation,
   });
 
   final double videoAspectRatio;
   final Widget videoChild;
+  final double rotation;
 
   @override
   Widget build(BuildContext context) {
+    // Cover, not contain: the export scales up and centre-crops to fill the
+    // preset frame, so showing the video letterboxed here would promise bars
+    // that the exported file does not have.
+    Widget video = FittedBox(
+      fit: BoxFit.cover,
+      clipBehavior: Clip.hardEdge,
+      child: SizedBox(
+        width: videoAspectRatio * 1000,
+        height: 1000,
+        child: videoChild,
+      ),
+    );
+
+    if (rotation != 0) {
+      video = Transform.rotate(angle: rotation, child: video);
+    }
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
-      child: ColoredBox(
-        color: Colors.black,
-        child: Center(
-          child: AspectRatio(
-            aspectRatio: videoAspectRatio,
-            child: videoChild,
-          ),
-        ),
-      ),
+      child: ColoredBox(color: Colors.black, child: video),
     );
   }
 }

@@ -162,6 +162,12 @@ abstract class AppLocalizations {
   /// **'Add text'**
   String get addText;
 
+  /// No description provided for @rotateVideo.
+  ///
+  /// In en, this message translates to:
+  /// **'Rotate video'**
+  String get rotateVideo;
+
   /// No description provided for @export.
   ///
   /// In en, this message translates to:
@@ -371,6 +377,222 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Save cancelled.'**
   String get saveCancelled;
+
+  /// No description provided for @hideTimeline.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide timeline'**
+  String get hideTimeline;
+
+  /// No description provided for @showTimeline.
+  ///
+  /// In en, this message translates to:
+  /// **'Show timeline'**
+  String get showTimeline;
+
+  /// No description provided for @resumeEditing.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue editing'**
+  String get resumeEditing;
+
+  /// No description provided for @resumeEditingSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No text layers · updated {updated}} other{{count} text layers · updated {updated}}}'**
+  String resumeEditingSubtitle(int count, String updated);
+
+  /// No description provided for @projectNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved project could not be found.'**
+  String get projectNotFound;
+
+  /// No description provided for @settingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get settingsTitle;
+
+  /// No description provided for @exportQualitySection.
+  ///
+  /// In en, this message translates to:
+  /// **'Export quality'**
+  String get exportQualitySection;
+
+  /// No description provided for @exportQualityRecommendedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Recommended'**
+  String get exportQualityRecommendedTitle;
+
+  /// No description provided for @exportQualityRecommendedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'1080p cap, no upscale. Stream copy when only trimming — like CapCut\'s default.'**
+  String get exportQualityRecommendedBody;
+
+  /// No description provided for @exportQualityHighTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Higher quality'**
+  String get exportQualityHighTitle;
+
+  /// No description provided for @exportQualityHighBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Best detail (CRF 18). Always re-encodes; takes longer.'**
+  String get exportQualityHighBody;
+
+  /// No description provided for @exportQualitySmallerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Smaller file'**
+  String get exportQualitySmallerTitle;
+
+  /// No description provided for @exportQualitySmallerBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Faster export and smaller files. Stream copy when only trimming.'**
+  String get exportQualitySmallerBody;
+
+  /// No description provided for @exportQualityOriginalTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Match original'**
+  String get exportQualityOriginalTitle;
+
+  /// No description provided for @exportQualityOriginalBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Keeps the source bitstream when possible. Light encode only when text or rotation is added.'**
+  String get exportQualityOriginalBody;
+
+  /// No description provided for @addMusic.
+  ///
+  /// In en, this message translates to:
+  /// **'Add music'**
+  String get addMusic;
+
+  /// No description provided for @importMusicFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Import audio file'**
+  String get importMusicFile;
+
+  /// No description provided for @searchMusicHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search royalty-free music'**
+  String get searchMusicHint;
+
+  /// No description provided for @musicCatalogAttribution.
+  ///
+  /// In en, this message translates to:
+  /// **'Music by Jamendo — Creative Commons. Attribution may be required.'**
+  String get musicCatalogAttribution;
+
+  /// No description provided for @musicCatalogUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Online catalog is off. Import an audio file, or build with JAMENDO_CLIENT_ID.'**
+  String get musicCatalogUnavailable;
+
+  /// No description provided for @musicLocalOnlyHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Import an MP3, M4A, or WAV file from your device.'**
+  String get musicLocalOnlyHint;
+
+  /// No description provided for @musicNoResults.
+  ///
+  /// In en, this message translates to:
+  /// **'No tracks found.'**
+  String get musicNoResults;
+
+  /// No description provided for @musicImportFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not add music: {message}'**
+  String musicImportFailed(String message);
+
+  /// No description provided for @removeMusic.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove music'**
+  String get removeMusic;
+
+  /// No description provided for @retry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get retry;
+
+  /// No description provided for @musicCatalogSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Music catalog'**
+  String get musicCatalogSection;
+
+  /// No description provided for @musicCatalogBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Jamendo provides free Creative Commons tracks. Register at devportal.jamendo.com and pass --dart-define=JAMENDO_CLIENT_ID=your_id when building.'**
+  String get musicCatalogBody;
+
+  /// No description provided for @splitVideo.
+  ///
+  /// In en, this message translates to:
+  /// **'Split clip'**
+  String get splitVideo;
+
+  /// No description provided for @deleteSegment.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete segment'**
+  String get deleteSegment;
+
+  /// No description provided for @splitOutOfRange.
+  ///
+  /// In en, this message translates to:
+  /// **'Move the playhead inside the clip to split.'**
+  String get splitOutOfRange;
+
+  /// No description provided for @splitTooShort.
+  ///
+  /// In en, this message translates to:
+  /// **'Each part must be at least 1 second.'**
+  String get splitTooShort;
+
+  /// No description provided for @splitFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not split the clip.'**
+  String get splitFailed;
+
+  /// No description provided for @splitSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Split at {time}'**
+  String splitSuccess(String time);
+
+  /// No description provided for @cannotDeleteLastSegment.
+  ///
+  /// In en, this message translates to:
+  /// **'At least one clip segment must remain.'**
+  String get cannotDeleteLastSegment;
+
+  /// No description provided for @undo.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo'**
+  String get undo;
+
+  /// No description provided for @redo.
+  ///
+  /// In en, this message translates to:
+  /// **'Redo'**
+  String get redo;
 }
 
 class _AppLocalizationsDelegate

@@ -10,6 +10,18 @@ class ClipTrim {
 
   Duration get duration => end - start;
 
+  Map<String, dynamic> toJson() => {
+    'startMs': start.inMilliseconds,
+    'endMs': end.inMilliseconds,
+  };
+
+  factory ClipTrim.fromJson(Map<String, dynamic> json) {
+    return ClipTrim(
+      start: Duration(milliseconds: json['startMs'] as int),
+      end: Duration(milliseconds: json['endMs'] as int),
+    );
+  }
+
   ClipTrim copyWith({
     Duration? start,
     Duration? end,

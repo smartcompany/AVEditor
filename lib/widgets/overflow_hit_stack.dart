@@ -94,7 +94,7 @@ class OverflowSizedBox extends SingleChildRenderObjectWidget {
 
   @override
   RenderOverflowSizedBox createRenderObject(BuildContext context) {
-    return RenderOverflowSizedBox(width: width, height: height);
+    return RenderOverflowSizedBox(width, height);
   }
 
   @override
@@ -109,15 +109,22 @@ class OverflowSizedBox extends SingleChildRenderObjectWidget {
 }
 
 class RenderOverflowSizedBox extends RenderProxyBox {
-  RenderOverflowSizedBox({required double width, required double height})
-      : _width = width,
-        _height = height;
+  RenderOverflowSizedBox(this._width, this._height);
 
   double _width;
   double _height;
 
-  set width(double value) => _width = value;
-  set height(double value) => _height = value;
+  set width(double value) {
+    if (_width == value) return;
+    _width = value;
+    markNeedsLayout();
+  }
+
+  set height(double value) {
+    if (_height == value) return;
+    _height = value;
+    markNeedsLayout();
+  }
 
   @override
   void performLayout() {

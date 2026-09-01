@@ -39,6 +39,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get addText => '添加文字';
 
   @override
+  String get rotateVideo => '旋转视频';
+
+  @override
   String get export => '导出';
 
   @override
@@ -150,4 +153,127 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get saveCancelled => '已取消保存。';
+
+  @override
+  String get hideTimeline => '隐藏时间轴';
+
+  @override
+  String get showTimeline => '显示时间轴';
+
+  @override
+  String get resumeEditing => '继续编辑';
+
+  @override
+  String resumeEditingSubtitle(int count, String updated) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count 个文字层 · 更新于 $updated',
+      zero: '无文字层 · 更新于 $updated',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get projectNotFound => '找不到已保存的项目。';
+
+  @override
+  String get settingsTitle => '设置';
+
+  @override
+  String get exportQualitySection => '导出画质';
+
+  @override
+  String get exportQualityRecommendedTitle => '推荐';
+
+  @override
+  String get exportQualityRecommendedBody =>
+      '上限 1080p，不放大。仅修剪时使用流复制（接近 CapCut 默认）。';
+
+  @override
+  String get exportQualityHighTitle => '更高画质';
+
+  @override
+  String get exportQualityHighBody => '最佳细节（CRF 18）。始终重新编码，耗时更长。';
+
+  @override
+  String get exportQualitySmallerTitle => '更小文件';
+
+  @override
+  String get exportQualitySmallerBody => '导出更快、文件更小。仅修剪时使用流复制。';
+
+  @override
+  String get exportQualityOriginalTitle => '匹配原片';
+
+  @override
+  String get exportQualityOriginalBody => '尽可能保留原始码流。仅在有文字或旋转时轻量编码。';
+
+  @override
+  String get addMusic => '添加音乐';
+
+  @override
+  String get importMusicFile => '导入音频文件';
+
+  @override
+  String get searchMusicHint => '搜索免版税音乐';
+
+  @override
+  String get musicCatalogAttribution => 'Jamendo 音乐 — Creative Commons。可能需要署名。';
+
+  @override
+  String get musicCatalogUnavailable =>
+      '在线曲库未启用。请导入文件或使用 JAMENDO_CLIENT_ID 构建。';
+
+  @override
+  String get musicLocalOnlyHint => '从设备导入 MP3、M4A 或 WAV 文件。';
+
+  @override
+  String get musicNoResults => '未找到曲目。';
+
+  @override
+  String musicImportFailed(String message) {
+    return '无法添加音乐：$message';
+  }
+
+  @override
+  String get removeMusic => '移除音乐';
+
+  @override
+  String get retry => '重试';
+
+  @override
+  String get musicCatalogSection => '音乐曲库';
+
+  @override
+  String get musicCatalogBody =>
+      'Jamendo 提供免费 CC 音乐。在 devportal.jamendo.com 注册 client id，构建时传入 --dart-define=JAMENDO_CLIENT_ID=your_id。';
+
+  @override
+  String get splitVideo => '分割';
+
+  @override
+  String get deleteSegment => '删除片段';
+
+  @override
+  String get splitOutOfRange => '请将播放头移到片段内再分割。';
+
+  @override
+  String get splitTooShort => '每段至少需要 1 秒。';
+
+  @override
+  String get splitFailed => '无法分割片段。';
+
+  @override
+  String splitSuccess(String time) {
+    return '已在 $time 分割';
+  }
+
+  @override
+  String get cannotDeleteLastSegment => '至少必须保留一个片段。';
+
+  @override
+  String get undo => '撤销';
+
+  @override
+  String get redo => '重做';
 }

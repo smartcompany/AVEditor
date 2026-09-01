@@ -11,6 +11,9 @@ PODS:
     - PromisesObjC (~> 2.4)
     - PromisesSwift (~> 2.4)
     - RecaptchaInterop (~> 101.0)
+  - audioplayers_darwin (0.0.1):
+    - Flutter
+    - FlutterMacOS
   - ffmpeg_kit_flutter_new (8.1.2):
     - ffmpeg_kit_flutter_new/full-gpl (= 8.1.2)
     - Flutter
@@ -164,6 +167,7 @@ PODS:
     - FlutterMacOS
 
 DEPENDENCIES:
+  - audioplayers_darwin (from `.symlinks/plugins/audioplayers_darwin/darwin`)
   - ffmpeg_kit_flutter_new (from `.symlinks/plugins/ffmpeg_kit_flutter_new/ios`)
   - file_selector_ios (from `.symlinks/plugins/file_selector_ios/ios`)
   - firebase_auth (from `.symlinks/plugins/firebase_auth/ios`)
@@ -213,6 +217,8 @@ SPEC REPOS:
     - SDWebImageWebPCoder
 
 EXTERNAL SOURCES:
+  audioplayers_darwin:
+    :path: ".symlinks/plugins/audioplayers_darwin/darwin"
   ffmpeg_kit_flutter_new:
     :path: ".symlinks/plugins/ffmpeg_kit_flutter_new/ios"
   file_selector_ios:
@@ -263,6 +269,7 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   AppAuth: d4f13a8fe0baf391b2108511793e4b479691fb73
   AppCheckCore: e215d35177a9cf469927863e69c13e220df32a8b
+  audioplayers_darwin: 835ced6edd4c9fc8ebb0a7cc9e294a91d99917d5
   ffmpeg_kit_flutter_new: 8e5a0264340036d40065839eeba280efae216c47
   file_selector_ios: ec57ec07954363dd730b642e765e58f199bb621a
   Firebase: 5523dd53ebe603451b4e1befcd99fa20a5c015cd
@@ -306,6 +313,6 @@ SPEC CHECKSUMS:
   video_player_avfoundation: 3453f792138786248960ca029747fcd9f318ef52
   webview_flutter_wkwebview: 8ebf4fded22593026f7dbff1fbff31ea98573c8d
 
-PODFILE CHECKSUM: 8204f9858ab0d7443716e672edfcc1ba64228ba9
+PODFILE CHECKSUM: 35e7d0b9deee3c017b299eda86a1948aa83219a7
 
 COCOAPODS: 1.16.2

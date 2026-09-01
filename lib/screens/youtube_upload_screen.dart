@@ -1,5 +1,6 @@
 import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/models/video_project.dart';
+import 'package:aveditor/services/app_settings_service.dart';
 import 'package:aveditor/services/export_service.dart';
 import 'package:aveditor/services/youtube_upload_service.dart';
 import 'package:flutter/material.dart';
@@ -21,6 +22,7 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
 
   final _export = ExportService();
   final _upload = YouTubeUploadService();
+  final _settings = const AppSettingsService();
 
   @override
   void dispose() {
@@ -40,7 +42,11 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
 
     setState(() => _busy = true);
     try {
-      final path = await _export.exportForPreset(widget.project);
+      final quality = await _settings.getExportQualityProfile();
+      final path = await _export.exportForPreset(
+        widget.project,
+        quality: quality,
+      );
       await _upload.uploadProject(
         project: widget.project,
         exportedPath: path,

@@ -26,6 +26,9 @@ dependencies:
     path: ../../flutter_share_lib
   gal: ^2.3.3
   ffmpeg_kit_flutter_new: ^4.6.2
+  shared_preferences: ^2.5.3
+  http: ^1.4.0
+  audioplayers: ^6.4.0
 
 dev_dependencies:
   flutter_test:
@@ -39,3 +42,8 @@ flutter:
     enable-swift-package-manager: false
   assets:
     - assets/fonts/Arial.ttf
+  fonts:
+    # Pinned so overlay text lays out identically in the preview and the export.
+    - family: OverlayText
+      fonts:
+        - asset: assets/fonts/Arial.ttf

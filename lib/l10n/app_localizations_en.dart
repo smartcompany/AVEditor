@@ -39,6 +39,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get addText => 'Add text';
 
   @override
+  String get rotateVideo => 'Rotate video';
+
+  @override
   String get export => 'Export';
 
   @override
@@ -152,4 +155,133 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get saveCancelled => 'Save cancelled.';
+
+  @override
+  String get hideTimeline => 'Hide timeline';
+
+  @override
+  String get showTimeline => 'Show timeline';
+
+  @override
+  String get resumeEditing => 'Continue editing';
+
+  @override
+  String resumeEditingSubtitle(int count, String updated) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count text layers · updated $updated',
+      zero: 'No text layers · updated $updated',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get projectNotFound => 'Saved project could not be found.';
+
+  @override
+  String get settingsTitle => 'Settings';
+
+  @override
+  String get exportQualitySection => 'Export quality';
+
+  @override
+  String get exportQualityRecommendedTitle => 'Recommended';
+
+  @override
+  String get exportQualityRecommendedBody =>
+      '1080p cap, no upscale. Stream copy when only trimming — like CapCut\'s default.';
+
+  @override
+  String get exportQualityHighTitle => 'Higher quality';
+
+  @override
+  String get exportQualityHighBody =>
+      'Best detail (CRF 18). Always re-encodes; takes longer.';
+
+  @override
+  String get exportQualitySmallerTitle => 'Smaller file';
+
+  @override
+  String get exportQualitySmallerBody =>
+      'Faster export and smaller files. Stream copy when only trimming.';
+
+  @override
+  String get exportQualityOriginalTitle => 'Match original';
+
+  @override
+  String get exportQualityOriginalBody =>
+      'Keeps the source bitstream when possible. Light encode only when text or rotation is added.';
+
+  @override
+  String get addMusic => 'Add music';
+
+  @override
+  String get importMusicFile => 'Import audio file';
+
+  @override
+  String get searchMusicHint => 'Search royalty-free music';
+
+  @override
+  String get musicCatalogAttribution =>
+      'Music by Jamendo — Creative Commons. Attribution may be required.';
+
+  @override
+  String get musicCatalogUnavailable =>
+      'Online catalog is off. Import an audio file, or build with JAMENDO_CLIENT_ID.';
+
+  @override
+  String get musicLocalOnlyHint =>
+      'Import an MP3, M4A, or WAV file from your device.';
+
+  @override
+  String get musicNoResults => 'No tracks found.';
+
+  @override
+  String musicImportFailed(String message) {
+    return 'Could not add music: $message';
+  }
+
+  @override
+  String get removeMusic => 'Remove music';
+
+  @override
+  String get retry => 'Retry';
+
+  @override
+  String get musicCatalogSection => 'Music catalog';
+
+  @override
+  String get musicCatalogBody =>
+      'Jamendo provides free Creative Commons tracks. Register at devportal.jamendo.com and pass --dart-define=JAMENDO_CLIENT_ID=your_id when building.';
+
+  @override
+  String get splitVideo => 'Split clip';
+
+  @override
+  String get deleteSegment => 'Delete segment';
+
+  @override
+  String get splitOutOfRange => 'Move the playhead inside the clip to split.';
+
+  @override
+  String get splitTooShort => 'Each part must be at least 1 second.';
+
+  @override
+  String get splitFailed => 'Could not split the clip.';
+
+  @override
+  String splitSuccess(String time) {
+    return 'Split at $time';
+  }
+
+  @override
+  String get cannotDeleteLastSegment =>
+      'At least one clip segment must remain.';
+
+  @override
+  String get undo => 'Undo';
+
+  @override
+  String get redo => 'Redo';
 }

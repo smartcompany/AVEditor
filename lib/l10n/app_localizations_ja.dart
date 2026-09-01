@@ -39,6 +39,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get addText => 'テキストを追加';
 
   @override
+  String get rotateVideo => '動画を回転';
+
+  @override
   String get export => '書き出し';
 
   @override
@@ -150,4 +153,129 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get saveCancelled => '保存をキャンセルしました。';
+
+  @override
+  String get hideTimeline => 'タイムラインを隠す';
+
+  @override
+  String get showTimeline => 'タイムラインを表示';
+
+  @override
+  String get resumeEditing => '編集を再開';
+
+  @override
+  String resumeEditingSubtitle(int count, String updated) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'テキスト $count件 · $updated 更新',
+      zero: 'テキストなし · $updated 更新',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get projectNotFound => '保存されたプロジェクトが見つかりません。';
+
+  @override
+  String get settingsTitle => '設定';
+
+  @override
+  String get exportQualitySection => '書き出し品質';
+
+  @override
+  String get exportQualityRecommendedTitle => 'おすすめ';
+
+  @override
+  String get exportQualityRecommendedBody =>
+      '1080p上限・アップスケールなし。トリムのみのときはストリームコピー（CapCutの既定に近い）。';
+
+  @override
+  String get exportQualityHighTitle => '高画質';
+
+  @override
+  String get exportQualityHighBody => '最高のディテール（CRF 18）。常に再エンコードし、時間がかかります。';
+
+  @override
+  String get exportQualitySmallerTitle => '小さいファイル';
+
+  @override
+  String get exportQualitySmallerBody => '高速でファイルサイズが小さい。トリムのみのときはストリームコピー。';
+
+  @override
+  String get exportQualityOriginalTitle => 'オリジナルに合わせる';
+
+  @override
+  String get exportQualityOriginalBody =>
+      '可能なら元のビットストリームを維持。テキストや回転があるときだけ軽くエンコード。';
+
+  @override
+  String get addMusic => '音楽を追加';
+
+  @override
+  String get importMusicFile => 'オーディオファイルを読み込む';
+
+  @override
+  String get searchMusicHint => '著作権フリー音楽を検索';
+
+  @override
+  String get musicCatalogAttribution =>
+      'Jamendoの音楽 — Creative Commons。クレジット表示が必要な場合があります。';
+
+  @override
+  String get musicCatalogUnavailable =>
+      'オンラインカタログは無効です。ファイルを読み込むか、JAMENDO_CLIENT_ID でビルドしてください。';
+
+  @override
+  String get musicLocalOnlyHint => '端末から MP3、M4A、WAV ファイルを読み込んでください。';
+
+  @override
+  String get musicNoResults => '曲が見つかりません。';
+
+  @override
+  String musicImportFailed(String message) {
+    return '音楽を追加できませんでした: $message';
+  }
+
+  @override
+  String get removeMusic => '音楽を削除';
+
+  @override
+  String get retry => '再試行';
+
+  @override
+  String get musicCatalogSection => '音楽カタログ';
+
+  @override
+  String get musicCatalogBody =>
+      'Jamendo は無料の CC 音楽を提供します。devportal.jamendo.com で client id を取得し、--dart-define=JAMENDO_CLIENT_ID=your_id でビルドしてください。';
+
+  @override
+  String get splitVideo => '分割';
+
+  @override
+  String get deleteSegment => 'セグメントを削除';
+
+  @override
+  String get splitOutOfRange => 'クリップ内に再生位置を移動してから分割してください。';
+
+  @override
+  String get splitTooShort => '各パートは少なくとも1秒必要です。';
+
+  @override
+  String get splitFailed => 'クリップを分割できませんでした。';
+
+  @override
+  String splitSuccess(String time) {
+    return '$time で分割しました';
+  }
+
+  @override
+  String get cannotDeleteLastSegment => '少なくとも1つのクリップ区間が必要です。';
+
+  @override
+  String get undo => '元に戻す';
+
+  @override
+  String get redo => 'やり直す';
 }
