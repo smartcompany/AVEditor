@@ -4,6 +4,7 @@ import 'package:aveditor/models/export_preset.dart';
 import 'package:aveditor/models/project_music.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
+import 'package:aveditor/utils/timeline_math.dart';
 import 'package:path/path.dart' as p;
 
 /// On-disk project format version.
@@ -61,12 +62,24 @@ class VideoProject {
 
   void setTrimStart(Duration start) {
     if (segments.isEmpty) return;
-    segments[0] = segments.first.copyWith(start: start);
+    final first = segments.first;
+    var clamped = start;
+    if (clamped < Duration.zero) clamped = Duration.zero;
+    final maxStart = first.end - minTrimDuration;
+    if (clamped > maxStart) clamped = maxStart;
+    if (clamped >= first.end) return;
+    segments[0] = first.copyWith(start: clamped);
   }
 
   void setTrimEnd(Duration end) {
     if (segments.isEmpty) return;
-    segments[segments.length - 1] = segments.last.copyWith(end: end);
+    final last = segments.last;
+    var clamped = end;
+    if (clamped > duration) clamped = duration;
+    final minEnd = last.start + minTrimDuration;
+    if (clamped < minEnd) clamped = minEnd;
+    if (clamped <= last.start) return;
+    segments[segments.length - 1] = last.copyWith(end: clamped);
   }
 
   void touch() => updatedAt = DateTime.now();
@@ -129,9 +142,12 @@ class VideoProject {
             )
             .toList();
 
-    final resolvedSegments = segments.isEmpty
-        ? segmentsFromTrim(start: Duration.zero, end: duration)
-        : segments;
+    final resolvedSegments = normalizeSegments(
+      segments.isEmpty
+          ? segmentsFromTrim(start: Duration.zero, end: duration)
+          : segments,
+      sourceDuration: duration,
+    );
 
     return VideoProject(
       id: json['id'] as String,

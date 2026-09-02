@@ -13,25 +13,142 @@ List<ClipSegment> splitSegmentsAt(
   List<ClipSegment> segments,
   Duration at,
 ) {
-  final index = segments.indexWhere((s) => s.start < at && at < s.end);
+  final point = resolveSplitPoint(segments, at);
+  final index = segments.indexWhere((s) => s.start < point && point < s.end);
   if (index == -1) {
     throw StateError('split_out_of_range');
   }
 
   final segment = segments[index];
-  if (at - segment.start < minTrimDuration ||
-      segment.end - at < minTrimDuration) {
-    throw StateError('split_too_short');
-  }
-
-  final left = segment.copyWith(end: at);
-  final right = ClipSegment(start: at, end: segment.end);
+  final left = segment.copyWith(end: point);
+  final right = ClipSegment(start: point, end: segment.end);
   return [
     ...segments.sublist(0, index),
     left,
     right,
     ...segments.sublist(index + 1),
   ];
+}
+
+/// Picks a legal split time near [at], nudging off segment edges when needed.
+Duration resolveSplitPoint(List<ClipSegment> segments, Duration at) {
+  ClipSegment? segment;
+  var point = at;
+
+  for (final candidate in segments) {
+    if (candidate.start < point && point < candidate.end) {
+      segment = candidate;
+      break;
+    }
+  }
+
+  if (segment == null) {
+    for (final candidate in segments) {
+      if (candidate.start == point && point < candidate.end) {
+        segment = candidate;
+        point = point + const Duration(milliseconds: 1);
+        break;
+      }
+    }
+  }
+
+  if (segment == null) {
+    throw StateError('split_out_of_range');
+  }
+
+  final minPoint = segment.start + minSplitPartDuration;
+  final maxPoint = segment.end - minSplitPartDuration;
+  if (minPoint > maxPoint) {
+    throw StateError('split_too_short');
+  }
+
+  if (point < minPoint) return minPoint;
+  if (point > maxPoint) return maxPoint;
+  return point;
+}
+
+/// Merges accidental sub-frame splinters created by repeated boundary splits.
+List<ClipSegment> collapseMicroSegments(List<ClipSegment> segments) {
+  final valid = segments.where((segment) => segment.end > segment.start).toList();
+  if (valid.length <= 1) return valid;
+
+  final merged = <ClipSegment>[valid.first];
+  for (var i = 1; i < valid.length; i++) {
+    final segment = valid[i];
+    if (segment.duration < minSplitPartDuration) {
+      merged[merged.length - 1] = merged.last.copyWith(end: segment.end);
+    } else {
+      merged.add(segment);
+    }
+  }
+  return merged;
+}
+
+/// Normalizes segment lists for editing, playback, and export.
+List<ClipSegment> normalizeSegments(
+  List<ClipSegment> segments, {
+  required Duration sourceDuration,
+}) {
+  return collapseMicroSegments(
+    repairSegments(segments, sourceDuration: sourceDuration),
+  );
+}
+
+/// Drops invalid segments and clamps bounds to the source file duration.
+List<ClipSegment> repairSegments(
+  List<ClipSegment> segments, {
+  required Duration sourceDuration,
+}) {
+  if (segments.isEmpty) {
+    return segmentsFromTrim(start: Duration.zero, end: sourceDuration);
+  }
+
+  final valid = <ClipSegment>[];
+  for (final segment in segments) {
+    var start = segment.start;
+    var end = segment.end;
+    if (start < Duration.zero) start = Duration.zero;
+    if (end > sourceDuration) end = sourceDuration;
+    if (end <= start) continue;
+    valid.add(segment.copyWith(start: start, end: end));
+  }
+
+  valid.sort((a, b) => a.start.compareTo(b.start));
+
+  if (valid.isEmpty) {
+    return segmentsFromTrim(start: Duration.zero, end: sourceDuration);
+  }
+  return valid;
+}
+
+/// Maps the packed timeline position under the centre playhead to source time.
+Duration splitSourceFromSequence(
+  List<ClipSegment> segments,
+  Duration sequenceTime,
+) {
+  if (segments.isEmpty) return Duration.zero;
+
+  final clamped = sequenceTime < Duration.zero
+      ? Duration.zero
+      : sequenceTime > totalKeptDuration(segments)
+          ? totalKeptDuration(segments)
+          : sequenceTime;
+
+  // Stay inside the segment the user sees, not a 1 ms tail on the next block.
+  var probe = clamped;
+  if (probe > Duration.zero) {
+    probe -= const Duration(milliseconds: 1);
+  }
+  return exportTimeToSourceTime(segments, probe);
+}
+
+bool isAlreadySplitAt(List<ClipSegment> segments, Duration point) {
+  for (var i = 1; i < segments.length; i++) {
+    if (segments[i].start == point && segments[i - 1].end == point) {
+      return true;
+    }
+  }
+  return false;
 }
 
 List<ClipSegment> deleteSegment(

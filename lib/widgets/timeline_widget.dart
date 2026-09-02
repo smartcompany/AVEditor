@@ -1,5 +1,6 @@
 import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/text_overlay.dart';
+import 'package:aveditor/models/timeline_filmstrip_frame.dart';
 import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
 import 'package:aveditor/utils/duration_format.dart';
@@ -10,7 +11,7 @@ import 'package:flutter/material.dart';
 const _videoTrackHeight = 58.0;
 
 /// Visible gap between split clip blocks on the timeline.
-const _segmentGap = 5.0;
+const _segmentGap = 2.0;
 
 /// One text overlay per lane, stacked under the clip track.
 const _laneHeight = 26.0;
@@ -22,6 +23,9 @@ const _maxVisibleLanes = 3;
 
 /// Travel before a drag commits to scrolling lanes or panning time.
 const _axisSlop = 3.0;
+
+/// Finger travel still treated as a tap for clip-segment selection.
+const _segmentTapSlop = 12.0;
 
 enum TimelineDragTarget {
   panTimeline,
@@ -59,6 +63,7 @@ class TimelineWidget extends StatefulWidget {
     this.onTogglePlay,
     this.onHandleDragUpdate,
     this.onHandleDragEnd,
+    this.filmstripFrames = const [],
   });
 
   final Duration duration;
@@ -82,6 +87,7 @@ class TimelineWidget extends StatefulWidget {
   /// collapsing the editor chrome.
   final GestureDragUpdateCallback? onHandleDragUpdate;
   final GestureDragEndCallback? onHandleDragEnd;
+  final List<TimelineFilmstripFrame> filmstripFrames;
 
   @override
   State<TimelineWidget> createState() => _TimelineWidgetState();
@@ -108,6 +114,7 @@ class _TimelineWidgetState extends State<TimelineWidget> {
   bool _didMove = false;
   Offset? _pointerDownLocal;
   Offset? _lastSingleLocal;
+  Duration? _panAnchorSequenceTime;
 
   /// Active pointer positions in local coords (Listener-based multi-touch).
   final Map<int, Offset> _pointers = {};
@@ -178,6 +185,24 @@ class _TimelineWidgetState extends State<TimelineWidget> {
     final export = sourceTimeToExportTime(widget.segments, sourceTime);
     if (export == null) return null;
     return _viewportXForSequence(export);
+  }
+
+  /// Matches [_TimelinePainter._paintClipTrack] geometry for reliable taps.
+  ClipSegment? _segmentAtViewportX(double x) {
+    if (widget.segments.isEmpty) return null;
+
+    final halfGap = _segmentGap / 2;
+    var sequenceOffset = Duration.zero;
+    for (var i = 0; i < widget.segments.length; i++) {
+      final segment = widget.segments[i];
+      var left = _viewportXForSequence(sequenceOffset);
+      var right = _viewportXForSequence(sequenceOffset + segment.duration);
+      if (i < widget.segments.length - 1) right -= halfGap;
+      if (i > 0) left += halfGap;
+      if (x >= left && x <= right) return segment;
+      sequenceOffset += segment.duration;
+    }
+    return null;
   }
 
   /// Zoom always pivots on the playhead — it is the one point that cannot move.
@@ -264,6 +289,9 @@ class _TimelineWidgetState extends State<TimelineWidget> {
     // No playhead target: it is fixed at the centre, so grabbing it would be
     // indistinguishable from panning the strip underneath it.
 
+    _dragOverlay = null;
+    _tapSegment = null;
+
     // Touching anywhere in a lane targets its layer, so rows can be picked
     // even where the bar does not reach. Selection is deferred until the
     // gesture proves it is not a lane scroll.
@@ -292,8 +320,7 @@ class _TimelineWidgetState extends State<TimelineWidget> {
       if (nearX(x, trimStartX)) return TimelineDragTarget.trimStart;
       if (nearX(x, trimEndX)) return TimelineDragTarget.trimEnd;
 
-      final sequenceTime = _sequenceTimeAtViewportX(x, snap: false);
-      _tapSegment = segmentAtExportTime(widget.segments, sequenceTime);
+      _tapSegment = _segmentAtViewportX(x);
     }
 
     return TimelineDragTarget.panTimeline;
@@ -305,7 +332,11 @@ class _TimelineWidgetState extends State<TimelineWidget> {
     _selectionAnnounced = false;
     _pointerDownLocal = local;
     _lastSingleLocal = local;
+    _panAnchorSequenceTime = null;
     _dragTarget = _hitTest(local);
+    if (_dragTarget == TimelineDragTarget.panTimeline) {
+      _panAnchorSequenceTime = _sequenceTimeAtViewportX(_viewportWidth / 2);
+    }
   }
 
   /// Vertical wins only when there is something to scroll, so the gesture is
@@ -349,24 +380,28 @@ class _TimelineWidgetState extends State<TimelineWidget> {
       case TimelineDragTarget.scrollLanes:
         _scrollLanesBy(-delta.dy);
       case TimelineDragTarget.panTimeline:
-        // Dragging the strip left advances time; the indicator stays put.
+        final down = _pointerDownLocal;
+        final anchor = _panAnchorSequenceTime;
+        if (down == null || anchor == null) return;
+        final msPerPx = _sequenceDuration.inMilliseconds / _contentWidth;
+        final totalDeltaMs = ((local.dx - down.dx) * msPerPx).round();
+        final nextMs = (anchor.inMilliseconds - totalDeltaMs)
+            .clamp(0, _sequenceDuration.inMilliseconds);
         widget.onPlayheadChanged(
           exportTimeToSourceTime(
             widget.segments,
-            contentXToDuration(
-              _scrollPx - delta.dx,
-              _sequenceDuration,
-              _contentWidth,
-            ),
+            Duration(milliseconds: nextMs),
           ),
         );
       case TimelineDragTarget.trimStart:
+        if (widget.segments.isEmpty) return;
         final t = _timeAtViewportX(x);
-        final maxStart = widget.trimEnd - minTrimDuration;
+        final maxStart = widget.segments.first.end - minTrimDuration;
         widget.onTrimStartChanged(clampDuration(t, Duration.zero, maxStart));
       case TimelineDragTarget.trimEnd:
+        if (widget.segments.isEmpty) return;
         final t = _timeAtViewportX(x);
-        final minEnd = widget.trimStart + minTrimDuration;
+        final minEnd = widget.segments.last.start + minTrimDuration;
         widget.onTrimEndChanged(clampDuration(t, minEnd, widget.duration));
       case TimelineDragTarget.overlayStart:
         final overlay = _dragOverlay;
@@ -424,29 +459,48 @@ class _TimelineWidgetState extends State<TimelineWidget> {
   }
 
   void _endSingle() {
-    final tapped = !_didMove && !_isPinching && _pointerDownLocal != null;
+    final down = _pointerDownLocal;
+    final up = _lastSingleLocal;
+    if (_isPinching || down == null) {
+      _resetSingleGesture();
+      return;
+    }
+
+    final travel = up != null ? (up - down).distance : 0.0;
+    final tapped = !_didMove || travel < _segmentTapSlop;
+    final onClipTrack = down.dy < _videoTrackHeight;
+
     if (tapped && _dragOverlay != null) {
       _announceSelection();
-    } else if (tapped &&
-        _tapSegment != null &&
-        _pointerDownLocal != null &&
-        _pointerDownLocal!.dy < _videoTrackHeight) {
-      widget.onSegmentSelected?.call(_tapSegment!);
+    } else if (tapped && onClipTrack) {
+      final segment = _segmentAtViewportX(down.dx) ?? _tapSegment;
+      if (segment != null) {
+        widget.onSegmentSelected?.call(segment);
+      } else if (_dragTarget == TimelineDragTarget.panTimeline) {
+        final x = down.dx.clamp(0.0, _viewportWidth);
+        widget.onPlayheadChanged(_timeAtViewportX(x));
+      }
     } else if (_dragTarget == TimelineDragTarget.panTimeline) {
       if (tapped) {
         // A tap seeks to what was under the finger; it then slides to centre.
-        final x = _pointerDownLocal!.dx.clamp(0.0, _viewportWidth);
+        final x = down.dx.clamp(0.0, _viewportWidth);
         widget.onPlayheadChanged(_timeAtViewportX(x));
       } else if (_didMove) {
         widget.onPlayheadChanged(snapDuration(widget.playhead));
       }
     }
+
+    _resetSingleGesture();
+  }
+
+  void _resetSingleGesture() {
     _dragOverlay = null;
     _tapSegment = null;
     _overlayAnchorStart = null;
     _overlayAnchorEnd = null;
     _pointerDownLocal = null;
     _lastSingleLocal = null;
+    _panAnchorSequenceTime = null;
     _dragAxis = null;
     _selectionAnnounced = false;
     _didMove = false;
@@ -638,6 +692,7 @@ class _TimelineWidgetState extends State<TimelineWidget> {
                         sequencePlayhead: _sequencePlayhead,
                         segments: widget.segments,
                         overlays: widget.overlays,
+                        filmstripFrames: widget.filmstripFrames,
                         selectedOverlayId: widget.selectedOverlayId,
                         selectedSegmentId: widget.selectedSegmentId,
                         scrollPx: _scrollPx,
@@ -678,6 +733,7 @@ class _TimelinePainter extends CustomPainter {
     required this.lanesScrollY,
     required this.lanesContentHeight,
     required this.laneLabelStyle,
+    this.filmstripFrames = const [],
     this.selectedOverlayId,
     this.selectedSegmentId,
   });
@@ -693,6 +749,7 @@ class _TimelinePainter extends CustomPainter {
   final double lanesScrollY;
   final double lanesContentHeight;
   final TextStyle laneLabelStyle;
+  final List<TimelineFilmstripFrame> filmstripFrames;
   final String? selectedOverlayId;
   final String? selectedSegmentId;
 
@@ -733,33 +790,44 @@ class _TimelinePainter extends CustomPainter {
       var left = _x(sequenceOffset);
       var right = _x(sequenceOffset + segment.duration);
 
-      final splitAfter =
-          i < segments.length - 1 && segments[i].end == segments[i + 1].start;
-      if (splitAfter) right -= halfGap;
-      if (i > 0 && segments[i - 1].end == segment.start) left += halfGap;
+      // Every kept block boundary is a split point, including joins after
+      // deleting a middle segment.
+      if (i < segments.length - 1) right -= halfGap;
+      if (i > 0) left += halfGap;
       if (right <= left) continue;
 
       final selected = segment.id == selectedSegmentId;
-      final rect = RRect.fromRectAndRadius(
-        Rect.fromLTRB(left, trimTop, right, trimBottom),
-        const Radius.circular(4),
-      );
+      final rect = Rect.fromLTRB(left, trimTop, right, trimBottom);
+      final rounded = RRect.fromRectAndRadius(rect, const Radius.circular(4));
+
+      _paintFilmstrip(canvas, rect, segment);
 
       canvas.drawRRect(
-        rect,
+        rounded,
         Paint()
           ..color = selected
-              ? AppTheme.accent.withValues(alpha: 0.55)
-              : AppTheme.accent.withValues(alpha: 0.3),
+              ? AppTheme.accent.withValues(alpha: 0.28)
+              : Colors.black.withValues(alpha: 0.12),
       );
 
       if (selected) {
         canvas.drawRRect(
-          rect,
+          rounded,
           Paint()
             ..color = Colors.white
             ..style = PaintingStyle.stroke
             ..strokeWidth = 2,
+        );
+      }
+
+      if (i < segments.length - 1) {
+        final dividerX = right + halfGap;
+        canvas.drawLine(
+          Offset(dividerX, trimTop + 2),
+          Offset(dividerX, trimBottom - 2),
+          Paint()
+            ..color = Colors.white.withValues(alpha: 0.65)
+            ..strokeWidth = 1.5,
         );
       }
 
@@ -917,6 +985,39 @@ class _TimelinePainter extends CustomPainter {
     );
   }
 
+  void _paintFilmstrip(Canvas canvas, Rect rect, ClipSegment segment) {
+    final frames = filmstripFrames
+        .where(
+          (frame) =>
+              frame.sourceTime >= segment.start && frame.sourceTime < segment.end,
+        )
+        .toList(growable: false);
+    if (frames.isEmpty) return;
+
+    canvas.save();
+    canvas.clipRRect(
+      RRect.fromRectAndRadius(rect, const Radius.circular(4)),
+    );
+
+    final slotWidth = rect.width / frames.length;
+    for (var i = 0; i < frames.length; i++) {
+      final dst = Rect.fromLTWH(
+        rect.left + i * slotWidth,
+        rect.top,
+        slotWidth,
+        rect.height,
+      );
+      paintImage(
+        canvas: canvas,
+        rect: dst,
+        image: frames[i].image,
+        fit: BoxFit.cover,
+        filterQuality: FilterQuality.low,
+      );
+    }
+    canvas.restore();
+  }
+
   void _drawHandle(
     Canvas canvas,
     double x, {
@@ -951,6 +1052,7 @@ class _TimelinePainter extends CustomPainter {
         oldDelegate.lanesContentHeight != lanesContentHeight ||
         oldDelegate.selectedOverlayId != selectedOverlayId ||
         oldDelegate.selectedSegmentId != selectedSegmentId ||
+        oldDelegate.filmstripFrames != filmstripFrames ||
         oldDelegate.overlays != overlays;
   }
 }

@@ -7,24 +7,25 @@ import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/clip_trim.dart';
 import 'package:aveditor/models/project_music.dart';
 import 'package:aveditor/models/text_overlay.dart';
+import 'package:aveditor/models/timeline_filmstrip_frame.dart';
 import 'package:aveditor/models/video_project.dart';
 import 'package:aveditor/screens/music_picker_screen.dart';
 import 'package:aveditor/screens/youtube_upload_screen.dart';
 import 'package:aveditor/services/editor_history.dart';
 import 'package:aveditor/services/music_storage_service.dart';
 import 'package:aveditor/services/project_storage_service.dart';
+import 'package:aveditor/services/timeline_thumbnail_service.dart';
 import 'package:aveditor/utils/clip_rotation.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
 import 'package:aveditor/utils/duration_format.dart';
+import 'package:aveditor/utils/overlay_event_log.dart';
 import 'package:aveditor/utils/timeline_math.dart';
 import 'package:aveditor/services/app_settings_service.dart';
 import 'package:aveditor/services/export_service.dart';
 import 'package:aveditor/services/export_save_service.dart';
 import 'package:aveditor/widgets/export_progress_dialog.dart';
-import 'package:aveditor/widgets/split_clip_icon.dart';
 import 'package:aveditor/widgets/text_overlay_editor_sheet.dart';
 import 'package:aveditor/widgets/timeline_widget.dart';
-import 'package:aveditor/utils/overlay_event_log.dart';
 import 'package:aveditor/widgets/overflow_hit_stack.dart';
 import 'package:aveditor/widgets/video_preview.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -69,8 +70,11 @@ class _EditorScreenState extends State<EditorScreen>
   final _settings = const AppSettingsService();
   final _projectStorage = const ProjectStorageService();
   final _history = EditorHistory();
+  final _thumbnailService = const TimelineThumbnailService();
   final _previewKey = GlobalKey<VideoPreviewWithOverlaysState>();
   final _musicPlayer = AudioPlayer();
+
+  List<TimelineFilmstripFrame> _filmstripFrames = [];
 
   Timer? _saveDebounce;
 
@@ -160,12 +164,29 @@ class _EditorScreenState extends State<EditorScreen>
             )
           : stored;
 
+      project.segments
+        ..clear()
+        ..addAll(
+          normalizeSegments(
+            project.segments,
+            sourceDuration: duration,
+          ),
+        );
+      if (project.segments.isEmpty ||
+          totalKeptDuration(project.segments) <= Duration.zero) {
+        project.segments
+          ..clear()
+          ..addAll(segmentsFromTrim(start: Duration.zero, end: duration));
+      }
+
       setState(() {
         _controller = controller;
         _project = project;
         _ready = true;
         _errorMessage = null;
       });
+
+      unawaited(_loadFilmstrip(project.sourcePath, project.duration));
 
       if (stored.duration == Duration.zero) {
         _scheduleSave();
@@ -177,6 +198,30 @@ class _EditorScreenState extends State<EditorScreen>
         _errorMessage = e.toString();
       });
     }
+  }
+
+  Future<void> _loadFilmstrip(String sourcePath, Duration duration) async {
+    final frames = await _thumbnailService.loadFilmstrip(
+      videoPath: sourcePath,
+      duration: duration,
+    );
+    if (!mounted) {
+      for (final frame in frames) {
+        frame.image.dispose();
+      }
+      return;
+    }
+    for (final frame in _filmstripFrames) {
+      frame.image.dispose();
+    }
+    setState(() => _filmstripFrames = frames);
+  }
+
+  void _disposeFilmstrip() {
+    for (final frame in _filmstripFrames) {
+      frame.image.dispose();
+    }
+    _filmstripFrames = [];
   }
 
   void _scheduleSave() {
@@ -203,10 +248,57 @@ class _EditorScreenState extends State<EditorScreen>
   void _mutate(void Function(VideoProject project) apply) {
     final project = _project;
     if (project == null || _applyingHistory) return;
-    _history.record(_snapshot());
-    apply(project);
-    setState(() {});
-    _scheduleSave();
+    final rollback = _snapshot();
+    _history.record(rollback);
+    try {
+      apply(project);
+      setState(() {});
+      _scheduleSave();
+    } catch (error) {
+      rollback.applyTo(project);
+      rethrow;
+    }
+  }
+
+  void _ensureHealthySegments(VideoProject project) {
+    if (project.duration <= Duration.zero) return;
+
+    var fixed = normalizeSegments(
+      project.segments,
+      sourceDuration: project.duration,
+    );
+    if (fixed.isEmpty || totalKeptDuration(fixed) <= Duration.zero) {
+      fixed = segmentsFromTrim(start: Duration.zero, end: project.duration);
+    }
+
+    if (fixed.length != project.segments.length ||
+        !_segmentsMatch(project.segments, fixed)) {
+      project.segments
+        ..clear()
+        ..addAll(fixed);
+    }
+  }
+
+  bool _segmentsMatch(List<ClipSegment> a, List<ClipSegment> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].start != b[i].start || a[i].end != b[i].end) return false;
+    }
+    return true;
+  }
+
+  Duration _sequenceTimeForSplit(List<ClipSegment> segments, Duration rawPlayhead) {
+    final kept = totalKeptDuration(segments);
+    if (kept <= Duration.zero) return Duration.zero;
+
+    var sequenceTime = timelinePlayheadFromSource(segments, rawPlayhead);
+    if (sequenceTime >= kept) {
+      sequenceTime = kept - const Duration(milliseconds: 100);
+    }
+    if (sequenceTime < Duration.zero) {
+      sequenceTime = Duration.zero;
+    }
+    return sequenceTime;
   }
 
   void _undo() {
@@ -242,29 +334,68 @@ class _EditorScreenState extends State<EditorScreen>
   void _splitAtPlayhead() {
     final project = _project;
     if (project == null || _exporting) return;
+    if (project.duration <= Duration.zero) return;
 
-    final playhead = _playhead;
-    if (!isInKeptRegion(project.segments, playhead)) {
-      _showSnack(context.l10n.splitOutOfRange);
-      return;
-    }
+    _ensureHealthySegments(project);
+
+    final rawPlayhead = _playhead;
+    final working = List<ClipSegment>.from(project.segments);
+    final sequenceTime = _sequenceTimeForSplit(working, rawPlayhead);
+    final playhead = splitSourceFromSequence(working, sequenceTime);
 
     try {
+      if (!isInKeptRegion(working, playhead)) {
+        throw StateError('split_out_of_range');
+      }
+
+      final splitPoint = resolveSplitPoint(working, playhead);
+      if (isAlreadySplitAt(working, splitPoint)) {
+        OverlayEventLog.log('split', 'already_split', {
+          'sequenceTime': sequenceTime,
+          'splitPoint': splitPoint,
+        });
+        return;
+      }
+
+      OverlayEventLog.log('split', 'attempt', {
+        'rawPlayhead': rawPlayhead,
+        'sequenceTime': sequenceTime,
+        'playhead': playhead,
+        'splitPoint': splitPoint,
+        'segmentCount': working.length,
+        'segmentDurations': working
+            .map((segment) => segment.duration.inMilliseconds)
+            .join(','),
+      });
+
+      final newSegments = splitSegmentsAt(working, splitPoint);
+      ClipSegment? rightPiece;
+      for (final segment in newSegments) {
+        if (segment.start == splitPoint) {
+          rightPiece = segment;
+          break;
+        }
+      }
+
       _mutate((p) {
-        final newSegments = splitSegmentsAt(p.segments, playhead);
         p.segments
           ..clear()
           ..addAll(newSegments);
-        ClipSegment? rightPiece;
-        for (final segment in newSegments) {
-          if (segment.start == playhead) {
-            rightPiece = segment;
-            break;
-          }
-        }
         _selectedSegmentId = (rightPiece ?? newSegments.last).id;
       });
+      OverlayEventLog.log('split', 'success', {
+        'sequenceTime': sequenceTime,
+        'newSegmentCount': project.segments.length,
+      });
     } on StateError catch (e) {
+      OverlayEventLog.log('split', 'failed', {
+        'code': e.message,
+        'rawPlayhead': rawPlayhead,
+        'sequenceTime': sequenceTime,
+        'segmentDurations': project.segments
+            .map((segment) => segment.duration.inMilliseconds)
+            .join(','),
+      });
       _showSnack(_splitErrorMessage(e.message));
     }
   }
@@ -369,6 +500,7 @@ class _EditorScreenState extends State<EditorScreen>
     if (project != null) {
       unawaited(_projectStorage.save(project));
     }
+    _disposeFilmstrip();
     _controller?.removeListener(_onVideoTick);
     _controller?.dispose();
     unawaited(_musicPlayer.dispose());
@@ -1049,6 +1181,7 @@ class _EditorScreenState extends State<EditorScreen>
       trimEnd: project.trim.end,
       segments: project.segments,
       overlays: project.overlays,
+      filmstripFrames: _filmstripFrames,
       playhead: _playhead,
       isPlaying: controller.value.isPlaying,
       onTogglePlay: _togglePlay,
@@ -1058,11 +1191,17 @@ class _EditorScreenState extends State<EditorScreen>
       selectedSegmentId: _selectedSegmentId,
       onPlayheadChanged: _seek,
       onTrimStartChanged: (start) {
-        setState(() => project.setTrimStart(start));
+        setState(() {
+          project.setTrimStart(start);
+          _ensureHealthySegments(project);
+        });
         _scheduleSave();
       },
       onTrimEndChanged: (end) {
-        setState(() => project.setTrimEnd(end));
+        setState(() {
+          project.setTrimEnd(end);
+          _ensureHealthySegments(project);
+        });
         _scheduleSave();
       },
       onOverlayChanged: _updateOverlay,
@@ -1125,7 +1264,7 @@ class _EditorScreenState extends State<EditorScreen>
               const SizedBox(width: 8),
               IconButton.outlined(
                 onPressed: _exporting ? null : _splitAtPlayhead,
-                icon: const SplitClipIcon(),
+                icon: const Icon(Icons.content_cut),
                 tooltip: l10n.splitVideo,
               ),
               const SizedBox(width: 8),

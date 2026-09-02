@@ -21,6 +21,102 @@ void main() {
     expect(result[1].end, const Duration(seconds: 10));
   });
 
+  test('resolveSplitPoint nudges near segment edges instead of failing', () {
+    final segments = [seg(Duration.zero, const Duration(seconds: 10))];
+
+    expect(
+      resolveSplitPoint(segments, const Duration(milliseconds: 50)),
+      const Duration(milliseconds: 100),
+    );
+    expect(
+      resolveSplitPoint(segments, const Duration(seconds: 9, milliseconds: 950)),
+      const Duration(seconds: 9, milliseconds: 900),
+    );
+  });
+
+  test('resolveSplitPoint allows splitting a one-second segment', () {
+    final segments = [
+      seg(const Duration(seconds: 164), const Duration(seconds: 165)),
+    ];
+
+    expect(
+      resolveSplitPoint(
+        segments,
+        const Duration(seconds: 164, milliseconds: 750),
+      ),
+      const Duration(seconds: 164, milliseconds: 750),
+    );
+  });
+
+  test('splitSourceFromSequence maps edited timeline position to source time', () {
+    final segments = [
+      seg(const Duration(seconds: 156), const Duration(seconds: 184)),
+    ];
+
+    expect(
+      splitSourceFromSequence(segments, const Duration(seconds: 8)),
+      const Duration(seconds: 163, milliseconds: 999),
+    );
+  });
+
+  test('collapseMicroSegments merges accidental splinters', () {
+    final segments = [
+      seg(const Duration(seconds: 156), const Duration(seconds: 164, milliseconds: 750)),
+      seg(
+        const Duration(seconds: 164, milliseconds: 750),
+        const Duration(seconds: 164, milliseconds: 800),
+      ),
+      seg(const Duration(seconds: 164, milliseconds: 800), const Duration(seconds: 184)),
+    ];
+
+    final merged = collapseMicroSegments(segments);
+
+    expect(merged.length, 2);
+    expect(merged[0].end, const Duration(seconds: 164, milliseconds: 800));
+    expect(merged[1].start, const Duration(seconds: 164, milliseconds: 800));
+  });
+
+  test('collapseMicroSegments drops invalid segments before merging', () {
+    final segments = [
+      seg(const Duration(seconds: 167, milliseconds: 450), const Duration(seconds: 113)),
+      seg(const Duration(seconds: 113), const Duration(seconds: 144, milliseconds: 550)),
+    ];
+
+    final merged = collapseMicroSegments(segments);
+
+    expect(merged.length, 1);
+    expect(merged.first.start, const Duration(seconds: 113));
+    expect(merged.first.end, const Duration(seconds: 144, milliseconds: 550));
+  });
+
+  test('normalizeSegments repairs invalid project data', () {
+    final segments = [
+      seg(const Duration(seconds: 167, milliseconds: 450), const Duration(seconds: 113)),
+      seg(const Duration(seconds: 113), const Duration(seconds: 144, milliseconds: 550)),
+    ];
+
+    final normalized = normalizeSegments(
+      segments,
+      sourceDuration: const Duration(seconds: 180),
+    );
+
+    expect(normalized.every((segment) => segment.duration > Duration.zero), isTrue);
+    expect(normalized.first.start, const Duration(seconds: 113));
+  });
+
+  test('splitSegmentsAt works on a fresh single-segment project', () {
+    final segments = [seg(Duration.zero, const Duration(seconds: 72))];
+    final sequenceTime = const Duration(seconds: 12, milliseconds: 50);
+    final playhead = splitSourceFromSequence(segments, sequenceTime);
+
+    final splitPoint = resolveSplitPoint(segments, playhead);
+    final result = splitSegmentsAt(segments, splitPoint);
+
+    expect(result.length, 2);
+    expect(result[0].end, splitPoint);
+    expect(result[1].start, splitPoint);
+  });
+
   test('deleteSegment removes a middle segment', () {
     final result = deleteSegment(
       [

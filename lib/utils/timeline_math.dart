@@ -1,6 +1,7 @@
 import 'package:aveditor/utils/duration_format.dart';
 
 const minTrimDuration = Duration(seconds: 1);
+const minSplitPartDuration = Duration(milliseconds: 100);
 const minOverlayDuration = Duration(milliseconds: 500);
 const handleHitWidth = 18.0;
 
