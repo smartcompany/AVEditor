@@ -20,6 +20,7 @@ class _PreviewHarness extends StatefulWidget {
     this.onBackgroundTap,
     this.onDeleted,
     this.onDuplicated,
+    this.onEdit,
     this.clipRotation = 0,
   });
 
@@ -33,6 +34,7 @@ class _PreviewHarness extends StatefulWidget {
   final VoidCallback? onBackgroundTap;
   final ValueChanged<TextOverlay>? onDeleted;
   final ValueChanged<TextOverlay>? onDuplicated;
+  final ValueChanged<TextOverlay>? onEdit;
   final double clipRotation;
 
   @override
@@ -86,6 +88,7 @@ class _PreviewHarnessState extends State<_PreviewHarness> {
                           onBackgroundTap: widget.onBackgroundTap,
                           onOverlayDeleted: widget.onDeleted,
                           onOverlayDuplicated: widget.onDuplicated,
+                          onOverlayEdit: widget.onEdit,
                           clipRotation: widget.clipRotation,
                         ),
                       ),
@@ -262,9 +265,10 @@ void main() {
     );
 
     final toGlobal = previewMapper(tester);
-    final gesture = await tester.startGesture(toGlobal(topRightCorner));
+    // Bottom-right knob: scale+rotate; drag out to grow.
+    final gesture = await tester.startGesture(toGlobal(bottomRightCorner));
     await tester.pump();
-    await gesture.moveBy(const Offset(30, -30));
+    await gesture.moveBy(const Offset(40, 40));
     await tester.pump();
     await gesture.up();
     await tester.pump();
@@ -273,6 +277,27 @@ void main() {
     expect(widthFactor, greaterThan(1.05), reason: 'drag should grow the box');
     expect(result!.height / overlay.boxHeight, closeTo(widthFactor, 0.001));
     expect(result!.fontSize / overlay.fontSize, closeTo(widthFactor, 0.001));
+  });
+
+  testWidgets('top-right corner opens the edit sheet', (tester) async {
+    final overlay = buildOverlay();
+    TextOverlay? edited;
+    TextOverlay? deleted;
+
+    await tester.pumpWidget(
+      _PreviewHarness(
+        overlays: [overlay],
+        selectedId: overlay.id,
+        onDeleted: (o) => deleted = o,
+        onEdit: (o) => edited = o,
+      ),
+    );
+
+    await tester.tapAt(previewMapper(tester)(topRightCorner));
+    await tester.pump();
+
+    expect(edited?.id, overlay.id);
+    expect(deleted, isNull, reason: 'edit must not delete');
   });
 
   testWidgets('top-left corner deletes the overlay', (tester) async {

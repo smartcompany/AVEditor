@@ -1,3 +1,4 @@
+import 'package:aveditor/models/text_overlay_style.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
@@ -21,6 +22,7 @@ class TextOverlay {
     required this.end,
     this.fontSize = 84,
     this.color = Colors.white,
+    this.style = TextOverlayStyle.plain,
     this.alignment = Alignment.center,
     this.offset = Offset.zero,
     this.boxWidth = 540,
@@ -34,6 +36,7 @@ class TextOverlay {
   Duration end;
   double fontSize;
   Color color;
+  TextOverlayStyle style;
   Alignment alignment;
   /// Normalized offset from center. Values beyond ±1 place text past the frame edge.
   Offset offset;
@@ -49,6 +52,7 @@ class TextOverlay {
     Duration? end,
     double? fontSize,
     Color? color,
+    TextOverlayStyle? style,
     Alignment? alignment,
     Offset? offset,
     double? boxWidth,
@@ -62,6 +66,7 @@ class TextOverlay {
       end: end ?? this.end,
       fontSize: fontSize ?? this.fontSize,
       color: color ?? this.color,
+      style: style ?? this.style,
       alignment: alignment ?? this.alignment,
       offset: offset ?? this.offset,
       boxWidth: boxWidth ?? this.boxWidth,
@@ -78,6 +83,7 @@ class TextOverlay {
       end: end,
       fontSize: fontSize,
       color: color,
+      style: style,
       alignment: alignment,
       offset: offset ?? this.offset,
       boxWidth: boxWidth,
@@ -99,6 +105,7 @@ class TextOverlay {
     'endMs': end.inMilliseconds,
     'fontSize': fontSize,
     'color': color.toARGB32(),
+    'style': style.name,
     'alignmentX': alignment.x,
     'alignmentY': alignment.y,
     'offsetDx': offset.dx,
@@ -116,6 +123,7 @@ class TextOverlay {
       end: Duration(milliseconds: json['endMs'] as int),
       fontSize: (json['fontSize'] as num).toDouble(),
       color: Color(json['color'] as int),
+      style: TextOverlayStyle.fromJson(json['style'] as String?),
       alignment: Alignment(
         (json['alignmentX'] as num?)?.toDouble() ?? 0,
         (json['alignmentY'] as num?)?.toDouble() ?? 0,

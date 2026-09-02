@@ -34,6 +34,8 @@
   "deleteText": "삭제",
   "fontSize": "크기",
   "textColor": "색상",
+  "textStyle": "스타일",
+  "textStyleCycle": "텍스트 스타일 변경",
   "timelineClip": "클립",
   "timelineText": "텍스트 트랙",
   "selectedText": "선택된 텍스트",

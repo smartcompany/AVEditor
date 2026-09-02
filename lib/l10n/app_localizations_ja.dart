@@ -113,6 +113,12 @@ class AppLocalizationsJa extends AppLocalizations {
   String get textColor => '色';
 
   @override
+  String get textStyle => 'スタイル';
+
+  @override
+  String get textStyleCycle => 'テキストスタイルを切り替え';
+
+  @override
   String get timelineClip => 'クリップ';
 
   @override

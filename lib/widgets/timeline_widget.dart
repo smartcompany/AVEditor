@@ -134,6 +134,9 @@ class _TimelineWidgetState extends State<TimelineWidget> {
   ClipSegment? _tapSegment;
   Duration? _overlayAnchorStart;
   Duration? _overlayAnchorEnd;
+  Duration? _overlayAnchorExportStart;
+  Duration? _overlayAnchorExportEnd;
+  bool _overlayDragOnBar = false;
 
   /// Resolved on first travel: every drag is either a vertical lane scroll or
   /// the horizontal action the hit test picked.
@@ -210,12 +213,6 @@ class _TimelineWidgetState extends State<TimelineWidget> {
       contentWidth: _contentWidth,
       contentInsetX: _contentInsetX,
     );
-  }
-
-  double? _viewportXForSource(Duration sourceTime) {
-    final export = sourceTimeToExportTime(widget.segments, sourceTime);
-    if (export == null) return null;
-    return _viewportXForSequence(export);
   }
 
   /// Matches [_TimelinePainter._paintClipTrack] geometry for reliable taps.
@@ -322,6 +319,12 @@ class _TimelineWidgetState extends State<TimelineWidget> {
     return widget.overlays[index];
   }
 
+  bool _isOverlayDragTarget(TimelineDragTarget target) {
+    return target == TimelineDragTarget.overlayMove ||
+        target == TimelineDragTarget.overlayStart ||
+        target == TimelineDragTarget.overlayEnd;
+  }
+
   TimelineDragTarget _hitTest(Offset local) {
     final x = local.dx.clamp(0.0, _viewportWidth);
 
@@ -330,6 +333,9 @@ class _TimelineWidgetState extends State<TimelineWidget> {
 
     _dragOverlay = null;
     _tapSegment = null;
+    _overlayAnchorExportStart = null;
+    _overlayAnchorExportEnd = null;
+    _overlayDragOnBar = false;
 
     // Touching anywhere in a lane targets its layer, so rows can be picked
     // even where the bar does not reach. Selection is deferred until the
@@ -342,15 +348,20 @@ class _TimelineWidgetState extends State<TimelineWidget> {
 
       final span = overlayTimelineSpan(overlay, widget.segments);
       if (span != null) {
+        _overlayAnchorExportStart = span.start;
+        _overlayAnchorExportEnd = span.end;
         final startX = _viewportXForSequence(span.start);
         final endX = _viewportXForSequence(span.end);
         if (nearX(x, startX)) {
+          _overlayDragOnBar = true;
           return TimelineDragTarget.overlayStart;
         }
         if (nearX(x, endX)) {
+          _overlayDragOnBar = true;
           return TimelineDragTarget.overlayEnd;
         }
         if (x >= startX && x <= endX) {
+          _overlayDragOnBar = true;
           return TimelineDragTarget.overlayMove;
         }
       }
@@ -377,7 +388,9 @@ class _TimelineWidgetState extends State<TimelineWidget> {
     _lastSingleLocal = local;
     _panAnchorSequenceTime = null;
     _dragTarget = _hitTest(local);
-    if (_dragTarget == TimelineDragTarget.panTimeline) {
+    if (_isOverlayDragTarget(_dragTarget) && _overlayDragOnBar) {
+      _dragAxis = Axis.horizontal;
+    } else if (_dragTarget == TimelineDragTarget.panTimeline) {
       _panAnchorSequenceTime = _sequenceTimeAtViewportX(_viewportWidth / 2);
     }
   }
@@ -388,6 +401,10 @@ class _TimelineWidgetState extends State<TimelineWidget> {
   /// This applies to layer bars too: with lanes packed edge to edge there is
   /// no empty strip left to start a scroll from.
   Axis? _resolveDragAxis(Offset local) {
+    if (_isOverlayDragTarget(_dragTarget) && _overlayDragOnBar) {
+      return Axis.horizontal;
+    }
+
     final down = _pointerDownLocal;
     if (down == null) return Axis.horizontal;
     final travel = local - down;
@@ -466,16 +483,17 @@ class _TimelineWidgetState extends State<TimelineWidget> {
         final overlay = _dragOverlay;
         final anchorStart = _overlayAnchorStart;
         final anchorEnd = _overlayAnchorEnd;
+        final exportStart = _overlayAnchorExportStart;
+        final exportEnd = _overlayAnchorExportEnd;
         final downLocal = _pointerDownLocal;
         if (overlay == null ||
             anchorStart == null ||
             anchorEnd == null ||
+            exportStart == null ||
+            exportEnd == null ||
             downLocal == null) {
           return;
         }
-        final exportStart = sourceTimeToExportTime(widget.segments, anchorStart);
-        final exportEnd = overlayExportTimeForEnd(widget.segments, anchorEnd);
-        if (exportStart == null || exportEnd == null) return;
 
         final msPerPx = _sequenceDuration.inMilliseconds / _contentWidth;
         final totalDeltaMs = ((x - downLocal.dx) * msPerPx).round();
@@ -558,6 +576,9 @@ class _TimelineWidgetState extends State<TimelineWidget> {
     _tapSegment = null;
     _overlayAnchorStart = null;
     _overlayAnchorEnd = null;
+    _overlayAnchorExportStart = null;
+    _overlayAnchorExportEnd = null;
+    _overlayDragOnBar = false;
     _pointerDownLocal = null;
     _lastSingleLocal = null;
     _panAnchorSequenceTime = null;
@@ -934,21 +955,14 @@ class _TimelinePainter extends CustomPainter {
       }
 
       final selected = overlay.id == selectedOverlayId;
-      final ranges = overlayTimelineRanges(overlay, segments);
-      if (ranges.isEmpty) continue;
+      // One bar per text layer on the packed timeline. Video splits only affect
+      // the clip track; overlay timing is independent of segment boundaries.
+      final span = overlayTimelineSpan(overlay, segments);
+      if (span == null) continue;
 
-      for (final range in ranges) {
-        final exportRange = sourceRangeToExportRange(
-          segments,
-          range.start,
-          range.end,
-        );
-        if (exportRange == null) continue;
-
-        final left = _x(exportRange.start);
-        final right = _x(exportRange.end);
-        if (right < 0 || left > size.width) continue;
-
+      final left = _x(span.start);
+      final right = _x(span.end);
+      if (right >= 0 && left <= size.width) {
         final rect = Rect.fromLTRB(left, laneTop, right, laneTop + _laneHeight);
         canvas.drawRRect(
           RRect.fromRectAndRadius(rect, const Radius.circular(4)),
@@ -961,23 +975,20 @@ class _TimelinePainter extends CustomPainter {
       }
 
       if (selected) {
-        final span = overlayTimelineSpan(overlay, segments);
-        if (span != null) {
-          _drawHandle(
-            canvas,
-            _x(span.start),
-            top: laneTop,
-            bottom: laneTop + _laneHeight,
-            color: Colors.white,
-          );
-          _drawHandle(
-            canvas,
-            _x(span.end),
-            top: laneTop,
-            bottom: laneTop + _laneHeight,
-            color: Colors.white,
-          );
-        }
+        _drawHandle(
+          canvas,
+          left,
+          top: laneTop,
+          bottom: laneTop + _laneHeight,
+          color: Colors.white,
+        );
+        _drawHandle(
+          canvas,
+          right,
+          top: laneTop,
+          bottom: laneTop + _laneHeight,
+          color: Colors.white,
+        );
       }
     }
 
@@ -1038,11 +1049,6 @@ class _TimelinePainter extends CustomPainter {
       Paint()
         ..color = Colors.white
         ..strokeWidth = 2,
-    );
-    canvas.drawCircle(
-      Offset(headX, 5),
-      5,
-      Paint()..color = Colors.white,
     );
   }
 

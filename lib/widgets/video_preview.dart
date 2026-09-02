@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/text_overlay.dart';
+import 'package:aveditor/models/text_overlay_style.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
 import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/utils/overlay_event_log.dart';
@@ -67,6 +68,7 @@ class VideoPreviewWithOverlays extends StatefulWidget {
     this.onBackgroundTap,
     this.onOverlayDeleted,
     this.onOverlayDuplicated,
+    this.onOverlayEdit,
   });
 
   final Widget videoChild;
@@ -96,6 +98,9 @@ class VideoPreviewWithOverlays extends StatefulWidget {
 
   /// Bottom-left corner handle.
   final ValueChanged<TextOverlay>? onOverlayDuplicated;
+
+  /// Top-right corner handle — opens the style / text editor sheet.
+  final ValueChanged<TextOverlay>? onOverlayEdit;
 
   @override
   State<VideoPreviewWithOverlays> createState() =>
@@ -510,10 +515,17 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
         'id': dragged.id,
         'drag': drag.label,
       });
-      if (drag.kind == OverlayDragKind.delete) {
-        widget.onOverlayDeleted?.call(dragged);
-      } else {
-        widget.onOverlayDuplicated?.call(dragged);
+      switch (drag.kind) {
+        case OverlayDragKind.delete:
+          widget.onOverlayDeleted?.call(dragged);
+        case OverlayDragKind.duplicate:
+          widget.onOverlayDuplicated?.call(dragged);
+        case OverlayDragKind.edit:
+          widget.onOverlayEdit?.call(dragged);
+        case OverlayDragKind.move:
+        case OverlayDragKind.resize:
+        case OverlayDragKind.resizeRotate:
+          break;
       }
       return;
     }
@@ -594,6 +606,7 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
         );
       case OverlayDragKind.delete:
       case OverlayDragKind.duplicate:
+      case OverlayDragKind.edit:
         // Corner buttons: travel is ignored, the action fires on release.
         break;
     }
@@ -770,55 +783,61 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
     super.dispose();
   }
 
-  TextStyle get _textStyle => overlayTextStyle(
+  TextStyle get _fillStyle => overlayTextFillStyle(
     color: widget.overlay.color,
     fontSize: widget.box.fontSize,
+    style: widget.overlay.style,
   );
 
   Widget _buildBody() {
-    final textWidget = widget.editing
-        ? TextField(
+    final hintColor = widget.overlay.style == TextOverlayStyle.plain
+        ? widget.overlay.color.withValues(alpha: 0.45)
+        : overlayTextFillColor(
+            style: widget.overlay.style,
+            accent: widget.overlay.color,
+          ).withValues(alpha: 0.45);
+
+    if (widget.editing) {
+      return MediaQuery.withNoTextScaling(
+        child: Center(
+          child: TextField(
             controller: _controller,
             focusNode: _focusNode,
             autofocus: true,
             maxLines: null,
-            expands: true,
-            textAlignVertical: TextAlignVertical.center,
             textAlign: TextAlign.center,
-            style: _textStyle,
+            style: _fillStyle,
             cursorColor: AppTheme.accent,
             decoration: InputDecoration(
               isDense: true,
               border: InputBorder.none,
               contentPadding: EdgeInsets.zero,
               hintText: widget.textHint,
-              hintStyle: _textStyle.copyWith(
-                color: widget.overlay.color.withValues(alpha: 0.45),
-              ),
+              hintStyle: _fillStyle.copyWith(color: hintColor),
             ),
             onChanged: widget.onTextChanged,
             onEditingComplete: () =>
                 widget.onEditingComplete?.call('textfield_done'),
             onSubmitted: (_) =>
                 widget.onEditingComplete?.call('textfield_submit'),
-          )
-        : Text(
-            widget.overlay.text.isEmpty
-                ? (widget.textHint ?? '')
-                : widget.overlay.text,
-            textAlign: TextAlign.center,
-            textScaler: TextScaler.noScaling,
-            maxLines: null,
-            overflow: TextOverflow.visible,
-            style: widget.overlay.text.isEmpty
-                ? _textStyle.copyWith(
-                    color: widget.overlay.color.withValues(alpha: 0.45),
-                  )
-                : _textStyle,
-          );
+          ),
+        ),
+      );
+    }
 
-    // System text scaling must not change layout, or the export would drift.
-    return MediaQuery.withNoTextScaling(child: Center(child: textWidget));
+    final isHint = widget.overlay.text.isEmpty;
+    return MediaQuery.withNoTextScaling(
+      child: Center(
+        child: OverlayTextDisplay(
+          text: isHint ? (widget.textHint ?? '') : widget.overlay.text,
+          color: widget.overlay.color,
+          fontSize: widget.box.fontSize,
+          maxWidth: widget.box.width,
+          style: widget.overlay.style,
+          hintColor: isHint ? hintColor : null,
+        ),
+      ),
+    );
   }
 
   Widget _buildMoveGrip() {
@@ -829,21 +848,6 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
         boxShadow: [BoxShadow(blurRadius: 3, color: Colors.black54)],
       ),
       child: const SizedBox(width: 28, height: 6),
-    );
-  }
-
-  Widget _buildHandleKnob() {
-    return SizedBox(
-      width: OverlayGeometry.knobSize,
-      height: OverlayGeometry.knobSize,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(3),
-          border: Border.all(color: AppTheme.accent, width: 2),
-          boxShadow: const [BoxShadow(blurRadius: 3, color: Colors.black54)],
-        ),
-      ),
     );
   }
 
@@ -925,13 +929,13 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
               left: true,
               top: true,
               size: _iconKnobSize,
-              child: _buildIconKnob(Icons.close),
+              child: _buildIconKnob(Icons.delete_outline),
             ),
             _corner(
               left: false,
               top: true,
-              size: OverlayGeometry.knobSize,
-              child: _buildHandleKnob(),
+              size: _iconKnobSize,
+              child: _buildIconKnob(Icons.edit_outlined),
             ),
             _corner(
               left: true,

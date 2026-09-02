@@ -115,6 +115,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get textColor => 'Color';
 
   @override
+  String get textStyle => 'Style';
+
+  @override
+  String get textStyleCycle => 'Cycle text style';
+
+  @override
   String get timelineClip => 'Clip';
 
   @override

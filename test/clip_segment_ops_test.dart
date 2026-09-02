@@ -191,6 +191,46 @@ void main() {
     expect(ranges.first.end, const Duration(seconds: 8));
   });
 
+  test('overlayTimelineSpan stays one bar after a video split', () {
+    final overlay = TextOverlay(
+      text: 'hello',
+      start: const Duration(seconds: 2),
+      end: const Duration(seconds: 8),
+    );
+    final segments = [
+      seg(Duration.zero, const Duration(seconds: 4)),
+      seg(const Duration(seconds: 4), const Duration(seconds: 10)),
+    ];
+
+    final span = overlayTimelineSpan(overlay, segments);
+
+    expect(span, isNotNull);
+    expect(span!.start, const Duration(seconds: 2));
+    expect(span.end, const Duration(seconds: 8));
+  });
+
+  test('overlayTimelineSpan stays one bar when split leaves a micro source gap', () {
+    final overlay = TextOverlay(
+      text: 'hello',
+      start: const Duration(seconds: 2),
+      end: const Duration(seconds: 8),
+    );
+    final segments = [
+      seg(Duration.zero, const Duration(seconds: 4, milliseconds: 750)),
+      seg(
+        const Duration(seconds: 4, milliseconds: 800),
+        const Duration(seconds: 10),
+      ),
+    ];
+
+    final span = overlayTimelineSpan(overlay, segments);
+
+    expect(span, isNotNull);
+    expect(span!.start, const Duration(seconds: 2));
+    // Export end is slightly shorter because the 50 ms source splinter is not kept.
+    expect(span.end, const Duration(seconds: 7, milliseconds: 950));
+  });
+
   test('overlayTimelineSpan falls back when overlay starts before kept video', () {
     final overlay = TextOverlay(
       text: 'hello',

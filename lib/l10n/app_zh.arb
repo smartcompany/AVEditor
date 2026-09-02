@@ -34,6 +34,8 @@
   "deleteText": "删除",
   "fontSize": "大小",
   "textColor": "颜色",
+  "textStyle": "样式",
+  "textStyleCycle": "切换文字样式",
   "timelineClip": "片段",
   "timelineText": "文字轨道",
   "selectedText": "选中的文字",

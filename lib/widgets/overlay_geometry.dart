@@ -4,9 +4,9 @@ import 'package:flutter/widgets.dart';
 
 /// What a press on the overlay chrome does.
 ///
-/// [delete] and [duplicate] are one-shot taps rather than drags; the rest are
+/// [delete], [duplicate], and [edit] are one-shot taps; the rest are
 /// continuous gestures.
-enum OverlayDragKind { move, resize, resizeRotate, delete, duplicate }
+enum OverlayDragKind { move, resize, resizeRotate, delete, duplicate, edit }
 
 class OverlayDrag {
   const OverlayDrag._(this.kind, {this.fromLeft, this.fromTop});
@@ -18,6 +18,7 @@ class OverlayDrag {
   static const move = OverlayDrag._(OverlayDragKind.move);
   static const delete = OverlayDrag._(OverlayDragKind.delete);
   static const duplicate = OverlayDrag._(OverlayDragKind.duplicate);
+  static const edit = OverlayDrag._(OverlayDragKind.edit);
 
   /// Bottom-right: scales and rotates at once.
   static const resizeRotate = OverlayDrag._(OverlayDragKind.resizeRotate);
@@ -35,7 +36,9 @@ class OverlayDrag {
 
   /// Fires on release without travel, so a slip does not destroy work.
   bool get isTapAction =>
-      kind == OverlayDragKind.delete || kind == OverlayDragKind.duplicate;
+      kind == OverlayDragKind.delete ||
+      kind == OverlayDragKind.duplicate ||
+      kind == OverlayDragKind.edit;
 
   String get label {
     switch (kind) {
@@ -45,6 +48,8 @@ class OverlayDrag {
         return 'delete';
       case OverlayDragKind.duplicate:
         return 'duplicate';
+      case OverlayDragKind.edit:
+        return 'edit';
       case OverlayDragKind.resizeRotate:
         return 'resize_rotate';
       case OverlayDragKind.resize:
@@ -282,10 +287,7 @@ class OverlayGeometry {
 
     final corners = <(Offset, OverlayDrag)>[
       (Offset(left, top), OverlayDrag.delete),
-      (
-        Offset(right, top),
-        OverlayDrag.resize(fromLeft: false, fromTop: true),
-      ),
+      (Offset(right, top), OverlayDrag.edit),
       (Offset(left, bottom), OverlayDrag.duplicate),
       (Offset(right, bottom), OverlayDrag.resizeRotate),
     ];

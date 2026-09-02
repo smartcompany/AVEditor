@@ -39,6 +39,8 @@
   "deleteText": "Delete",
   "fontSize": "Size",
   "textColor": "Color",
+  "textStyle": "Style",
+  "textStyleCycle": "Cycle text style",
   "timelineClip": "Clip",
   "timelineText": "Text tracks",
   "selectedText": "Selected text",

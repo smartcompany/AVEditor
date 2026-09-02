@@ -113,6 +113,12 @@ class AppLocalizationsKo extends AppLocalizations {
   String get textColor => '색상';
 
   @override
+  String get textStyle => '스타일';
+
+  @override
+  String get textStyleCycle => '텍스트 스타일 변경';
+
+  @override
   String get timelineClip => '클립';
 
   @override

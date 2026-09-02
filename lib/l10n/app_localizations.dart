@@ -306,6 +306,18 @@ abstract class AppLocalizations {
   /// **'Color'**
   String get textColor;
 
+  /// No description provided for @textStyle.
+  ///
+  /// In en, this message translates to:
+  /// **'Style'**
+  String get textStyle;
+
+  /// No description provided for @textStyleCycle.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle text style'**
+  String get textStyleCycle;
+
   /// No description provided for @timelineClip.
   ///
   /// In en, this message translates to:

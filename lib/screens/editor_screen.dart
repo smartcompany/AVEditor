@@ -814,17 +814,15 @@ class _EditorScreenState extends State<EditorScreen>
     if (overlay == null) return;
 
     if (_editingOverlayId != null) {
-      _finishInlineEditing('edit_sheet');
+      _finishInlineEditing('edit_style_sheet');
     }
 
-    final current = _selectedOverlay;
-    if (current == null) return;
-
+    final original = overlay;
     await showTextOverlayEditorSheet(
       context: context,
-      overlay: current,
-      onSave: _updateOverlay,
-      onDelete: () => _deleteOverlay(current.id),
+      overlay: overlay,
+      onChanged: _updateOverlay,
+      onRevert: () => _updateOverlay(original),
     );
   }
 
@@ -1038,6 +1036,10 @@ class _EditorScreenState extends State<EditorScreen>
                             onOverlayDeleted: (overlay) =>
                                 _deleteOverlay(overlay.id),
                             onOverlayDuplicated: _duplicateOverlay,
+                            onOverlayEdit: (overlay) {
+                              setState(() => _selectedOverlayId = overlay.id);
+                              _editSelectedOverlay();
+                            },
                             onOverlayBoxChanged: (overlay, transform) {
                               OverlayEventLog.log(
                                 'Editor',

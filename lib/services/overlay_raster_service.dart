@@ -57,6 +57,7 @@ class OverlayRasterService {
       color: overlay.color,
       fontSize: box.fontSize,
       maxWidth: box.width,
+      style: overlay.style,
     );
     final origin = overlayTextOrigin(
       painter: painter,
@@ -75,12 +76,6 @@ class OverlayRasterService {
     required int height,
   }) async {
     final box = overlayBoxForFrame(overlay, frameWidth: width.toDouble());
-    final painter = layoutOverlayText(
-      text: overlay.text,
-      color: overlay.color,
-      fontSize: box.fontSize,
-      maxWidth: box.width,
-    );
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(
@@ -102,17 +97,14 @@ class OverlayRasterService {
         ..rotate(box.rotation)
         ..translate(-centre.dx, -centre.dy);
     }
-    painter.paint(
-      canvas,
-      overlayTextOrigin(
-        painter: painter,
-        box: box,
-        frameWidth: width.toDouble(),
-        frameHeight: height.toDouble(),
-      ),
+    paintOverlayTextLayer(
+      canvas: canvas,
+      overlay: overlay,
+      box: box,
+      frameWidth: width.toDouble(),
+      frameHeight: height.toDouble(),
     );
     if (box.rotation != 0) canvas.restore();
-    painter.dispose();
 
     final picture = recorder.endRecording();
     try {

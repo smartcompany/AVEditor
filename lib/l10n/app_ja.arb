@@ -34,6 +34,8 @@
   "deleteText": "削除",
   "fontSize": "サイズ",
   "textColor": "色",
+  "textStyle": "スタイル",
+  "textStyleCycle": "テキストスタイルを切り替え",
   "timelineClip": "クリップ",
   "timelineText": "テキストトラック",
   "selectedText": "選択中のテキスト",

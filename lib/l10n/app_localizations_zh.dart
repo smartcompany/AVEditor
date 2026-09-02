@@ -113,6 +113,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get textColor => '颜色';
 
   @override
+  String get textStyle => '样式';
+
+  @override
+  String get textStyleCycle => '切换文字样式';
+
+  @override
   String get timelineClip => '片段';
 
   @override

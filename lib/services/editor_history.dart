@@ -59,6 +59,7 @@ class EditorSnapshot {
             end: overlay.end,
             fontSize: overlay.fontSize,
             color: overlay.color,
+            style: overlay.style,
             alignment: overlay.alignment,
             offset: overlay.offset,
             boxWidth: overlay.boxWidth,
