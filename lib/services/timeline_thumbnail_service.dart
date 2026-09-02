@@ -26,18 +26,21 @@ class TimelineThumbnailService {
     final stepMs = (duration.inMilliseconds / frameCount).ceil().clamp(1, 1 << 30);
     final cacheDir = await _cacheDirectory(videoPath);
     final frames = <TimelineFilmstripFrame>[];
+    final capturedMs = <int>{};
 
-    for (var i = 0; i < frameCount; i++) {
-      final timeMs = (stepMs * i).clamp(0, duration.inMilliseconds - 1);
+    Future<void> addFrame(int timeMs) async {
+      final clampedMs = timeMs.clamp(0, duration.inMilliseconds - 1);
+      if (!capturedMs.add(clampedMs)) return;
+
       final cacheFile = File(
-        p.join(cacheDir.path, 'thumb_${timeMs}ms.jpg'),
+        p.join(cacheDir.path, 'thumb_${clampedMs}ms.jpg'),
       );
 
       if (!await cacheFile.exists()) {
         final generated = await VideoThumbnail.thumbnailFile(
           video: videoPath,
           imageFormat: ImageFormat.JPEG,
-          timeMs: timeMs,
+          timeMs: clampedMs,
           maxHeight: _thumbHeight,
           quality: 65,
         );
@@ -46,20 +49,31 @@ class TimelineThumbnailService {
         }
       }
 
-      if (!await cacheFile.exists()) continue;
+      if (!await cacheFile.exists()) return;
 
       final bytes = await cacheFile.readAsBytes();
-      if (bytes.isEmpty) continue;
+      if (bytes.isEmpty) return;
 
       final codec = await ui.instantiateImageCodec(bytes);
       final frame = await codec.getNextFrame();
       frames.add(
         TimelineFilmstripFrame(
-          sourceTime: Duration(milliseconds: timeMs),
+          sourceTime: Duration(milliseconds: clampedMs),
           image: frame.image,
         ),
       );
     }
+
+    for (var i = 0; i < frameCount; i++) {
+      await addFrame(stepMs * i);
+    }
+
+    // Cover the clip end — evenly spaced frames often stop short of duration.
+    await addFrame(duration.inMilliseconds - 1);
+
+    frames.sort(
+      (a, b) => a.sourceTime.compareTo(b.sourceTime),
+    );
 
     return frames;
   }

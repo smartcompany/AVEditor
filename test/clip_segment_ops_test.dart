@@ -173,6 +173,41 @@ void main() {
     expect(ranges[1].end, const Duration(seconds: 8));
   });
 
+  test('overlayTimelineRanges merges spans across contiguous split points', () {
+    final overlay = TextOverlay(
+      text: 'hello',
+      start: const Duration(seconds: 2),
+      end: const Duration(seconds: 8),
+    );
+    final segments = [
+      seg(Duration.zero, const Duration(seconds: 4)),
+      seg(const Duration(seconds: 4), const Duration(seconds: 10)),
+    ];
+
+    final ranges = overlayTimelineRanges(overlay, segments);
+
+    expect(ranges.length, 1);
+    expect(ranges.first.start, const Duration(seconds: 2));
+    expect(ranges.first.end, const Duration(seconds: 8));
+  });
+
+  test('overlayTimelineSpan falls back when overlay starts before kept video', () {
+    final overlay = TextOverlay(
+      text: 'hello',
+      start: Duration.zero,
+      end: const Duration(seconds: 4),
+    );
+    final segments = [
+      seg(const Duration(seconds: 2), const Duration(seconds: 10)),
+    ];
+
+    final span = overlayTimelineSpan(overlay, segments);
+
+    expect(span, isNotNull);
+    expect(span!.start, Duration.zero);
+    expect(span.end, const Duration(seconds: 2));
+  });
+
   test('isOverlayVisibleAt hides text in deleted gaps', () {
     final overlay = TextOverlay(
       text: 'hello',

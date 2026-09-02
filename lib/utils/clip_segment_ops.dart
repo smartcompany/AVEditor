@@ -364,6 +364,49 @@ List<({Duration start, Duration end})> overlayTimelineRanges(
   return merged;
 }
 
+/// Maps an overlay end (exclusive) to an exclusive export-timeline position.
+Duration? overlayExportTimeForEnd(
+  List<ClipSegment> segments,
+  Duration sourceEnd,
+) {
+  final probeMs = sourceEnd.inMilliseconds - 1;
+  if (probeMs >= 0) {
+    final mapped = sourceTimeToExportTime(
+      segments,
+      Duration(milliseconds: probeMs),
+    );
+    if (mapped != null) {
+      return Duration(milliseconds: mapped.inMilliseconds + 1);
+    }
+  }
+  final atEnd = sourceTimeToExportTime(segments, sourceEnd);
+  if (atEnd != null) {
+    return Duration(milliseconds: atEnd.inMilliseconds + 1);
+  }
+  return null;
+}
+
+/// Export-timeline span for painting handles and dragging an overlay layer.
+({Duration start, Duration end})? overlayTimelineSpan(
+  TextOverlay overlay,
+  List<ClipSegment> segments,
+) {
+  final ranges = overlayKeptRanges(overlay, segments);
+  if (ranges.isEmpty) return null;
+
+  var exportStart = sourceTimeToExportTime(segments, overlay.start);
+  var exportEnd = overlayExportTimeForEnd(segments, overlay.end);
+
+  exportStart ??= sourceTimeToExportTime(segments, ranges.first.start);
+  exportEnd ??= overlayExportTimeForEnd(segments, ranges.last.end);
+  if (exportStart == null || exportEnd == null) return null;
+
+  if (exportEnd <= exportStart) {
+    exportEnd = Duration(milliseconds: exportStart.inMilliseconds + 1);
+  }
+  return (start: exportStart, end: exportEnd);
+}
+
 bool isOverlayVisibleAt(
   TextOverlay overlay,
   List<ClipSegment> segments,

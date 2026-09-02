@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/timeline_filmstrip_frame.dart';
@@ -12,6 +14,35 @@ const _videoTrackHeight = 58.0;
 
 /// Visible gap between split clip blocks on the timeline.
 const _segmentGap = 2.0;
+
+/// Fixed filmstrip tile width — only as many tiles as fit are drawn per segment.
+const _filmstripTileWidth = 48.0;
+
+/// Paint/hit-test bounds for one segment block on the packed timeline.
+({double left, double right}) segmentBlockBounds({
+  required double rawLeft,
+  required double rawRight,
+  required bool gapBefore,
+  required bool gapAfter,
+}) {
+  var left = rawLeft;
+  var right = rawRight;
+
+  if (gapAfter) right -= _segmentGap / 2;
+  if (gapBefore) left += _segmentGap / 2;
+
+  // Narrow blocks (common right after a split at default zoom) must still
+  // paint filmstrip — gap insets are dropped instead of skipping the segment.
+  if (right <= left) {
+    left = rawLeft;
+    right = rawRight;
+  }
+  if (right <= left) {
+    right = left + 1;
+  }
+
+  return (left: left, right: right);
+}
 
 /// One text overlay per lane, stacked under the clip track.
 const _laneHeight = 26.0;
@@ -191,15 +222,23 @@ class _TimelineWidgetState extends State<TimelineWidget> {
   ClipSegment? _segmentAtViewportX(double x) {
     if (widget.segments.isEmpty) return null;
 
-    final halfGap = _segmentGap / 2;
     var sequenceOffset = Duration.zero;
     for (var i = 0; i < widget.segments.length; i++) {
       final segment = widget.segments[i];
-      var left = _viewportXForSequence(sequenceOffset);
-      var right = _viewportXForSequence(sequenceOffset + segment.duration);
-      if (i < widget.segments.length - 1) right -= halfGap;
-      if (i > 0) left += halfGap;
-      if (x >= left && x <= right) return segment;
+      if (segment.duration <= Duration.zero) {
+        sequenceOffset += segment.duration;
+        continue;
+      }
+
+      final rawLeft = _viewportXForSequence(sequenceOffset);
+      final rawRight = _viewportXForSequence(sequenceOffset + segment.duration);
+      final bounds = segmentBlockBounds(
+        rawLeft: rawLeft,
+        rawRight: rawRight,
+        gapBefore: i > 0,
+        gapAfter: i < widget.segments.length - 1,
+      );
+      if (x >= bounds.left && x <= bounds.right) return segment;
       sequenceOffset += segment.duration;
     }
     return null;
@@ -297,19 +336,23 @@ class _TimelineWidgetState extends State<TimelineWidget> {
     // gesture proves it is not a lane scroll.
     final overlay = _overlayInLaneAt(local);
     if (overlay != null) {
-      final startX = _viewportXForSource(overlay.start);
-      final endX = _viewportXForSource(overlay.end);
       _dragOverlay = overlay;
       _overlayAnchorStart = overlay.start;
       _overlayAnchorEnd = overlay.end;
-      if (startX != null && nearX(x, startX)) {
-        return TimelineDragTarget.overlayStart;
-      }
-      if (endX != null && nearX(x, endX)) {
-        return TimelineDragTarget.overlayEnd;
-      }
-      if (startX != null && endX != null && x >= startX && x <= endX) {
-        return TimelineDragTarget.overlayMove;
+
+      final span = overlayTimelineSpan(overlay, widget.segments);
+      if (span != null) {
+        final startX = _viewportXForSequence(span.start);
+        final endX = _viewportXForSequence(span.end);
+        if (nearX(x, startX)) {
+          return TimelineDragTarget.overlayStart;
+        }
+        if (nearX(x, endX)) {
+          return TimelineDragTarget.overlayEnd;
+        }
+        if (x >= startX && x <= endX) {
+          return TimelineDragTarget.overlayMove;
+        }
       }
     }
 
@@ -430,20 +473,37 @@ class _TimelineWidgetState extends State<TimelineWidget> {
             downLocal == null) {
           return;
         }
+        final exportStart = sourceTimeToExportTime(widget.segments, anchorStart);
+        final exportEnd = overlayExportTimeForEnd(widget.segments, anchorEnd);
+        if (exportStart == null || exportEnd == null) return;
+
         final msPerPx = _sequenceDuration.inMilliseconds / _contentWidth;
         final totalDeltaMs = ((x - downLocal.dx) * msPerPx).round();
-        final span = anchorEnd - anchorStart;
-        var nextStart = Duration(
-          milliseconds: anchorStart.inMilliseconds + totalDeltaMs,
+        final sourceSpanMs = anchorEnd.inMilliseconds - anchorStart.inMilliseconds;
+        final exportSpanMs = exportEnd.inMilliseconds - exportStart.inMilliseconds;
+
+        var nextExportStart = Duration(
+          milliseconds: exportStart.inMilliseconds + totalDeltaMs,
         );
-        var nextEnd = nextStart + span;
-        if (nextStart < Duration.zero) {
-          nextStart = Duration.zero;
-          nextEnd = span;
+        if (nextExportStart < Duration.zero) {
+          nextExportStart = Duration.zero;
         }
+        final maxExportStartMs = _sequenceDuration.inMilliseconds - exportSpanMs;
+        if (nextExportStart.inMilliseconds > maxExportStartMs) {
+          nextExportStart = Duration(milliseconds: maxExportStartMs);
+        }
+
+        var nextStart = exportTimeToSourceTime(widget.segments, nextExportStart);
+        var nextEnd = Duration(
+          milliseconds: nextStart.inMilliseconds + sourceSpanMs,
+        );
         if (nextEnd > widget.duration) {
           nextEnd = widget.duration;
-          nextStart = nextEnd - span;
+          nextStart = Duration(milliseconds: nextEnd.inMilliseconds - sourceSpanMs);
+          if (nextStart < Duration.zero) {
+            nextStart = Duration.zero;
+            nextEnd = Duration(milliseconds: sourceSpanMs.clamp(0, widget.duration.inMilliseconds));
+          }
         }
         widget.onOverlayChanged(
           overlay.copyWith(start: nextStart, end: nextEnd),
@@ -771,7 +831,6 @@ class _TimelinePainter extends CustomPainter {
 
     final trimTop = _videoTrackHeight * 0.12;
     final trimBottom = _videoTrackHeight * 0.88;
-    final halfGap = _segmentGap / 2;
 
     final envelopeLeft = _x(Duration.zero);
     final envelopeRight = _x(sequenceDuration);
@@ -787,17 +846,22 @@ class _TimelinePainter extends CustomPainter {
     var sequenceOffset = Duration.zero;
     for (var i = 0; i < segments.length; i++) {
       final segment = segments[i];
-      var left = _x(sequenceOffset);
-      var right = _x(sequenceOffset + segment.duration);
+      if (segment.duration <= Duration.zero) {
+        sequenceOffset += segment.duration;
+        continue;
+      }
 
-      // Every kept block boundary is a split point, including joins after
-      // deleting a middle segment.
-      if (i < segments.length - 1) right -= halfGap;
-      if (i > 0) left += halfGap;
-      if (right <= left) continue;
+      final rawLeft = _x(sequenceOffset);
+      final rawRight = _x(sequenceOffset + segment.duration);
+      final bounds = segmentBlockBounds(
+        rawLeft: rawLeft,
+        rawRight: rawRight,
+        gapBefore: i > 0,
+        gapAfter: i < segments.length - 1,
+      );
 
       final selected = segment.id == selectedSegmentId;
-      final rect = Rect.fromLTRB(left, trimTop, right, trimBottom);
+      final rect = Rect.fromLTRB(bounds.left, trimTop, bounds.right, trimBottom);
       final rounded = RRect.fromRectAndRadius(rect, const Radius.circular(4));
 
       _paintFilmstrip(canvas, rect, segment);
@@ -821,7 +885,7 @@ class _TimelinePainter extends CustomPainter {
       }
 
       if (i < segments.length - 1) {
-        final dividerX = right + halfGap;
+        final dividerX = rawRight;
         canvas.drawLine(
           Offset(dividerX, trimTop + 2),
           Offset(dividerX, trimBottom - 2),
@@ -870,7 +934,7 @@ class _TimelinePainter extends CustomPainter {
       }
 
       final selected = overlay.id == selectedOverlayId;
-      final ranges = overlayKeptRanges(overlay, segments);
+      final ranges = overlayTimelineRanges(overlay, segments);
       if (ranges.isEmpty) continue;
 
       for (final range in ranges) {
@@ -897,21 +961,18 @@ class _TimelinePainter extends CustomPainter {
       }
 
       if (selected) {
-        final startX = sourceTimeToExportTime(segments, overlay.start);
-        final endProbe = overlay.end - const Duration(microseconds: 1);
-        final endX = sourceTimeToExportTime(segments, endProbe) ??
-            sourceTimeToExportTime(segments, overlay.end);
-        if (startX != null && endX != null) {
+        final span = overlayTimelineSpan(overlay, segments);
+        if (span != null) {
           _drawHandle(
             canvas,
-            _x(startX),
+            _x(span.start),
             top: laneTop,
             bottom: laneTop + _laneHeight,
             color: Colors.white,
           );
           _drawHandle(
             canvas,
-            _x(Duration(milliseconds: endX.inMilliseconds + 1)),
+            _x(span.end),
             top: laneTop,
             bottom: laneTop + _laneHeight,
             color: Colors.white,
@@ -986,36 +1047,63 @@ class _TimelinePainter extends CustomPainter {
   }
 
   void _paintFilmstrip(Canvas canvas, Rect rect, ClipSegment segment) {
-    final frames = filmstripFrames
-        .where(
-          (frame) =>
-              frame.sourceTime >= segment.start && frame.sourceTime < segment.end,
-        )
-        .toList(growable: false);
-    if (frames.isEmpty) return;
+    if (filmstripFrames.isEmpty || rect.width <= 0 || segment.duration <= Duration.zero) {
+      return;
+    }
 
     canvas.save();
     canvas.clipRRect(
       RRect.fromRectAndRadius(rect, const Radius.circular(4)),
     );
 
-    final slotWidth = rect.width / frames.length;
-    for (var i = 0; i < frames.length; i++) {
-      final dst = Rect.fromLTWH(
-        rect.left + i * slotWidth,
-        rect.top,
-        slotWidth,
-        rect.height,
+    final tileCount = math.max(1, (rect.width / _filmstripTileWidth).ceil());
+    for (var i = 0; i < tileCount; i++) {
+      final left = rect.left + i * _filmstripTileWidth;
+      if (left >= rect.right) break;
+
+      // Last tile stretches to the segment edge so no black strip remains.
+      final width = rect.right - left;
+      if (width <= 0) break;
+
+      final sampleX = left + width / 2;
+      var centerFraction = (sampleX - rect.left) / rect.width;
+      if (i == tileCount - 1) {
+        centerFraction = 1.0;
+      }
+      final sourceMs = segment.start.inMilliseconds +
+          (segment.duration.inMilliseconds * centerFraction).round();
+      final endMs = segment.end.inMilliseconds - 1;
+      final upperMs = endMs >= segment.start.inMilliseconds
+          ? endMs
+          : segment.start.inMilliseconds;
+      final clampedMs = sourceMs.clamp(segment.start.inMilliseconds, upperMs);
+      final frame = _nearestFilmstripFrame(
+        Duration(milliseconds: clampedMs.toInt()),
       );
+      if (frame == null) continue;
+
       paintImage(
         canvas: canvas,
-        rect: dst,
-        image: frames[i].image,
+        rect: Rect.fromLTWH(left, rect.top, width, rect.height),
+        image: frame.image,
         fit: BoxFit.cover,
         filterQuality: FilterQuality.low,
       );
     }
     canvas.restore();
+  }
+
+  TimelineFilmstripFrame? _nearestFilmstripFrame(Duration sourceTime) {
+    TimelineFilmstripFrame? best;
+    var bestDeltaMs = 1 << 62;
+    for (final frame in filmstripFrames) {
+      final deltaMs = (frame.sourceTime - sourceTime).inMilliseconds.abs();
+      if (deltaMs < bestDeltaMs) {
+        bestDeltaMs = deltaMs;
+        best = frame;
+      }
+    }
+    return best;
   }
 
   void _drawHandle(
