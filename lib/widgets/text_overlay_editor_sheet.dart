@@ -1,6 +1,7 @@
 import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/text_overlay_style.dart';
+import 'package:aveditor/models/text_style_template.dart';
 import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/widgets/video_preview.dart';
@@ -49,6 +50,8 @@ class _TextOverlayEditorSheetState extends State<_TextOverlayEditorSheet> {
   late double _fontSize;
   late Color _color;
   late TextOverlayStyle _style;
+  String? _templateId;
+  String? _packItemId;
   var _closed = false;
 
   static const _colors = [
@@ -66,6 +69,8 @@ class _TextOverlayEditorSheetState extends State<_TextOverlayEditorSheet> {
     _fontSize = widget.overlay.fontSize;
     _color = widget.overlay.color;
     _style = widget.overlay.style;
+    _templateId = widget.overlay.templateId;
+    _packItemId = widget.overlay.packItemId;
   }
 
   TextOverlay _draft() {
@@ -76,6 +81,8 @@ class _TextOverlayEditorSheetState extends State<_TextOverlayEditorSheet> {
       boxHeight: widget.overlay.boxHeight * factor,
       color: _color,
       style: _style,
+      templateId: _templateId,
+      packItemId: _packItemId,
     );
   }
 
@@ -84,7 +91,20 @@ class _TextOverlayEditorSheetState extends State<_TextOverlayEditorSheet> {
   }
 
   void _cycleStyle() {
-    setState(() => _style = _style.next);
+    setState(() {
+      _templateId = null;
+      _packItemId = null;
+      _style = _style.next;
+    });
+    _emitLive();
+  }
+
+  void _selectTemplate(TextStyleTemplate template) {
+    setState(() {
+      _templateId = template.id;
+      _packItemId = null;
+      _style = TextOverlayStyle.plain;
+    });
     _emitLive();
   }
 
@@ -93,6 +113,12 @@ class _TextOverlayEditorSheetState extends State<_TextOverlayEditorSheet> {
     _closed = true;
     widget.onRevert?.call();
     Navigator.pop(context);
+  }
+
+  String? get _selectedTemplateId {
+    if (_packItemId != null) return _packItemId;
+    if (_templateId != null) return _templateId;
+    return templateForBasicStyle(_style).id;
   }
 
   @override
@@ -140,15 +166,45 @@ class _TextOverlayEditorSheetState extends State<_TextOverlayEditorSheet> {
             ),
             Row(
               children: [
-                Text(l10n.textStyle, style: Theme.of(context).textTheme.bodySmall),
+                Text(
+                  l10n.textStyle,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
                 const Spacer(),
                 _StyleCycleButton(
-                  style: _style,
+                  style: _templateId == null && _packItemId == null
+                      ? _style
+                      : TextOverlayStyle.plain,
                   color: _color,
                   tooltip: l10n.textStyleCycle,
                   onPressed: _cycleStyle,
                 ),
               ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              l10n.textTemplates,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 72,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: TextStyleTemplateCatalog.all.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  final template = TextStyleTemplateCatalog.all[index];
+                  final selected = _packItemId == null &&
+                      template.id == _selectedTemplateId;
+                  return _TemplateChip(
+                    template: template,
+                    accent: _color,
+                    selected: selected,
+                    onTap: () => _selectTemplate(template),
+                  );
+                },
+              ),
             ),
             const SizedBox(height: 12),
             Text(l10n.textColor, style: Theme.of(context).textTheme.bodySmall),
@@ -178,6 +234,69 @@ class _TextOverlayEditorSheetState extends State<_TextOverlayEditorSheet> {
               }).toList(),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TemplateChip extends StatelessWidget {
+  const _TemplateChip({
+    required this.template,
+    required this.accent,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final TextStyleTemplate template;
+  final Color accent;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppTheme.background,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(
+          color: selected ? AppTheme.accent : Colors.white24,
+          width: selected ? 2 : 1,
+        ),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: SizedBox(
+          width: 78,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: 56,
+                height: 28,
+                child: Center(
+                  child: OverlayTextDisplay(
+                    text: 'Aa',
+                    color: accent,
+                    fontSize: 16,
+                    maxWidth: 56,
+                    template: template,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                template.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Colors.white70,
+                  fontSize: 10,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

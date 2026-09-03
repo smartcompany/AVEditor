@@ -121,6 +121,29 @@ class AppLocalizationsEn extends AppLocalizations {
   String get textStyleCycle => 'Cycle text style';
 
   @override
+  String get textTemplates => 'Word Art';
+
+  @override
+  String get textTemplatePacks => 'Packs';
+
+  @override
+  String get textPackSection => 'Text template server';
+
+  @override
+  String get textPackUrlLabel => 'Pack base URL';
+
+  @override
+  String get textPackUrlBody =>
+      'Vercel URL for Word Art packs (catalog.json + Lottie). Leave empty to use bundled packs only.';
+
+  @override
+  String get textPackUrlSaved => 'Pack server updated.';
+
+  @override
+  String get textPackUrlSavePartial =>
+      'Saved, but remote catalog could not be reached. Bundled packs still work.';
+
+  @override
   String get timelineClip => 'Clip';
 
   @override
@@ -230,11 +253,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get musicCatalogAttribution =>
-      'Music by Jamendo — Creative Commons. Attribution may be required.';
+      'Free for commercial use. Attribution not required (Pixabay / Mixkit).';
 
   @override
   String get musicCatalogUnavailable =>
-      'Online catalog is off. Import an audio file, or build with JAMENDO_CLIENT_ID.';
+      'Could not load the music catalog. Import a file, or check the text template server URL.';
 
   @override
   String get musicLocalOnlyHint =>
@@ -249,6 +272,12 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get useMusicTrack => 'Use';
+
+  @override
+  String get musicPreviewFailed => 'Could not preview this track.';
+
+  @override
   String get removeMusic => 'Remove music';
 
   @override
@@ -258,8 +287,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get musicCatalogSection => 'Music catalog';
 
   @override
+  String get musicCatalogReady => 'Pixabay Music';
+
+  @override
   String get musicCatalogBody =>
-      'Jamendo provides free Creative Commons tracks. Register at devportal.jamendo.com and pass --dart-define=JAMENDO_CLIENT_ID=your_id when building.';
+      'Royalty-free music for commercial use — no attribution required. Uses Pixabay when PIXABAY_API_KEY is set on the server; otherwise Mixkit.';
 
   @override
   String get splitVideo => 'Split clip';

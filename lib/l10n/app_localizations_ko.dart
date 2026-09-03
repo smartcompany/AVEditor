@@ -119,6 +119,29 @@ class AppLocalizationsKo extends AppLocalizations {
   String get textStyleCycle => '텍스트 스타일 변경';
 
   @override
+  String get textTemplates => '워드아트';
+
+  @override
+  String get textTemplatePacks => '팩';
+
+  @override
+  String get textPackSection => '텍스트 템플릿 서버';
+
+  @override
+  String get textPackUrlLabel => '팩 서버 URL';
+
+  @override
+  String get textPackUrlBody =>
+      '워드아트 팩용 Vercel URL (catalog.json + Lottie). 비우면 앱 내장 팩만 사용합니다.';
+
+  @override
+  String get textPackUrlSaved => '팩 서버가 업데이트되었습니다.';
+
+  @override
+  String get textPackUrlSavePartial =>
+      '저장했지만 원격 카탈로그에 연결하지 못했습니다. 내장 팩은 계속 사용할 수 있습니다.';
+
+  @override
   String get timelineClip => '클립';
 
   @override
@@ -226,11 +249,11 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get musicCatalogAttribution =>
-      'Jamendo 음악 — Creative Commons. 출처 표시가 필요할 수 있습니다.';
+      '상업 이용 가능 · 저작자 표시 불필요 (Pixabay / Mixkit).';
 
   @override
   String get musicCatalogUnavailable =>
-      '온라인 카탈로그가 꺼져 있습니다. 파일을 가져오거나 JAMENDO_CLIENT_ID로 빌드하세요.';
+      '음악 카탈로그를 불러오지 못했습니다. 파일을 가져오거나 텍스트 템플릿 서버 주소를 확인하세요.';
 
   @override
   String get musicLocalOnlyHint => '기기에서 MP3, M4A, WAV 파일을 가져오세요.';
@@ -244,6 +267,12 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
+  String get useMusicTrack => '사용';
+
+  @override
+  String get musicPreviewFailed => '미리듣기를 재생할 수 없습니다.';
+
+  @override
   String get removeMusic => '음악 제거';
 
   @override
@@ -253,8 +282,11 @@ class AppLocalizationsKo extends AppLocalizations {
   String get musicCatalogSection => '음악 카탈로그';
 
   @override
+  String get musicCatalogReady => 'Pixabay Music';
+
+  @override
   String get musicCatalogBody =>
-      'Jamendo에서 무료 CC 음악을 제공합니다. devportal.jamendo.com에서 client id를 발급받고 빌드 시 --dart-define=JAMENDO_CLIENT_ID=your_id 를 전달하세요.';
+      '상업 이용 가능, 저작자 표시 불필요. 서버에 PIXABAY_API_KEY가 있으면 Pixabay Music, 없으면 Mixkit으로 검색합니다.';
 
   @override
   String get splitVideo => '분할';

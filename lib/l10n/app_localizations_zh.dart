@@ -119,6 +119,28 @@ class AppLocalizationsZh extends AppLocalizations {
   String get textStyleCycle => '切换文字样式';
 
   @override
+  String get textTemplates => '艺术字';
+
+  @override
+  String get textTemplatePacks => '素材包';
+
+  @override
+  String get textPackSection => '文字模板服务器';
+
+  @override
+  String get textPackUrlLabel => '素材包基础 URL';
+
+  @override
+  String get textPackUrlBody =>
+      '用于艺术字素材包的 Vercel 地址（catalog.json + Lottie）。留空则仅使用内置素材。';
+
+  @override
+  String get textPackUrlSaved => '素材包服务器已更新。';
+
+  @override
+  String get textPackUrlSavePartial => '已保存，但无法连接远程目录。内置素材仍可用。';
+
+  @override
   String get timelineClip => '片段';
 
   @override
@@ -224,11 +246,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get searchMusicHint => '搜索免版税音乐';
 
   @override
-  String get musicCatalogAttribution => 'Jamendo 音乐 — Creative Commons。可能需要署名。';
+  String get musicCatalogAttribution => '可商用，无需署名（Pixabay / Mixkit）。';
 
   @override
-  String get musicCatalogUnavailable =>
-      '在线曲库未启用。请导入文件或使用 JAMENDO_CLIENT_ID 构建。';
+  String get musicCatalogUnavailable => '无法加载曲库。请导入文件，或检查文字模板服务器地址。';
 
   @override
   String get musicLocalOnlyHint => '从设备导入 MP3、M4A 或 WAV 文件。';
@@ -242,6 +263,12 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get useMusicTrack => '使用';
+
+  @override
+  String get musicPreviewFailed => '无法预览此曲目。';
+
+  @override
   String get removeMusic => '移除音乐';
 
   @override
@@ -251,8 +278,11 @@ class AppLocalizationsZh extends AppLocalizations {
   String get musicCatalogSection => '音乐曲库';
 
   @override
+  String get musicCatalogReady => 'Pixabay Music';
+
+  @override
   String get musicCatalogBody =>
-      'Jamendo 提供免费 CC 音乐。在 devportal.jamendo.com 注册 client id，构建时传入 --dart-define=JAMENDO_CLIENT_ID=your_id。';
+      '可商用、无需署名。服务器设置 PIXABAY_API_KEY 时用 Pixabay Music，否则用 Mixkit。';
 
   @override
   String get splitVideo => '分割';

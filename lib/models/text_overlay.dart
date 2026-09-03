@@ -1,4 +1,5 @@
 import 'package:aveditor/models/text_overlay_style.dart';
+import 'package:aveditor/models/text_style_template.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
@@ -9,11 +10,15 @@ import 'package:uuid/uuid.dart';
 const double kOverlayFrameWidth = 1080;
 const double kOverlayFrameHeight = 1920;
 
+const Object _unset = Object();
+
 /// Time-bounded text overlay on the video preview.
 ///
 /// [fontSize], [boxWidth] and [boxHeight] are measured in frame pixels — see
 /// [kOverlayFrameWidth]. The box and the font scale together, so the text keeps
 /// filling the box as it is resized.
+///
+/// Look resolution order: [packItemId] → [templateId] → Shorts [style] cycle.
 class TextOverlay {
   TextOverlay({
     String? id,
@@ -23,6 +28,8 @@ class TextOverlay {
     this.fontSize = 84,
     this.color = Colors.white,
     this.style = TextOverlayStyle.plain,
+    this.templateId,
+    this.packItemId,
     this.alignment = Alignment.center,
     this.offset = Offset.zero,
     this.boxWidth = 540,
@@ -37,7 +44,14 @@ class TextOverlay {
   double fontSize;
   Color color;
   TextOverlayStyle style;
+
+  /// Built-in Word Art preset id, or null for the basic [style] cycle.
+  String? templateId;
+
+  /// Installed / bundled server-pack item id (Lottie + style).
+  String? packItemId;
   Alignment alignment;
+
   /// Normalized offset from center. Values beyond ±1 place text past the frame edge.
   Offset offset;
   double boxWidth;
@@ -46,6 +60,8 @@ class TextOverlay {
   /// Clockwise rotation about the box centre, in radians.
   double rotation;
 
+  TextStyleTemplate? get template => TextStyleTemplateCatalog.byId(templateId);
+
   TextOverlay copyWith({
     String? text,
     Duration? start,
@@ -53,6 +69,8 @@ class TextOverlay {
     double? fontSize,
     Color? color,
     TextOverlayStyle? style,
+    Object? templateId = _unset,
+    Object? packItemId = _unset,
     Alignment? alignment,
     Offset? offset,
     double? boxWidth,
@@ -67,6 +85,12 @@ class TextOverlay {
       fontSize: fontSize ?? this.fontSize,
       color: color ?? this.color,
       style: style ?? this.style,
+      templateId: identical(templateId, _unset)
+          ? this.templateId
+          : templateId as String?,
+      packItemId: identical(packItemId, _unset)
+          ? this.packItemId
+          : packItemId as String?,
       alignment: alignment ?? this.alignment,
       offset: offset ?? this.offset,
       boxWidth: boxWidth ?? this.boxWidth,
@@ -84,6 +108,8 @@ class TextOverlay {
       fontSize: fontSize,
       color: color,
       style: style,
+      templateId: templateId,
+      packItemId: packItemId,
       alignment: alignment,
       offset: offset ?? this.offset,
       boxWidth: boxWidth,
@@ -106,6 +132,8 @@ class TextOverlay {
     'fontSize': fontSize,
     'color': color.toARGB32(),
     'style': style.name,
+    if (templateId != null) 'templateId': templateId,
+    if (packItemId != null) 'packItemId': packItemId,
     'alignmentX': alignment.x,
     'alignmentY': alignment.y,
     'offsetDx': offset.dx,
@@ -124,6 +152,8 @@ class TextOverlay {
       fontSize: (json['fontSize'] as num).toDouble(),
       color: Color(json['color'] as int),
       style: TextOverlayStyle.fromJson(json['style'] as String?),
+      templateId: json['templateId'] as String?,
+      packItemId: json['packItemId'] as String?,
       alignment: Alignment(
         (json['alignmentX'] as num?)?.toDouble() ?? 0,
         (json['alignmentY'] as num?)?.toDouble() ?? 0,

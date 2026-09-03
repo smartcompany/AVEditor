@@ -7,11 +7,14 @@ import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/clip_trim.dart';
 import 'package:aveditor/models/project_music.dart';
 import 'package:aveditor/models/text_overlay.dart';
+import 'package:aveditor/models/text_overlay_style.dart';
+import 'package:aveditor/models/text_template_pack.dart';
 import 'package:aveditor/models/timeline_filmstrip_frame.dart';
 import 'package:aveditor/models/video_project.dart';
 import 'package:aveditor/screens/music_picker_screen.dart';
 import 'package:aveditor/screens/youtube_upload_screen.dart';
 import 'package:aveditor/services/editor_history.dart';
+import 'package:aveditor/services/audio_waveform_service.dart';
 import 'package:aveditor/services/music_storage_service.dart';
 import 'package:aveditor/services/project_storage_service.dart';
 import 'package:aveditor/services/timeline_thumbnail_service.dart';
@@ -25,6 +28,7 @@ import 'package:aveditor/services/export_service.dart';
 import 'package:aveditor/services/export_save_service.dart';
 import 'package:aveditor/widgets/export_progress_dialog.dart';
 import 'package:aveditor/widgets/text_overlay_editor_sheet.dart';
+import 'package:aveditor/widgets/text_template_pack_browser.dart';
 import 'package:aveditor/widgets/timeline_widget.dart';
 import 'package:aveditor/widgets/overflow_hit_stack.dart';
 import 'package:aveditor/widgets/video_preview.dart';
@@ -54,6 +58,7 @@ class _EditorScreenState extends State<EditorScreen>
   VideoProject? _project;
   String? _selectedOverlayId;
   String? _selectedSegmentId;
+  String? _selectedMusicId;
 
   /// Overlay currently edited inline on the preview (keyboard open).
   String? _editingOverlayId;
@@ -75,6 +80,7 @@ class _EditorScreenState extends State<EditorScreen>
   final _musicPlayer = AudioPlayer();
 
   List<TimelineFilmstripFrame> _filmstripFrames = [];
+  final Map<String, List<double>> _musicWaveforms = {};
 
   Timer? _saveDebounce;
 
@@ -187,6 +193,7 @@ class _EditorScreenState extends State<EditorScreen>
       });
 
       unawaited(_loadFilmstrip(project.sourcePath, project.duration));
+      unawaited(_loadMusicWaveforms(project));
 
       if (stored.duration == Duration.zero) {
         _scheduleSave();
@@ -242,6 +249,7 @@ class _EditorScreenState extends State<EditorScreen>
       _project!,
       selectedSegmentId: _selectedSegmentId,
       selectedOverlayId: _selectedOverlayId,
+      selectedMusicId: _selectedMusicId,
     );
   }
 
@@ -310,6 +318,7 @@ class _EditorScreenState extends State<EditorScreen>
     previous.applyTo(project);
     _selectedSegmentId = previous.selectedSegmentId;
     _selectedOverlayId = previous.selectedOverlayId;
+    _selectedMusicId = previous.selectedMusicId;
     _applyingHistory = false;
     setState(() {});
     _scheduleSave();
@@ -325,6 +334,7 @@ class _EditorScreenState extends State<EditorScreen>
     next.applyTo(project);
     _selectedSegmentId = next.selectedSegmentId;
     _selectedOverlayId = next.selectedOverlayId;
+    _selectedMusicId = next.selectedMusicId;
     _applyingHistory = false;
     setState(() {});
     _scheduleSave();
@@ -335,6 +345,11 @@ class _EditorScreenState extends State<EditorScreen>
     final project = _project;
     if (project == null || _exporting) return;
     if (project.duration <= Duration.zero) return;
+
+    if (_selectedMusicId != null) {
+      _splitSelectedMusic();
+      return;
+    }
 
     _ensureHealthySegments(project);
 
@@ -537,8 +552,14 @@ class _EditorScreenState extends State<EditorScreen>
   Future<void> _syncMusicPlayback() async {
     final project = _project;
     final controller = _controller;
-    final music = project?.backgroundMusic;
-    if (project == null || controller == null || music == null) {
+    if (project == null || controller == null) {
+      await _musicPlayer.stop();
+      return;
+    }
+
+    final playhead = _playhead;
+    final music = musicClipAtTime(project.musicTracks, playhead);
+    if (music == null) {
       await _musicPlayer.stop();
       return;
     }
@@ -553,11 +574,11 @@ class _EditorScreenState extends State<EditorScreen>
     }
 
     await _musicPlayer.setSource(DeviceFileSource(musicPath));
-    await _musicPlayer.setVolume(music.volume);
+    final localOffset = playhead - music.timelineStart;
+    await _musicPlayer.setVolume(music.volumeAt(localOffset));
 
-    final playhead = _playhead;
-    final musicPosition = music.sourceOffset + (playhead - music.timelineStart);
-    if (musicPosition.isNegative) {
+    final musicPosition = music.sourceOffset + localOffset;
+    if (musicPosition.isNegative || localOffset >= music.clipDuration) {
       await _musicPlayer.pause();
       return;
     }
@@ -593,6 +614,26 @@ class _EditorScreenState extends State<EditorScreen>
     setState(() {});
   }
 
+  /// Empty canvas tap: clear overlay chrome first; only then toggle playback.
+  void _onPreviewBackgroundTap() {
+    if (_editingOverlayId != null) {
+      _finishInlineEditing('preview_outside');
+      return;
+    }
+    if (_selectedOverlayId != null) {
+      OverlayEventLog.log('Editor', 'deselectOverlay', {
+        'id': _selectedOverlayId,
+      });
+      setState(() => _selectedOverlayId = null);
+      return;
+    }
+    if (_selectedMusicId != null) {
+      setState(() => _selectedMusicId = null);
+      return;
+    }
+    _togglePlay();
+  }
+
   Future<void> _openMusicPicker() async {
     final project = _project;
     if (project == null || _exporting) return;
@@ -604,27 +645,97 @@ class _EditorScreenState extends State<EditorScreen>
       MaterialPageRoute(
         builder: (_) => MusicPickerScreen(
           projectDir: dir.path,
-          current: project.backgroundMusic,
+          current: project.musicTracks.isEmpty
+              ? null
+              : project.musicTracks.first,
         ),
       ),
     );
     if (picked == null) return;
 
-    setState(() {
-      project.backgroundMusic = picked.copyWith(
-        timelineStart: project.trim.start,
-      );
+    final remaining = project.duration - _playhead;
+    var clipDuration = picked.clipDuration;
+    if (remaining > Duration.zero && clipDuration > remaining) {
+      clipDuration = remaining;
+    }
+    if (clipDuration < minMusicClipDuration) {
+      clipDuration = remaining > minMusicClipDuration
+          ? remaining
+          : minMusicClipDuration;
+    }
+
+    final clip = picked.copyWith(
+      timelineStart: _playhead,
+      clipDuration: clipDuration,
+    );
+    _mutate((p) {
+      p.musicTracks.add(clip);
+      _selectedMusicId = clip.id;
+      _selectedOverlayId = null;
+      _selectedSegmentId = null;
     });
-    _history.record(_snapshot());
-    _scheduleSave();
+    unawaited(_ensureMusicWaveform(clip));
     await _syncMusicPlayback();
   }
 
-  void _removeMusic() {
+  Future<void> _loadMusicWaveforms(VideoProject project) async {
+    for (final music in project.musicTracks) {
+      await _ensureMusicWaveform(music);
+      if (!mounted) return;
+    }
+  }
+
+  Future<void> _ensureMusicWaveform(ProjectMusic music) async {
+    if (_musicWaveforms.containsKey(music.fileName)) return;
     final project = _project;
     if (project == null) return;
-    _mutate((p) => p.backgroundMusic = null);
+    final path = MusicStorageService.musicPath(
+      p.dirname(project.sourcePath),
+      music,
+    );
+    final peaks = await AudioWaveformService.instance.peaksForFile(path);
+    if (!mounted || peaks.isEmpty) return;
+    setState(() => _musicWaveforms[music.fileName] = peaks);
+  }
+
+  void _replaceMusicClip(ProjectMusic next) {
+    _mutate((p) {
+      final i = p.musicTracks.indexWhere((m) => m.id == next.id);
+      if (i >= 0) p.musicTracks[i] = next;
+    });
+    unawaited(_syncMusicPlayback());
+  }
+
+  void _removeSelectedMusic() {
+    final id = _selectedMusicId;
+    if (id == null) return;
+    _mutate((p) {
+      p.musicTracks.removeWhere((m) => m.id == id);
+      _selectedMusicId = null;
+    });
     unawaited(_musicPlayer.stop());
+  }
+
+  void _splitSelectedMusic() {
+    final project = _project;
+    final id = _selectedMusicId;
+    if (project == null || id == null) return;
+
+    final index = project.musicTracks.indexWhere((m) => m.id == id);
+    if (index < 0) return;
+    final clip = project.musicTracks[index];
+    final split = splitMusicClip(clip, _playhead);
+    if (split == null) {
+      _showSnack(context.l10n.splitTooShort);
+      return;
+    }
+    _mutate((p) {
+      p.musicTracks
+        ..removeAt(index)
+        ..insert(index, split.$1)
+        ..insert(index + 1, split.$2);
+      _selectedMusicId = split.$2.id;
+    });
   }
 
   void _addTextOverlay() {
@@ -652,6 +763,55 @@ class _EditorScreenState extends State<EditorScreen>
     _mutate((p) {
       p.overlays.add(overlay);
       _selectedOverlayId = overlay.id;
+      _editingOverlayId = overlay.id;
+    });
+  }
+
+  ({Duration start, Duration end}) _defaultOverlaySpan(VideoProject project) {
+    final start = _playhead;
+    var end = start + const Duration(seconds: 3);
+    if (end > project.duration) {
+      end = project.duration;
+    }
+    if (end - start < minOverlayDuration) {
+      end = start + minOverlayDuration;
+      if (end > project.duration) {
+        end = project.duration;
+      }
+    }
+    return (start: start, end: end);
+  }
+
+  Future<void> _openTextTemplatePacks() async {
+    if (_exporting) return;
+    final controller = _controller;
+    if (controller != null && controller.value.isPlaying) {
+      controller.pause();
+    }
+
+    await showTextTemplatePackBrowser(
+      context: context,
+      onSelected: _applyTextTemplatePack,
+    );
+  }
+
+  void _applyTextTemplatePack(TextTemplatePackItem item) {
+    final project = _project;
+    if (project == null) return;
+
+    // Always add a new overlay; user edits the letters inline.
+    final span = _defaultOverlaySpan(project);
+    final overlay = TextOverlay(
+      text: item.title,
+      start: span.start,
+      end: span.end,
+      packItemId: item.id,
+      style: TextOverlayStyle.plain,
+    );
+    _mutate((p) {
+      p.overlays.add(overlay);
+      _selectedOverlayId = overlay.id;
+      _selectedSegmentId = null;
       _editingOverlayId = overlay.id;
     });
   }
@@ -773,7 +933,8 @@ class _EditorScreenState extends State<EditorScreen>
 
     setState(() {
       _editingOverlayId = null;
-      _selectedOverlayId = id;
+      // Tap outside the box dismisses chrome entirely; other exits keep selection.
+      _selectedOverlayId = source == 'preview_outside' ? null : id;
     });
     OverlayEventLog.log('Editor', 'finishInlineEditingDone', {
       'source': source,
@@ -1024,7 +1185,7 @@ class _EditorScreenState extends State<EditorScreen>
                               setState(() => _selectedOverlayId = overlay.id);
                             },
                             onRequestEdit: _startInlineEditing,
-                            onBackgroundTap: _togglePlay,
+                            onBackgroundTap: _onPreviewBackgroundTap,
                             onOverlayTextChanged: _onOverlayTextChanged,
                             onEditingComplete: _finishInlineEditing,
                             onOverlayOffsetChanged: (overlay, offset) {
@@ -1183,6 +1344,8 @@ class _EditorScreenState extends State<EditorScreen>
       trimEnd: project.trim.end,
       segments: project.segments,
       overlays: project.overlays,
+      musicTracks: project.musicTracks,
+      musicWaveforms: _musicWaveforms,
       filmstripFrames: _filmstripFrames,
       playhead: _playhead,
       isPlaying: controller.value.isPlaying,
@@ -1191,6 +1354,7 @@ class _EditorScreenState extends State<EditorScreen>
       onHandleDragEnd: _onChromeDragEnd,
       selectedOverlayId: _selectedOverlayId,
       selectedSegmentId: _selectedSegmentId,
+      selectedMusicId: _selectedMusicId,
       onPlayheadChanged: _seek,
       onTrimStartChanged: (start) {
         setState(() {
@@ -1211,85 +1375,92 @@ class _EditorScreenState extends State<EditorScreen>
         setState(() {
           _selectedOverlayId = overlay.id;
           _selectedSegmentId = null;
+          _selectedMusicId = null;
+        });
+      },
+      onMusicChanged: _replaceMusicClip,
+      onMusicSelected: (music) {
+        setState(() {
+          _selectedMusicId = music.id;
+          _selectedOverlayId = null;
+          _selectedSegmentId = null;
         });
       },
       onSegmentSelected: (segment) {
         setState(() {
           _selectedSegmentId = segment.id;
           _selectedOverlayId = null;
+          _selectedMusicId = null;
         });
       },
     );
   }
 
   Widget _buildBottomActions(AppLocalizations l10n) {
-    final music = _project?.backgroundMusic;
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
       child: Column(
         children: [
-          if (music != null) ...[
-            Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                dense: true,
-                leading: const Icon(Icons.music_note_outlined),
-                title: Text(music.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                subtitle: music.artist == null
-                    ? null
-                    : Text(music.artist!, maxLines: 1, overflow: TextOverflow.ellipsis),
-                trailing: IconButton(
-                  onPressed: _exporting ? null : _removeMusic,
-                  icon: const Icon(Icons.close),
-                  tooltip: l10n.removeMusic,
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton.outlined(
+                  onPressed: _exporting ? null : _addTextOverlay,
+                  icon: const Icon(Icons.text_fields),
+                  tooltip: l10n.addText,
                 ),
-              ),
+                const SizedBox(width: 8),
+                IconButton.outlined(
+                  onPressed: _selectedOverlay == null || _exporting
+                      ? null
+                      : _editSelectedOverlay,
+                  icon: const Icon(Icons.edit_note_outlined),
+                  tooltip: l10n.editText,
+                ),
+                const SizedBox(width: 8),
+                IconButton.outlined(
+                  onPressed: _exporting ? null : _openTextTemplatePacks,
+                  icon: const Icon(Icons.auto_awesome),
+                  tooltip: l10n.textTemplatePacks,
+                ),
+                const SizedBox(width: 8),
+                IconButton.outlined(
+                  onPressed: _exporting ? null : _splitAtPlayhead,
+                  icon: const Icon(Icons.content_cut),
+                  tooltip: l10n.splitVideo,
+                ),
+                const SizedBox(width: 8),
+                IconButton.outlined(
+                  onPressed: (_selectedSegmentId == null &&
+                              _selectedMusicId == null) ||
+                          _exporting
+                      ? null
+                      : () {
+                          if (_selectedMusicId != null) {
+                            _removeSelectedMusic();
+                          } else {
+                            _deleteSelectedSegment();
+                          }
+                        },
+                  icon: const Icon(Icons.delete_outline),
+                  tooltip: l10n.deleteSegment,
+                ),
+                const SizedBox(width: 8),
+                IconButton.outlined(
+                  onPressed: _exporting ? null : _openMusicPicker,
+                  icon: const Icon(Icons.library_music_outlined),
+                  tooltip: l10n.addMusic,
+                ),
+                const SizedBox(width: 8),
+                IconButton.outlined(
+                  onPressed: _exporting ? null : _rotateClipQuarterTurn,
+                  icon: const Icon(Icons.rotate_90_degrees_cw_outlined),
+                  tooltip: l10n.rotateVideo,
+                ),
+              ],
             ),
-          ],
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              IconButton.outlined(
-                onPressed: _exporting ? null : _addTextOverlay,
-                icon: const Icon(Icons.text_fields),
-                tooltip: l10n.addText,
-              ),
-              const SizedBox(width: 8),
-              IconButton.outlined(
-                onPressed: _selectedOverlay == null || _exporting
-                    ? null
-                    : _editSelectedOverlay,
-                icon: const Icon(Icons.edit_note_outlined),
-                tooltip: l10n.editText,
-              ),
-              const SizedBox(width: 8),
-              IconButton.outlined(
-                onPressed: _exporting ? null : _splitAtPlayhead,
-                icon: const Icon(Icons.content_cut),
-                tooltip: l10n.splitVideo,
-              ),
-              const SizedBox(width: 8),
-              IconButton.outlined(
-                onPressed: _selectedSegmentId == null || _exporting
-                    ? null
-                    : _deleteSelectedSegment,
-                icon: const Icon(Icons.delete_outline),
-                tooltip: l10n.deleteSegment,
-              ),
-              const SizedBox(width: 8),
-              IconButton.outlined(
-                onPressed: _exporting ? null : _openMusicPicker,
-                icon: const Icon(Icons.library_music_outlined),
-                tooltip: l10n.addMusic,
-              ),
-              const SizedBox(width: 8),
-              IconButton.outlined(
-                onPressed: _exporting ? null : _rotateClipQuarterTurn,
-                icon: const Icon(Icons.rotate_90_degrees_cw_outlined),
-                tooltip: l10n.rotateVideo,
-              ),
-            ],
           ),
           const SizedBox(height: 12),
           SizedBox(

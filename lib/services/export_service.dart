@@ -159,8 +159,8 @@ class ExportService {
   }
 
   static String? _musicPathForProject(VideoProject project) {
-    final music = project.backgroundMusic;
-    if (music == null) return null;
+    if (project.musicTracks.isEmpty) return null;
+    final music = project.musicTracks.first;
     final projectDir = p.dirname(project.sourcePath);
     return p.join(projectDir, music.fileName);
   }
@@ -220,13 +220,13 @@ class ExportService {
       frame: frame,
     );
     final crf = quality.crf ?? quality.fallbackCrf;
-    final music = project.backgroundMusic;
+    final tracks = project.musicTracks;
     final hasConcat = project.segments.length > 1;
     final exportDurationSec =
         project.trimmedDuration.inMilliseconds / 1000.0;
-    final audioGraph = music != null && musicPath != null
+    final audioGraph = tracks.isNotEmpty && musicPath != null
         ? buildAudioMixGraph(
-            music: music,
+            tracks: tracks,
             trimStart: project.trim.start,
             exportDurationSec: exportDurationSec,
             videoAudioStream: hasConcat ? '[acat]' : '[0:a]',
@@ -290,39 +290,85 @@ class ExportService {
     ].join(' ');
   }
 
-  /// Mixes background music with the trimmed clip audio.
+  /// Mixes background music clips with the trimmed clip audio.
   @visibleForTesting
   static FilterGraph buildAudioMixGraph({
-    required ProjectMusic music,
+    ProjectMusic? music,
+    List<ProjectMusic>? tracks,
     required Duration trimStart,
     required double exportDurationSec,
     required String videoAudioStream,
     required int musicInput,
     bool hasVideoAudio = true,
   }) {
-    final delaySec = ((music.timelineStart - trimStart).inMilliseconds / 1000.0)
-        .clamp(0.0, exportDurationSec);
-    final sourceOffsetSec = music.sourceOffset.inMilliseconds / 1000.0;
-    final volume = music.volume.clamp(0.0, 1.0).toStringAsFixed(3);
-
-    final musicChain = StringBuffer(
-      '[$musicInput:a]atrim=start=$sourceOffsetSec:duration=$exportDurationSec,'
-      'asetpts=PTS-STARTPTS',
-    );
-    if (delaySec > 0) {
-      musicChain.write(
-        ',adelay=${(delaySec * 1000).round()}|${(delaySec * 1000).round()}',
-      );
+    final clips = tracks ?? (music == null ? const <ProjectMusic>[] : [music]);
+    if (clips.isEmpty) {
+      return const FilterGraph(description: '[0:a]anull[aout]', outputLabel: 'aout');
     }
-    musicChain.write(',volume=$volume[music]');
+
+    final parts = <String>[];
+    for (var i = 0; i < clips.length; i++) {
+      final clip = clips[i];
+      final delayMs = ((clip.timelineStart - trimStart).inMilliseconds)
+          .clamp(0, (exportDurationSec * 1000).round());
+      final sourceOffsetSec = clip.sourceOffset.inMilliseconds / 1000.0;
+      final clipSec = (clip.clipDuration.inMilliseconds / 1000.0)
+          .clamp(0.05, exportDurationSec);
+      final volume = clip.volume.clamp(0.0, 1.0).toStringAsFixed(3);
+      final fadeInSec = clip.effectiveFadeIn.inMilliseconds / 1000.0;
+      final fadeOutSec = clip.effectiveFadeOut.inMilliseconds / 1000.0;
+
+      final chain = StringBuffer(
+        '[$musicInput:a]atrim=start=$sourceOffsetSec:duration=$clipSec,'
+        'asetpts=PTS-STARTPTS',
+      );
+      if (fadeInSec > 0) {
+        chain.write(
+          ',afade=t=in:st=0:d=${fadeInSec.toStringAsFixed(3)}:curve=hsin',
+        );
+      }
+      if (fadeOutSec > 0) {
+        final start = (clipSec - fadeOutSec).clamp(0.0, clipSec);
+        chain.write(
+          ',afade=t=out:st=${start.toStringAsFixed(3)}:d=${fadeOutSec.toStringAsFixed(3)}:curve=hsin',
+        );
+      }
+      if (delayMs > 0) {
+        chain.write(',adelay=$delayMs|$delayMs');
+      }
+      chain.write(',volume=$volume[m$i]');
+      parts.add(chain.toString());
+    }
+
+    String musicLabel;
+    if (clips.length == 1) {
+      parts[0] = parts[0].replaceAll('[m0]', '[music]');
+      musicLabel = '[music]';
+    } else {
+      final mixInputs = List.generate(clips.length, (i) => '[m$i]').join();
+      parts.add(
+        '$mixInputs amix=inputs=${clips.length}:duration=longest:dropout_transition=0[music]',
+      );
+      musicLabel = '[music]';
+    }
 
     final description = hasVideoAudio
         ? '$videoAudioStream aformat=sample_rates=44100:channel_layouts=stereo,volume=1[va];'
-            '${musicChain.toString()};'
-            '[va][music]amix=inputs=2:duration=first:dropout_transition=2[aout]'
-        : musicChain.toString().replaceAll('[music]', '[aout]');
+            '${parts.join(';')};'
+            '[va]$musicLabel amix=inputs=2:duration=first:dropout_transition=2[aout]'
+        : '${parts.join(';')};'
+            '${musicLabel.replaceAll('[music]', '[aout]')}'
+                .replaceFirst('[music]', '[aout]');
 
-    return FilterGraph(description: description, outputLabel: 'aout');
+    // When no video audio, the last label is already [music] — rename to [aout].
+    final resolved = hasVideoAudio
+        ? description
+        : '${parts.join(';')}'.replaceAll('[music]', '[aout]');
+
+    return FilterGraph(
+      description: hasVideoAudio ? description : resolved,
+      outputLabel: 'aout',
+    );
   }
 
   /// Visible spans of [overlay] on the concatenated export timeline.

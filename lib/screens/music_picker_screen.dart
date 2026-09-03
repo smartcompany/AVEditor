@@ -1,15 +1,20 @@
-import 'package:aveditor/config/music_api_config.dart';
+import 'dart:async';
+
 import 'package:aveditor/l10n/app_localizations.dart';
 import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/models/project_music.dart';
 import 'package:aveditor/models/royalty_free_track.dart';
-import 'package:aveditor/services/jamendo_music_service.dart';
+import 'package:aveditor/services/music_catalog_service.dart';
 import 'package:aveditor/services/music_storage_service.dart';
+import 'package:aveditor/services/text_template_pack_service.dart';
+import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/utils/duration_format.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
+/// CapCut-style music browser: search → preview → download into the project.
 class MusicPickerScreen extends StatefulWidget {
   const MusicPickerScreen({
     super.key,
@@ -26,26 +31,35 @@ class MusicPickerScreen extends StatefulWidget {
 
 class _MusicPickerScreenState extends State<MusicPickerScreen> {
   final _searchController = TextEditingController();
-  final _jamendo = const JamendoMusicService();
-  final _storage = const MusicStorageService();
+  final _catalog = MusicCatalogService();
+  final _storage = MusicStorageService();
+  final _previewPlayer = AudioPlayer();
 
   List<RoyaltyFreeTrack> _tracks = [];
-  bool _loading = false;
+  bool _loading = true;
+  bool _catalogConfigured = true;
   String? _error;
   String? _busyTrackId;
+  String? _previewTrackId;
+  String? _attribution;
 
   @override
   void initState() {
     super.initState();
-    if (MusicApiConfig.hasJamendoCatalog) {
-      _loadFeatured();
-    }
+    unawaited(_bootstrap());
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    unawaited(_previewPlayer.dispose());
     super.dispose();
+  }
+
+  Future<void> _bootstrap() async {
+    await TextTemplatePackService.instance.ensureInitialized();
+    if (!mounted) return;
+    await _loadFeatured();
   }
 
   Future<void> _loadFeatured() async {
@@ -54,11 +68,16 @@ class _MusicPickerScreenState extends State<MusicPickerScreen> {
       _error = null;
     });
     try {
-      final tracks = await _jamendo.featured();
+      final page = await _catalog.featured();
       if (!mounted) return;
       setState(() {
-        _tracks = tracks;
+        _catalogConfigured = page.configured;
+        _tracks = page.tracks;
+        _attribution = page.attribution;
         _loading = false;
+        if (!page.configured) {
+          _error = page.error;
+        }
       });
     } catch (_) {
       if (!mounted) return;
@@ -81,11 +100,16 @@ class _MusicPickerScreenState extends State<MusicPickerScreen> {
       _error = null;
     });
     try {
-      final tracks = await _jamendo.search(query: query);
+      final page = await _catalog.search(query: query);
       if (!mounted) return;
       setState(() {
-        _tracks = tracks;
+        _catalogConfigured = page.configured;
+        _tracks = page.tracks;
+        _attribution = page.attribution;
         _loading = false;
+        if (!page.configured) {
+          _error = page.error;
+        }
       });
     } catch (_) {
       if (!mounted) return;
@@ -93,6 +117,29 @@ class _MusicPickerScreenState extends State<MusicPickerScreen> {
         _loading = false;
         _error = 'search_failed';
       });
+    }
+  }
+
+  Future<void> _togglePreview(RoyaltyFreeTrack track) async {
+    if (track.previewUrl.isEmpty) return;
+
+    if (_previewTrackId == track.id) {
+      await _previewPlayer.stop();
+      if (!mounted) return;
+      setState(() => _previewTrackId = null);
+      return;
+    }
+
+    setState(() => _previewTrackId = track.id);
+    try {
+      await _previewPlayer.stop();
+      await _previewPlayer.play(UrlSource(track.previewUrl));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _previewTrackId = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.l10n.musicPreviewFailed)),
+      );
     }
   }
 
@@ -110,6 +157,7 @@ class _MusicPickerScreenState extends State<MusicPickerScreen> {
 
     setState(() => _busyTrackId = 'local');
     try {
+      await _previewPlayer.stop();
       final music = await _storage.importLocalFile(
         projectDir: widget.projectDir,
         pickedPath: picked.path,
@@ -127,11 +175,13 @@ class _MusicPickerScreenState extends State<MusicPickerScreen> {
     }
   }
 
-  Future<void> _selectTrack(RoyaltyFreeTrack track) async {
+  Future<void> _downloadTrack(RoyaltyFreeTrack track) async {
     final l10n = context.l10n;
     setState(() => _busyTrackId = track.id);
     try {
-      final music = await _storage.importJamendoTrack(
+      await _previewPlayer.stop();
+      setState(() => _previewTrackId = null);
+      final music = await _storage.importCatalogTrack(
         projectDir: widget.projectDir,
         track: track,
       );
@@ -150,7 +200,6 @@ class _MusicPickerScreenState extends State<MusicPickerScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final hasCatalog = MusicApiConfig.hasJamendoCatalog;
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.addMusic)),
@@ -158,6 +207,29 @@ class _MusicPickerScreenState extends State<MusicPickerScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: TextField(
+              controller: _searchController,
+              enabled: _catalogConfigured || _loading,
+              decoration: InputDecoration(
+                hintText: l10n.searchMusicHint,
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: IconButton(
+                  onPressed: _loading ? null : _search,
+                  icon: const Icon(Icons.arrow_forward),
+                ),
+                filled: true,
+                fillColor: AppTheme.surface,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+              textInputAction: TextInputAction.search,
+              onSubmitted: (_) => _search(),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: Row(
               children: [
                 Expanded(
@@ -170,51 +242,17 @@ class _MusicPickerScreenState extends State<MusicPickerScreen> {
               ],
             ),
           ),
-          if (!hasCatalog)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                l10n.musicCatalogUnavailable,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            )
-          else ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _searchController,
-                      decoration: InputDecoration(
-                        hintText: l10n.searchMusicHint,
-                        prefixIcon: const Icon(Icons.search),
-                        isDense: true,
-                      ),
-                      textInputAction: TextInputAction.search,
-                      onSubmitted: (_) => _search(),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    onPressed: _loading ? null : _search,
-                    icon: const Icon(Icons.arrow_forward),
-                    tooltip: l10n.searchMusicHint,
-                  ),
-                ],
-              ),
-            ),
+          if (_attribution != null || _catalogConfigured)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  l10n.musicCatalogAttribution,
+                  _attribution ?? l10n.musicCatalogAttribution,
                   style: Theme.of(context).textTheme.labelSmall,
                 ),
               ),
             ),
-          ],
           if (widget.current != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -226,27 +264,43 @@ class _MusicPickerScreenState extends State<MusicPickerScreen> {
                 ),
               ),
             ),
-          Expanded(child: _buildBody(l10n, hasCatalog)),
+          Expanded(child: _buildBody(l10n)),
         ],
       ),
     );
   }
 
-  Widget _buildBody(AppLocalizations l10n, bool hasCatalog) {
-    if (!hasCatalog) {
+  Widget _buildBody(AppLocalizations l10n) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (!_catalogConfigured) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Text(
-            l10n.musicLocalOnlyHint,
-            textAlign: TextAlign.center,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                l10n.musicCatalogUnavailable,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                l10n.musicLocalOnlyHint,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: _pickLocalFile,
+                child: Text(l10n.importMusicFile),
+              ),
+            ],
           ),
         ),
       );
-    }
-
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
     }
 
     if (_error != null) {
@@ -263,27 +317,141 @@ class _MusicPickerScreenState extends State<MusicPickerScreen> {
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
       itemCount: _tracks.length,
-      separatorBuilder: (_, index) => const Divider(height: 1),
+      separatorBuilder: (_, index) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
         final track = _tracks[index];
         final busy = _busyTrackId == track.id;
-        return ListTile(
-          leading: busy
-              ? const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.music_note_outlined),
-          title: Text(track.title),
-          subtitle: Text(
-            '${track.artist} · ${formatDuration(track.duration)}',
-          ),
-          onTap: busy ? null : () => _selectTrack(track),
+        final previewing = _previewTrackId == track.id;
+        return _TrackTile(
+          track: track,
+          busy: busy,
+          previewing: previewing,
+          onPreview: () => _togglePreview(track),
+          onUse: busy ? null : () => _downloadTrack(track),
+          useLabel: l10n.useMusicTrack,
         );
       },
+    );
+  }
+}
+
+class _TrackTile extends StatelessWidget {
+  const _TrackTile({
+    required this.track,
+    required this.busy,
+    required this.previewing,
+    required this.onPreview,
+    required this.onUse,
+    required this.useLabel,
+  });
+
+  final RoyaltyFreeTrack track;
+  final bool busy;
+  final bool previewing;
+  final VoidCallback onPreview;
+  final VoidCallback? onUse;
+  final String useLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppTheme.surface,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 10, 8, 10),
+        child: Row(
+          children: [
+            _Cover(imageUrl: track.imageUrl, previewing: previewing),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    track.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${track.artist} · ${formatDuration(track.duration)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              onPressed: track.previewUrl.isEmpty ? null : onPreview,
+              icon: Icon(
+                previewing ? Icons.stop_circle_outlined : Icons.play_circle_outline,
+              ),
+              tooltip: previewing ? 'Stop' : 'Preview',
+            ),
+            if (busy)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12),
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            else
+              TextButton(
+                onPressed: onUse,
+                child: Text(useLabel),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Cover extends StatelessWidget {
+  const _Cover({required this.imageUrl, required this.previewing});
+
+  final String imageUrl;
+  final bool previewing;
+
+  @override
+  Widget build(BuildContext context) {
+    final child = imageUrl.isEmpty
+        ? const ColoredBox(
+            color: Color(0xFF1C1F28),
+            child: Icon(Icons.music_note, color: Colors.white54),
+          )
+        : Image.network(
+            imageUrl,
+            fit: BoxFit.cover,
+            errorBuilder: (_, error, stackTrace) => const ColoredBox(
+              color: Color(0xFF1C1F28),
+              child: Icon(Icons.music_note, color: Colors.white54),
+            ),
+          );
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: SizedBox(
+        width: 52,
+        height: 52,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            child,
+            if (previewing)
+              const ColoredBox(
+                color: Color(0x66000000),
+                child: Icon(Icons.equalizer, color: Colors.white, size: 22),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

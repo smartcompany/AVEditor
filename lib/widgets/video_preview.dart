@@ -2,13 +2,13 @@ import 'dart:math' as math;
 
 import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/text_overlay.dart';
-import 'package:aveditor/models/text_overlay_style.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
 import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/utils/overlay_event_log.dart';
 import 'package:aveditor/widgets/overlay_geometry.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/widgets/overflow_hit_stack.dart';
+import 'package:aveditor/widgets/text_template_pack_browser.dart';
 import 'package:flutter/material.dart';
 
 export 'overlay_geometry.dart' show OverlayGeometry, OverlayBox;
@@ -115,6 +115,11 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
   OverlayDrag? _activeDrag;
   int? _activePointer;
   TextOverlay? _tapTarget;
+  /// Overlay under the active pointer — may differ from [widget.selectedOverlayId]
+  /// until the parent rebuilds after a fresh select-on-down.
+  TextOverlay? _gestureOverlay;
+  /// True when this press selected a new overlay; release must not open edit.
+  bool _suppressEditOnRelease = false;
   Offset? _lastLocal;
   bool _pointerMoved = false;
   double _pointerTravel = 0;
@@ -160,7 +165,8 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
 
   /// [overlay]'s box in canvas pixels, including any in-progress drag.
   OverlayBox _boxOf(TextOverlay overlay) {
-    if (overlay.id == widget.selectedOverlayId) {
+    final liveId = _gestureOverlay?.id ?? widget.selectedOverlayId;
+    if (overlay.id == liveId) {
       final live = _liveBox;
       if (live != null) return live;
     }
@@ -182,6 +188,8 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
     _activeDrag = null;
     _activePointer = null;
     _tapTarget = null;
+    _gestureOverlay = null;
+    _suppressEditOnRelease = false;
     _lastLocal = null;
     _pointerMoved = false;
     _pointerTravel = 0;
@@ -433,6 +441,9 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
 
     if (_activePointer != null) return;
 
+    _suppressEditOnRelease = false;
+    _gestureOverlay = null;
+
     final selected = _selectedOverlay;
     if (selected != null) {
       final drag = OverlayGeometry.hitTestPreviewPoint(
@@ -446,12 +457,14 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
         OverlayEventLog.log('PreviewCanvas', 'dragStart', {
           'local': local,
           'drag': drag.label,
+          'id': selected.id,
         });
         _activePointer = event.pointer;
         _lastLocal = local;
         _pointerMoved = false;
         _pointerTravel = 0;
         _moveLogCounter = 0;
+        _gestureOverlay = selected;
         // A body press that never travels is a tap → open the inline editor.
         // Corner presses are resolved from the drag kind on release instead.
         _tapTarget = drag.kind == OverlayDragKind.move ? selected : null;
@@ -460,17 +473,41 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
       }
     }
 
+    // Unselected (or another) text: grab immediately so the press never
+    // falls through to video play/pause, and drag works without edit mode.
     final tapped = _topmostBodyAt(local);
     OverlayEventLog.log('PreviewCanvas', 'bodyProbe', {
       'local': local,
       'hit': tapped?.id,
     });
-    // A null hit is still tracked: releasing without travel is a canvas tap.
+    if (tapped != null) {
+      if (tapped.id != widget.selectedOverlayId) {
+        _suppressEditOnRelease = true;
+        widget.onOverlaySelected?.call(tapped);
+      }
+      _activePointer = event.pointer;
+      _lastLocal = local;
+      _pointerMoved = false;
+      _pointerTravel = 0;
+      _moveLogCounter = 0;
+      _gestureOverlay = tapped;
+      _tapTarget = tapped;
+      OverlayEventLog.log('PreviewCanvas', 'dragStart', {
+        'local': local,
+        'drag': 'move',
+        'id': tapped.id,
+        'freshSelect': _suppressEditOnRelease,
+      });
+      _beginDrag(tapped, OverlayDrag.move, local);
+      return;
+    }
+
+    // Empty canvas: releasing without travel toggles playback.
     _activePointer = event.pointer;
     _lastLocal = local;
     _pointerMoved = false;
     _pointerTravel = 0;
-    _tapTarget = tapped;
+    _tapTarget = null;
   }
 
   void handlePointerMove(PointerMoveEvent event) {
@@ -483,7 +520,7 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
     if (event.pointer != _activePointer) return;
     _pointerTravel += event.delta.distance;
     if (_pointerTravel > _tapSlop) _pointerMoved = true;
-    final overlay = _selectedOverlay;
+    final overlay = _gestureOverlay ?? _selectedOverlay;
     if (overlay == null || _activeDrag == null) return;
     _onPreviewPointerMoveAt(event, overlay);
   }
@@ -496,7 +533,8 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
     final target = _tapTarget;
     final moved = _pointerMoved;
     final drag = _activeDrag;
-    final dragged = _selectedOverlay;
+    final dragged = _gestureOverlay ?? _selectedOverlay;
+    final suppressEdit = _suppressEditOnRelease;
 
     if (drag != null && dragged != null) {
       _onPreviewPointerEnd(dragged, pointer);
@@ -504,6 +542,8 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
 
     _activePointer = null;
     _tapTarget = null;
+    _gestureOverlay = null;
+    _suppressEditOnRelease = false;
     _lastLocal = null;
     _pointerMoved = false;
     _pointerTravel = 0;
@@ -538,12 +578,16 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
       return;
     }
 
-    if (target.id == widget.selectedOverlayId) {
+    // Text hit: never toggle playback. Fresh select stays selected; a second
+    // tap on an already-selected overlay opens inline edit.
+    if (!suppressEdit && target.id == widget.selectedOverlayId) {
       OverlayEventLog.log('PreviewCanvas', 'tapRequestEdit', {'id': target.id});
       widget.onRequestEdit?.call(target);
     } else {
       OverlayEventLog.log('PreviewCanvas', 'tapSelect', {'id': target.id});
-      widget.onOverlaySelected?.call(target);
+      if (target.id != widget.selectedOverlayId) {
+        widget.onOverlaySelected?.call(target);
+      }
     }
   }
 
@@ -552,12 +596,14 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
     if (_downPointers.isNotEmpty) return;
 
     if (pointer != _activePointer) return;
-    final overlay = _selectedOverlay;
+    final overlay = _gestureOverlay ?? _selectedOverlay;
     if (overlay != null && _activeDrag != null) {
       _onPreviewPointerEnd(overlay, pointer);
     }
     _activePointer = null;
     _tapTarget = null;
+    _gestureOverlay = null;
+    _suppressEditOnRelease = false;
     _lastLocal = null;
     _pointerMoved = false;
     _pointerTravel = 0;
@@ -783,22 +829,24 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
     super.dispose();
   }
 
-  TextStyle get _fillStyle => overlayTextFillStyle(
-    color: widget.overlay.color,
-    fontSize: widget.box.fontSize,
-    style: widget.overlay.style,
-  );
+  TextStyle get _fillStyle {
+    final template = resolveOverlayTemplate(widget.overlay);
+    return TextStyle(
+      fontFamily: overlayFontFamily,
+      color: template.resolveFill(widget.overlay.color),
+      fontSize: widget.box.fontSize,
+      fontWeight: FontWeight.w700,
+      height: 1.15,
+    );
+  }
 
   Widget _buildBody() {
-    final hintColor = widget.overlay.style == TextOverlayStyle.plain
-        ? widget.overlay.color.withValues(alpha: 0.45)
-        : overlayTextFillColor(
-            style: widget.overlay.style,
-            accent: widget.overlay.color,
-          ).withValues(alpha: 0.45);
+    final template = resolveOverlayTemplate(widget.overlay);
+    final fill = template.resolveFill(widget.overlay.color);
+    final hintColor = fill.withValues(alpha: 0.45);
 
     if (widget.editing) {
-      return MediaQuery.withNoTextScaling(
+      final field = MediaQuery.withNoTextScaling(
         child: Center(
           child: TextField(
             controller: _controller,
@@ -823,21 +871,51 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
           ),
         ),
       );
+      final packId = widget.overlay.packItemId;
+      if (packId == null) return field;
+      return Stack(
+        alignment: Alignment.center,
+        clipBehavior: Clip.none,
+        children: [
+          IgnorePointer(
+            child: PackLottieDecoration(
+              packItemId: packId,
+              width: widget.box.width * 1.15,
+              height: widget.box.height * 1.4,
+            ),
+          ),
+          field,
+        ],
+      );
     }
 
     final isHint = widget.overlay.text.isEmpty;
-    return MediaQuery.withNoTextScaling(
-      child: Center(
-        child: OverlayTextDisplay(
-          text: isHint ? (widget.textHint ?? '') : widget.overlay.text,
-          color: widget.overlay.color,
-          fontSize: widget.box.fontSize,
-          maxWidth: widget.box.width,
-          style: widget.overlay.style,
-          hintColor: isHint ? hintColor : null,
-        ),
-      ),
+    final text = OverlayTextDisplay(
+      text: isHint ? (widget.textHint ?? '') : widget.overlay.text,
+      color: widget.overlay.color,
+      fontSize: widget.box.fontSize,
+      maxWidth: widget.box.width,
+      template: template,
+      hintColor: isHint ? hintColor : null,
     );
+
+    final packId = widget.overlay.packItemId;
+    final body = packId == null
+        ? text
+        : Stack(
+            alignment: Alignment.center,
+            clipBehavior: Clip.none,
+            children: [
+              PackLottieDecoration(
+                packItemId: packId,
+                width: widget.box.width * 1.15,
+                height: widget.box.height * 1.15,
+              ),
+              text,
+            ],
+          );
+
+    return MediaQuery.withNoTextScaling(child: Center(child: body));
   }
 
   Widget _buildMoveGrip() {

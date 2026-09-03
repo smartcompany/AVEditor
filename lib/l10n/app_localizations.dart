@@ -318,6 +318,48 @@ abstract class AppLocalizations {
   /// **'Cycle text style'**
   String get textStyleCycle;
 
+  /// No description provided for @textTemplates.
+  ///
+  /// In en, this message translates to:
+  /// **'Word Art'**
+  String get textTemplates;
+
+  /// No description provided for @textTemplatePacks.
+  ///
+  /// In en, this message translates to:
+  /// **'Packs'**
+  String get textTemplatePacks;
+
+  /// No description provided for @textPackSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Text template server'**
+  String get textPackSection;
+
+  /// No description provided for @textPackUrlLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Pack base URL'**
+  String get textPackUrlLabel;
+
+  /// No description provided for @textPackUrlBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Vercel URL for Word Art packs (catalog.json + Lottie). Leave empty to use bundled packs only.'**
+  String get textPackUrlBody;
+
+  /// No description provided for @textPackUrlSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Pack server updated.'**
+  String get textPackUrlSaved;
+
+  /// No description provided for @textPackUrlSavePartial.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved, but remote catalog could not be reached. Bundled packs still work.'**
+  String get textPackUrlSavePartial;
+
   /// No description provided for @timelineClip.
   ///
   /// In en, this message translates to:
@@ -501,13 +543,13 @@ abstract class AppLocalizations {
   /// No description provided for @musicCatalogAttribution.
   ///
   /// In en, this message translates to:
-  /// **'Music by Jamendo — Creative Commons. Attribution may be required.'**
+  /// **'Free for commercial use. Attribution not required (Pixabay / Mixkit).'**
   String get musicCatalogAttribution;
 
   /// No description provided for @musicCatalogUnavailable.
   ///
   /// In en, this message translates to:
-  /// **'Online catalog is off. Import an audio file, or build with JAMENDO_CLIENT_ID.'**
+  /// **'Could not load the music catalog. Import a file, or check the text template server URL.'**
   String get musicCatalogUnavailable;
 
   /// No description provided for @musicLocalOnlyHint.
@@ -528,6 +570,18 @@ abstract class AppLocalizations {
   /// **'Could not add music: {message}'**
   String musicImportFailed(String message);
 
+  /// No description provided for @useMusicTrack.
+  ///
+  /// In en, this message translates to:
+  /// **'Use'**
+  String get useMusicTrack;
+
+  /// No description provided for @musicPreviewFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not preview this track.'**
+  String get musicPreviewFailed;
+
   /// No description provided for @removeMusic.
   ///
   /// In en, this message translates to:
@@ -546,10 +600,16 @@ abstract class AppLocalizations {
   /// **'Music catalog'**
   String get musicCatalogSection;
 
+  /// No description provided for @musicCatalogReady.
+  ///
+  /// In en, this message translates to:
+  /// **'Pixabay Music'**
+  String get musicCatalogReady;
+
   /// No description provided for @musicCatalogBody.
   ///
   /// In en, this message translates to:
-  /// **'Jamendo provides free Creative Commons tracks. Register at devportal.jamendo.com and pass --dart-define=JAMENDO_CLIENT_ID=your_id when building.'**
+  /// **'Royalty-free music for commercial use — no attribution required. Uses Pixabay when PIXABAY_API_KEY is set on the server; otherwise Mixkit.'**
   String get musicCatalogBody;
 
   /// No description provided for @splitVideo.

@@ -9,22 +9,25 @@ class EditorSnapshot {
     required this.segments,
     required this.overlays,
     required this.rotation,
-    this.backgroundMusic,
+    required this.musicTracks,
     this.selectedSegmentId,
     this.selectedOverlayId,
+    this.selectedMusicId,
   });
 
   final List<ClipSegment> segments;
   final List<TextOverlay> overlays;
   final double rotation;
-  final ProjectMusic? backgroundMusic;
+  final List<ProjectMusic> musicTracks;
   final String? selectedSegmentId;
   final String? selectedOverlayId;
+  final String? selectedMusicId;
 
   factory EditorSnapshot.fromProject(
     VideoProject project, {
     String? selectedSegmentId,
     String? selectedOverlayId,
+    String? selectedMusicId,
   }) {
     return EditorSnapshot(
       segments: project.segments
@@ -32,9 +35,12 @@ class EditorSnapshot {
           .toList(growable: false),
       overlays: _cloneOverlays(project.overlays),
       rotation: project.rotation,
-      backgroundMusic: project.backgroundMusic?.copyWith(),
+      musicTracks: project.musicTracks
+          .map((m) => m.copyWith())
+          .toList(growable: false),
       selectedSegmentId: selectedSegmentId,
       selectedOverlayId: selectedOverlayId,
+      selectedMusicId: selectedMusicId,
     );
   }
 
@@ -45,8 +51,10 @@ class EditorSnapshot {
     project.overlays
       ..clear()
       ..addAll(_cloneOverlays(overlays));
+    project.musicTracks
+      ..clear()
+      ..addAll(musicTracks.map((m) => m.copyWith()));
     project.rotation = rotation;
-    project.backgroundMusic = backgroundMusic?.copyWith();
     project.touch();
   }
 
@@ -60,6 +68,8 @@ class EditorSnapshot {
             fontSize: overlay.fontSize,
             color: overlay.color,
             style: overlay.style,
+            templateId: overlay.templateId,
+            packItemId: overlay.packItemId,
             alignment: overlay.alignment,
             offset: overlay.offset,
             boxWidth: overlay.boxWidth,

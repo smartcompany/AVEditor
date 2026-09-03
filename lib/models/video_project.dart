@@ -22,7 +22,8 @@ class VideoProject {
     ClipTrim? trim,
     List<ClipSegment>? segments,
     List<TextOverlay>? overlays,
-    this.backgroundMusic,
+    List<ProjectMusic>? musicTracks,
+    ProjectMusic? backgroundMusic,
     this.preset = ExportPreset.youtubeShorts,
     this.rotation = 0,
     DateTime? updatedAt,
@@ -32,6 +33,8 @@ class VideoProject {
               end: trim?.end ?? duration,
             ),
         overlays = overlays ?? [],
+        musicTracks = musicTracks ??
+            (backgroundMusic == null ? <ProjectMusic>[] : [backgroundMusic]),
         updatedAt = updatedAt ?? DateTime.now();
 
   final String id;
@@ -39,7 +42,9 @@ class VideoProject {
   final Duration duration;
   final List<ClipSegment> segments;
   final List<TextOverlay> overlays;
-  ProjectMusic? backgroundMusic;
+
+  /// CapCut-style audio clips on a dedicated music track.
+  final List<ProjectMusic> musicTracks;
   ExportPreset preset;
 
   /// Clockwise rotation of the video frame about its centre, in radians.
@@ -87,7 +92,7 @@ class VideoProject {
   VideoProject copyWith({
     List<ClipSegment>? segments,
     List<TextOverlay>? overlays,
-    ProjectMusic? backgroundMusic,
+    List<ProjectMusic>? musicTracks,
     ExportPreset? preset,
     double? rotation,
     DateTime? updatedAt,
@@ -98,7 +103,8 @@ class VideoProject {
       duration: duration,
       segments: segments ?? this.segments.map((s) => s.copyWith()).toList(),
       overlays: overlays ?? List<TextOverlay>.from(this.overlays),
-      backgroundMusic: backgroundMusic ?? this.backgroundMusic,
+      musicTracks: musicTracks ??
+          this.musicTracks.map((m) => m.copyWith()).toList(),
       preset: preset ?? this.preset,
       rotation: rotation ?? this.rotation,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -116,7 +122,7 @@ class VideoProject {
     'rotation': rotation,
     'preset': preset.name,
     'overlays': overlays.map((overlay) => overlay.toJson()).toList(),
-    if (backgroundMusic != null) 'backgroundMusic': backgroundMusic!.toJson(),
+    'musicTracks': musicTracks.map((m) => m.toJson()).toList(),
   };
 
   factory VideoProject.fromJson(
@@ -149,6 +155,16 @@ class VideoProject {
       sourceDuration: duration,
     );
 
+    final musicJson = json['musicTracks'] as List<dynamic>?;
+    final legacyMusic = json['backgroundMusic'] as Map<String, dynamic>?;
+    final musicTracks = musicJson != null
+        ? musicJson
+            .map((e) => ProjectMusic.fromJson(e as Map<String, dynamic>))
+            .toList()
+        : legacyMusic == null
+            ? <ProjectMusic>[]
+            : [ProjectMusic.fromJson(legacyMusic)];
+
     return VideoProject(
       id: json['id'] as String,
       sourcePath: sourcePath,
@@ -157,11 +173,7 @@ class VideoProject {
       overlays: (json['overlays'] as List<dynamic>)
           .map((entry) => TextOverlay.fromJson(entry as Map<String, dynamic>))
           .toList(),
-      backgroundMusic: json['backgroundMusic'] == null
-          ? null
-          : ProjectMusic.fromJson(
-              json['backgroundMusic'] as Map<String, dynamic>,
-            ),
+      musicTracks: musicTracks,
       preset: ExportPreset.values.byName(json['preset'] as String),
       rotation: (json['rotation'] as num?)?.toDouble() ?? 0,
       updatedAt: DateTime.parse(json['updatedAt'] as String),

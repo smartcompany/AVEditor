@@ -119,6 +119,29 @@ class AppLocalizationsJa extends AppLocalizations {
   String get textStyleCycle => 'テキストスタイルを切り替え';
 
   @override
+  String get textTemplates => 'ワードアート';
+
+  @override
+  String get textTemplatePacks => 'パック';
+
+  @override
+  String get textPackSection => 'テキストテンプレートサーバー';
+
+  @override
+  String get textPackUrlLabel => 'パックのベース URL';
+
+  @override
+  String get textPackUrlBody =>
+      'ワードアート用の Vercel URL（catalog.json + Lottie）。空欄なら内蔵パックのみです。';
+
+  @override
+  String get textPackUrlSaved => 'パックサーバーを更新しました。';
+
+  @override
+  String get textPackUrlSavePartial =>
+      '保存しましたが、リモートカタログに接続できませんでした。内蔵パックは利用できます。';
+
+  @override
   String get timelineClip => 'クリップ';
 
   @override
@@ -225,12 +248,11 @@ class AppLocalizationsJa extends AppLocalizations {
   String get searchMusicHint => '著作権フリー音楽を検索';
 
   @override
-  String get musicCatalogAttribution =>
-      'Jamendoの音楽 — Creative Commons。クレジット表示が必要な場合があります。';
+  String get musicCatalogAttribution => '商用利用可・クレジット不要（Pixabay / Mixkit）。';
 
   @override
   String get musicCatalogUnavailable =>
-      'オンラインカタログは無効です。ファイルを読み込むか、JAMENDO_CLIENT_ID でビルドしてください。';
+      '音楽カタログを読み込めません。ファイルを読み込むか、テキストテンプレートサーバーのURLを確認してください。';
 
   @override
   String get musicLocalOnlyHint => '端末から MP3、M4A、WAV ファイルを読み込んでください。';
@@ -244,6 +266,12 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
+  String get useMusicTrack => '使う';
+
+  @override
+  String get musicPreviewFailed => 'プレビューを再生できません。';
+
+  @override
   String get removeMusic => '音楽を削除';
 
   @override
@@ -253,8 +281,11 @@ class AppLocalizationsJa extends AppLocalizations {
   String get musicCatalogSection => '音楽カタログ';
 
   @override
+  String get musicCatalogReady => 'Pixabay Music';
+
+  @override
   String get musicCatalogBody =>
-      'Jamendo は無料の CC 音楽を提供します。devportal.jamendo.com で client id を取得し、--dart-define=JAMENDO_CLIENT_ID=your_id でビルドしてください。';
+      '商用利用可・クレジット不要。サーバーに PIXABAY_API_KEY があれば Pixabay Music、なければ Mixkit で検索します。';
 
   @override
   String get splitVideo => '分割';

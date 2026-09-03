@@ -30,6 +30,7 @@ dependencies:
   http: ^1.4.0
   audioplayers: ^6.4.0
   video_thumbnail: ^0.5.6
+  lottie: ^3.5.1
 
 dev_dependencies:
   flutter_test:
@@ -43,6 +44,8 @@ flutter:
     enable-swift-package-manager: false
   assets:
     - assets/fonts/Arial.ttf
+    - assets/text_packs/catalog.json
+    - assets/text_packs/lottie/
   fonts:
     # Pinned so overlay text lays out identically in the preview and the export.
     - family: OverlayText
