@@ -73,6 +73,25 @@ class ProjectStorageService {
     return loadSummary(id);
   }
 
+  /// All saved projects, newest first. Skips folders without a valid source.
+  Future<List<ProjectSummary>> listSummaries() async {
+    final root = await _rootDir();
+    final projectsRoot = Directory(p.join(root.path, 'projects'));
+    if (!await projectsRoot.exists()) return const [];
+
+    final summaries = <ProjectSummary>[];
+    await for (final entity in projectsRoot.list()) {
+      if (entity is! Directory) continue;
+      final id = p.basename(entity.path);
+      if (id.isEmpty) continue;
+      final summary = await loadSummary(id);
+      if (summary == null || !summary.sourceExists) continue;
+      summaries.add(summary);
+    }
+    summaries.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return summaries;
+  }
+
   Future<ProjectSummary?> loadSummary(String projectId) async {
     final project = await load(projectId);
     if (project == null) return null;

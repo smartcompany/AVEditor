@@ -19,6 +19,7 @@ class ProjectMusic {
     this.licenseUrl,
     this.source = MusicSource.local,
     this.externalId,
+    this.lane = 0,
   })  : id = id ?? const Uuid().v4(),
         clipDuration = clipDuration ??
             _defaultClipDuration(fileDuration, sourceOffset);
@@ -44,6 +45,9 @@ class ProjectMusic {
   final String? licenseUrl;
   final MusicSource source;
   final String? externalId;
+
+  /// Vertical music lane index (0 = top). Overlapping clips go to new lanes.
+  final int lane;
 
   Duration get timelineEnd => timelineStart + clipDuration;
 
@@ -145,6 +149,7 @@ class ProjectMusic {
     if (licenseUrl != null) 'licenseUrl': licenseUrl,
     'source': source.name,
     if (externalId != null) 'externalId': externalId,
+    'lane': lane,
   };
 
   factory ProjectMusic.fromJson(Map<String, dynamic> json) {
@@ -171,6 +176,7 @@ class ProjectMusic {
       source: MusicSource.values.asNameMap()[json['source'] as String? ?? 'local'] ??
           MusicSource.local,
       externalId: json['externalId'] as String?,
+      lane: json['lane'] as int? ?? 0,
     );
   }
 
@@ -188,6 +194,7 @@ class ProjectMusic {
     String? licenseUrl,
     MusicSource? source,
     String? externalId,
+    int? lane,
     bool newId = false,
   }) {
     return ProjectMusic(
@@ -205,6 +212,7 @@ class ProjectMusic {
       licenseUrl: licenseUrl ?? this.licenseUrl,
       source: source ?? this.source,
       externalId: externalId ?? this.externalId,
+      lane: lane ?? this.lane,
     );
   }
 
@@ -252,13 +260,89 @@ const maxMusicFade = Duration(seconds: 5);
     sourceOffset: clip.sourceOffset + intoSource,
     clipDuration: rightDur,
     fadeIn: Duration.zero,
+    lane: clip.lane,
   );
   return (left, right);
 }
 
-ProjectMusic? musicClipAtTime(List<ProjectMusic> tracks, Duration sourceTime) {
-  for (final track in tracks.reversed) {
-    if (track.containsSourceTime(sourceTime)) return track;
+bool musicRangesOverlap(ProjectMusic a, ProjectMusic b) {
+  return a.timelineStart < b.timelineEnd && b.timelineStart < a.timelineEnd;
+}
+
+/// Assigns a music lane for [clip].
+///
+/// When [preferLowestLane] is true (default — CapCut-style), packs onto the
+/// lowest free lane for [clip]'s time range so a split piece dragged into a
+/// gap can move back up. Only then opens a new lane.
+///
+/// When false, keeps [clip.lane] when free; on conflict prefers below, then above.
+ProjectMusic assignMusicLane(
+  List<ProjectMusic> tracks,
+  ProjectMusic clip, {
+  bool preferLowestLane = true,
+}) {
+  final others = tracks.where((m) => m.id != clip.id);
+  bool fits(int lane) {
+    for (final other in others) {
+      if (other.lane != lane) continue;
+      if (musicRangesOverlap(other, clip)) return false;
+    }
+    return true;
   }
-  return null;
+
+  final maxExisting =
+      others.fold<int>(-1, (m, t) => t.lane > m ? t.lane : m);
+
+  if (preferLowestLane) {
+    for (var lane = 0; lane <= maxExisting; lane++) {
+      if (fits(lane)) return clip.copyWith(lane: lane);
+    }
+    return clip.copyWith(lane: maxExisting + 1);
+  }
+
+  if (fits(clip.lane)) return clip;
+
+  // Search nearest free lane above and below the requested one.
+  for (var dist = 1; dist <= maxExisting + 1; dist++) {
+    final up = clip.lane - dist;
+    final down = clip.lane + dist;
+    if (up >= 0 && fits(up)) return clip.copyWith(lane: up);
+    if (down <= maxExisting + 1 && fits(down)) {
+      return clip.copyWith(lane: down);
+    }
+  }
+  return clip.copyWith(lane: maxExisting + 1);
+}
+
+/// Removes empty lane gaps after moves/deletes (0..n contiguous).
+List<ProjectMusic> compactMusicLanes(List<ProjectMusic> tracks) {
+  if (tracks.isEmpty) return tracks;
+  final used = tracks.map((t) => t.lane).toSet().toList()..sort();
+  final remap = <int, int>{
+    for (var i = 0; i < used.length; i++) used[i]: i,
+  };
+  return [
+    for (final track in tracks)
+      remap[track.lane] == track.lane
+          ? track
+          : track.copyWith(lane: remap[track.lane]!),
+  ];
+}
+
+int musicLaneCount(List<ProjectMusic> tracks) {
+  if (tracks.isEmpty) return 0;
+  var maxLane = 0;
+  for (final track in tracks) {
+    if (track.lane > maxLane) maxLane = track.lane;
+  }
+  return maxLane + 1;
+}
+
+ProjectMusic? musicClipAtTime(List<ProjectMusic> tracks, Duration sourceTime) {
+  ProjectMusic? best;
+  for (final track in tracks) {
+    if (!track.containsSourceTime(sourceTime)) continue;
+    if (best == null || track.lane >= best.lane) best = track;
+  }
+  return best;
 }

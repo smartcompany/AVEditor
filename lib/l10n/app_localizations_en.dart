@@ -51,6 +51,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get saveToGallery => 'Save to gallery';
 
   @override
+  String get saveToAlbum => 'Save to album';
+
+  @override
   String get cancel => 'Cancel';
 
   @override
@@ -206,6 +209,26 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get projectsSection => 'Projects';
+
+  @override
+  String get noProjectsYet => 'No projects yet. Choose a video above to start.';
+
+  @override
+  String projectListSubtitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count text layers',
+      zero: 'No text layers',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get deleteProject => 'Delete project';
+
+  @override
   String get projectNotFound => 'Saved project could not be found.';
 
   @override
@@ -252,6 +275,87 @@ class AppLocalizationsEn extends AppLocalizations {
   String get searchMusicHint => 'Search royalty-free music';
 
   @override
+  String get searchSfxHint => 'Search sound effects';
+
+  @override
+  String get musicTabMusic => 'Music';
+
+  @override
+  String get musicTabSfx => 'Sound effects';
+
+  @override
+  String get musicGenreAll => 'All';
+
+  @override
+  String get musicGenreTravel => 'Travel';
+
+  @override
+  String get musicGenreBeauty => 'Beauty';
+
+  @override
+  String get musicGenreFashion => 'Fashion';
+
+  @override
+  String get musicGenreHappy => 'Upbeat';
+
+  @override
+  String get musicGenreEnergetic => 'Energetic';
+
+  @override
+  String get musicGenreChill => 'Chill';
+
+  @override
+  String get musicGenreCinematic => 'Cinematic';
+
+  @override
+  String get musicGenreRomantic => 'Romantic';
+
+  @override
+  String get musicGenreSports => 'Sports';
+
+  @override
+  String get musicGenreNature => 'Nature';
+
+  @override
+  String get musicGenreCooking => 'Cooking';
+
+  @override
+  String get musicGenreCorporate => 'Corporate';
+
+  @override
+  String get musicGenreHipHop => 'Hip Hop';
+
+  @override
+  String get musicGenrePop => 'Pop';
+
+  @override
+  String get musicGenreKids => 'Kids';
+
+  @override
+  String get sfxGenreWhoosh => 'Whoosh';
+
+  @override
+  String get sfxGenreTransition => 'Transition';
+
+  @override
+  String get sfxGenreImpact => 'Impact';
+
+  @override
+  String get sfxGenreGlitch => 'Glitch';
+
+  @override
+  String get sfxGenreNotification => 'Notification';
+
+  @override
+  String get sfxGenreGame => 'Game';
+
+  @override
+  String get sfxGenreTech => 'Tech';
+
+  @override
+  String get sfxGenreUi => 'UI';
+
+  @override
   String get musicCatalogAttribution =>
       'Free for commercial use. Attribution not required (Pixabay / Mixkit).';
 
@@ -295,6 +399,28 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get splitVideo => 'Split clip';
+
+  @override
+  String get transition => 'Transition';
+
+  @override
+  String get transitionSheetTitle => 'Transitions';
+
+  @override
+  String get transitionSheetSubtitle =>
+      'Applied to the cut nearest the playhead.';
+
+  @override
+  String get transitionNone => 'None';
+
+  @override
+  String get transitionCatalogUnavailable => 'Could not load transitions.';
+
+  @override
+  String get transitionApplied => 'Transition applied.';
+
+  @override
+  String get transitionNeedsCuts => 'Split the clip first to add a transition.';
 
   @override
   String get deleteSegment => 'Delete segment';

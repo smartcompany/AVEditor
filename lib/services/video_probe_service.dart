@@ -1,6 +1,6 @@
 import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
 
-/// Reads basic metadata from a video file via FFprobe.
+/// Reads basic metadata from a media file via FFprobe.
 class VideoProbeService {
   const VideoProbeService();
 
@@ -8,6 +8,20 @@ class VideoProbeService {
     final session = await FFprobeKit.getMediaInformation(path);
     final streams = session.getMediaInformation()?.getStreams() ?? const [];
     return streams.any((stream) => stream.getType() == 'audio');
+  }
+
+  /// Media duration (video or audio). Null when probing fails.
+  Future<Duration?> readDuration(String path) async {
+    try {
+      final session = await FFprobeKit.getMediaInformation(path);
+      final raw = session.getMediaInformation()?.getDuration();
+      if (raw == null || raw.isEmpty) return null;
+      final seconds = double.tryParse(raw);
+      if (seconds == null || seconds <= 0) return null;
+      return Duration(milliseconds: (seconds * 1000).round());
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<({int width, int height})> readFrameSize(

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:aveditor/models/project_music.dart';
 import 'package:aveditor/models/royalty_free_track.dart';
 import 'package:aveditor/services/music_catalog_service.dart';
+import 'package:aveditor/services/video_probe_service.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 
@@ -11,11 +12,14 @@ class MusicStorageService {
   MusicStorageService({
     MusicCatalogService? catalog,
     http.Client? client,
+    VideoProbeService probe = const VideoProbeService(),
   })  : catalog = catalog ?? MusicCatalogService(),
-        _client = client;
+        _client = client,
+        _probe = probe;
 
   final MusicCatalogService catalog;
   final http.Client? _client;
+  final VideoProbeService _probe;
 
   Future<ProjectMusic> importLocalFile({
     required String projectDir,
@@ -29,12 +33,15 @@ class MusicStorageService {
     final dest = File(p.join(projectDir, fileName));
     await File(pickedPath).copy(dest.path);
 
+    final fileDuration =
+        duration ?? await _probe.readDuration(dest.path);
+
     return ProjectMusic(
       title: title,
       artist: artist,
       fileName: fileName,
-      fileDuration: duration,
-      clipDuration: duration,
+      fileDuration: fileDuration,
+      clipDuration: fileDuration,
       source: MusicSource.local,
     );
   }
@@ -53,12 +60,18 @@ class MusicStorageService {
       throw StateError('music_download_failed:${response.statusCode}');
     }
 
-    const fileName = 'music.mp3';
+    final safeId = track.id.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+    final fileName = '$safeId.mp3';
     final dest = File(p.join(projectDir, fileName));
     await dest.writeAsBytes(response.bodyBytes, flush: true);
 
-    final fileDuration =
-        track.duration > Duration.zero ? track.duration : null;
+    // Catalog duration is often missing (Mixkit). Always probe the file so
+    // timeline trim reveals audio at 1x speed instead of looking stretched.
+    final probed = await _probe.readDuration(dest.path);
+    final fileDuration = (track.duration > Duration.zero
+            ? track.duration
+            : null) ??
+        probed;
 
     return ProjectMusic(
       title: track.title,

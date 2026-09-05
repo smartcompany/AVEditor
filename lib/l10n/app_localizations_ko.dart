@@ -51,6 +51,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get saveToGallery => '갤러리에 저장';
 
   @override
+  String get saveToAlbum => '앨범에 저장';
+
+  @override
   String get cancel => '취소';
 
   @override
@@ -204,6 +207,26 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
+  String get projectsSection => '프로젝트';
+
+  @override
+  String get noProjectsYet => '아직 프로젝트가 없습니다. 위에서 영상을 선택해 시작하세요.';
+
+  @override
+  String projectListSubtitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '텍스트 $count개',
+      zero: '텍스트 없음',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get deleteProject => '프로젝트 삭제';
+
+  @override
   String get projectNotFound => '저장된 프로젝트를 찾을 수 없습니다.';
 
   @override
@@ -248,6 +271,87 @@ class AppLocalizationsKo extends AppLocalizations {
   String get searchMusicHint => '저작권 없는 음악 검색';
 
   @override
+  String get searchSfxHint => '사운드 효과 검색';
+
+  @override
+  String get musicTabMusic => '음악';
+
+  @override
+  String get musicTabSfx => '효과음';
+
+  @override
+  String get musicGenreAll => '전체';
+
+  @override
+  String get musicGenreTravel => '여행';
+
+  @override
+  String get musicGenreBeauty => '뷰티';
+
+  @override
+  String get musicGenreFashion => '패션';
+
+  @override
+  String get musicGenreHappy => '신나는';
+
+  @override
+  String get musicGenreEnergetic => '에너지';
+
+  @override
+  String get musicGenreChill => '잔잔한';
+
+  @override
+  String get musicGenreCinematic => '시네마틱';
+
+  @override
+  String get musicGenreRomantic => '로맨틱';
+
+  @override
+  String get musicGenreSports => '스포츠';
+
+  @override
+  String get musicGenreNature => '자연';
+
+  @override
+  String get musicGenreCooking => '요리';
+
+  @override
+  String get musicGenreCorporate => '비즈니스';
+
+  @override
+  String get musicGenreHipHop => '힙합';
+
+  @override
+  String get musicGenrePop => '팝';
+
+  @override
+  String get musicGenreKids => '키즈';
+
+  @override
+  String get sfxGenreWhoosh => '우시';
+
+  @override
+  String get sfxGenreTransition => '전환';
+
+  @override
+  String get sfxGenreImpact => '임팩트';
+
+  @override
+  String get sfxGenreGlitch => '글리치';
+
+  @override
+  String get sfxGenreNotification => '알림';
+
+  @override
+  String get sfxGenreGame => '게임';
+
+  @override
+  String get sfxGenreTech => '테크';
+
+  @override
+  String get sfxGenreUi => 'UI';
+
+  @override
   String get musicCatalogAttribution =>
       '상업 이용 가능 · 저작자 표시 불필요 (Pixabay / Mixkit).';
 
@@ -290,6 +394,27 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get splitVideo => '분할';
+
+  @override
+  String get transition => '전환';
+
+  @override
+  String get transitionSheetTitle => '전환 효과';
+
+  @override
+  String get transitionSheetSubtitle => '재생 위치에서 가장 가까운 컷에 적용됩니다.';
+
+  @override
+  String get transitionNone => '없음';
+
+  @override
+  String get transitionCatalogUnavailable => '전환 효과를 불러올 수 없습니다.';
+
+  @override
+  String get transitionApplied => '전환이 적용되었습니다.';
+
+  @override
+  String get transitionNeedsCuts => '전환을 추가하려면 먼저 클립을 분할하세요.';
 
   @override
   String get deleteSegment => '구간 삭제';

@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:aveditor/l10n/app_localizations.dart';
 import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/screens/editor_screen.dart';
 import 'package:aveditor/screens/settings_screen.dart';
@@ -26,19 +25,24 @@ class _HomeScreenState extends State<HomeScreen> {
   final _youtubeAuth = YouTubeAuthService();
   bool _loading = false;
   bool _youtubeConnected = false;
-  ProjectSummary? _resumeProject;
+  bool _projectsLoading = true;
+  List<ProjectSummary> _projects = const [];
 
   @override
   void initState() {
     super.initState();
     _refreshYouTubeStatus();
-    _loadResumeProject();
+    _loadProjects();
   }
 
-  Future<void> _loadResumeProject() async {
-    final summary = await _projectStorage.loadLastSummary();
+  Future<void> _loadProjects() async {
+    setState(() => _projectsLoading = true);
+    final summaries = await _projectStorage.listSummaries();
     if (!mounted) return;
-    setState(() => _resumeProject = summary);
+    setState(() {
+      _projects = summaries;
+      _projectsLoading = false;
+    });
   }
 
   Future<void> _refreshYouTubeStatus() async {
@@ -55,13 +59,7 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (_) => EditorScreen(projectId: projectId),
       ),
     );
-    await _loadResumeProject();
-  }
-
-  Future<void> _resumeLastProject() async {
-    final summary = _resumeProject;
-    if (summary == null || !summary.sourceExists) return;
-    await _openEditor(summary.id);
+    await _loadProjects();
   }
 
   Future<void> _pickGallery() async {
@@ -102,6 +100,11 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _deleteProject(ProjectSummary project) async {
+    await _projectStorage.delete(project.id);
+    await _loadProjects();
+  }
+
   Future<void> _toggleYouTube() async {
     if (_youtubeConnected) {
       await _youtubeAuth.signOut();
@@ -120,18 +123,13 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  String _resumeSubtitle(ProjectSummary summary, AppLocalizations l10n) {
-    final updated = DateFormat.yMMMd().add_jm().format(summary.updatedAt.toLocal());
-    return l10n.resumeEditingSubtitle(
-      summary.overlayCount,
-      updated,
-    );
+  String _projectTitle(ProjectSummary summary) {
+    return DateFormat.yMMMd().add_jm().format(summary.updatedAt.toLocal());
   }
 
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final resume = _resumeProject;
 
     return Scaffold(
       appBar: AppBar(
@@ -167,31 +165,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: AppTheme.muted,
                 ),
               ),
-              if (resume != null && resume.sourceExists) ...[
-                const SizedBox(height: 20),
-                Card(
-                  elevation: 0,
-                  color: AppTheme.surface,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(color: AppTheme.muted.withValues(alpha: 0.25)),
-                  ),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    leading: const Icon(Icons.history_rounded),
-                    title: Text(l10n.resumeEditing),
-                    subtitle: Text(_resumeSubtitle(resume, l10n)),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: _loading ? null : _resumeLastProject,
-                  ),
-                ),
-              ],
-              const Spacer(),
+              const SizedBox(height: 20),
               if (_loading)
-                const Center(child: CircularProgressIndicator())
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Center(child: CircularProgressIndicator()),
+                )
               else ...[
                 if (PlatformHelper.supportsGallery)
                   _ActionButton(
@@ -218,7 +197,51 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ],
               ],
-              const Spacer(flex: 2),
+              const SizedBox(height: 28),
+              Text(
+                l10n.projectsSection,
+                style: GoogleFonts.dmSans(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: _projectsLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _projects.isEmpty
+                        ? Align(
+                            alignment: Alignment.topLeft,
+                            child: Text(
+                              l10n.noProjectsYet,
+                              style: GoogleFonts.dmSans(
+                                fontSize: 14,
+                                height: 1.45,
+                                color: AppTheme.muted,
+                              ),
+                            ),
+                          )
+                        : ListView.separated(
+                            itemCount: _projects.length,
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(height: 10),
+                            itemBuilder: (context, index) {
+                              final project = _projects[index];
+                              return _ProjectTile(
+                                title: _projectTitle(project),
+                                subtitle: l10n.projectListSubtitle(
+                                  project.overlayCount,
+                                ),
+                                enabled: !_loading,
+                                onOpen: () => _openEditor(project.id),
+                                onDelete: () => _deleteProject(project),
+                                deleteTooltip: l10n.deleteProject,
+                              );
+                            },
+                          ),
+              ),
+              const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: _toggleYouTube,
                 icon: Icon(
@@ -235,6 +258,57 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ProjectTile extends StatelessWidget {
+  const _ProjectTile({
+    required this.title,
+    required this.subtitle,
+    required this.enabled,
+    required this.onOpen,
+    required this.onDelete,
+    required this.deleteTooltip,
+  });
+
+  final String title;
+  final String subtitle;
+  final bool enabled;
+  final VoidCallback onOpen;
+  final VoidCallback onDelete;
+  final String deleteTooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 0,
+      color: AppTheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: AppTheme.muted.withValues(alpha: 0.25)),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 6,
+        ),
+        leading: const Icon(Icons.movie_outlined),
+        title: Text(title),
+        subtitle: Text(subtitle),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              onPressed: enabled ? onDelete : null,
+              icon: const Icon(Icons.delete_outline),
+              tooltip: deleteTooltip,
+            ),
+            const Icon(Icons.chevron_right),
+          ],
+        ),
+        onTap: enabled ? onOpen : null,
       ),
     );
   }

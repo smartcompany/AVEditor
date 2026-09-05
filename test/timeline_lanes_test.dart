@@ -10,7 +10,7 @@ void main() {
 
   // Mirrors the private layout constants in timeline_widget.dart. If these
   // drift the geometry assertions below will fail loudly rather than silently.
-  const videoTrackHeight = 58.0;
+  const videoTrackHeight = 70.0;
   const laneHeight = 26.0;
   const laneStride = 30.0;
   const maxVisibleLanes = 3;
@@ -25,6 +25,7 @@ void main() {
         text: 'Layer $i',
         start: Duration.zero,
         end: total,
+        lane: i,
       ),
   ];
 
@@ -199,13 +200,17 @@ void main() {
       await pumpTimeline(
         tester,
         overlays: layers(6),
+        selectedId: 'layer-0',
         onOverlayChanged: moved.add,
       );
 
-      await tester.drag(
-        bodyFinder(),
+      final body = tester.getRect(bodyFinder());
+      await tester.dragFrom(
+        Offset(
+          body.left + viewport / 2,
+          body.top + laneCentreY(0),
+        ),
         const Offset(-40, 0),
-        warnIfMissed: false,
       );
       await tester.pump();
 

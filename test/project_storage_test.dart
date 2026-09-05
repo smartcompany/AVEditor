@@ -122,5 +122,20 @@ void main() {
       expect(json['id'], projectId);
       expect(json['durationMs'], 0);
     });
+
+    test('listSummaries returns all projects newest first', () async {
+      final first = File('${tempRoot.path}/a.mp4');
+      final second = File('${tempRoot.path}/b.mp4');
+      await first.writeAsBytes(List<int>.filled(512, 1));
+      await second.writeAsBytes(List<int>.filled(512, 2));
+
+      final idA = await service.createFromImport(first.path);
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      final idB = await service.createFromImport(second.path);
+
+      final list = await service.listSummaries();
+      expect(list.map((s) => s.id), [idB, idA]);
+      expect(list.every((s) => s.sourceExists), isTrue);
+    });
   });
 }

@@ -5,11 +5,13 @@ import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
 import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/utils/overlay_event_log.dart';
+import 'package:aveditor/utils/overlay_guides.dart';
 import 'package:aveditor/widgets/overlay_geometry.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/widgets/overflow_hit_stack.dart';
 import 'package:aveditor/widgets/text_template_pack_browser.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 export 'overlay_geometry.dart' show OverlayGeometry, OverlayBox;
 
@@ -69,6 +71,7 @@ class VideoPreviewWithOverlays extends StatefulWidget {
     this.onOverlayDeleted,
     this.onOverlayDuplicated,
     this.onOverlayEdit,
+    this.hostViewportSize,
   });
 
   final Widget videoChild;
@@ -102,6 +105,11 @@ class VideoPreviewWithOverlays extends StatefulWidget {
   /// Top-right corner handle — opens the style / text editor sheet.
   final ValueChanged<TextOverlay>? onOverlayEdit;
 
+  /// Editor slot size that letterboxes this 9:16 canvas ([FittedBox] host).
+  ///
+  /// Knob chrome clamps to this viewport (video + gutters), not just the frame.
+  final Size? hostViewportSize;
+
   @override
   State<VideoPreviewWithOverlays> createState() =>
       VideoPreviewWithOverlaysState();
@@ -130,6 +138,9 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
 
   /// Pointer vector from the box centre when a resize+rotate drag began.
   Offset? _rotateStartVector;
+
+  /// Alignment guides shown while moving / rotating.
+  Set<OverlayGuide> _activeGuides = {};
 
   /// Every pointer currently down, in canvas coordinates. A second finger
   /// cancels any in-progress overlay gesture without affecting the video.
@@ -163,6 +174,19 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
   /// Preview-canvas pixels per frame pixel.
   double get _frameScale => _previewW / kOverlayFrameWidth;
 
+  /// Knob clamp in preview coords — video frame plus letterbox gutters.
+  Rect get _knobClampRect {
+    final host = widget.hostViewportSize;
+    if (host == null || _previewW <= 0 || _previewH <= 0) {
+      return OverlayGeometry.previewClampRect(_previewW, _previewH);
+    }
+    return OverlayGeometry.viewportClampRect(
+      previewW: _previewW,
+      previewH: _previewH,
+      hostViewport: host,
+    );
+  }
+
   /// [overlay]'s box in canvas pixels, including any in-progress drag.
   OverlayBox _boxOf(TextOverlay overlay) {
     final liveId = _gestureOverlay?.id ?? widget.selectedOverlayId;
@@ -182,6 +206,21 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
 
   void _clearLiveGeometry() {
     _liveBox = null;
+    _activeGuides = {};
+  }
+
+  void _setGuides(Set<OverlayGuide> next) {
+    if (_sameGuides(_activeGuides, next)) return;
+    if (next.isNotEmpty && next.difference(_activeGuides).isNotEmpty) {
+      HapticFeedback.selectionClick();
+    }
+    _activeGuides = next;
+  }
+
+  bool _sameGuides(Set<OverlayGuide> a, Set<OverlayGuide> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    return a.containsAll(b);
   }
 
   void _clearDragState() {
@@ -214,7 +253,7 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
 
   void _moveBy(TextOverlay overlay, Offset delta) {
     final box = _boxOf(overlay);
-    final next = Offset(
+    final raw = Offset(
       (box.offset.dx + delta.dx / (_previewW / 2)).clamp(
         -maxOverlayOffset,
         maxOverlayOffset,
@@ -224,7 +263,18 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
         maxOverlayOffset,
       ),
     );
-    setState(() => _liveBox = box.copyWith(offset: next));
+    final snapped = snapOverlayGuides(
+      offset: raw,
+      rotation: box.rotation,
+      box: box.copyWith(offset: raw),
+      previewW: _previewW,
+      previewH: _previewH,
+      snapPosition: true,
+    );
+    setState(() {
+      _liveBox = box.copyWith(offset: snapped.offset);
+      _setGuides(snapped.guides);
+    });
   }
 
   /// Corner drags scale the box and the font by one factor, so the text keeps
@@ -299,11 +349,22 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
       _minResizeScale(start),
       _maxResizeScale(start),
     );
-    final rotation = start.rotation + (to.direction - from.direction);
-
-    setState(
-      () => _liveBox = start.scaled(scale).copyWith(rotation: rotation),
+    final rawRotation = start.rotation + (to.direction - from.direction);
+    final scaled = start.scaled(scale);
+    final snapped = snapOverlayGuides(
+      offset: scaled.offset,
+      rotation: rawRotation,
+      box: scaled,
+      previewW: _previewW,
+      previewH: _previewH,
+      snapPosition: false,
+      snapRotation: true,
     );
+
+    setState(() {
+      _liveBox = scaled.copyWith(rotation: snapped.rotation);
+      _setGuides(snapped.guides);
+    });
   }
 
   static Offset _rotateVector(Offset v, double radians) {
@@ -452,6 +513,7 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
         previewH: _previewH,
         box: _boxOf(selected),
         editing: false,
+        clampRect: _knobClampRect,
       );
       if (drag != null) {
         OverlayEventLog.log('PreviewCanvas', 'dragStart', {
@@ -679,6 +741,9 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
     _resizeStartBox = null;
     _resizeAccumulated = Offset.zero;
     _rotateStartVector = null;
+    if (_activeGuides.isNotEmpty) {
+      setState(() => _activeGuides = {});
+    }
   }
 
   @override
@@ -711,6 +776,7 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
                     box: _boxOf(overlay),
                     previewWidth: _previewW,
                     previewHeight: _previewH,
+                    knobClampRect: _knobClampRect,
                     selected: overlay.id == widget.selectedOverlayId,
                     editing: overlay.id == widget.editingOverlayId,
                     textHint: widget.textHint,
@@ -719,6 +785,18 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
                     onEditingComplete: widget.onEditingComplete,
                   ),
                 ),
+                if (_activeGuides.isNotEmpty)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: CustomPaint(
+                        painter: OverlayGuidePainter(
+                          guides: _activeGuides,
+                          previewW: _previewW,
+                          previewH: _previewH,
+                        ),
+                      ),
+                    ),
+                  ),
               ],
             );
           },
@@ -735,6 +813,7 @@ class _DraggableOverlayLabel extends StatefulWidget {
     required this.box,
     required this.previewWidth,
     required this.previewHeight,
+    required this.knobClampRect,
     required this.selected,
     required this.editing,
     required this.onTextChanged,
@@ -748,6 +827,7 @@ class _DraggableOverlayLabel extends StatefulWidget {
   final OverlayBox box;
   final double previewWidth;
   final double previewHeight;
+  final Rect knobClampRect;
   final bool selected;
   final bool editing;
   final String? textHint;
@@ -947,24 +1027,14 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
     );
   }
 
-  /// Distance from the box edge to a corner handle's centre.
-  static const _anchorOutset =
-      OverlayGeometry.knobOutset - OverlayGeometry.knobSize / 2;
-
-  /// Centres [child] on the corner anchor that [OverlayGeometry] hit tests,
-  /// whatever its size.
-  Widget _corner({
-    required Widget child,
-    required double size,
-    required bool left,
-    required bool top,
-  }) {
-    final inset = -_anchorOutset - size / 2;
+  /// Centres [child] on a chrome-local knob anchor from
+  /// [OverlayGeometry.resolveChromeCorners].
+  Widget _knobAt(Offset chromeLocal, Widget child) {
     return Positioned(
-      left: left ? inset : null,
-      right: left ? null : inset,
-      top: top ? inset : null,
-      bottom: top ? null : inset,
+      left: chromeLocal.dx - _iconKnobSize / 2,
+      top: chromeLocal.dy - _iconKnobSize / 2,
+      width: _iconKnobSize,
+      height: _iconKnobSize,
       child: child,
     );
   }
@@ -981,51 +1051,45 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
 
     final boxW = widget.box.width;
     final boxH = widget.box.height;
+    final corners = OverlayGeometry.resolveChromeCorners(
+      previewW: widget.previewWidth,
+      previewH: widget.previewHeight,
+      box: widget.box,
+      clampRect: widget.knobClampRect,
+    );
+    const pad = OverlayGeometry.handlePad;
 
-    Widget chrome = Padding(
-      padding: const EdgeInsets.all(OverlayGeometry.handlePad),
+    Widget chrome = SizedBox(
+      width: boxW + pad * 2,
+      height: boxH + pad * 2,
       child: Stack(
         clipBehavior: Clip.none,
-        alignment: Alignment.center,
         children: [
-          DecoratedBox(
-            decoration: showChrome
-                ? BoxDecoration(
-                    border: Border.all(color: AppTheme.accent, width: 2),
-                    borderRadius: BorderRadius.circular(8),
-                  )
-                : const BoxDecoration(),
-            child: SizedBox(width: boxW, height: boxH, child: _buildBody()),
+          Positioned(
+            left: pad,
+            top: pad,
+            child: DecoratedBox(
+              decoration: showChrome
+                  ? BoxDecoration(
+                      border: Border.all(color: AppTheme.accent, width: 2),
+                      borderRadius: BorderRadius.circular(8),
+                    )
+                  : const BoxDecoration(),
+              child: SizedBox(width: boxW, height: boxH, child: _buildBody()),
+            ),
           ),
           if (showChrome) ...[
-            // Grip lives in the padding ring so it never steals text space.
             Positioned(
-              bottom: -OverlayGeometry.gripOutset - 3,
+              left: pad + boxW / 2 - 14,
+              top: pad + boxH + OverlayGeometry.gripOutset - 3,
               child: IgnorePointer(child: _buildMoveGrip()),
             ),
-            _corner(
-              left: true,
-              top: true,
-              size: _iconKnobSize,
-              child: _buildIconKnob(Icons.delete_outline),
-            ),
-            _corner(
-              left: false,
-              top: true,
-              size: _iconKnobSize,
-              child: _buildIconKnob(Icons.edit_outlined),
-            ),
-            _corner(
-              left: true,
-              top: false,
-              size: _iconKnobSize,
-              child: _buildIconKnob(Icons.content_copy),
-            ),
-            _corner(
-              left: false,
-              top: false,
-              size: _iconKnobSize,
-              child: _buildIconKnob(Icons.rotate_right),
+            _knobAt(corners.delete, _buildIconKnob(Icons.delete_outline)),
+            _knobAt(corners.edit, _buildIconKnob(Icons.edit_outlined)),
+            _knobAt(corners.duplicate, _buildIconKnob(Icons.content_copy)),
+            _knobAt(
+              corners.resizeRotate,
+              _buildIconKnob(Icons.rotate_right),
             ),
           ],
         ],

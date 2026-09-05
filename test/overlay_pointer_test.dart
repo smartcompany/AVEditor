@@ -565,14 +565,19 @@ void main() {
     );
     expect(topLeft.dx, lessThan(0), reason: 'handles should overflow the canvas');
 
-    const knobInset =
-        OverlayGeometry.handlePad - OverlayGeometry.knobOutset + OverlayGeometry.knobSize / 2;
-    final knobLocal = topLeft + const Offset(knobInset, knobInset);
-    await tester.tapAt(previewBox.localToGlobal(knobLocal));
+    final corners = OverlayGeometry.resolveChromeCorners(
+      previewW: previewBox.size.width,
+      previewH: previewBox.size.height,
+      box: canvasBox(overlay, previewBox),
+    );
+    final deletePreview = topLeft + corners.delete;
+    // Even when the box is shoved left, the delete knob stays on-canvas.
+    expect(deletePreview.dx, greaterThanOrEqualTo(0));
+    await tester.tapAt(previewBox.localToGlobal(deletePreview));
     await tester.pump();
 
     expect(deleted?.id, overlay.id,
-        reason: 'gutter tap never reached the preview');
+        reason: 'clamped delete knob should still be tappable');
   });
 
   testWidgets('tap on empty canvas toggles playback', (tester) async {

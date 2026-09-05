@@ -75,6 +75,7 @@ class EditorSnapshot {
             boxWidth: overlay.boxWidth,
             boxHeight: overlay.boxHeight,
             rotation: overlay.rotation,
+            lane: overlay.lane,
           ),
         )
         .toList(growable: false);

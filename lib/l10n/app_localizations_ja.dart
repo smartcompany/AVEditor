@@ -51,6 +51,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get saveToGallery => 'ギャラリーに保存';
 
   @override
+  String get saveToAlbum => 'アルバムに保存';
+
+  @override
   String get cancel => 'キャンセル';
 
   @override
@@ -204,6 +207,26 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
+  String get projectsSection => 'プロジェクト';
+
+  @override
+  String get noProjectsYet => 'プロジェクトはまだありません。上で動画を選んで始めてください。';
+
+  @override
+  String projectListSubtitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'テキスト $count件',
+      zero: 'テキストなし',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get deleteProject => 'プロジェクトを削除';
+
+  @override
   String get projectNotFound => '保存されたプロジェクトが見つかりません。';
 
   @override
@@ -248,6 +271,87 @@ class AppLocalizationsJa extends AppLocalizations {
   String get searchMusicHint => '著作権フリー音楽を検索';
 
   @override
+  String get searchSfxHint => '効果音を検索';
+
+  @override
+  String get musicTabMusic => '音楽';
+
+  @override
+  String get musicTabSfx => '効果音';
+
+  @override
+  String get musicGenreAll => 'すべて';
+
+  @override
+  String get musicGenreTravel => '旅行';
+
+  @override
+  String get musicGenreBeauty => 'ビューティー';
+
+  @override
+  String get musicGenreFashion => 'ファッション';
+
+  @override
+  String get musicGenreHappy => 'アップビート';
+
+  @override
+  String get musicGenreEnergetic => 'エネルギッシュ';
+
+  @override
+  String get musicGenreChill => 'チル';
+
+  @override
+  String get musicGenreCinematic => 'シネマティック';
+
+  @override
+  String get musicGenreRomantic => 'ロマンチック';
+
+  @override
+  String get musicGenreSports => 'スポーツ';
+
+  @override
+  String get musicGenreNature => '自然';
+
+  @override
+  String get musicGenreCooking => '料理';
+
+  @override
+  String get musicGenreCorporate => 'コーポレート';
+
+  @override
+  String get musicGenreHipHop => 'ヒップホップ';
+
+  @override
+  String get musicGenrePop => 'ポップ';
+
+  @override
+  String get musicGenreKids => 'キッズ';
+
+  @override
+  String get sfxGenreWhoosh => 'ウーシュ';
+
+  @override
+  String get sfxGenreTransition => 'トランジション';
+
+  @override
+  String get sfxGenreImpact => 'インパクト';
+
+  @override
+  String get sfxGenreGlitch => 'グリッチ';
+
+  @override
+  String get sfxGenreNotification => '通知';
+
+  @override
+  String get sfxGenreGame => 'ゲーム';
+
+  @override
+  String get sfxGenreTech => 'テック';
+
+  @override
+  String get sfxGenreUi => 'UI';
+
+  @override
   String get musicCatalogAttribution => '商用利用可・クレジット不要（Pixabay / Mixkit）。';
 
   @override
@@ -289,6 +393,27 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get splitVideo => '分割';
+
+  @override
+  String get transition => 'トランジション';
+
+  @override
+  String get transitionSheetTitle => 'トランジション';
+
+  @override
+  String get transitionSheetSubtitle => '再生位置に最も近いカットに適用されます。';
+
+  @override
+  String get transitionNone => 'なし';
+
+  @override
+  String get transitionCatalogUnavailable => 'トランジションを読み込めませんでした。';
+
+  @override
+  String get transitionApplied => 'トランジションを適用しました。';
+
+  @override
+  String get transitionNeedsCuts => 'トランジションを追加するには、先にクリップを分割してください。';
 
   @override
   String get deleteSegment => 'セグメントを削除';

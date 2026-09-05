@@ -18,6 +18,7 @@ import 'package:aveditor/services/audio_waveform_service.dart';
 import 'package:aveditor/services/music_storage_service.dart';
 import 'package:aveditor/services/project_storage_service.dart';
 import 'package:aveditor/services/timeline_thumbnail_service.dart';
+import 'package:aveditor/services/video_probe_service.dart';
 import 'package:aveditor/utils/clip_rotation.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
 import 'package:aveditor/utils/duration_format.dart';
@@ -30,6 +31,7 @@ import 'package:aveditor/widgets/export_progress_dialog.dart';
 import 'package:aveditor/widgets/text_overlay_editor_sheet.dart';
 import 'package:aveditor/widgets/text_template_pack_browser.dart';
 import 'package:aveditor/widgets/timeline_widget.dart';
+import 'package:aveditor/widgets/transition_picker_sheet.dart';
 import 'package:aveditor/widgets/overflow_hit_stack.dart';
 import 'package:aveditor/widgets/video_preview.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -76,11 +78,15 @@ class _EditorScreenState extends State<EditorScreen>
   final _projectStorage = const ProjectStorageService();
   final _history = EditorHistory();
   final _thumbnailService = const TimelineThumbnailService();
+  final _probe = const VideoProbeService();
   final _previewKey = GlobalKey<VideoPreviewWithOverlaysState>();
+  final _timelineKey = GlobalKey<TimelineWidgetState>();
   final _musicPlayer = AudioPlayer();
 
   List<TimelineFilmstripFrame> _filmstripFrames = [];
   final Map<String, List<double>> _musicWaveforms = {};
+  List<double> _sourceAudioWaveform = const [];
+  bool _hasSourceAudio = false;
 
   Timer? _saveDebounce;
 
@@ -194,6 +200,7 @@ class _EditorScreenState extends State<EditorScreen>
 
       unawaited(_loadFilmstrip(project.sourcePath, project.duration));
       unawaited(_loadMusicWaveforms(project));
+      unawaited(_loadSourceAudioWaveform(project.sourcePath));
 
       if (stored.duration == Duration.zero) {
         _scheduleSave();
@@ -346,10 +353,85 @@ class _EditorScreenState extends State<EditorScreen>
     if (project == null || _exporting) return;
     if (project.duration <= Duration.zero) return;
 
-    if (_selectedMusicId != null) {
-      _splitSelectedMusic();
-      return;
+    // Non-video track selected and playhead inside it → split that item.
+    // Otherwise (or playhead outside the selection) → split the video.
+    if (_trySplitSelectedMusic()) return;
+    if (_trySplitSelectedOverlay()) return;
+
+    _splitVideoAtPlayhead();
+  }
+
+  /// Returns true when a music clip was split.
+  bool _trySplitSelectedMusic() {
+    final project = _project;
+    final id = _selectedMusicId;
+    if (project == null || id == null) return false;
+
+    final index = project.musicTracks.indexWhere((m) => m.id == id);
+    if (index < 0) return false;
+    final clip = project.musicTracks[index];
+    if (_playhead < clip.timelineStart || _playhead >= clip.timelineEnd) {
+      return false;
     }
+
+    final split = splitMusicClip(clip, _playhead);
+    if (split == null) {
+      _showSnack(context.l10n.splitTooShort);
+      return true;
+    }
+    _mutate((p) {
+      p.musicTracks
+        ..removeAt(index)
+        ..insert(index, split.$1)
+        ..insert(index + 1, split.$2);
+      final compacted = compactMusicLanes(p.musicTracks);
+      p.musicTracks
+        ..clear()
+        ..addAll(compacted);
+      _selectedMusicId = split.$2.id;
+    });
+    return true;
+  }
+
+  /// Returns true when a text overlay was split.
+  bool _trySplitSelectedOverlay() {
+    final project = _project;
+    final id = _selectedOverlayId;
+    if (project == null || id == null) return false;
+
+    final index = project.overlays.indexWhere((o) => o.id == id);
+    if (index < 0) return false;
+    final overlay = project.overlays[index];
+    if (_playhead < overlay.start || _playhead >= overlay.end) {
+      return false;
+    }
+
+    final split = splitTextOverlay(overlay, _playhead);
+    if (split == null) {
+      _showSnack(context.l10n.splitTooShort);
+      return true;
+    }
+
+    _mutate((p) {
+      p.overlays
+        ..removeAt(index)
+        ..insert(index, split.$1)
+        ..insert(index + 1, split.$2);
+      final compacted = compactOverlayLanes(p.overlays);
+      p.overlays
+        ..clear()
+        ..addAll(compacted);
+      _selectedOverlayId = split.$2.id;
+      _editingOverlayId = null;
+      _selectedSegmentId = null;
+      _selectedMusicId = null;
+    });
+    return true;
+  }
+
+  void _splitVideoAtPlayhead() {
+    final project = _project;
+    if (project == null) return;
 
     _ensureHealthySegments(project);
 
@@ -397,6 +479,8 @@ class _EditorScreenState extends State<EditorScreen>
           ..clear()
           ..addAll(newSegments);
         _selectedSegmentId = (rightPiece ?? newSegments.last).id;
+        _selectedOverlayId = null;
+        _selectedMusicId = null;
       });
       OverlayEventLog.log('split', 'success', {
         'sequenceTime': sequenceTime,
@@ -481,6 +565,50 @@ class _EditorScreenState extends State<EditorScreen>
     }
   }
 
+  Future<void> _loadSourceAudioWaveform(String sourcePath) async {
+    final hasAudio = await _probe.hasAudioStream(sourcePath);
+    if (!mounted) return;
+    if (!hasAudio) {
+      setState(() {
+        _hasSourceAudio = false;
+        _sourceAudioWaveform = const [];
+      });
+      return;
+    }
+
+    final wave =
+        await AudioWaveformService.instance.waveformForFile(sourcePath);
+    if (!mounted) return;
+    setState(() {
+      _hasSourceAudio = true;
+      _sourceAudioWaveform = wave?.peaks ?? const [];
+    });
+  }
+
+  void _syncVideoAudioVolume() {
+    final controller = _controller;
+    final project = _project;
+    if (controller == null || project == null) return;
+    if (!_hasSourceAudio) {
+      controller.setVolume(0);
+      return;
+    }
+    final playhead = _playhead;
+    ClipSegment? segment;
+    for (final candidate in project.segments) {
+      if (playhead >= candidate.start && playhead < candidate.end) {
+        segment = candidate;
+        break;
+      }
+    }
+    if (segment == null) {
+      controller.setVolume(0);
+      return;
+    }
+    final local = playhead - segment.start;
+    controller.setVolume(segment.volumeAt(local));
+  }
+
   void _onVideoTick() {
     final controller = _controller;
     final project = _project;
@@ -505,6 +633,7 @@ class _EditorScreenState extends State<EditorScreen>
       controller.seekTo(project.trim.end);
     }
     _advancePlaybackPastGaps();
+    _syncVideoAudioVolume();
     setState(() {});
   }
 
@@ -546,6 +675,7 @@ class _EditorScreenState extends State<EditorScreen>
     _scrubPlayhead = clamped;
     controller.seekTo(clamped);
     unawaited(_syncMusicPlayback());
+    _syncVideoAudioVolume();
     setState(() {});
   }
 
@@ -669,8 +799,13 @@ class _EditorScreenState extends State<EditorScreen>
       clipDuration: clipDuration,
     );
     _mutate((p) {
-      p.musicTracks.add(clip);
-      _selectedMusicId = clip.id;
+      final placed = assignMusicLane(p.musicTracks, clip);
+      p.musicTracks.add(placed);
+      final compacted = compactMusicLanes(p.musicTracks);
+      p.musicTracks
+        ..clear()
+        ..addAll(compacted);
+      _selectedMusicId = placed.id;
       _selectedOverlayId = null;
       _selectedSegmentId = null;
     });
@@ -678,30 +813,128 @@ class _EditorScreenState extends State<EditorScreen>
     await _syncMusicPlayback();
   }
 
+  Future<void> _openTransitionPicker() async {
+    final project = _project;
+    final l10n = AppLocalizations.of(context);
+    if (project == null || _exporting) return;
+
+    if (!hasVideoCuts(project.segments)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.transitionNeedsCuts)),
+      );
+      return;
+    }
+
+    final sequenceTime = _sequenceTimeForSplit(project.segments, _playhead);
+    final cutIndex = nearestCutIndex(project.segments, sequenceTime);
+    if (cutIndex < 0 || cutIndex >= project.segments.length - 1) {
+      return;
+    }
+
+    final current = project.segments[cutIndex];
+    final picked = await showTransitionPickerSheet(
+      context,
+      selectedId: current.transitionId ?? 'none',
+    );
+    if (picked == null || !mounted) return;
+
+    _mutate((p) {
+      if (cutIndex >= p.segments.length - 1) return;
+      final segment = p.segments[cutIndex];
+      if (picked.isNone) {
+        p.segments[cutIndex] = segment.copyWith(clearTransition: true);
+      } else {
+        p.segments[cutIndex] = segment.copyWith(
+          transitionId: picked.id,
+          transitionDuration: Duration(milliseconds: picked.defaultDurationMs),
+        );
+      }
+    });
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(l10n.transitionApplied)),
+    );
+  }
+
   Future<void> _loadMusicWaveforms(VideoProject project) async {
-    for (final music in project.musicTracks) {
-      await _ensureMusicWaveform(music);
+    for (final music in List<ProjectMusic>.from(project.musicTracks)) {
+      await _ensureMusicMetadata(music);
       if (!mounted) return;
     }
   }
 
-  Future<void> _ensureMusicWaveform(ProjectMusic music) async {
-    if (_musicWaveforms.containsKey(music.fileName)) return;
+  /// Probe file length + waveform so trim extends at 1x (never time-stretches).
+  Future<void> _ensureMusicMetadata(ProjectMusic music) async {
     final project = _project;
     if (project == null) return;
     final path = MusicStorageService.musicPath(
       p.dirname(project.sourcePath),
       music,
     );
-    final peaks = await AudioWaveformService.instance.peaksForFile(path);
-    if (!mounted || peaks.isEmpty) return;
-    setState(() => _musicWaveforms[music.fileName] = peaks);
+
+    var fileDuration = music.fileDuration;
+    if (fileDuration == null || fileDuration <= Duration.zero) {
+      fileDuration = await _probe.readDuration(path);
+    }
+
+    if (!_musicWaveforms.containsKey(music.fileName)) {
+      final wave = await AudioWaveformService.instance.waveformForFile(path);
+      if (!mounted) return;
+      if (wave != null) {
+        if (fileDuration == null || fileDuration <= Duration.zero) {
+          fileDuration = wave.duration;
+        }
+        setState(() => _musicWaveforms[music.fileName] = wave.peaks);
+      }
+    }
+
+    if (!mounted) return;
+    if (fileDuration == null || fileDuration <= Duration.zero) return;
+    if (music.fileDuration == fileDuration) return;
+
+    // Backfill duration without changing the visible trim window unless the
+    // clip was longer than the real file (invalid).
+    var clipDuration = music.clipDuration;
+    final maxClip = fileDuration - music.sourceOffset;
+    if (maxClip > Duration.zero && clipDuration > maxClip) {
+      clipDuration = maxClip;
+    }
+    _patchMusicClipQuiet(
+      music.copyWith(
+        fileDuration: fileDuration,
+        clipDuration: clipDuration,
+      ),
+    );
+  }
+
+  Future<void> _ensureMusicWaveform(ProjectMusic music) =>
+      _ensureMusicMetadata(music);
+
+  void _patchMusicClipQuiet(ProjectMusic next) {
+    final project = _project;
+    if (project == null) return;
+    final i = project.musicTracks.indexWhere((m) => m.id == next.id);
+    if (i < 0) return;
+    setState(() => project.musicTracks[i] = next);
+    _scheduleSave();
   }
 
   void _replaceMusicClip(ProjectMusic next) {
     _mutate((p) {
       final i = p.musicTracks.indexWhere((m) => m.id == next.id);
-      if (i >= 0) p.musicTracks[i] = next;
+      if (i < 0) return;
+      // Respect the lane the user dragged to when free; only reassign on conflict.
+      final placed = assignMusicLane(
+        p.musicTracks,
+        next,
+        preferLowestLane: false,
+      );
+      p.musicTracks[i] = placed;
+      final compacted = compactMusicLanes(p.musicTracks);
+      p.musicTracks
+        ..clear()
+        ..addAll(compacted);
     });
     unawaited(_syncMusicPlayback());
   }
@@ -711,31 +944,13 @@ class _EditorScreenState extends State<EditorScreen>
     if (id == null) return;
     _mutate((p) {
       p.musicTracks.removeWhere((m) => m.id == id);
+      final compacted = compactMusicLanes(p.musicTracks);
+      p.musicTracks
+        ..clear()
+        ..addAll(compacted);
       _selectedMusicId = null;
     });
     unawaited(_musicPlayer.stop());
-  }
-
-  void _splitSelectedMusic() {
-    final project = _project;
-    final id = _selectedMusicId;
-    if (project == null || id == null) return;
-
-    final index = project.musicTracks.indexWhere((m) => m.id == id);
-    if (index < 0) return;
-    final clip = project.musicTracks[index];
-    final split = splitMusicClip(clip, _playhead);
-    if (split == null) {
-      _showSnack(context.l10n.splitTooShort);
-      return;
-    }
-    _mutate((p) {
-      p.musicTracks
-        ..removeAt(index)
-        ..insert(index, split.$1)
-        ..insert(index + 1, split.$2);
-      _selectedMusicId = split.$2.id;
-    });
   }
 
   void _addTextOverlay() {
@@ -761,9 +976,21 @@ class _EditorScreenState extends State<EditorScreen>
 
     final overlay = TextOverlay(text: '', start: start, end: end);
     _mutate((p) {
-      p.overlays.add(overlay);
-      _selectedOverlayId = overlay.id;
-      _editingOverlayId = overlay.id;
+      final placed = assignOverlayLane(
+        p.overlays,
+        overlay,
+        preferLowestLane: true,
+      );
+      p.overlays.add(placed);
+      final compacted = compactOverlayLanes(p.overlays);
+      p.overlays
+        ..clear()
+        ..addAll(compacted);
+      _selectedOverlayId = placed.id;
+      _editingOverlayId = placed.id;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _timelineKey.currentState?.revealSelectedOverlay();
     });
   }
 
@@ -809,10 +1036,22 @@ class _EditorScreenState extends State<EditorScreen>
       style: TextOverlayStyle.plain,
     );
     _mutate((p) {
-      p.overlays.add(overlay);
-      _selectedOverlayId = overlay.id;
+      final placed = assignOverlayLane(
+        p.overlays,
+        overlay,
+        preferLowestLane: true,
+      );
+      p.overlays.add(placed);
+      final compacted = compactOverlayLanes(p.overlays);
+      p.overlays
+        ..clear()
+        ..addAll(compacted);
+      _selectedOverlayId = placed.id;
       _selectedSegmentId = null;
-      _editingOverlayId = overlay.id;
+      _editingOverlayId = placed.id;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _timelineKey.currentState?.revealSelectedOverlay();
     });
   }
 
@@ -848,12 +1087,20 @@ class _EditorScreenState extends State<EditorScreen>
 
     final index = project.overlays.indexWhere((o) => o.id == overlay.id);
     _mutate((p) {
+      final placed = assignOverlayLane(p.overlays, copy);
       p.overlays.insert(
         index == -1 ? p.overlays.length : index + 1,
-        copy,
+        placed,
       );
-      _selectedOverlayId = copy.id;
+      final compacted = compactOverlayLanes(p.overlays);
+      p.overlays
+        ..clear()
+        ..addAll(compacted);
+      _selectedOverlayId = placed.id;
       _editingOverlayId = null;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _timelineKey.currentState?.revealSelectedOverlay();
     });
   }
 
@@ -865,7 +1112,16 @@ class _EditorScreenState extends State<EditorScreen>
     if (index == -1) return;
 
     setState(() {
-      project.overlays[index] = updated;
+      final placed = assignOverlayLane(
+        project.overlays,
+        updated,
+        preferLowestLane: false,
+      );
+      project.overlays[index] = placed;
+      final compacted = compactOverlayLanes(project.overlays);
+      project.overlays
+        ..clear()
+        ..addAll(compacted);
     });
     _scheduleSave();
   }
@@ -881,7 +1137,16 @@ class _EditorScreenState extends State<EditorScreen>
     if (index == -1) return;
 
     setState(() {
-      project.overlays[index] = patch(project.overlays[index]);
+      final placed = assignOverlayLane(
+        project.overlays,
+        patch(project.overlays[index]),
+        preferLowestLane: false,
+      );
+      project.overlays[index] = placed;
+      final compacted = compactOverlayLanes(project.overlays);
+      project.overlays
+        ..clear()
+        ..addAll(compacted);
     });
     _scheduleSave();
   }
@@ -961,6 +1226,10 @@ class _EditorScreenState extends State<EditorScreen>
 
     _mutate((p) {
       p.overlays.removeWhere((o) => o.id == id);
+      final compacted = compactOverlayLanes(p.overlays);
+      p.overlays
+        ..clear()
+        ..addAll(compacted);
       if (_selectedOverlayId == id) {
         _selectedOverlayId = null;
       }
@@ -984,6 +1253,43 @@ class _EditorScreenState extends State<EditorScreen>
       overlay: overlay,
       onChanged: _updateOverlay,
       onRevert: () => _updateOverlay(original),
+    );
+  }
+
+  Future<void> _showExportOptions() async {
+    final project = _project;
+    if (project == null || _exporting) return;
+
+    final l10n = context.l10n;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_album_outlined),
+                title: Text(l10n.saveToAlbum),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  unawaited(_exportAndSave());
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.play_circle_outline),
+                title: Text(l10n.uploadShorts),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _openUpload();
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -1125,9 +1431,9 @@ class _EditorScreenState extends State<EditorScreen>
                 tooltip: l10n.editText,
               ),
             IconButton(
-              onPressed: _openUpload,
+              onPressed: _exporting ? null : _showExportOptions,
               icon: const Icon(Icons.upload_outlined),
-              tooltip: l10n.uploadShorts,
+              tooltip: l10n.export,
             ),
           ],
         ],
@@ -1174,6 +1480,10 @@ class _EditorScreenState extends State<EditorScreen>
                             segments: project.segments,
                             position: _playhead,
                             clipRotation: project.rotation,
+                            hostViewportSize: Size(
+                              constraints.maxWidth,
+                              constraints.maxHeight,
+                            ),
                             selectedOverlayId: _selectedOverlayId,
                             editingOverlayId: _editingOverlayId,
                             textHint: l10n.textOverlayHint,
@@ -1339,6 +1649,7 @@ class _EditorScreenState extends State<EditorScreen>
     required VideoPlayerController controller,
   }) {
     return TimelineWidget(
+      key: _timelineKey,
       duration: project.duration,
       trimStart: project.trim.start,
       trimEnd: project.trim.end,
@@ -1346,6 +1657,8 @@ class _EditorScreenState extends State<EditorScreen>
       overlays: project.overlays,
       musicTracks: project.musicTracks,
       musicWaveforms: _musicWaveforms,
+      sourceAudioWaveform: _sourceAudioWaveform,
+      hasSourceAudio: _hasSourceAudio,
       filmstripFrames: _filmstripFrames,
       playhead: _playhead,
       isPlaying: controller.value.isPlaying,
@@ -1379,6 +1692,13 @@ class _EditorScreenState extends State<EditorScreen>
         });
       },
       onMusicChanged: _replaceMusicClip,
+      onSegmentChanged: (segment) {
+        _mutate((p) {
+          final i = p.segments.indexWhere((s) => s.id == segment.id);
+          if (i >= 0) p.segments[i] = segment;
+        });
+        _syncVideoAudioVolume();
+      },
       onMusicSelected: (music) {
         setState(() {
           _selectedMusicId = music.id;
@@ -1433,13 +1753,26 @@ class _EditorScreenState extends State<EditorScreen>
                 ),
                 const SizedBox(width: 8),
                 IconButton.outlined(
+                  onPressed: _exporting ||
+                          _project == null ||
+                          !hasVideoCuts(_project!.segments)
+                      ? null
+                      : _openTransitionPicker,
+                  icon: const Icon(Icons.animation_outlined),
+                  tooltip: l10n.transition,
+                ),
+                const SizedBox(width: 8),
+                IconButton.outlined(
                   onPressed: (_selectedSegmentId == null &&
-                              _selectedMusicId == null) ||
+                              _selectedMusicId == null &&
+                              _selectedOverlayId == null) ||
                           _exporting
                       ? null
                       : () {
                           if (_selectedMusicId != null) {
                             _removeSelectedMusic();
+                          } else if (_selectedOverlayId != null) {
+                            _deleteOverlay(_selectedOverlayId!);
                           } else {
                             _deleteSelectedSegment();
                           }
@@ -1460,21 +1793,6 @@ class _EditorScreenState extends State<EditorScreen>
                   tooltip: l10n.rotateVideo,
                 ),
               ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: _exporting ? null : _exportAndSave,
-              icon: _exporting
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.save_alt),
-              label: Text(l10n.saveToGallery),
             ),
           ),
         ],

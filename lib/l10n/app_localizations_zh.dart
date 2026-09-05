@@ -51,6 +51,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get saveToGallery => '保存到相册';
 
   @override
+  String get saveToAlbum => '保存到相册';
+
+  @override
   String get cancel => '取消';
 
   @override
@@ -203,6 +206,26 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get projectsSection => '项目';
+
+  @override
+  String get noProjectsYet => '还没有项目。请先在上方选择视频开始。';
+
+  @override
+  String projectListSubtitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count 个文字层',
+      zero: '无文字层',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get deleteProject => '删除项目';
+
+  @override
   String get projectNotFound => '找不到已保存的项目。';
 
   @override
@@ -246,6 +269,87 @@ class AppLocalizationsZh extends AppLocalizations {
   String get searchMusicHint => '搜索免版税音乐';
 
   @override
+  String get searchSfxHint => '搜索音效';
+
+  @override
+  String get musicTabMusic => '音乐';
+
+  @override
+  String get musicTabSfx => '音效';
+
+  @override
+  String get musicGenreAll => '全部';
+
+  @override
+  String get musicGenreTravel => '旅行';
+
+  @override
+  String get musicGenreBeauty => '美妆';
+
+  @override
+  String get musicGenreFashion => '时尚';
+
+  @override
+  String get musicGenreHappy => '欢快';
+
+  @override
+  String get musicGenreEnergetic => '动感';
+
+  @override
+  String get musicGenreChill => '轻松';
+
+  @override
+  String get musicGenreCinematic => '电影感';
+
+  @override
+  String get musicGenreRomantic => '浪漫';
+
+  @override
+  String get musicGenreSports => '运动';
+
+  @override
+  String get musicGenreNature => '自然';
+
+  @override
+  String get musicGenreCooking => '美食';
+
+  @override
+  String get musicGenreCorporate => '商务';
+
+  @override
+  String get musicGenreHipHop => '嘻哈';
+
+  @override
+  String get musicGenrePop => '流行';
+
+  @override
+  String get musicGenreKids => '儿童';
+
+  @override
+  String get sfxGenreWhoosh => '嗖嗖';
+
+  @override
+  String get sfxGenreTransition => '转场';
+
+  @override
+  String get sfxGenreImpact => '撞击';
+
+  @override
+  String get sfxGenreGlitch => '故障';
+
+  @override
+  String get sfxGenreNotification => '通知';
+
+  @override
+  String get sfxGenreGame => '游戏';
+
+  @override
+  String get sfxGenreTech => '科技';
+
+  @override
+  String get sfxGenreUi => '界面';
+
+  @override
   String get musicCatalogAttribution => '可商用，无需署名（Pixabay / Mixkit）。';
 
   @override
@@ -286,6 +390,27 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get splitVideo => '分割';
+
+  @override
+  String get transition => '转场';
+
+  @override
+  String get transitionSheetTitle => '转场效果';
+
+  @override
+  String get transitionSheetSubtitle => '应用到离播放头最近的剪辑处。';
+
+  @override
+  String get transitionNone => '无';
+
+  @override
+  String get transitionCatalogUnavailable => '无法加载转场效果。';
+
+  @override
+  String get transitionApplied => '已应用转场。';
+
+  @override
+  String get transitionNeedsCuts => '请先分割片段再添加转场。';
 
   @override
   String get deleteSegment => '删除片段';

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:aveditor/models/audio_envelope.dart';
 import 'package:aveditor/models/export_preset.dart';
 import 'package:aveditor/models/export_quality_profile.dart';
 import 'package:aveditor/models/clip_segment.dart';
@@ -177,6 +178,7 @@ class ExportService {
     if (rasters.isNotEmpty) return false;
     if (musicPath != null) return false;
     if (project.segments.length != 1) return false;
+    if (!project.segments.first.audioEnvelope.isDefault) return false;
     return true;
   }
 
@@ -224,17 +226,47 @@ class ExportService {
     final hasConcat = project.segments.length > 1;
     final exportDurationSec =
         project.trimmedDuration.inMilliseconds / 1000.0;
+
+    final sourceAudioPrep = hasConcat || !hasVideoAudio
+        ? null
+        : buildSingleSegmentAudioEnvelope(
+            project.segments.first,
+            hasVideoAudio: hasVideoAudio,
+          );
+    final videoAudioStream = hasConcat
+        ? '[acat]'
+        : (sourceAudioPrep != null ? '[aenv]' : '[0:a]');
+
     final audioGraph = tracks.isNotEmpty && musicPath != null
         ? buildAudioMixGraph(
             tracks: tracks,
             trimStart: project.trim.start,
             exportDurationSec: exportDurationSec,
-            videoAudioStream: hasConcat ? '[acat]' : '[0:a]',
+            videoAudioStream: videoAudioStream,
             musicInput: 1 + rasters.length,
             hasVideoAudio: hasVideoAudio,
           )
         : null;
-    final audioMap = hasConcat ? '[acat]' : '0:a?';
+
+    // Source audio envelope without BGM.
+    final sourceOnlyAudio = audioGraph == null && sourceAudioPrep != null
+        ? sourceAudioPrep
+        : (audioGraph == null && hasConcat
+            ? null // [acat] already enveloped in concat
+            : null);
+
+    final audioMap = hasConcat
+        ? '[acat]'
+        : (sourceAudioPrep != null ? '[aenv]' : '0:a?');
+
+    final complexParts = <String>[
+      if (graph.description.isNotEmpty) graph.description,
+      if (sourceAudioPrep != null &&
+          (audioGraph != null || sourceOnlyAudio != null))
+        sourceAudioPrep.description,
+      if (audioGraph != null) audioGraph.description,
+    ];
+    final complex = complexParts.join(';');
 
     return [
       '-y',
@@ -243,32 +275,26 @@ class ExportService {
       quoteShell(project.sourcePath),
       for (final raster in rasters) ...['-i', quoteShell(raster.file.path)],
       if (musicPath != null) ...['-i', quoteShell(musicPath)],
-      if (audioGraph != null && graph.description.isNotEmpty) ...[
+      if (complex.isNotEmpty) ...[
         '-filter_complex',
-        quoteShell('${graph.description};${audioGraph.description}'),
+        quoteShell(complex),
         '-map',
-        quoteShell('[${graph.outputLabel}]'),
+        quoteShell(
+          graph.description.isNotEmpty ? '[${graph.outputLabel}]' : '0:v:0',
+        ),
         '-map',
-        quoteShell('[${audioGraph.outputLabel}]'),
-      ] else if (audioGraph != null) ...[
-        '-filter_complex',
-        quoteShell(audioGraph.description),
-        '-map',
-        '0:v:0',
-        '-map',
-        quoteShell('[${audioGraph.outputLabel}]'),
-      ] else if (graph.description.isNotEmpty) ...[
-        '-filter_complex',
-        quoteShell(graph.description),
-        '-map',
-        quoteShell('[${graph.outputLabel}]'),
-        '-map',
-        quoteShell(audioMap),
+        quoteShell(
+          audioGraph != null
+              ? '[${audioGraph.outputLabel}]'
+              : (sourceAudioPrep != null
+                  ? '[${sourceAudioPrep.outputLabel}]'
+                  : audioMap),
+        ),
       ] else ...[
         '-map',
         '0:v:0',
         '-map',
-        '0:a?',
+        quoteShell(audioMap),
       ],
       '-t',
       durationSec,
@@ -288,6 +314,24 @@ class ExportService {
       '+faststart',
       quoteShell(outputPath),
     ].join(' ');
+  }
+
+  /// Applies volume/fade to single-segment source audio → `[aenv]`.
+  /// Assumes the encode command already seeked with `-ss` to the segment start.
+  @visibleForTesting
+  static FilterGraph? buildSingleSegmentAudioEnvelope(
+    ClipSegment segment, {
+    bool hasVideoAudio = true,
+  }) {
+    if (!hasVideoAudio) return null;
+    if (segment.audioEnvelope.isDefault) return null;
+
+    final chain = AudioEnvelope.appendFilters(
+      chain: '[0:a]',
+      envelope: segment.audioEnvelope,
+      clipDuration: segment.duration,
+    );
+    return FilterGraph(description: '$chain[aenv]', outputLabel: 'aenv');
   }
 
   /// Mixes background music clips with the trimmed clip audio.
@@ -412,19 +456,96 @@ class ExportService {
       parts.add(
         '[0:v]trim=start=$start:end=$end,setpts=PTS-STARTPTS[v$i]',
       );
-      parts.add(
-        '[0:a]atrim=start=$start:end=$end,asetpts=PTS-STARTPTS[a$i]',
+      final audioChain = AudioEnvelope.appendFilters(
+        chain: '[0:a]atrim=start=$start:end=$end,asetpts=PTS-STARTPTS',
+        envelope: segment.audioEnvelope,
+        clipDuration: segment.duration,
       );
+      parts.add('$audioChain[a$i]');
     }
 
-    final labels = StringBuffer();
-    for (var i = 0; i < segments.length; i++) {
-      labels.write('[v$i][a$i]');
+    final usesXfade = segments
+        .take(segments.length - 1)
+        .any((segment) => segment.hasTransition);
+    if (!usesXfade) {
+      final labels = StringBuffer();
+      for (var i = 0; i < segments.length; i++) {
+        labels.write('[v$i][a$i]');
+      }
+      parts.add(
+        '${labels}concat=n=${segments.length}:v=1:a=1[vcat][acat]',
+      );
+      return parts.join(';');
     }
-    parts.add(
-      '${labels}concat=n=${segments.length}:v=1:a=1[vcat][acat]',
-    );
+
+    var vLabel = 'v0';
+    var aLabel = 'a0';
+    var cursorSec = segments.first.duration.inMilliseconds / 1000.0;
+
+    for (var i = 0; i < segments.length - 1; i++) {
+      final current = segments[i];
+      final next = segments[i + 1];
+      final td = clampedTransitionDuration(current, next: next);
+      final nextV = 'v${i + 1}';
+      final nextA = 'a${i + 1}';
+      final outV = i == segments.length - 2 ? 'vcat' : 'vx$i';
+      final outA = i == segments.length - 2 ? 'acat' : 'ax$i';
+
+      if (current.hasTransition && td > Duration.zero) {
+        final name = _ffmpegTransitionName(current.transitionId);
+        final durationSec = td.inMilliseconds / 1000.0;
+        final offsetSec =
+            (cursorSec - durationSec).clamp(0.0, double.infinity);
+        parts.add(
+          '[$vLabel][$nextV]xfade=transition=$name:'
+          'duration=${durationSec.toStringAsFixed(3)}:'
+          'offset=${offsetSec.toStringAsFixed(3)}[$outV]',
+        );
+        parts.add(
+          '[$aLabel][$nextA]acrossfade=d=${durationSec.toStringAsFixed(3)}[$outA]',
+        );
+        cursorSec =
+            offsetSec + next.duration.inMilliseconds / 1000.0;
+      } else {
+        parts.add(
+          '[$vLabel][$nextV][$aLabel][$nextA]concat=n=2:v=1:a=1[$outV][$outA]',
+        );
+        cursorSec += next.duration.inMilliseconds / 1000.0;
+      }
+
+      vLabel = outV;
+      aLabel = outA;
+    }
+
     return parts.join(';');
+  }
+
+  /// Maps catalog transition ids to FFmpeg `xfade` names.
+  static String _ffmpegTransitionName(String? transitionId) {
+    final id = transitionId?.trim() ?? '';
+    if (id.isEmpty || id == 'none') return 'fade';
+    const known = <String>{
+      'fade',
+      'dissolve',
+      'wipeleft',
+      'wiperight',
+      'wipeup',
+      'wipedown',
+      'slideleft',
+      'slideright',
+      'slideup',
+      'slidedown',
+      'circlecrop',
+      'circleopen',
+      'circleclose',
+      'pixelize',
+      'fadeblack',
+      'fadewhite',
+      'distance',
+      'hblur',
+    };
+    if (known.contains(id)) return id;
+    return 'fade';
   }
 
   /// Builds the crop-and-composite graph.

@@ -85,4 +85,81 @@ void main() {
     expect(music.volumeAt(Duration.zero), closeTo(0, 0.001));
     expect(music.volumeAt(const Duration(seconds: 2)), closeTo(1, 0.02));
   });
+
+  test('overlapping music clips are assigned a new lane', () {
+    final a = ProjectMusic(
+      id: 'a',
+      title: 'A',
+      fileName: 'a.mp3',
+      timelineStart: Duration.zero,
+      clipDuration: const Duration(seconds: 10),
+      lane: 0,
+    );
+    final b = ProjectMusic(
+      id: 'b',
+      title: 'B',
+      fileName: 'b.mp3',
+      timelineStart: const Duration(seconds: 4),
+      clipDuration: const Duration(seconds: 10),
+      lane: 0,
+    );
+
+    final placed = assignMusicLane([a], b);
+    expect(placed.lane, 1);
+    expect(musicLaneCount([a, placed]), 2);
+  });
+
+  test('non-overlapping clips pack up onto the free upper lane', () {
+    final a = ProjectMusic(
+      id: 'a',
+      title: 'A',
+      fileName: 'a.mp3',
+      timelineStart: Duration.zero,
+      clipDuration: const Duration(seconds: 4),
+      lane: 0,
+    );
+    final b = ProjectMusic(
+      id: 'b',
+      title: 'B',
+      fileName: 'b.mp3',
+      timelineStart: const Duration(seconds: 10),
+      clipDuration: const Duration(seconds: 4),
+      lane: 1,
+    );
+
+    final placed = assignMusicLane([a], b);
+    expect(placed.lane, 0);
+  });
+
+  test('sticky mode keeps the lower lane when preferLowestLane is false', () {
+    final a = ProjectMusic(
+      id: 'a',
+      title: 'A',
+      fileName: 'a.mp3',
+      timelineStart: Duration.zero,
+      clipDuration: const Duration(seconds: 4),
+      lane: 0,
+    );
+    final b = ProjectMusic(
+      id: 'b',
+      title: 'B',
+      fileName: 'b.mp3',
+      timelineStart: const Duration(seconds: 10),
+      clipDuration: const Duration(seconds: 4),
+      lane: 1,
+    );
+
+    final placed = assignMusicLane([a], b, preferLowestLane: false);
+    expect(placed.lane, 1);
+  });
+
+  test('lane survives project json round-trip', () {
+    final music = ProjectMusic(
+      title: 'Lane',
+      fileName: 'music.mp3',
+      lane: 2,
+    );
+    final restored = ProjectMusic.fromJson(music.toJson());
+    expect(restored.lane, 2);
+  });
 }

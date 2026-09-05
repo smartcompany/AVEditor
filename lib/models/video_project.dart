@@ -63,7 +63,7 @@ class VideoProject {
   }
 
   Duration get trimmedDuration =>
-      segments.isEmpty ? Duration.zero : totalKeptDuration(segments);
+      segments.isEmpty ? Duration.zero : exportTimelineDuration(segments);
 
   void setTrimStart(Duration start) {
     if (segments.isEmpty) return;
@@ -170,9 +170,11 @@ class VideoProject {
       sourcePath: sourcePath,
       duration: duration,
       segments: resolvedSegments,
-      overlays: (json['overlays'] as List<dynamic>)
-          .map((entry) => TextOverlay.fromJson(entry as Map<String, dynamic>))
-          .toList(),
+      overlays: resolveOverlayLanes(
+        (json['overlays'] as List<dynamic>)
+            .map((entry) => TextOverlay.fromJson(entry as Map<String, dynamic>))
+            .toList(),
+      ),
       musicTracks: musicTracks,
       preset: ExportPreset.values.byName(json['preset'] as String),
       rotation: (json['rotation'] as num?)?.toDouble() ?? 0,

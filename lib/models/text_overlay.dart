@@ -1,5 +1,6 @@
 import 'package:aveditor/models/text_overlay_style.dart';
 import 'package:aveditor/models/text_style_template.dart';
+import 'package:aveditor/utils/timeline_math.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
@@ -35,6 +36,7 @@ class TextOverlay {
     this.boxWidth = 540,
     this.boxHeight = 264,
     this.rotation = 0,
+    this.lane = 0,
   }) : id = id ?? const Uuid().v4();
 
   final String id;
@@ -60,6 +62,9 @@ class TextOverlay {
   /// Clockwise rotation about the box centre, in radians.
   double rotation;
 
+  /// Vertical text-lane index (0 = top). Overlapping clips go to new lanes.
+  final int lane;
+
   TextStyleTemplate? get template => TextStyleTemplateCatalog.byId(templateId);
 
   TextOverlay copyWith({
@@ -76,6 +81,7 @@ class TextOverlay {
     double? boxWidth,
     double? boxHeight,
     double? rotation,
+    int? lane,
   }) {
     return TextOverlay(
       id: id,
@@ -96,6 +102,7 @@ class TextOverlay {
       boxWidth: boxWidth ?? this.boxWidth,
       boxHeight: boxHeight ?? this.boxHeight,
       rotation: rotation ?? this.rotation,
+      lane: lane ?? this.lane,
     );
   }
 
@@ -115,6 +122,7 @@ class TextOverlay {
       boxWidth: boxWidth,
       boxHeight: boxHeight,
       rotation: rotation,
+      lane: lane,
     );
   }
 
@@ -141,6 +149,7 @@ class TextOverlay {
     'boxWidth': boxWidth,
     'boxHeight': boxHeight,
     'rotation': rotation,
+    'lane': lane,
   };
 
   factory TextOverlay.fromJson(Map<String, dynamic> json) {
@@ -165,6 +174,106 @@ class TextOverlay {
       boxWidth: (json['boxWidth'] as num).toDouble(),
       boxHeight: (json['boxHeight'] as num).toDouble(),
       rotation: (json['rotation'] as num?)?.toDouble() ?? 0,
+      lane: json['lane'] as int? ?? 0,
     );
   }
+}
+
+/// Split [overlay] at [at] (source timeline). Returns null if too close to edges.
+(TextOverlay left, TextOverlay right)? splitTextOverlay(
+  TextOverlay overlay,
+  Duration at,
+) {
+  if (at <= overlay.start + minOverlayDuration) return null;
+  if (at >= overlay.end - minOverlayDuration) return null;
+
+  final left = overlay.copyWith(end: at);
+  final right = overlay.duplicate().copyWith(
+    start: at,
+    end: overlay.end,
+  );
+  return (left, right);
+}
+
+bool overlayRangesOverlap(TextOverlay a, TextOverlay b) {
+  return a.start < b.end && b.start < a.end;
+}
+
+/// Assigns a lane for [clip].
+///
+/// When [preferLowestLane] is true (default — CapCut-style), fills the oldest
+/// free lane that has room for [clip]'s time range, so a clip dragged clear of
+/// an upper neighbor can move back up. Only then opens a new lane.
+///
+/// When false, keeps [clip.lane] when free; on conflict prefers a lane below,
+/// then above.
+TextOverlay assignOverlayLane(
+  List<TextOverlay> overlays,
+  TextOverlay clip, {
+  bool preferLowestLane = true,
+}) {
+  final others = overlays.where((o) => o.id != clip.id);
+  bool fits(int lane) {
+    for (final other in others) {
+      if (other.lane != lane) continue;
+      if (overlayRangesOverlap(other, clip)) return false;
+    }
+    return true;
+  }
+
+  final maxExisting =
+      others.fold<int>(-1, (m, t) => t.lane > m ? t.lane : m);
+
+  if (preferLowestLane) {
+    for (var lane = 0; lane <= maxExisting; lane++) {
+      if (fits(lane)) return clip.copyWith(lane: lane);
+    }
+    return clip.copyWith(lane: maxExisting + 1);
+  }
+
+  if (fits(clip.lane)) return clip;
+
+  // Search nearest free lane above and below the requested one.
+  for (var dist = 1; dist <= maxExisting + 1; dist++) {
+    final up = clip.lane - dist;
+    final down = clip.lane + dist;
+    if (up >= 0 && fits(up)) return clip.copyWith(lane: up);
+    if (down <= maxExisting + 1 && fits(down)) {
+      return clip.copyWith(lane: down);
+    }
+  }
+  return clip.copyWith(lane: maxExisting + 1);
+}
+
+/// Removes empty lane gaps after moves/deletes (0..n contiguous).
+List<TextOverlay> compactOverlayLanes(List<TextOverlay> overlays) {
+  if (overlays.isEmpty) return overlays;
+  final used = overlays.map((o) => o.lane).toSet().toList()..sort();
+  final remap = <int, int>{
+    for (var i = 0; i < used.length; i++) used[i]: i,
+  };
+  return [
+    for (final overlay in overlays)
+      remap[overlay.lane] == overlay.lane
+          ? overlay
+          : overlay.copyWith(lane: remap[overlay.lane]!),
+  ];
+}
+
+int overlayLaneCount(List<TextOverlay> overlays) {
+  if (overlays.isEmpty) return 0;
+  var maxLane = 0;
+  for (final overlay in overlays) {
+    if (overlay.lane > maxLane) maxLane = overlay.lane;
+  }
+  return maxLane + 1;
+}
+
+/// Packs overlays onto the lowest free lanes from list order (load / migrate).
+List<TextOverlay> resolveOverlayLanes(List<TextOverlay> overlays) {
+  final placed = <TextOverlay>[];
+  for (final overlay in overlays) {
+    placed.add(assignOverlayLane(placed, overlay));
+  }
+  return compactOverlayLanes(placed);
 }

@@ -9,22 +9,54 @@ import 'package:aveditor/utils/clip_segment_ops.dart';
 import 'package:aveditor/utils/duration_format.dart';
 import 'package:aveditor/utils/music_timeline_ops.dart';
 import 'package:aveditor/utils/timeline_math.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 /// Height of the fixed clip track at the top; it never scrolls away.
-const _videoTrackHeight = 58.0;
+/// Filmstrip on top, source-audio waveform + envelope along the bottom (iMovie).
+const _videoFilmstripHeight = 40.0;
+const _videoAudioHeight = 30.0;
+const _videoTrackHeight = _videoFilmstripHeight + _videoAudioHeight;
 
 /// Background-music lane under the filmstrip (waveform + volume envelope).
 const _musicTrackHeight = 44.0;
 const _musicTrackGap = 4.0;
+const _musicLaneStride = _musicTrackHeight + _musicTrackGap;
 const _musicVolumeHitSlop = 12.0;
 const _musicFadeHitSlop = 22.0;
-/// Keep fade handles clear of the white trim bars.
+/// Keep fade handles clear of the white trim bars (music / wide clips).
 const _musicFadeHandleInset = 18.0;
-const _musicTrimHitThreshold = 7.0;
+
+/// CapCut-style end caps: wide, full-lane height, outside the clip time span.
+const _overlayHandleWidth = 18.0;
+const _overlayHandleOutsetY = 5.0;
 
 /// Visible gap between split clip blocks on the timeline.
 const _segmentGap = 2.0;
+
+/// Drawn / tappable bounds for a start or end cap.
+///
+/// Caps sit **outside** the clip time span (CapCut-style):
+/// [atStart] → immediately left of the start edge;
+/// otherwise → immediately right of the end edge.
+/// Vertically the rect is taller than the lane ([_overlayHandleOutsetY]).
+Rect overlayEdgeHandleRect(
+  double edgeX, {
+  required double top,
+  required double bottom,
+  required bool atStart,
+}) {
+  final height = (bottom - top) + _overlayHandleOutsetY * 2;
+  final topY = top - _overlayHandleOutsetY;
+  final left = atStart ? edgeX - _overlayHandleWidth : edgeX;
+  return Rect.fromLTWH(left, topY, _overlayHandleWidth, height);
+}
+
+/// Minimum gap kept between fade-in and fade-out knobs on a clip.
+const _minFadeHandleGap = 10.0;
+
+/// Narrowest audio bar that still gets interactive fade knobs.
+const _minAudioFadeBarWidth = 14.0;
 
 /// Fixed filmstrip tile width — only as many tiles as fit are drawn per segment.
 const _filmstripTileWidth = 48.0;
@@ -55,7 +87,48 @@ const _filmstripTileWidth = 48.0;
   return (left: left, right: right);
 }
 
-/// One text overlay per lane, stacked under the clip track.
+/// Shrinks edge inset on short split clips so both fade knobs stay on the bar.
+double audioFadeHandleInset(double width) {
+  if (width <= _minAudioFadeBarWidth) return width * 0.2;
+  final room = (width - _minFadeHandleGap) / 2;
+  if (room <= 0) return 0;
+  return math.min(_musicFadeHandleInset, room);
+}
+
+/// Fade-in / fade-out knob X positions that stay inside [left, right] even on
+/// short middle cuts after a multi-way split.
+({double inX, double outX}) audioFadeHandleXs({
+  required double left,
+  required double right,
+  required Duration fadeIn,
+  required Duration fadeOut,
+  required Duration duration,
+}) {
+  final width = right - left;
+  if (width <= 0) return (inX: left, outX: right);
+
+  final spanMs = duration.inMilliseconds.clamp(1, 1 << 31);
+  final inset = audioFadeHandleInset(width);
+  final inRaw = left + width * (fadeIn.inMilliseconds / spanMs);
+  final outRaw = right - width * (fadeOut.inMilliseconds / spanMs);
+
+  final minIn = left + inset;
+  final maxOut = right - inset;
+  if (maxOut - minIn < _minFadeHandleGap) {
+    return (
+      inX: left + width * 0.28,
+      outX: left + width * 0.72,
+    );
+  }
+
+  var inX = inRaw.clamp(minIn, maxOut - _minFadeHandleGap);
+  var outX = outRaw.clamp(inX + _minFadeHandleGap, maxOut);
+  inX = inX.clamp(minIn, outX - _minFadeHandleGap);
+  return (inX: inX, outX: outX);
+}
+
+/// Text overlays share lanes when they do not overlap in time; overlapping
+/// clips are pushed to a new lane below (CapCut-style).
 const _laneHeight = 26.0;
 const _laneGap = 4.0;
 const _laneStride = _laneHeight + _laneGap;
@@ -83,13 +156,17 @@ enum TimelineDragTarget {
   musicVolume,
   musicFadeIn,
   musicFadeOut,
+  videoAudioVolume,
+  videoAudioFadeIn,
+  videoAudioFadeOut,
 }
 
 /// Interactive timeline with pinch-zoom and a fixed centre playhead: the strip
 /// scrolls under the indicator instead of the indicator moving along the strip.
 ///
-/// Each overlay owns a lane below the clip track, and the lane area scrolls
-/// vertically once there are more overlays than fit.
+/// The video track stays pinned. Below it, music lanes then text lanes share one
+/// vertical scroll stack (music A/B…, then text). Overlapping clips drop to a
+/// new lane of their kind; the stack scrolls once more rows than fit.
 class TimelineWidget extends StatefulWidget {
   const TimelineWidget({
     super.key,
@@ -110,6 +187,7 @@ class TimelineWidget extends StatefulWidget {
     this.selectedMusicId,
     this.onOverlaySelected,
     this.onSegmentSelected,
+    this.onSegmentChanged,
     this.selectedOverlayId,
     this.selectedSegmentId,
     this.isPlaying = false,
@@ -117,6 +195,8 @@ class TimelineWidget extends StatefulWidget {
     this.onHandleDragUpdate,
     this.onHandleDragEnd,
     this.filmstripFrames = const [],
+    this.sourceAudioWaveform = const [],
+    this.hasSourceAudio = false,
   });
 
   final Duration duration;
@@ -138,6 +218,7 @@ class TimelineWidget extends StatefulWidget {
   final ValueChanged<TextOverlay> onOverlayChanged;
   final ValueChanged<TextOverlay>? onOverlaySelected;
   final ValueChanged<ClipSegment>? onSegmentSelected;
+  final ValueChanged<ClipSegment>? onSegmentChanged;
   final String? selectedOverlayId;
   final String? selectedSegmentId;
   final bool isPlaying;
@@ -149,14 +230,23 @@ class TimelineWidget extends StatefulWidget {
   final GestureDragEndCallback? onHandleDragEnd;
   final List<TimelineFilmstripFrame> filmstripFrames;
 
+  /// Peak bars for the source video's embedded audio (full file).
+  final List<double> sourceAudioWaveform;
+  final bool hasSourceAudio;
+
   @override
-  State<TimelineWidget> createState() => _TimelineWidgetState();
+  TimelineWidgetState createState() => TimelineWidgetState();
 }
 
-class _TimelineWidgetState extends State<TimelineWidget> {
+class TimelineWidgetState extends State<TimelineWidget> {
   double _zoom = 1.0;
   double _viewportWidth = 1;
   double _lanesScrollY = 0;
+
+  /// Snapshot from the last frame — [oldWidget.overlays] is unsafe because the
+  /// project mutates the same [List] in place before [didUpdateWidget] runs.
+  int _knownOverlayCount = 0;
+  String? _knownSelectedOverlayId;
 
   TimelineDragTarget _dragTarget = TimelineDragTarget.panTimeline;
   TextOverlay? _dragOverlay;
@@ -170,6 +260,8 @@ class _TimelineWidgetState extends State<TimelineWidget> {
   Duration? _musicAnchorSpan;
   double? _musicAnchorVolume;
   ProjectMusic? _dragMusic;
+  ClipSegment? _dragSegment;
+  double? _videoAudioAnchorVolume;
 
   /// Resolved on first travel: every drag is either a vertical lane scroll or
   /// the horizontal action the hit test picked.
@@ -192,25 +284,77 @@ class _TimelineWidgetState extends State<TimelineWidget> {
   double get _contentInsetX => timelineContentInsetX(_viewportWidth);
   bool get _isPinching => _pointers.length >= 2;
 
-  /// An empty timeline still shows one lane slot so the area reads as a track.
-  double get _musicBandHeight =>
-      widget.musicTracks.isEmpty ? 0.0 : _musicTrackHeight + _musicTrackGap;
+  @override
+  void initState() {
+    super.initState();
+    _knownOverlayCount = widget.overlays.length;
+    _knownSelectedOverlayId = widget.selectedOverlayId;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      revealSelectedOverlay();
+    });
+  }
 
-  double get _overlayLanesTop => _videoTrackHeight + _musicBandHeight;
+  /// Scrolls the music+text stack so [selectedOverlayId] is fully on-screen.
+  void revealSelectedOverlay() {
+    if (!mounted) return;
+    final before = _lanesScrollY;
+    _applyRevealContentRange(
+      top: _textLaneContentTop(_laneIndexOf(widget.selectedOverlayId)),
+      height: _laneHeight,
+    );
+    if (_lanesScrollY != before) {
+      setState(() {});
+    }
+  }
 
-  double get _lanesContentHeight =>
-      (widget.overlays.isEmpty ? 1 : widget.overlays.length) * _laneStride;
+  /// Scrolls so the selected music clip's lane is visible.
+  void revealSelectedMusic() {
+    if (!mounted) return;
+    final music = _musicById(widget.selectedMusicId);
+    if (music == null) return;
+    final before = _lanesScrollY;
+    _applyRevealContentRange(
+      top: _musicLaneContentTop(music.lane),
+      height: _musicTrackHeight,
+    );
+    if (_lanesScrollY != before) {
+      setState(() {});
+    }
+  }
+
+  /// Music lanes occupy the top of the scrollable stack (may be 0).
+  double get _musicContentHeight {
+    if (widget.musicTracks.isEmpty) return 0.0;
+    return musicLaneCount(widget.musicTracks) * _musicLaneStride;
+  }
+
+  /// Top of the scrollable music+text region (video stays above).
+  double get _scrollRegionTop => _videoTrackHeight;
+
+  double get _textContentHeight =>
+      (widget.overlays.isEmpty ? 1 : overlayLaneCount(widget.overlays)) *
+      _laneStride;
+
+  /// Full scrollable content: music lanes, then text lanes.
+  double get _lanesContentHeight => _musicContentHeight + _textContentHeight;
+
+  /// Viewport budget ≈ one music lane (when present) + up to 3 text lanes.
+  double get _maxScrollViewportHeight {
+    final musicReserve =
+        widget.musicTracks.isEmpty ? 0.0 : _musicLaneStride;
+    return musicReserve + _maxVisibleLanes * _laneStride;
+  }
 
   double get _lanesViewportHeight =>
-      _lanesContentHeight.clamp(0.0, _maxVisibleLanes * _laneStride);
+      _lanesContentHeight.clamp(0.0, _maxScrollViewportHeight);
 
   double get _maxLanesScroll =>
       (_lanesContentHeight - _lanesViewportHeight).clamp(0.0, double.infinity);
 
   bool get _lanesScrollable => _maxLanesScroll > 0;
 
-  double get _bodyHeight =>
-      _videoTrackHeight + _musicBandHeight + _lanesViewportHeight;
+  double get _bodyHeight => _videoTrackHeight + _lanesViewportHeight;
 
   Duration get _sequenceDuration {
     final kept = totalKeptDuration(widget.segments);
@@ -295,26 +439,70 @@ class _TimelineWidgetState extends State<TimelineWidget> {
     setState(() => _lanesScrollY = next);
   }
 
-  /// Brings [index]'s lane fully into view — used when a new layer is added.
-  void _revealLane(int index) {
-    if (index < 0) return;
-    final top = index * _laneStride;
-    final bottom = top + _laneHeight;
+  /// Scrolls so [top, top+height] in scroll-content space is fully visible.
+  void _applyRevealContentRange({
+    required double top,
+    required double height,
+  }) {
+    if (top < 0 || height <= 0) return;
+    final bottom = top + height;
+    final viewport = _lanesViewportHeight;
+    if (viewport <= 0) return;
+
     var next = _lanesScrollY;
     if (top < next) {
       next = top;
-    } else if (bottom > next + _lanesViewportHeight) {
-      next = bottom - _lanesViewportHeight;
+    } else if (bottom > next + viewport) {
+      next = bottom - viewport;
     }
-    next = next.clamp(0.0, _maxLanesScroll);
-    if (next != _lanesScrollY) {
-      setState(() => _lanesScrollY = next);
-    }
+    _lanesScrollY = next.clamp(0.0, _maxLanesScroll);
+  }
+
+  double _musicLaneContentTop(int lane) => lane * _musicLaneStride;
+
+  double _textLaneContentTop(int lane) {
+    if (lane < 0) return -1;
+    return _musicContentHeight + lane * _laneStride;
+  }
+
+  /// Viewport Y of a music lane (accounts for vertical scroll).
+  double _musicLaneTop(int lane) =>
+      _scrollRegionTop + _musicLaneContentTop(lane) - _lanesScrollY;
+
+  double _musicLaneBottom(int lane) => _musicLaneTop(lane) + _musicTrackHeight;
+
+  /// Y in the music+text scroll content for a viewport point.
+  double _scrollContentY(Offset local) =>
+      local.dy - _scrollRegionTop + _lanesScrollY;
+
+  /// Text lane under the finger; allows one empty lane past the current max.
+  int _textLaneAtLocal(Offset local, {int? currentLane}) {
+    final textY = _scrollContentY(local) - _musicContentHeight;
+    final raw = (textY / _laneStride).floor();
+    final occupied = overlayLaneCount(widget.overlays);
+    final limit = math.max(occupied, (currentLane ?? 0) + 1);
+    if (raw < 0) return 0;
+    if (raw > limit) return limit;
+    return raw;
+  }
+
+  /// Music lane under the finger; allows one empty lane past the current max.
+  int _musicLaneAtLocal(Offset local, {int? currentLane}) {
+    final contentY = _scrollContentY(local);
+    final raw = (contentY / _musicLaneStride).floor();
+    final occupied = musicLaneCount(widget.musicTracks);
+    final limit = math.max(occupied, (currentLane ?? 0) + 1);
+    if (raw < 0) return 0;
+    if (raw > limit) return limit;
+    return raw;
   }
 
   int _laneIndexOf(String? overlayId) {
     if (overlayId == null) return -1;
-    return widget.overlays.indexWhere((o) => o.id == overlayId);
+    for (final overlay in widget.overlays) {
+      if (overlay.id == overlayId) return overlay.lane;
+    }
+    return -1;
   }
 
   String _formatZoomLabel(double zoom) {
@@ -347,29 +535,217 @@ class _TimelineWidgetState extends State<TimelineWidget> {
     _setZoom(_pinchStartZoom * distance / startDistance);
   }
 
-  /// The overlay whose lane contains [local], or null for the clip track and
-  /// empty lane space.
+  /// Hit-tests the text bar under [local]. Empty lane space does not count —
+  /// that gesture is for panning / scrolling the timeline.
+  ///
+  /// Unselected clips only hit on the bar body (not outward caps), so a
+  /// neighbor's outside handle cannot steal focus from the selected clip.
   TextOverlay? _overlayInLaneAt(Offset local) {
-    if (local.dy < _overlayLanesTop) return null;
-    final contentY = local.dy - _overlayLanesTop + _lanesScrollY;
-    if (contentY < 0) return null;
-    final index = contentY ~/ _laneStride;
-    if (index < 0 || index >= widget.overlays.length) return null;
-    return widget.overlays[index];
+    if (local.dy < _scrollRegionTop) return null;
+    final textY = _scrollContentY(local) - _musicContentHeight;
+    if (textY < -_overlayHandleOutsetY) return null;
+    final x = local.dx.clamp(0.0, _viewportWidth);
+    final point = Offset(x, textY);
+
+    // Selected caps first (they extend outside the time span).
+    final focused = _overlayById(widget.selectedOverlayId);
+    if (focused != null) {
+      final span = overlayTimelineSpan(focused, widget.segments);
+      if (span != null) {
+        final startX = _viewportXForSequence(span.start);
+        final endX = _viewportXForSequence(span.end);
+        final laneTop = focused.lane * _laneStride.toDouble();
+        final laneBottom = laneTop + _laneHeight;
+        final startHandle = overlayEdgeHandleRect(
+          startX,
+          top: laneTop,
+          bottom: laneBottom,
+          atStart: true,
+        );
+        final endHandle = overlayEdgeHandleRect(
+          endX,
+          top: laneTop,
+          bottom: laneBottom,
+          atStart: false,
+        );
+        if (startHandle.contains(point) ||
+            endHandle.contains(point) ||
+            (x >= startX && x <= endX)) {
+          return focused;
+        }
+      }
+    }
+
+    final lane = textY ~/ _laneStride;
+    final laneCount = overlayLaneCount(widget.overlays);
+    if (lane < 0 || lane >= laneCount) return null;
+
+    for (final overlay in widget.overlays) {
+      if (overlay.lane != lane) continue;
+      if (overlay.id == widget.selectedOverlayId) continue;
+      final span = overlayTimelineSpan(overlay, widget.segments);
+      if (span == null) continue;
+      final startX = _viewportXForSequence(span.start);
+      final endX = _viewportXForSequence(span.end);
+      // Body only — outward caps of unfocused clips are ignored.
+      if (x >= startX && x <= endX) return overlay;
+    }
+    return null;
+  }
+
+  TextOverlay? _overlayById(String? id) {
+    if (id == null) return null;
+    for (final overlay in widget.overlays) {
+      if (overlay.id == id) return overlay;
+    }
+    return null;
+  }
+
+  ProjectMusic? _musicById(String? id) {
+    if (id == null) return null;
+    for (final music in widget.musicTracks) {
+      if (music.id == id) return music;
+    }
+    return null;
+  }
+
+  /// Returns a drag target when [local] is on [overlay]; otherwise null.
+  TimelineDragTarget? _overlayDragTargetFor(
+    TextOverlay overlay,
+    Offset local,
+    double x,
+  ) {
+    final textY = _scrollContentY(local) - _musicContentHeight;
+    if (textY < -_overlayHandleOutsetY) return null;
+
+    final span = overlayTimelineSpan(overlay, widget.segments);
+    if (span == null) return null;
+
+    final startX = _viewportXForSequence(span.start);
+    final endX = _viewportXForSequence(span.end);
+    final laneTop = overlay.lane * _laneStride.toDouble();
+    final laneBottom = laneTop + _laneHeight;
+    final point = Offset(x, textY);
+    final selected = overlay.id == widget.selectedOverlayId;
+
+    final startHandle = overlayEdgeHandleRect(
+      startX,
+      top: laneTop,
+      bottom: laneBottom,
+      atStart: true,
+    );
+    final endHandle = overlayEdgeHandleRect(
+      endX,
+      top: laneTop,
+      bottom: laneBottom,
+      atStart: false,
+    );
+
+    if (selected) {
+      final onStart = startHandle.contains(point);
+      final onEnd = endHandle.contains(point);
+      if (!onStart && !onEnd && (x < startX || x > endX)) return null;
+
+      _dragOverlay = overlay;
+      _overlayAnchorStart = overlay.start;
+      _overlayAnchorEnd = overlay.end;
+      _overlayAnchorExportStart = span.start;
+      _overlayAnchorExportEnd = span.end;
+      _overlayDragOnBar = true;
+
+      if (onStart && (!onEnd || (x - startX).abs() <= (x - endX).abs())) {
+        return TimelineDragTarget.overlayStart;
+      }
+      if (onEnd) return TimelineDragTarget.overlayEnd;
+      if (x >= startX && x <= endX) return TimelineDragTarget.overlayMove;
+      return null;
+    }
+
+    // Unfocused: body only (no outward-cap steal).
+    if (x < startX || x > endX) return null;
+    _dragOverlay = overlay;
+    _overlayAnchorStart = overlay.start;
+    _overlayAnchorEnd = overlay.end;
+    _overlayAnchorExportStart = span.start;
+    _overlayAnchorExportEnd = span.end;
+    _overlayDragOnBar = true;
+    return TimelineDragTarget.panTimeline;
+  }
+
+  bool _musicHandleContains(
+    ProjectMusic music,
+    double x,
+    double y, {
+    required bool atStart,
+  }) {
+    final seq = musicSequenceSpan(music, widget.segments);
+    if (seq == null) return false;
+    final edgeX =
+        _viewportXForSequence(atStart ? seq.start : seq.end);
+    final top = _musicLaneTop(music.lane);
+    final bottom = _musicLaneBottom(music.lane);
+    return overlayEdgeHandleRect(
+      edgeX,
+      top: top,
+      bottom: bottom,
+      atStart: atStart,
+    ).contains(Offset(x, y));
+  }
+
+  /// Focused music grab — null when the point is not on this clip/chrome.
+  TimelineDragTarget? _focusedMusicDragTarget(
+    ProjectMusic music, {
+    required double x,
+    required double y,
+  }) {
+    final seq = musicSequenceSpan(music, widget.segments);
+    if (seq == null) return null;
+    final startX = _viewportXForSequence(seq.start);
+    final endX = _viewportXForSequence(seq.end);
+    final onHandle = _musicHandleContains(music, x, y, atStart: true) ||
+        _musicHandleContains(music, x, y, atStart: false);
+    final onBody = x >= startX && x <= endX;
+    if (!onHandle && !onBody) {
+      // Fade / volume knobs still live on the body.
+      return null;
+    }
+    return _musicDragTargetFor(
+      music,
+      x: x,
+      y: y,
+      startX: startX,
+      endX: endX,
+    );
   }
 
   bool _isMusicBand(Offset local) {
     if (widget.musicTracks.isEmpty) return false;
-    return local.dy >= _videoTrackHeight && local.dy < _overlayLanesTop;
+    if (local.dy < _scrollRegionTop || local.dy >= _bodyHeight) return false;
+    final contentY = _scrollContentY(local);
+    return contentY >= 0 && contentY < _musicContentHeight;
   }
 
-  ProjectMusic? _musicAtViewportX(double x) {
-    for (final music in widget.musicTracks.reversed) {
+  ProjectMusic? _musicAtLocal(Offset local) {
+    if (!_isMusicBand(local)) return null;
+    final x = local.dx.clamp(0.0, _viewportWidth);
+    final contentY = _scrollContentY(local);
+    final lane = (contentY / _musicLaneStride).floor();
+
+    ProjectMusic? hit;
+    for (final music in widget.musicTracks) {
+      if (music.lane != lane) continue;
       final seq = musicSequenceSpan(music, widget.segments);
       if (seq == null) continue;
       final startX = _viewportXForSequence(seq.start);
       final endX = _viewportXForSequence(seq.end);
-      if (x >= startX && x <= endX) return music;
+      if (x >= startX && x <= endX) hit = music;
+    }
+    if (hit != null) return hit;
+
+    // Empty spot on a lane: still allow selecting nearest clip on that lane.
+    for (final music in widget.musicTracks.reversed) {
+      if (music.lane != lane) continue;
+      return music;
     }
     return null;
   }
@@ -389,13 +765,105 @@ class _TimelineWidgetState extends State<TimelineWidget> {
         target == TimelineDragTarget.musicFadeOut;
   }
 
-  double _musicBandTop() => _videoTrackHeight + 2;
+  bool _isVideoAudioDragTarget(TimelineDragTarget target) {
+    return target == TimelineDragTarget.videoAudioVolume ||
+        target == TimelineDragTarget.videoAudioFadeIn ||
+        target == TimelineDragTarget.videoAudioFadeOut;
+  }
 
-  double _musicBandBottom() => _musicBandTop() + _musicTrackHeight;
+  bool _isVideoAudioBand(Offset local) {
+    if (!widget.hasSourceAudio) return false;
+    return local.dy >= _videoFilmstripHeight && local.dy < _videoTrackHeight;
+  }
+
+  double _videoAudioBandTop() => _videoFilmstripHeight;
+  double _videoAudioBandBottom() => _videoTrackHeight;
+
+  double _videoVolumeLineY(ClipSegment segment) {
+    final top = _videoAudioBandTop();
+    final bottom = _videoAudioBandBottom();
+    const pad = 4.0;
+    final usable = (bottom - top - pad * 2).clamp(1.0, double.infinity);
+    return bottom - pad - segment.volume.clamp(0.0, 1.0) * usable;
+  }
+
+  Offset _videoFadeInHandle(ClipSegment segment, double left, double right) {
+    final xs = audioFadeHandleXs(
+      left: left,
+      right: right,
+      fadeIn: segment.effectiveFadeIn,
+      fadeOut: segment.effectiveFadeOut,
+      duration: segment.duration,
+    );
+    return Offset(xs.inX, _videoVolumeLineY(segment));
+  }
+
+  Offset _videoFadeOutHandle(ClipSegment segment, double left, double right) {
+    final xs = audioFadeHandleXs(
+      left: left,
+      right: right,
+      fadeIn: segment.effectiveFadeIn,
+      fadeOut: segment.effectiveFadeOut,
+      duration: segment.duration,
+    );
+    return Offset(xs.outX, _videoVolumeLineY(segment));
+  }
+
+  TimelineDragTarget? _videoAudioDragTargetFor(
+    ClipSegment segment, {
+    required double x,
+    required double y,
+    required double startX,
+    required double endX,
+  }) {
+    if (segment.id != widget.selectedSegmentId) return null;
+    final width = endX - startX;
+    if (width < _minAudioFadeBarWidth) return null;
+
+    final fadeInPt = _videoFadeInHandle(segment, startX, endX);
+    final fadeOutPt = _videoFadeOutHandle(segment, startX, endX);
+    final dIn = (Offset(x, y) - fadeInPt).distance;
+    final dOut = (Offset(x, y) - fadeOutPt).distance;
+    if (dIn <= _musicFadeHitSlop && dIn <= dOut) {
+      return TimelineDragTarget.videoAudioFadeIn;
+    }
+    if (dOut <= _musicFadeHitSlop) {
+      return TimelineDragTarget.videoAudioFadeOut;
+    }
+
+    final volumeY = _videoVolumeLineY(segment);
+    final inset = audioFadeHandleInset(width);
+    final inFlat = x > startX + inset && x < endX - inset;
+    if (inFlat && (y - volumeY).abs() <= _musicVolumeHitSlop) {
+      return TimelineDragTarget.videoAudioVolume;
+    }
+    return null;
+  }
+
+  /// Same left/right as the painted audio bar (includes split gaps).
+  ({double left, double right})? _segmentAudioBounds(ClipSegment target) {
+    var sequenceOffset = Duration.zero;
+    for (var i = 0; i < widget.segments.length; i++) {
+      final segment = widget.segments[i];
+      if (segment.id == target.id) {
+        final rawLeft = _viewportXForSequence(sequenceOffset);
+        final rawRight =
+            _viewportXForSequence(sequenceOffset + segment.duration);
+        return segmentBlockBounds(
+          rawLeft: rawLeft,
+          rawRight: rawRight,
+          gapBefore: i > 0,
+          gapAfter: i < widget.segments.length - 1,
+        );
+      }
+      sequenceOffset += segment.duration;
+    }
+    return null;
+  }
 
   double _volumeLineY(ProjectMusic music) {
-    final top = _musicBandTop();
-    final bottom = _musicBandBottom();
+    final top = _musicLaneTop(music.lane);
+    final bottom = _musicLaneBottom(music.lane);
     const pad = 4.0;
     final usable = (bottom - top - pad * 2).clamp(1.0, double.infinity);
     return bottom - pad - music.volume.clamp(0.0, 1.0) * usable;
@@ -470,11 +938,28 @@ class _TimelineWidgetState extends State<TimelineWidget> {
       }
     }
 
-    // Narrow trim hit — only the outer white bars.
-    if (nearX(x, startX, threshold: _musicTrimHitThreshold)) {
+    // Inward white trim bars (same rect as paint).
+    final laneTop = _musicLaneTop(music.lane);
+    final laneBottom = _musicLaneBottom(music.lane);
+    final point = Offset(x, y);
+    final startHandle = overlayEdgeHandleRect(
+      startX,
+      top: laneTop,
+      bottom: laneBottom,
+      atStart: true,
+    );
+    final endHandle = overlayEdgeHandleRect(
+      endX,
+      top: laneTop,
+      bottom: laneBottom,
+      atStart: false,
+    );
+    final onStart = startHandle.contains(point);
+    final onEnd = endHandle.contains(point);
+    if (onStart && (!onEnd || (x - startX).abs() <= (x - endX).abs())) {
       return TimelineDragTarget.musicStart;
     }
-    if (nearX(x, endX, threshold: _musicTrimHitThreshold)) {
+    if (onEnd) {
       return TimelineDragTarget.musicEnd;
     }
 
@@ -498,71 +983,104 @@ class _TimelineWidgetState extends State<TimelineWidget> {
     _musicAnchorSpan = null;
     _musicAnchorVolume = null;
 
-    // Touching anywhere in a lane targets its layer, so rows can be picked
-    // even where the bar does not reach. Selection is deferred until the
-    // gesture proves it is not a lane scroll.
-    final overlay = _overlayInLaneAt(local);
-    if (overlay != null) {
-      _dragOverlay = overlay;
-      _overlayAnchorStart = overlay.start;
-      _overlayAnchorEnd = overlay.end;
+    // Focused clip wins first: its outside end-caps sit over the next clip's
+    // body, so a generic lane pick would steal the grab and change selection.
+    final focusedOverlay = _overlayById(widget.selectedOverlayId);
+    if (focusedOverlay != null) {
+      final target = _overlayDragTargetFor(focusedOverlay, local, x);
+      if (target != null) return target;
+    }
 
-      final span = overlayTimelineSpan(overlay, widget.segments);
-      if (span != null) {
-        _overlayAnchorExportStart = span.start;
-        _overlayAnchorExportEnd = span.end;
-        final startX = _viewportXForSequence(span.start);
-        final endX = _viewportXForSequence(span.end);
-        if (nearX(x, startX)) {
-          _overlayDragOnBar = true;
-          return TimelineDragTarget.overlayStart;
-        }
-        if (nearX(x, endX)) {
-          _overlayDragOnBar = true;
-          return TimelineDragTarget.overlayEnd;
-        }
-        if (x >= startX && x <= endX) {
-          _overlayDragOnBar = true;
-          return TimelineDragTarget.overlayMove;
-        }
-      }
+    final overlay = _overlayInLaneAt(local);
+    if (overlay != null && overlay.id != widget.selectedOverlayId) {
+      final target = _overlayDragTargetFor(overlay, local, x);
+      if (target != null) return target;
     }
 
     if (_isMusicBand(local)) {
-      final music = _musicAtViewportX(x) ??
-          (widget.musicTracks.isNotEmpty ? widget.musicTracks.last : null);
-      if (music != null) {
+      final focusedMusic = _musicById(widget.selectedMusicId);
+      if (focusedMusic != null) {
+        final target = _focusedMusicDragTarget(focusedMusic, x: x, y: local.dy);
+        if (target != null) {
+          _dragMusic = focusedMusic;
+          _musicAnchorStart = focusedMusic.timelineStart;
+          _musicAnchorSpan = focusedMusic.clipDuration;
+          _musicAnchorVolume = focusedMusic.volume;
+          return target;
+        }
+      }
+
+      final music = _musicAtLocal(local);
+      if (music != null && music.id != widget.selectedMusicId) {
         _dragMusic = music;
-        final seq = musicSequenceSpan(music, widget.segments);
         _musicAnchorStart = music.timelineStart;
         _musicAnchorSpan = music.clipDuration;
         _musicAnchorVolume = music.volume;
-        if (seq != null) {
-          final startX = _viewportXForSequence(seq.start);
-          final endX = _viewportXForSequence(seq.end);
-          return _musicDragTargetFor(
-            music,
-            x: x,
-            y: local.dy,
-            startX: startX,
-            endX: endX,
-          );
-        }
-        return TimelineDragTarget.musicMove;
+        // Unfocused music: tap to select only; drag pans the timeline.
+        return TimelineDragTarget.panTimeline;
       }
     }
 
-    // Clip track: trim handles, then segment selection.
+    // Clip track: source-audio envelope, trim handles, then segment selection.
     if (local.dy < _videoTrackHeight) {
+      _dragSegment = null;
+      _videoAudioAnchorVolume = null;
+
+      if (_isVideoAudioBand(local)) {
+        final segment = _segmentAtViewportX(x);
+        if (segment != null) {
+          _dragSegment = segment;
+          _videoAudioAnchorVolume = segment.volume;
+          _tapSegment = segment;
+          final bounds = _segmentAudioBounds(segment);
+          if (bounds != null) {
+            final audioTarget = _videoAudioDragTargetFor(
+              segment,
+              x: x,
+              y: local.dy,
+              startX: bounds.left,
+              endX: bounds.right,
+            );
+            if (audioTarget != null) return audioTarget;
+          }
+        }
+      }
+
       final trimStartX = _viewportXForSequence(Duration.zero);
       final trimEndX = _viewportXForSequence(_sequenceDuration);
-      if (nearX(x, trimStartX)) return TimelineDragTarget.trimStart;
-      if (nearX(x, trimEndX)) return TimelineDragTarget.trimEnd;
+      final trimPoint = Offset(x, local.dy);
+      final trimStartHandle = overlayEdgeHandleRect(
+        trimStartX,
+        top: 0,
+        bottom: _videoTrackHeight,
+        atStart: true,
+      );
+      final trimEndHandle = overlayEdgeHandleRect(
+        trimEndX,
+        top: 0,
+        bottom: _videoTrackHeight,
+        atStart: false,
+      );
+      if (trimStartHandle.contains(trimPoint)) {
+        return TimelineDragTarget.trimStart;
+      }
+      if (trimEndHandle.contains(trimPoint)) {
+        return TimelineDragTarget.trimEnd;
+      }
 
       _tapSegment = _segmentAtViewportX(x);
     }
 
     return TimelineDragTarget.panTimeline;
+  }
+
+  Duration? _sequenceOffsetOfSegment(ClipSegment target) {
+    var offset = Duration.zero;
+    for (final segment in widget.segments) {
+      if (segment.id == target.id) return offset;
+      offset += segment.duration;
+    }
+    return null;
   }
 
   void _beginSingle(Offset local) {
@@ -574,7 +1092,8 @@ class _TimelineWidgetState extends State<TimelineWidget> {
     _panAnchorSequenceTime = null;
     _dragTarget = _hitTest(local);
     if ((_isOverlayDragTarget(_dragTarget) && _overlayDragOnBar) ||
-        _isMusicDragTarget(_dragTarget)) {
+        _isMusicDragTarget(_dragTarget) ||
+        _isVideoAudioDragTarget(_dragTarget)) {
       _dragAxis = Axis.horizontal;
     } else if (_dragTarget == TimelineDragTarget.panTimeline) {
       _panAnchorSequenceTime = _sequenceTimeAtViewportX(_viewportWidth / 2);
@@ -653,17 +1172,23 @@ class _TimelineWidgetState extends State<TimelineWidget> {
         final overlay = _dragOverlay;
         if (overlay == null) return;
         final t = _timeAtViewportX(x);
+        final minStart = _overlayTrimMinStart(overlay);
         final maxStart = overlay.end - minOverlayDuration;
         widget.onOverlayChanged(
-          overlay.copyWith(start: clampDuration(t, Duration.zero, maxStart)),
+          overlay.copyWith(
+            start: clampDuration(t, minStart, maxStart),
+          ),
         );
       case TimelineDragTarget.overlayEnd:
         final overlay = _dragOverlay;
         if (overlay == null) return;
         final t = _timeAtViewportX(x);
         final minEnd = overlay.start + minOverlayDuration;
+        final maxEnd = _overlayTrimMaxEnd(overlay);
         widget.onOverlayChanged(
-          overlay.copyWith(end: clampDuration(t, minEnd, widget.duration)),
+          overlay.copyWith(
+            end: clampDuration(t, minEnd, maxEnd),
+          ),
         );
       case TimelineDragTarget.overlayMove:
         final overlay = _dragOverlay;
@@ -709,8 +1234,13 @@ class _TimelineWidgetState extends State<TimelineWidget> {
             nextEnd = Duration(milliseconds: sourceSpanMs.clamp(0, widget.duration.inMilliseconds));
           }
         }
+        final targetLane = _textLaneAtLocal(local, currentLane: overlay.lane);
         widget.onOverlayChanged(
-          overlay.copyWith(start: nextStart, end: nextEnd),
+          overlay.copyWith(
+            start: nextStart,
+            end: nextEnd,
+            lane: targetLane,
+          ),
         );
       case TimelineDragTarget.musicMove:
         final music = _dragMusic;
@@ -733,21 +1263,55 @@ class _TimelineWidgetState extends State<TimelineWidget> {
         if (nextStart > maxStart) {
           nextStart = maxStart.isNegative ? Duration.zero : maxStart;
         }
-        widget.onMusicChanged?.call(music.copyWith(timelineStart: nextStart));
-      case TimelineDragTarget.musicStart:
-        final music = _dragMusic;
+        final targetLane = _musicLaneAtLocal(local, currentLane: music.lane);
+        widget.onMusicChanged?.call(
+          music.copyWith(timelineStart: nextStart, lane: targetLane),
+        );
+      case TimelineDragTarget.musicEnd:
+        final music = _liveMusic(_dragMusic) ?? _dragMusic;
         if (music == null) return;
         final t = _timeAtViewportX(x);
+        final minEnd = music.timelineStart + minMusicClipDuration;
+        // iMovie-style: extend reveals more of the file at 1x. Never past EOF.
+        // Until fileDuration is known, only allow shortening (not extending).
+        final maxFromFile = music.fileDuration == null
+            ? music.timelineEnd
+            : music.timelineStart +
+                (music.fileDuration! - music.sourceOffset);
+        final neighborWall = _musicTrimMaxEnd(music);
+        var nextEnd = clampDuration(t, minEnd, widget.duration);
+        if (nextEnd > maxFromFile) nextEnd = maxFromFile;
+        if (nextEnd > neighborWall) nextEnd = neighborWall;
+        final nextClip = nextEnd - music.timelineStart;
+        if (nextClip < minMusicClipDuration) return;
+        if (music.fileDuration != null) {
+          final maxClip = music.fileDuration! - music.sourceOffset;
+          if (nextClip > maxClip) return;
+        }
+        widget.onMusicChanged?.call(music.copyWith(clipDuration: nextClip));
+      case TimelineDragTarget.musicStart:
+        final music = _liveMusic(_dragMusic) ?? _dragMusic;
+        if (music == null) return;
+        final t = _timeAtViewportX(x);
+        final neighborWall = _musicTrimMinStart(music);
         var nextStart = clampDuration(
           t,
-          Duration.zero,
+          neighborWall,
           music.timelineEnd - minMusicClipDuration,
         );
         final delta = nextStart - music.timelineStart;
         final nextOffset = music.sourceOffset + delta;
         if (nextOffset.isNegative) return;
+        if (music.fileDuration != null &&
+            nextOffset >= music.fileDuration!) {
+          return;
+        }
         final nextClip = music.clipDuration - delta;
         if (nextClip < minMusicClipDuration) return;
+        if (music.fileDuration != null &&
+            nextOffset + nextClip > music.fileDuration!) {
+          return;
+        }
         widget.onMusicChanged?.call(
           music.copyWith(
             timelineStart: nextStart,
@@ -755,20 +1319,6 @@ class _TimelineWidgetState extends State<TimelineWidget> {
             clipDuration: nextClip,
           ),
         );
-      case TimelineDragTarget.musicEnd:
-        final music = _dragMusic;
-        if (music == null) return;
-        final t = _timeAtViewportX(x);
-        final minEnd = music.timelineStart + minMusicClipDuration;
-        final maxFile = music.fileDuration == null
-            ? widget.duration
-            : music.timelineStart +
-                (music.fileDuration! - music.sourceOffset);
-        var nextEnd = clampDuration(t, minEnd, widget.duration);
-        if (nextEnd > maxFile) nextEnd = maxFile;
-        final nextClip = nextEnd - music.timelineStart;
-        if (nextClip < minMusicClipDuration) return;
-        widget.onMusicChanged?.call(music.copyWith(clipDuration: nextClip));
       case TimelineDragTarget.musicVolume:
         final music = _liveMusic(_dragMusic);
         final downLocal = _pointerDownLocal;
@@ -796,6 +1346,35 @@ class _TimelineWidgetState extends State<TimelineWidget> {
         final fromEnd = music.timelineEnd - t;
         final fade = clampDuration(fromEnd, Duration.zero, music.maxFadeOut);
         widget.onMusicChanged?.call(music.copyWith(fadeOut: fade));
+      case TimelineDragTarget.videoAudioVolume:
+        final segment = _liveSegment(_dragSegment);
+        final downLocal = _pointerDownLocal;
+        final anchorVolume = _videoAudioAnchorVolume;
+        if (segment == null || downLocal == null || anchorVolume == null) {
+          return;
+        }
+        final usable = (_videoAudioHeight - 8).clamp(1.0, double.infinity);
+        final next = (anchorVolume - (local.dy - downLocal.dy) / usable)
+            .clamp(0.0, 1.0);
+        widget.onSegmentChanged?.call(segment.copyWith(volume: next));
+      case TimelineDragTarget.videoAudioFadeIn:
+        final segment = _liveSegment(_dragSegment);
+        if (segment == null) return;
+        final seqStart = _sequenceOffsetOfSegment(segment);
+        if (seqStart == null) return;
+        final t = _timeAtViewportX(x);
+        final localT = t - seqStart;
+        final fade = clampDuration(localT, Duration.zero, segment.maxFadeIn);
+        widget.onSegmentChanged?.call(segment.copyWith(fadeIn: fade));
+      case TimelineDragTarget.videoAudioFadeOut:
+        final segment = _liveSegment(_dragSegment);
+        if (segment == null) return;
+        final seqStart = _sequenceOffsetOfSegment(segment);
+        if (seqStart == null) return;
+        final t = _timeAtViewportX(x);
+        final fromEnd = (seqStart + segment.duration) - t;
+        final fade = clampDuration(fromEnd, Duration.zero, segment.maxFadeOut);
+        widget.onSegmentChanged?.call(segment.copyWith(fadeOut: fade));
     }
   }
 
@@ -805,6 +1384,65 @@ class _TimelineWidgetState extends State<TimelineWidget> {
       if (music.id == fallback.id) return music;
     }
     return fallback;
+  }
+
+  ClipSegment? _liveSegment(ClipSegment? fallback) {
+    if (fallback == null) return null;
+    for (final segment in widget.segments) {
+      if (segment.id == fallback.id) return segment;
+    }
+    return fallback;
+  }
+
+  /// Same-lane clip that starts at/after [clip] — blocks extending the end.
+  Duration _overlayTrimMaxEnd(TextOverlay clip) {
+    var maxEnd = widget.duration;
+    for (final other in widget.overlays) {
+      if (other.id == clip.id || other.lane != clip.lane) continue;
+      if (other.start >= clip.start && other.start < maxEnd) {
+        maxEnd = other.start;
+      }
+    }
+    return maxEnd;
+  }
+
+  /// Same-lane clip that ends at/before [clip] — blocks pulling the start left.
+  Duration _overlayTrimMinStart(TextOverlay clip) {
+    var minStart = Duration.zero;
+    for (final other in widget.overlays) {
+      if (other.id == clip.id || other.lane != clip.lane) continue;
+      if (other.start < clip.start &&
+          other.end <= clip.end &&
+          other.end > minStart) {
+        minStart = other.end;
+      }
+    }
+    return minStart;
+  }
+
+  Duration _musicTrimMaxEnd(ProjectMusic clip) {
+    var maxEnd = widget.duration;
+    for (final other in widget.musicTracks) {
+      if (other.id == clip.id || other.lane != clip.lane) continue;
+      if (other.timelineStart >= clip.timelineStart &&
+          other.timelineStart < maxEnd) {
+        maxEnd = other.timelineStart;
+      }
+    }
+    return maxEnd;
+  }
+
+  Duration _musicTrimMinStart(ProjectMusic clip) {
+    var minStart = Duration.zero;
+    for (final other in widget.musicTracks) {
+      if (other.id == clip.id || other.lane != clip.lane) continue;
+      if (other.timelineStart < clip.timelineStart &&
+          other.timelineEnd <= clip.timelineEnd &&
+          other.timelineEnd > minStart) {
+        minStart = other.timelineEnd;
+      }
+    }
+    return minStart;
   }
 
   void _announceSelection() {
@@ -818,6 +1456,14 @@ class _TimelineWidgetState extends State<TimelineWidget> {
     if (music != null && !_selectionAnnounced) {
       _selectionAnnounced = true;
       widget.onMusicSelected?.call(music);
+      return;
+    }
+    final segment = _dragSegment ?? _tapSegment;
+    if (segment != null &&
+        _isVideoAudioDragTarget(_dragTarget) &&
+        !_selectionAnnounced) {
+      _selectionAnnounced = true;
+      widget.onSegmentSelected?.call(segment);
     }
   }
 
@@ -833,7 +1479,7 @@ class _TimelineWidgetState extends State<TimelineWidget> {
     final tapped = !_didMove || travel < _segmentTapSlop;
     final onClipTrack = down.dy < _videoTrackHeight;
 
-    if (tapped && _dragOverlay != null) {
+    if (tapped && _dragOverlay != null && _overlayDragOnBar) {
       _announceSelection();
     } else if (tapped && _dragMusic != null) {
       _announceSelection();
@@ -860,6 +1506,7 @@ class _TimelineWidgetState extends State<TimelineWidget> {
   void _resetSingleGesture() {
     _dragOverlay = null;
     _dragMusic = null;
+    _dragSegment = null;
     _tapSegment = null;
     _overlayAnchorStart = null;
     _overlayAnchorEnd = null;
@@ -869,6 +1516,7 @@ class _TimelineWidgetState extends State<TimelineWidget> {
     _musicAnchorStart = null;
     _musicAnchorSpan = null;
     _musicAnchorVolume = null;
+    _videoAudioAnchorVolume = null;
     _pointerDownLocal = null;
     _lastSingleLocal = null;
     _panAnchorSequenceTime = null;
@@ -928,11 +1576,29 @@ class _TimelineWidgetState extends State<TimelineWidget> {
       _lanesScrollY = _maxLanesScroll;
     }
 
-    final gainedLayer = widget.overlays.length > oldWidget.overlays.length;
+    // Do not use oldWidget.overlays.length — the list is mutated in place.
+    final gainedLayer = widget.overlays.length > _knownOverlayCount;
     final selectionMoved =
-        widget.selectedOverlayId != oldWidget.selectedOverlayId;
+        widget.selectedOverlayId != _knownSelectedOverlayId;
+    _knownOverlayCount = widget.overlays.length;
+    _knownSelectedOverlayId = widget.selectedOverlayId;
+
     if (gainedLayer || selectionMoved) {
-      _revealLane(_laneIndexOf(widget.selectedOverlayId));
+      // Sync before this build so the bar can paint on-screen immediately.
+      _applyRevealContentRange(
+        top: _textLaneContentTop(_laneIndexOf(widget.selectedOverlayId)),
+        height: _laneHeight,
+      );
+      // Viewport height may change when a 4th+ lane appears.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        revealSelectedOverlay();
+      });
+    }
+
+    if (widget.selectedMusicId != oldWidget.selectedMusicId &&
+        widget.selectedMusicId != null) {
+      revealSelectedMusic();
     }
   }
 
@@ -1065,6 +1731,9 @@ class _TimelineWidgetState extends State<TimelineWidget> {
                         overlays: widget.overlays,
                         musicTracks: widget.musicTracks,
                         musicWaveforms: widget.musicWaveforms,
+                        sourceAudioWaveform: widget.sourceAudioWaveform,
+                        hasSourceAudio: widget.hasSourceAudio,
+                        sourceDuration: widget.duration,
                         filmstripFrames: widget.filmstripFrames,
                         selectedOverlayId: widget.selectedOverlayId,
                         selectedSegmentId: widget.selectedSegmentId,
@@ -1075,7 +1744,7 @@ class _TimelineWidgetState extends State<TimelineWidget> {
                         zoom: _zoom,
                         lanesScrollY: _lanesScrollY,
                         lanesContentHeight: _lanesContentHeight,
-                        musicBandHeight: _musicBandHeight,
+                        musicContentHeight: _musicContentHeight,
                         laneLabelStyle: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
@@ -1103,13 +1772,16 @@ class _TimelinePainter extends CustomPainter {
     required this.overlays,
     required this.musicTracks,
     required this.musicWaveforms,
+    required this.sourceAudioWaveform,
+    required this.hasSourceAudio,
+    required this.sourceDuration,
     required this.scrollPx,
     required this.contentWidth,
     required this.contentInsetX,
     required this.zoom,
     required this.lanesScrollY,
     required this.lanesContentHeight,
-    required this.musicBandHeight,
+    required this.musicContentHeight,
     required this.laneLabelStyle,
     this.filmstripFrames = const [],
     this.selectedOverlayId,
@@ -1123,20 +1795,23 @@ class _TimelinePainter extends CustomPainter {
   final List<TextOverlay> overlays;
   final List<ProjectMusic> musicTracks;
   final Map<String, List<double>> musicWaveforms;
+  final List<double> sourceAudioWaveform;
+  final bool hasSourceAudio;
+  final Duration sourceDuration;
   final double scrollPx;
   final double contentWidth;
   final double contentInsetX;
   final double zoom;
   final double lanesScrollY;
   final double lanesContentHeight;
-  final double musicBandHeight;
+  final double musicContentHeight;
   final TextStyle laneLabelStyle;
   final List<TimelineFilmstripFrame> filmstripFrames;
   final String? selectedOverlayId;
   final String? selectedSegmentId;
   final String? selectedMusicId;
 
-  double get _overlayLanesTop => _videoTrackHeight + musicBandHeight;
+  double get _scrollRegionTop => _videoTrackHeight;
 
   double _x(Duration sequenceTime) {
     return durationToContentX(sequenceTime, sequenceDuration, contentWidth) -
@@ -1147,33 +1822,80 @@ class _TimelinePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     _paintClipTrack(canvas, size);
-    _paintMusicTrack(canvas, size);
-    _paintLanes(canvas, size);
+    _paintScrollTracks(canvas, size);
     _paintPlayhead(canvas, size);
   }
 
-  void _paintMusicTrack(Canvas canvas, Size size) {
-    if (musicTracks.isEmpty || musicBandHeight <= 0) return;
+  void _paintScrollTracks(Canvas canvas, Size size) {
+    final viewportHeight = size.height - _scrollRegionTop;
+    if (viewportHeight <= 0) return;
 
-    final top = _videoTrackHeight + 2;
-    final bottom = top + _musicTrackHeight;
-
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTRB(0, top, size.width, bottom),
-        const Radius.circular(4),
-      ),
-      Paint()..color = const Color(0xFF1A2330),
+    canvas.save();
+    canvas.clipRect(
+      Rect.fromLTWH(0, _scrollRegionTop, size.width, viewportHeight),
     );
+    canvas.translate(0, _scrollRegionTop - lanesScrollY);
+
+    _paintMusicInScrollContent(canvas, size, viewportHeight);
+    _paintTextInScrollContent(canvas, size, viewportHeight);
+
+    canvas.restore();
+    _paintLaneScrollbar(canvas, size, viewportHeight);
+  }
+
+  void _paintMusicInScrollContent(
+    Canvas canvas,
+    Size size,
+    double viewportHeight,
+  ) {
+    if (musicTracks.isEmpty || musicContentHeight <= 0) return;
+
+    final laneCount = musicLaneCount(musicTracks);
+    for (var lane = 0; lane < laneCount; lane++) {
+      final top = lane * _musicLaneStride;
+      if (top - lanesScrollY > viewportHeight ||
+          top - lanesScrollY + _musicTrackHeight < 0) {
+        continue;
+      }
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTRB(0, top, size.width, top + _musicTrackHeight),
+          const Radius.circular(4),
+        ),
+        Paint()..color = const Color(0xFF1A2330),
+      );
+    }
 
     for (final music in musicTracks) {
+      if (music.id == selectedMusicId) continue;
+      _paintMusicClip(canvas, size, music, selected: false);
+    }
+    for (final music in musicTracks) {
+      if (music.id != selectedMusicId) continue;
+      _paintMusicClip(canvas, size, music, selected: true);
+    }
+  }
+
+  void _paintMusicClip(
+    Canvas canvas,
+    Size size,
+    ProjectMusic music, {
+    required bool selected,
+  }) {
       final span = musicSequenceSpan(music, segments);
-      if (span == null) continue;
+      if (span == null) return;
       final left = _x(span.start);
       final right = _x(span.end);
-      if (right < 0 || left > size.width) continue;
+      if (right < 0 || left > size.width) return;
 
-      final selected = music.id == selectedMusicId;
+      final top = music.lane * _musicLaneStride;
+      final bottom = top + _musicTrackHeight;
+      final viewportHeight = size.height - _scrollRegionTop;
+      if (top - lanesScrollY > viewportHeight ||
+          bottom - lanesScrollY < 0) {
+        return;
+      }
+
       final rect = Rect.fromLTRB(left, top, right, bottom);
       final clipRRect = RRect.fromRectAndRadius(rect, const Radius.circular(4));
 
@@ -1191,7 +1913,6 @@ class _TimelinePainter extends CustomPainter {
       final peaks = musicWaveforms[music.fileName] ?? const <double>[];
       _paintMusicWaveform(canvas, rect, music, peaks);
 
-      // Darken above the volume envelope (iMovie-style).
       final darkAbove = _musicDarkAbovePath(music, rect);
       canvas.drawPath(
         darkAbove,
@@ -1212,12 +1933,47 @@ class _TimelinePainter extends CustomPainter {
       canvas.restore();
 
       if (selected) {
-        _drawHandle(canvas, left, top: top, bottom: bottom, color: Colors.white);
-        _drawHandle(canvas, right, top: top, bottom: bottom, color: Colors.white);
-        _paintFadeHandle(canvas, _fadeHandleOffset(music, left, right, fadeIn: true));
-        _paintFadeHandle(canvas, _fadeHandleOffset(music, left, right, fadeIn: false));
+        _drawHandle(
+          canvas,
+          left,
+          top: top,
+          bottom: bottom,
+          color: Colors.white,
+          atStart: true,
+        );
+        _drawHandle(
+          canvas,
+          right,
+          top: top,
+          bottom: bottom,
+          color: Colors.white,
+          atStart: false,
+        );
+        if (kDebugMode) {
+          _paintDebugEdgeHitZone(
+            canvas,
+            left,
+            top: top,
+            bottom: bottom,
+            atStart: true,
+          );
+          _paintDebugEdgeHitZone(
+            canvas,
+            right,
+            top: top,
+            bottom: bottom,
+            atStart: false,
+          );
+        }
+        _paintFadeHandle(
+          canvas,
+          _fadeHandleOffset(music, left, right, fadeIn: true),
+        );
+        _paintFadeHandle(
+          canvas,
+          _fadeHandleOffset(music, left, right, fadeIn: false),
+        );
       }
-    }
   }
 
   Path _musicEnvelopePath(ProjectMusic music, Rect rect) {
@@ -1283,7 +2039,7 @@ class _TimelinePainter extends CustomPainter {
       }
       const pad = 4.0;
       final usable = (_musicTrackHeight - pad * 2).clamp(1.0, double.infinity);
-      final top = _videoTrackHeight + 2;
+      final top = music.lane * _musicLaneStride;
       final bottom = top + _musicTrackHeight;
       final y = bottom - pad - music.volume.clamp(0.0, 1.0) * usable;
       return Offset(x, y);
@@ -1303,7 +2059,7 @@ class _TimelinePainter extends CustomPainter {
     }
     const pad = 4.0;
     final usable = (_musicTrackHeight - pad * 2).clamp(1.0, double.infinity);
-    final top = _videoTrackHeight + 2;
+    final top = music.lane * _musicLaneStride;
     final bottom = top + _musicTrackHeight;
     final y = bottom - pad - music.volume.clamp(0.0, 1.0) * usable;
     return Offset(x, y);
@@ -1333,10 +2089,11 @@ class _TimelinePainter extends CustomPainter {
   ) {
     if (peaks.isEmpty || rect.width < 4) return;
 
-    final fileMs = (music.fileDuration ??
-            (music.sourceOffset + music.clipDuration))
-        .inMilliseconds
-        .clamp(1, 1 << 31);
+    // Map the visible source window onto the file. Without fileDuration the
+    // same peaks would stretch when the clip grows — that looks like slow-mo.
+    final fileMs = music.fileDuration?.inMilliseconds;
+    if (fileMs == null || fileMs <= 0) return;
+
     final startF =
         (music.sourceOffset.inMilliseconds / fileMs).clamp(0.0, 1.0);
     final endF = ((music.sourceOffset + music.clipDuration).inMilliseconds /
@@ -1377,15 +2134,19 @@ class _TimelinePainter extends CustomPainter {
   void _paintClipTrack(Canvas canvas, Size size) {
     if (segments.isEmpty) return;
 
-    final trimTop = _videoTrackHeight * 0.12;
-    final trimBottom = _videoTrackHeight * 0.88;
+    final filmTop = 2.0;
+    final filmBottom = hasSourceAudio
+        ? _videoFilmstripHeight - 1
+        : _videoTrackHeight - 2.0;
+    final audioTop = _videoFilmstripHeight;
+    final audioBottom = _videoTrackHeight - 2.0;
 
     final envelopeLeft = _x(Duration.zero);
     final envelopeRight = _x(sequenceDuration);
 
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromLTRB(envelopeLeft, trimTop, envelopeRight, trimBottom),
+        Rect.fromLTRB(envelopeLeft, filmTop, envelopeRight, audioBottom),
         const Radius.circular(5),
       ),
       Paint()..color = Colors.black.withValues(alpha: 0.4),
@@ -1409,22 +2170,32 @@ class _TimelinePainter extends CustomPainter {
       );
 
       final selected = segment.id == selectedSegmentId;
-      final rect = Rect.fromLTRB(bounds.left, trimTop, bounds.right, trimBottom);
-      final rounded = RRect.fromRectAndRadius(rect, const Radius.circular(4));
+      final filmRect =
+          Rect.fromLTRB(bounds.left, filmTop, bounds.right, filmBottom);
+      final filmRounded =
+          RRect.fromRectAndRadius(filmRect, const Radius.circular(4));
 
-      _paintFilmstrip(canvas, rect, segment);
+      _paintFilmstrip(canvas, filmRect, segment);
 
       canvas.drawRRect(
-        rounded,
+        filmRounded,
         Paint()
           ..color = selected
               ? AppTheme.accent.withValues(alpha: 0.28)
               : Colors.black.withValues(alpha: 0.12),
       );
 
+      if (hasSourceAudio) {
+        final audioRect =
+            Rect.fromLTRB(bounds.left, audioTop, bounds.right, audioBottom);
+        _paintSourceAudioBand(canvas, audioRect, segment, selected: selected);
+      }
+
       if (selected) {
+        final fullRect =
+            Rect.fromLTRB(bounds.left, filmTop, bounds.right, audioBottom);
         canvas.drawRRect(
-          rounded,
+          RRect.fromRectAndRadius(fullRect, const Radius.circular(4)),
           Paint()
             ..color = Colors.white
             ..style = PaintingStyle.stroke
@@ -1435,12 +2206,32 @@ class _TimelinePainter extends CustomPainter {
       if (i < segments.length - 1) {
         final dividerX = rawRight;
         canvas.drawLine(
-          Offset(dividerX, trimTop + 2),
-          Offset(dividerX, trimBottom - 2),
+          Offset(dividerX, filmTop + 2),
+          Offset(dividerX, audioBottom - 2),
           Paint()
             ..color = Colors.white.withValues(alpha: 0.65)
             ..strokeWidth = 1.5,
         );
+        if (segment.hasTransition) {
+          final midY = (filmTop + audioBottom) / 2;
+          final diamond = Path()
+            ..moveTo(dividerX, midY - 5)
+            ..lineTo(dividerX + 5, midY)
+            ..lineTo(dividerX, midY + 5)
+            ..lineTo(dividerX - 5, midY)
+            ..close();
+          canvas.drawPath(
+            diamond,
+            Paint()..color = const Color(0xFFFBBF24),
+          );
+          canvas.drawPath(
+            diamond,
+            Paint()
+              ..color = Colors.black.withValues(alpha: 0.55)
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1,
+          );
+        }
       }
 
       sequenceOffset += segment.duration;
@@ -1449,57 +2240,233 @@ class _TimelinePainter extends CustomPainter {
     _drawHandle(
       canvas,
       _x(Duration.zero),
-      top: trimTop,
-      bottom: trimBottom,
+      top: filmTop,
+      bottom: audioBottom,
       color: AppTheme.accent,
+      atStart: true,
     );
     _drawHandle(
       canvas,
       _x(sequenceDuration),
-      top: trimTop,
-      bottom: trimBottom,
+      top: filmTop,
+      bottom: audioBottom,
       color: AppTheme.accent,
+      atStart: false,
     );
   }
 
-  void _paintLanes(Canvas canvas, Size size) {
-    final viewportHeight = size.height - _overlayLanesTop;
-    if (viewportHeight <= 0) return;
+  void _paintSourceAudioBand(
+    Canvas canvas,
+    Rect rect,
+    ClipSegment segment, {
+    required bool selected,
+  }) {
+    final rounded = RRect.fromRectAndRadius(rect, const Radius.circular(3));
+    canvas.drawRRect(
+      rounded,
+      Paint()..color = const Color(0xFF1B3A3A),
+    );
 
     canvas.save();
-    canvas.clipRect(
-      Rect.fromLTWH(0, _overlayLanesTop, size.width, viewportHeight),
-    );
-    canvas.translate(0, _overlayLanesTop - lanesScrollY);
+    canvas.clipRRect(rounded);
 
-    for (var i = 0; i < overlays.length; i++) {
-      final overlay = overlays[i];
-      final laneTop = i * _laneStride;
-      // Cheap cull: lanes scrolled out of view and clips off either edge.
+    _paintSegmentWaveform(canvas, rect, segment);
+
+    final darkAbove = _segmentDarkAbovePath(segment, rect);
+    canvas.drawPath(
+      darkAbove,
+      Paint()..color = Colors.black.withValues(alpha: 0.3),
+    );
+    canvas.drawPath(
+      _segmentEnvelopePath(segment, rect),
+      Paint()
+        ..color = selected ? Colors.white : Colors.white.withValues(alpha: 0.7)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = selected ? 1.5 : 1.1
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+    canvas.restore();
+
+    if (selected) {
+      _paintFadeHandle(
+        canvas,
+        _segmentFadeHandleOffset(segment, rect.left, rect.right, fadeIn: true),
+      );
+      _paintFadeHandle(
+        canvas,
+        _segmentFadeHandleOffset(segment, rect.left, rect.right, fadeIn: false),
+      );
+    }
+  }
+
+  Path _segmentEnvelopePath(ClipSegment segment, Rect rect) {
+    const pad = 3.0;
+    final usable = (rect.height - pad * 2).clamp(1.0, double.infinity);
+    final bottom = rect.bottom - pad;
+    final path = Path();
+    const samples = 48;
+    final clipMs = segment.duration.inMilliseconds.clamp(1, 1 << 31);
+    for (var i = 0; i <= samples; i++) {
+      final t = i / samples;
+      final local = Duration(milliseconds: (clipMs * t).round());
+      final y = bottom - segment.volumeAt(local) * usable;
+      final x = rect.left + rect.width * t;
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    return path;
+  }
+
+  Path _segmentDarkAbovePath(ClipSegment segment, Rect rect) {
+    const pad = 3.0;
+    final usable = (rect.height - pad * 2).clamp(1.0, double.infinity);
+    final bottom = rect.bottom - pad;
+    const samples = 48;
+    final clipMs = segment.duration.inMilliseconds.clamp(1, 1 << 31);
+    final path = Path()
+      ..moveTo(rect.left, rect.top)
+      ..lineTo(rect.right, rect.top);
+    for (var i = samples; i >= 0; i--) {
+      final t = i / samples;
+      final local = Duration(milliseconds: (clipMs * t).round());
+      final y = bottom - segment.volumeAt(local) * usable;
+      final x = rect.left + rect.width * t;
+      path.lineTo(x, y);
+    }
+    path.close();
+    return path;
+  }
+
+  Offset _segmentFadeHandleOffset(
+    ClipSegment segment,
+    double left,
+    double right, {
+    required bool fadeIn,
+  }) {
+    final xs = audioFadeHandleXs(
+      left: left,
+      right: right,
+      fadeIn: segment.effectiveFadeIn,
+      fadeOut: segment.effectiveFadeOut,
+      duration: segment.duration,
+    );
+    const pad = 3.0;
+    final usable = (_videoAudioHeight - pad * 2).clamp(1.0, double.infinity);
+    final top = _videoFilmstripHeight;
+    final bottom = top + _videoAudioHeight;
+    final y = bottom - pad - segment.volume.clamp(0.0, 1.0) * usable;
+    return Offset(fadeIn ? xs.inX : xs.outX, y);
+  }
+
+  void _paintSegmentWaveform(
+    Canvas canvas,
+    Rect rect,
+    ClipSegment segment,
+  ) {
+    if (sourceAudioWaveform.isEmpty || rect.width < 4) return;
+    final totalMs = sourceDuration.inMilliseconds.clamp(1, 1 << 31);
+    final startF = (segment.start.inMilliseconds / totalMs).clamp(0.0, 1.0);
+    final endF =
+        (segment.end.inMilliseconds / totalMs).clamp(startF + 0.001, 1.0);
+
+    final i0 = (startF * (sourceAudioWaveform.length - 1))
+        .floor()
+        .clamp(0, sourceAudioWaveform.length - 1);
+    final i1 = (endF * (sourceAudioWaveform.length - 1))
+        .ceil()
+        .clamp(i0 + 1, sourceAudioWaveform.length);
+    final slice = sourceAudioWaveform.sublist(i0, i1);
+    if (slice.isEmpty) return;
+
+    final mid = rect.center.dy;
+    final half = rect.height * 0.42;
+    final barW = rect.width / slice.length;
+    final paint = Paint()..color = const Color(0xFF3DDC97).withValues(alpha: 0.55);
+
+    for (var i = 0; i < slice.length; i++) {
+      final amp = slice[i].clamp(0.06, 1.0);
+      final h = half * amp;
+      final x = rect.left + i * barW;
+      final w = math.max(1.0, barW * 0.72);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(
+            center: Offset(x + barW / 2, mid),
+            width: w,
+            height: h * 2,
+          ),
+          const Radius.circular(1),
+        ),
+        paint,
+      );
+    }
+  }
+
+  void _paintTextInScrollContent(
+    Canvas canvas,
+    Size size,
+    double viewportHeight,
+  ) {
+    final textOrigin = musicContentHeight;
+    final laneCount = overlays.isEmpty ? 1 : overlayLaneCount(overlays);
+    for (var lane = 0; lane < laneCount; lane++) {
+      final laneTop = textOrigin + lane * _laneStride;
       if (laneTop - lanesScrollY > viewportHeight ||
           laneTop - lanesScrollY + _laneHeight < 0) {
         continue;
       }
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTRB(0, laneTop, size.width, laneTop + _laneHeight),
+          const Radius.circular(4),
+        ),
+        Paint()..color = const Color(0xFF1A1F2A),
+      );
+    }
 
-      final selected = overlay.id == selectedOverlayId;
-      // One bar per text layer on the packed timeline. Video splits only affect
-      // the clip track; overlay timing is independent of segment boundaries.
+    for (final overlay in overlays) {
+      if (overlay.id == selectedOverlayId) continue;
+      _paintOverlayClip(canvas, size, overlay, selected: false);
+    }
+    for (final overlay in overlays) {
+      if (overlay.id != selectedOverlayId) continue;
+      _paintOverlayClip(canvas, size, overlay, selected: true);
+    }
+  }
+
+  void _paintOverlayClip(
+    Canvas canvas,
+    Size size,
+    TextOverlay overlay, {
+    required bool selected,
+  }) {
+      final laneTop = musicContentHeight + overlay.lane * _laneStride;
+      final viewportHeight = size.height - _scrollRegionTop;
+      if (laneTop - lanesScrollY > viewportHeight ||
+          laneTop - lanesScrollY + _laneHeight < 0) {
+        return;
+      }
+
       final span = overlayTimelineSpan(overlay, segments);
-      if (span == null) continue;
+      if (span == null) return;
 
       final left = _x(span.start);
       final right = _x(span.end);
-      if (right >= 0 && left <= size.width) {
-        final rect = Rect.fromLTRB(left, laneTop, right, laneTop + _laneHeight);
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(rect, const Radius.circular(4)),
-          Paint()
-            ..color = selected
-                ? AppTheme.accent
-                : Colors.white.withValues(alpha: 0.45),
-        );
-        _paintLaneLabel(canvas, rect, overlay.text);
-      }
+      if (right < 0 || left > size.width) return;
+
+      final rect = Rect.fromLTRB(left, laneTop, right, laneTop + _laneHeight);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, const Radius.circular(4)),
+        Paint()
+          ..color = selected
+              ? AppTheme.accent
+              : Colors.white.withValues(alpha: 0.45),
+      );
+      _paintLaneLabel(canvas, rect, overlay.text);
 
       if (selected) {
         _drawHandle(
@@ -1508,6 +2475,7 @@ class _TimelinePainter extends CustomPainter {
           top: laneTop,
           bottom: laneTop + _laneHeight,
           color: Colors.white,
+          atStart: true,
         );
         _drawHandle(
           canvas,
@@ -1515,12 +2483,25 @@ class _TimelinePainter extends CustomPainter {
           top: laneTop,
           bottom: laneTop + _laneHeight,
           color: Colors.white,
+          atStart: false,
         );
+        if (kDebugMode) {
+          _paintDebugEdgeHitZone(
+            canvas,
+            left,
+            top: laneTop,
+            bottom: laneTop + _laneHeight,
+            atStart: true,
+          );
+          _paintDebugEdgeHitZone(
+            canvas,
+            right,
+            top: laneTop,
+            bottom: laneTop + _laneHeight,
+            atStart: false,
+          );
+        }
       }
-    }
-
-    canvas.restore();
-    _paintLaneScrollbar(canvas, size, viewportHeight);
   }
 
   /// Names the layer inside its bar so stacked lanes stay distinguishable.
@@ -1556,7 +2537,7 @@ class _TimelinePainter extends CustomPainter {
     final maxScroll = lanesContentHeight - viewportHeight;
     final progress = (lanesScrollY / maxScroll).clamp(0.0, 1.0);
     final top =
-        _overlayLanesTop + progress * (viewportHeight - thumbHeight);
+        _scrollRegionTop + progress * (viewportHeight - thumbHeight);
 
     canvas.drawRRect(
       RRect.fromRectAndRadius(
@@ -1645,18 +2626,38 @@ class _TimelinePainter extends CustomPainter {
     required double top,
     required double bottom,
     required Color color,
+    required bool atStart,
   }) {
-    final trackHeight = bottom - top;
+    final rect = overlayEdgeHandleRect(x, top: top, bottom: bottom, atStart: atStart);
     canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromCenter(
-          center: Offset(x, top + trackHeight / 2),
-          width: 5,
-          height: trackHeight * 0.75,
-        ),
-        const Radius.circular(2),
-      ),
+      RRect.fromRectAndRadius(rect, const Radius.circular(3)),
       Paint()..color = color,
+    );
+    // CapCut-style grip cue down the middle of white trim caps.
+    if (color == Colors.white) {
+      final midX = rect.center.dx;
+      canvas.drawLine(
+        Offset(midX, rect.top + 5),
+        Offset(midX, rect.bottom - 5),
+        Paint()
+          ..color = const Color(0x66000000)
+          ..strokeWidth = 1.5
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+  }
+
+  /// Visualizes the exact start/end hit rect (outside the clip) in debug.
+  void _paintDebugEdgeHitZone(
+    Canvas canvas,
+    double edgeX, {
+    required double top,
+    required double bottom,
+    required bool atStart,
+  }) {
+    canvas.drawRect(
+      overlayEdgeHandleRect(edgeX, top: top, bottom: bottom, atStart: atStart),
+      Paint()..color = const Color(0x59FFFF00), // yellow ~35% alpha
     );
   }
 
@@ -1674,10 +2675,13 @@ class _TimelinePainter extends CustomPainter {
         oldDelegate.selectedOverlayId != selectedOverlayId ||
         oldDelegate.selectedSegmentId != selectedSegmentId ||
         oldDelegate.selectedMusicId != selectedMusicId ||
-        oldDelegate.musicBandHeight != musicBandHeight ||
+        oldDelegate.musicContentHeight != musicContentHeight ||
         oldDelegate.filmstripFrames != filmstripFrames ||
         oldDelegate.musicTracks != musicTracks ||
         oldDelegate.musicWaveforms != musicWaveforms ||
+        oldDelegate.sourceAudioWaveform != sourceAudioWaveform ||
+        oldDelegate.hasSourceAudio != hasSourceAudio ||
+        oldDelegate.sourceDuration != sourceDuration ||
         oldDelegate.overlays != overlays;
   }
 }

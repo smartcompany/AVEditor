@@ -6,23 +6,34 @@ import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:path/path.dart' as p;
 
+class AudioWaveformData {
+  const AudioWaveformData({
+    required this.peaks,
+    required this.duration,
+  });
+
+  final List<double> peaks;
+  final Duration duration;
+}
+
 /// Builds normalized 0..1 peak bars for timeline waveforms.
 class AudioWaveformService {
   AudioWaveformService._();
   static final instance = AudioWaveformService._();
 
-  final Map<String, List<double>> _cache = {};
+  final Map<String, AudioWaveformData> _cache = {};
 
-  /// Returns [peakCount] peaks for [audioPath], or an empty list on failure.
-  Future<List<double>> peaksForFile(
+  /// Returns peaks + decoded duration for [audioPath], or null on failure.
+  Future<AudioWaveformData?> waveformForFile(
     String audioPath, {
     int peakCount = 240,
   }) async {
     final file = File(audioPath);
-    if (!await file.exists()) return const [];
+    if (!await file.exists()) return null;
 
     final stat = await file.stat();
-    final key = '$audioPath:${stat.size}:${stat.modified.millisecondsSinceEpoch}:$peakCount';
+    final key =
+        '$audioPath:${stat.size}:${stat.modified.millisecondsSinceEpoch}:$peakCount';
     final cached = _cache[key];
     if (cached != null) return cached;
 
@@ -32,6 +43,7 @@ class AudioWaveformService {
     );
 
     try {
+      const sampleRate = 8000;
       final session = await FFmpegKit.executeWithArguments([
         '-y',
         '-i',
@@ -39,7 +51,7 @@ class AudioWaveformService {
         '-ac',
         '1',
         '-ar',
-        '8000',
+        '$sampleRate',
         '-f',
         's16le',
         '-acodec',
@@ -48,21 +60,37 @@ class AudioWaveformService {
       ]);
       final code = await session.getReturnCode();
       if (!ReturnCode.isSuccess(code)) {
-        return const [];
+        return null;
       }
 
       final bytes = await File(rawPath).readAsBytes();
+      final sampleCount = bytes.length ~/ 2;
+      if (sampleCount <= 0) return null;
+
+      final duration = Duration(
+        milliseconds: ((sampleCount / sampleRate) * 1000).round(),
+      );
       final peaks = _peaksFromS16le(bytes, peakCount);
-      _cache[key] = peaks;
-      return peaks;
+      final data = AudioWaveformData(peaks: peaks, duration: duration);
+      _cache[key] = data;
+      return data;
     } catch (_) {
-      return const [];
+      return null;
     } finally {
       try {
         final raw = File(rawPath);
         if (await raw.exists()) await raw.delete();
       } catch (_) {}
     }
+  }
+
+  /// Kept for call sites that only need peaks.
+  Future<List<double>> peaksForFile(
+    String audioPath, {
+    int peakCount = 240,
+  }) async {
+    final data = await waveformForFile(audioPath, peakCount: peakCount);
+    return data?.peaks ?? const [];
   }
 
   void clear() => _cache.clear();
@@ -87,7 +115,6 @@ class AudioWaveformService {
       peaks[i] = (maxAbs / 32768.0).clamp(0.0, 1.0);
     }
 
-    // Soft normalize so quiet tracks still read.
     var tallest = 0.0;
     for (final peak in peaks) {
       if (peak > tallest) tallest = peak;

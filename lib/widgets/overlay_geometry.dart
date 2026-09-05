@@ -107,6 +107,23 @@ class OverlayBox {
   }
 }
 
+/// Resolved corner placement so action knobs stay on-screen.
+@immutable
+class OverlayChromeCorners {
+  const OverlayChromeCorners({
+    required this.delete,
+    required this.edit,
+    required this.duplicate,
+    required this.resizeRotate,
+  });
+
+  /// Centres in chrome-local coordinates (origin = [OverlayGeometry.chromeTopLeft]).
+  final Offset delete;
+  final Offset edit;
+  final Offset duplicate;
+  final Offset resizeRotate;
+}
+
 /// Overlay layout + hit testing in preview (canvas) coordinates.
 class OverlayGeometry {
   OverlayGeometry._();
@@ -118,6 +135,14 @@ class OverlayGeometry {
 
   /// Grip sits in the padding ring below the box so it never eats text space.
   static const gripOutset = 18.0;
+
+  /// Keep icon knobs this far inside the clamp rect so they stay tappable.
+  static const chromeKnobMargin = 18.0;
+
+  /// Default clamp: the 9:16 video canvas (no letterbox gutters).
+  static Rect previewClampRect(double previewW, double previewH) {
+    return Rect.fromLTWH(0, 0, previewW, previewH);
+  }
 
   /// Centre of the box in canvas pixels — also the pivot for [OverlayBox.rotation].
   static Offset boxCenter({
@@ -184,6 +209,64 @@ class OverlayGeometry {
     );
   }
 
+  /// Preview-space centre of a corner action knob before clamping.
+  static Offset _idealKnobPreviewCenter({
+    required Rect body,
+    required bool left,
+    required bool top,
+  }) {
+    final x = left
+        ? body.left - knobOutset + knobSize / 2
+        : body.right + knobOutset - knobSize / 2;
+    final y = top
+        ? body.top - knobOutset + knobSize / 2
+        : body.bottom + knobOutset - knobSize / 2;
+    return Offset(x, y);
+  }
+
+  /// Picks on-screen knob centres (chrome-local) for the four actions.
+  ///
+  /// Ideal positions sit outside each box corner; when a corner leaves
+  /// [clampRect] the knob slides onto the nearest visible edge.
+  ///
+  /// [clampRect] is in preview-canvas coordinates. Pass the editor viewport
+  /// (video + letterbox gutters) so knobs may sit in the black bars instead of
+  /// being forced onto the 9:16 frame.
+  static OverlayChromeCorners resolveChromeCorners({
+    required double previewW,
+    required double previewH,
+    required OverlayBox box,
+    Rect? clampRect,
+  }) {
+    final body = bodyRect(previewW: previewW, previewH: previewH, box: box);
+    final chromeOrigin = chromeTopLeft(
+      previewW: previewW,
+      previewH: previewH,
+      box: box,
+    );
+    final bounds = clampRect ?? previewClampRect(previewW, previewH);
+    final minX = bounds.left + chromeKnobMargin;
+    final maxX = bounds.right - chromeKnobMargin;
+    final minY = bounds.top + chromeKnobMargin;
+    final maxY = bounds.bottom - chromeKnobMargin;
+
+    Offset place({required bool left, required bool top}) {
+      final ideal = _idealKnobPreviewCenter(body: body, left: left, top: top);
+      final clamped = Offset(
+        minX <= maxX ? ideal.dx.clamp(minX, maxX) : ideal.dx,
+        minY <= maxY ? ideal.dy.clamp(minY, maxY) : ideal.dy,
+      );
+      return clamped - chromeOrigin;
+    }
+
+    return OverlayChromeCorners(
+      delete: place(left: true, top: true),
+      edit: place(left: false, top: true),
+      duplicate: place(left: true, top: false),
+      resizeRotate: place(left: false, top: false),
+    );
+  }
+
   /// Maps a canvas point into the box's own un-rotated frame.
   ///
   /// Every rect above is axis aligned, so rotation is handled once here rather
@@ -243,13 +326,14 @@ class OverlayGeometry {
     ).contains(local);
   }
 
-  /// Hit test in preview-local coordinates (full 9:16 canvas incl. letterbox).
+  /// Hit test in preview-local coordinates.
   static OverlayDrag? hitTestPreviewPoint(
     Offset previewPoint, {
     required double previewW,
     required double previewH,
     required OverlayBox box,
     required bool editing,
+    Rect? clampRect,
   }) {
     final local = toBoxFrame(
       previewPoint,
@@ -262,11 +346,50 @@ class OverlayGeometry {
       previewH: previewH,
       box: box,
     );
+    final corners = resolveChromeCorners(
+      previewW: previewW,
+      previewH: previewH,
+      box: box,
+      clampRect: clampRect,
+    );
     return _hitTestLocal(
       local - topLeft,
       box.width,
       box.height,
       editing: editing,
+      corners: corners,
+    );
+  }
+
+  /// Maps a [BoxFit.contain] + [Alignment.topCenter] host viewport into
+  /// preview-canvas coordinates (letterbox gutters become negative / >size).
+  static Rect viewportClampRect({
+    required double previewW,
+    required double previewH,
+    required Size hostViewport,
+  }) {
+    if (previewW <= 0 || previewH <= 0) {
+      return previewClampRect(previewW, previewH);
+    }
+    if (hostViewport.width <= 0 || hostViewport.height <= 0) {
+      return previewClampRect(previewW, previewH);
+    }
+    final scale = math.min(
+      hostViewport.width / previewW,
+      hostViewport.height / previewH,
+    );
+    if (scale <= 0) return previewClampRect(previewW, previewH);
+
+    final displayedW = previewW * scale;
+    final displayedH = previewH * scale;
+    // Matches FittedBox alignment: Alignment.topCenter
+    final dx = (hostViewport.width - displayedW) / 2;
+    final dy = 0.0;
+    return Rect.fromLTRB(
+      -dx / scale,
+      -dy / scale,
+      previewW + (hostViewport.width - displayedW - dx) / scale,
+      previewH + (hostViewport.height - displayedH - dy) / scale,
     );
   }
 
@@ -275,24 +398,19 @@ class OverlayGeometry {
     double boxW,
     double boxH, {
     required bool editing,
+    required OverlayChromeCorners corners,
   }) {
-    const pad = handlePad;
-    const knobRadius = knobSize / 2;
     const hit = handleHit / 2;
+    const pad = handlePad;
 
-    final left = pad - knobOutset + knobRadius;
-    final right = pad + boxW + knobOutset - knobRadius;
-    final top = pad - knobOutset + knobRadius;
-    final bottom = pad + boxH + knobOutset - knobRadius;
-
-    final corners = <(Offset, OverlayDrag)>[
-      (Offset(left, top), OverlayDrag.delete),
-      (Offset(right, top), OverlayDrag.edit),
-      (Offset(left, bottom), OverlayDrag.duplicate),
-      (Offset(right, bottom), OverlayDrag.resizeRotate),
+    final anchors = <(Offset, OverlayDrag)>[
+      (corners.delete, OverlayDrag.delete),
+      (corners.edit, OverlayDrag.edit),
+      (corners.duplicate, OverlayDrag.duplicate),
+      (corners.resizeRotate, OverlayDrag.resizeRotate),
     ];
 
-    for (final (anchor, drag) in corners) {
+    for (final (anchor, drag) in anchors) {
       if ((local - anchor).distance <= hit) return drag;
     }
 

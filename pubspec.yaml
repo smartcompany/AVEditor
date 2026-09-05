@@ -46,6 +46,7 @@ flutter:
     - assets/fonts/Arial.ttf
     - assets/text_packs/catalog.json
     - assets/text_packs/lottie/
+    - assets/transitions/catalog.json
   fonts:
     # Pinned so overlay text lays out identically in the preview and the export.
     - family: OverlayText

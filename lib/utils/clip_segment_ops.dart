@@ -20,8 +20,20 @@ List<ClipSegment> splitSegmentsAt(
   }
 
   final segment = segments[index];
-  final left = segment.copyWith(end: point);
-  final right = ClipSegment(start: point, end: segment.end);
+  final left = segment.copyWith(
+    end: point,
+    fadeOut: Duration.zero,
+    clearTransition: true,
+  );
+  final right = ClipSegment(
+    start: point,
+    end: segment.end,
+    volume: segment.volume,
+    fadeIn: Duration.zero,
+    fadeOut: segment.fadeOut,
+    transitionId: segment.transitionId,
+    transitionDuration: segment.transitionDuration,
+  );
   return [
     ...segments.sublist(0, index),
     left,
@@ -219,12 +231,83 @@ Duration totalKeptDuration(List<ClipSegment> segments) {
   );
 }
 
+/// Sum of transition overlaps that shorten the exported timeline.
+Duration totalTransitionOverlap(List<ClipSegment> segments) {
+  if (segments.length < 2) return Duration.zero;
+  var ms = 0;
+  for (var i = 0; i < segments.length - 1; i++) {
+    final segment = segments[i];
+    if (!segment.hasTransition) continue;
+    ms += clampedTransitionDuration(
+      segment,
+      next: segments[i + 1],
+    ).inMilliseconds;
+  }
+  return Duration(milliseconds: ms);
+}
+
+/// Export length after xfade overlaps are subtracted.
+Duration exportTimelineDuration(List<ClipSegment> segments) {
+  final kept = totalKeptDuration(segments);
+  final overlap = totalTransitionOverlap(segments);
+  final ms = kept.inMilliseconds - overlap.inMilliseconds;
+  return Duration(milliseconds: ms < 0 ? 0 : ms);
+}
+
+/// xfade duration must fit inside both adjacent segments.
+Duration clampedTransitionDuration(
+  ClipSegment segment, {
+  required ClipSegment next,
+}) {
+  if (!segment.hasTransition) return Duration.zero;
+  final requested = segment.transitionDuration.inMilliseconds;
+  if (requested <= 0) return Duration.zero;
+  final maxMs = [
+    segment.duration.inMilliseconds,
+    next.duration.inMilliseconds,
+  ].reduce((a, b) => a < b ? a : b);
+  // Leave a tiny pad only when the transition would nearly empty a side.
+  final limit = maxMs > 100 ? maxMs - 50 : maxMs;
+  if (limit <= 0) return Duration.zero;
+  final safe = requested > limit ? limit : requested;
+  return Duration(milliseconds: safe);
+}
+
+/// Packed-timeline time of the cut **after** [afterIndex] (0..n-2).
+Duration cutExportTimeAfter(List<ClipSegment> segments, int afterIndex) {
+  var offset = Duration.zero;
+  for (var i = 0; i <= afterIndex && i < segments.length; i++) {
+    offset += segments[i].duration;
+  }
+  return offset;
+}
+
+/// Index of the cut (after segment i) nearest to [sequenceTime], or -1.
+int nearestCutIndex(List<ClipSegment> segments, Duration sequenceTime) {
+  if (segments.length < 2) return -1;
+  var bestIndex = 0;
+  var bestDist = 1 << 62;
+  for (var i = 0; i < segments.length - 1; i++) {
+    final cutAt = cutExportTimeAfter(segments, i);
+    final dist = (cutAt - sequenceTime).inMilliseconds.abs();
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestIndex = i;
+    }
+  }
+  return bestIndex;
+}
+
+bool hasVideoCuts(List<ClipSegment> segments) => segments.length > 1;
+
 Duration? sourceTimeToExportTime(
   List<ClipSegment> segments,
-  Duration sourceTime,
-) {
+  Duration sourceTime, {
+  bool applyTransitions = false,
+}) {
   var offset = Duration.zero;
-  for (final segment in segments) {
+  for (var i = 0; i < segments.length; i++) {
+    final segment = segments[i];
     if (sourceTime < segment.start) return null;
     if (sourceTime < segment.end) {
       return offset + (sourceTime - segment.start);
@@ -233,6 +316,11 @@ Duration? sourceTimeToExportTime(
       return offset + segment.duration;
     }
     offset += segment.duration;
+    if (applyTransitions &&
+        i < segments.length - 1 &&
+        segment.hasTransition) {
+      offset -= clampedTransitionDuration(segment, next: segments[i + 1]);
+    }
   }
   return null;
 }
@@ -240,18 +328,25 @@ Duration? sourceTimeToExportTime(
 /// Maps edited timeline position back to source time.
 Duration exportTimeToSourceTime(
   List<ClipSegment> segments,
-  Duration exportTime,
-) {
+  Duration exportTime, {
+  bool applyTransitions = false,
+}) {
   if (segments.isEmpty) return Duration.zero;
   if (exportTime <= Duration.zero) return segments.first.start;
 
   var offset = Duration.zero;
-  for (final segment in segments) {
+  for (var i = 0; i < segments.length; i++) {
+    final segment = segments[i];
     final nextOffset = offset + segment.duration;
     if (exportTime < nextOffset) {
       return segment.start + (exportTime - offset);
     }
     offset = nextOffset;
+    if (applyTransitions &&
+        i < segments.length - 1 &&
+        segment.hasTransition) {
+      offset -= clampedTransitionDuration(segment, next: segments[i + 1]);
+    }
   }
   return segments.last.end;
 }
@@ -422,11 +517,15 @@ List<({double start, double end})> overlayExportSpans(
   List<ClipSegment> segments,
 ) {
   final exportDurationSec =
-      totalKeptDuration(segments).inMilliseconds / 1000.0;
+      exportTimelineDuration(segments).inMilliseconds / 1000.0;
   final spans = <({double start, double end})>[];
 
   for (final range in overlayKeptRanges(overlay, segments)) {
-    final exportStart = sourceTimeToExportTime(segments, range.start);
+    final exportStart = sourceTimeToExportTime(
+      segments,
+      range.start,
+      applyTransitions: true,
+    );
     if (exportStart == null) continue;
 
     final probeMs = range.end.inMilliseconds - 1;
@@ -435,9 +534,14 @@ List<({double start, double end})> overlayExportSpans(
       exportEnd = sourceTimeToExportTime(
         segments,
         Duration(milliseconds: probeMs),
+        applyTransitions: true,
       );
     }
-    exportEnd ??= sourceTimeToExportTime(segments, range.end);
+    exportEnd ??= sourceTimeToExportTime(
+      segments,
+      range.end,
+      applyTransitions: true,
+    );
     if (exportEnd == null) continue;
 
     final startSec = exportStart.inMilliseconds / 1000.0;

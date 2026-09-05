@@ -186,6 +186,12 @@ abstract class AppLocalizations {
   /// **'Save to gallery'**
   String get saveToGallery;
 
+  /// No description provided for @saveToAlbum.
+  ///
+  /// In en, this message translates to:
+  /// **'Save to album'**
+  String get saveToAlbum;
+
   /// No description provided for @cancel.
   ///
   /// In en, this message translates to:
@@ -456,6 +462,30 @@ abstract class AppLocalizations {
   /// **'{count, plural, =0{No text layers · updated {updated}} other{{count} text layers · updated {updated}}}'**
   String resumeEditingSubtitle(int count, String updated);
 
+  /// No description provided for @projectsSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Projects'**
+  String get projectsSection;
+
+  /// No description provided for @noProjectsYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No projects yet. Choose a video above to start.'**
+  String get noProjectsYet;
+
+  /// No description provided for @projectListSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No text layers} other{{count} text layers}}'**
+  String projectListSubtitle(int count);
+
+  /// No description provided for @deleteProject.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete project'**
+  String get deleteProject;
+
   /// No description provided for @projectNotFound.
   ///
   /// In en, this message translates to:
@@ -540,6 +570,168 @@ abstract class AppLocalizations {
   /// **'Search royalty-free music'**
   String get searchMusicHint;
 
+  /// No description provided for @searchSfxHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search sound effects'**
+  String get searchSfxHint;
+
+  /// No description provided for @musicTabMusic.
+  ///
+  /// In en, this message translates to:
+  /// **'Music'**
+  String get musicTabMusic;
+
+  /// No description provided for @musicTabSfx.
+  ///
+  /// In en, this message translates to:
+  /// **'Sound effects'**
+  String get musicTabSfx;
+
+  /// No description provided for @musicGenreAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get musicGenreAll;
+
+  /// No description provided for @musicGenreTravel.
+  ///
+  /// In en, this message translates to:
+  /// **'Travel'**
+  String get musicGenreTravel;
+
+  /// No description provided for @musicGenreBeauty.
+  ///
+  /// In en, this message translates to:
+  /// **'Beauty'**
+  String get musicGenreBeauty;
+
+  /// No description provided for @musicGenreFashion.
+  ///
+  /// In en, this message translates to:
+  /// **'Fashion'**
+  String get musicGenreFashion;
+
+  /// No description provided for @musicGenreHappy.
+  ///
+  /// In en, this message translates to:
+  /// **'Upbeat'**
+  String get musicGenreHappy;
+
+  /// No description provided for @musicGenreEnergetic.
+  ///
+  /// In en, this message translates to:
+  /// **'Energetic'**
+  String get musicGenreEnergetic;
+
+  /// No description provided for @musicGenreChill.
+  ///
+  /// In en, this message translates to:
+  /// **'Chill'**
+  String get musicGenreChill;
+
+  /// No description provided for @musicGenreCinematic.
+  ///
+  /// In en, this message translates to:
+  /// **'Cinematic'**
+  String get musicGenreCinematic;
+
+  /// No description provided for @musicGenreRomantic.
+  ///
+  /// In en, this message translates to:
+  /// **'Romantic'**
+  String get musicGenreRomantic;
+
+  /// No description provided for @musicGenreSports.
+  ///
+  /// In en, this message translates to:
+  /// **'Sports'**
+  String get musicGenreSports;
+
+  /// No description provided for @musicGenreNature.
+  ///
+  /// In en, this message translates to:
+  /// **'Nature'**
+  String get musicGenreNature;
+
+  /// No description provided for @musicGenreCooking.
+  ///
+  /// In en, this message translates to:
+  /// **'Cooking'**
+  String get musicGenreCooking;
+
+  /// No description provided for @musicGenreCorporate.
+  ///
+  /// In en, this message translates to:
+  /// **'Corporate'**
+  String get musicGenreCorporate;
+
+  /// No description provided for @musicGenreHipHop.
+  ///
+  /// In en, this message translates to:
+  /// **'Hip Hop'**
+  String get musicGenreHipHop;
+
+  /// No description provided for @musicGenrePop.
+  ///
+  /// In en, this message translates to:
+  /// **'Pop'**
+  String get musicGenrePop;
+
+  /// No description provided for @musicGenreKids.
+  ///
+  /// In en, this message translates to:
+  /// **'Kids'**
+  String get musicGenreKids;
+
+  /// No description provided for @sfxGenreWhoosh.
+  ///
+  /// In en, this message translates to:
+  /// **'Whoosh'**
+  String get sfxGenreWhoosh;
+
+  /// No description provided for @sfxGenreTransition.
+  ///
+  /// In en, this message translates to:
+  /// **'Transition'**
+  String get sfxGenreTransition;
+
+  /// No description provided for @sfxGenreImpact.
+  ///
+  /// In en, this message translates to:
+  /// **'Impact'**
+  String get sfxGenreImpact;
+
+  /// No description provided for @sfxGenreGlitch.
+  ///
+  /// In en, this message translates to:
+  /// **'Glitch'**
+  String get sfxGenreGlitch;
+
+  /// No description provided for @sfxGenreNotification.
+  ///
+  /// In en, this message translates to:
+  /// **'Notification'**
+  String get sfxGenreNotification;
+
+  /// No description provided for @sfxGenreGame.
+  ///
+  /// In en, this message translates to:
+  /// **'Game'**
+  String get sfxGenreGame;
+
+  /// No description provided for @sfxGenreTech.
+  ///
+  /// In en, this message translates to:
+  /// **'Tech'**
+  String get sfxGenreTech;
+
+  /// No description provided for @sfxGenreUi.
+  ///
+  /// In en, this message translates to:
+  /// **'UI'**
+  String get sfxGenreUi;
+
   /// No description provided for @musicCatalogAttribution.
   ///
   /// In en, this message translates to:
@@ -617,6 +809,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Split clip'**
   String get splitVideo;
+
+  /// No description provided for @transition.
+  ///
+  /// In en, this message translates to:
+  /// **'Transition'**
+  String get transition;
+
+  /// No description provided for @transitionSheetTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Transitions'**
+  String get transitionSheetTitle;
+
+  /// No description provided for @transitionSheetSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Applied to the cut nearest the playhead.'**
+  String get transitionSheetSubtitle;
+
+  /// No description provided for @transitionNone.
+  ///
+  /// In en, this message translates to:
+  /// **'None'**
+  String get transitionNone;
+
+  /// No description provided for @transitionCatalogUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load transitions.'**
+  String get transitionCatalogUnavailable;
+
+  /// No description provided for @transitionApplied.
+  ///
+  /// In en, this message translates to:
+  /// **'Transition applied.'**
+  String get transitionApplied;
+
+  /// No description provided for @transitionNeedsCuts.
+  ///
+  /// In en, this message translates to:
+  /// **'Split the clip first to add a transition.'**
+  String get transitionNeedsCuts;
 
   /// No description provided for @deleteSegment.
   ///

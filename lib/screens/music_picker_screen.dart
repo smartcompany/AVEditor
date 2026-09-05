@@ -14,7 +14,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
-/// CapCut-style music browser: search → preview → download into the project.
+/// CapCut-style music / SFX browser: search → preview → download into the project.
 class MusicPickerScreen extends StatefulWidget {
   const MusicPickerScreen({
     super.key,
@@ -29,95 +29,186 @@ class MusicPickerScreen extends StatefulWidget {
   State<MusicPickerScreen> createState() => _MusicPickerScreenState();
 }
 
-class _MusicPickerScreenState extends State<MusicPickerScreen> {
+class _MusicPickerScreenState extends State<MusicPickerScreen>
+    with SingleTickerProviderStateMixin {
   final _searchController = TextEditingController();
+  final _searchFocus = FocusNode();
   final _catalog = MusicCatalogService();
   final _storage = MusicStorageService();
   final _previewPlayer = AudioPlayer();
 
+  late final TabController _tabController;
+
   List<RoyaltyFreeTrack> _tracks = [];
+  List<CatalogGenre> _genres = CatalogGenre.defaultsFor(CatalogAudioKind.music);
+  List<MusicAutocompleteSuggestion> _suggestions = [];
   bool _loading = true;
   bool _catalogConfigured = true;
+  bool _showSuggestions = false;
   String? _error;
   String? _busyTrackId;
   String? _previewTrackId;
   String? _attribution;
+  String? _selectedGenreId;
+  Timer? _debounce;
+  Timer? _autocompleteDebounce;
+  int _loadToken = 0;
+
+  CatalogAudioKind get _kind =>
+      _tabController.index == 1 ? CatalogAudioKind.sfx : CatalogAudioKind.music;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(_onTabChanged);
+    _searchController.addListener(_onSearchTextChanged);
     unawaited(_bootstrap());
   }
 
   @override
   void dispose() {
+    _debounce?.cancel();
+    _autocompleteDebounce?.cancel();
+    _tabController.removeListener(_onTabChanged);
+    _tabController.dispose();
+    _searchController.removeListener(_onSearchTextChanged);
     _searchController.dispose();
+    _searchFocus.dispose();
     unawaited(_previewPlayer.dispose());
     super.dispose();
+  }
+
+  void _onTabChanged() {
+    if (_tabController.indexIsChanging) return;
+    setState(() {
+      _selectedGenreId = null;
+      _suggestions = [];
+      _showSuggestions = false;
+      _genres = CatalogGenre.defaultsFor(_kind);
+      _searchController.clear();
+    });
+    unawaited(_loadCatalog());
+  }
+
+  void _onSearchTextChanged() {
+    _autocompleteDebounce?.cancel();
+    final text = _searchController.text.trim();
+    if (text.isEmpty) {
+      setState(() {
+        _suggestions = [];
+        _showSuggestions = false;
+      });
+      return;
+    }
+
+    _autocompleteDebounce = Timer(const Duration(milliseconds: 220), () {
+      unawaited(_fetchAutocomplete(text));
+    });
   }
 
   Future<void> _bootstrap() async {
     await TextTemplatePackService.instance.ensureInitialized();
     if (!mounted) return;
-    await _loadFeatured();
+    await _loadCatalog();
   }
 
-  Future<void> _loadFeatured() async {
+  Future<void> _fetchAutocomplete(String prefix) async {
+    try {
+      final suggestions = await _catalog.autocomplete(
+        prefix: prefix,
+        kind: _kind,
+      );
+      if (!mounted || _searchController.text.trim() != prefix) return;
+      setState(() {
+        _suggestions = suggestions;
+        _showSuggestions = suggestions.isNotEmpty && _searchFocus.hasFocus;
+      });
+    } catch (_) {
+      // Autocomplete is best-effort.
+    }
+  }
+
+  Future<void> _loadCatalog({String? query, String? genreQuery}) async {
+    final token = ++_loadToken;
     setState(() {
       _loading = true;
       _error = null;
+      _showSuggestions = false;
     });
+
     try {
-      final page = await _catalog.featured();
-      if (!mounted) return;
+      final page = await _catalog.search(
+        query: query ?? '',
+        genre: genreQuery,
+        kind: _kind,
+      );
+      if (!mounted || token != _loadToken) return;
       setState(() {
         _catalogConfigured = page.configured;
         _tracks = page.tracks;
+        if (page.genres.isNotEmpty) _genres = page.genres;
         _attribution = page.attribution;
         _loading = false;
         if (!page.configured) {
           _error = page.error;
+        } else if (page.error != null && page.tracks.isEmpty) {
+          _error = page.error;
         }
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || token != _loadToken) return;
       setState(() {
         _loading = false;
-        _error = 'featured_load_failed';
+        _error = 'load_failed';
       });
     }
   }
 
-  Future<void> _search() async {
+  void _scheduleSearch() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), () {
+      unawaited(_runSearch());
+    });
+  }
+
+  Future<void> _runSearch() async {
     final query = _searchController.text.trim();
-    if (query.isEmpty) {
-      await _loadFeatured();
-      return;
+    String? genreQuery;
+    for (final g in _genres) {
+      if (g.id == _selectedGenreId) {
+        genreQuery = g.query;
+        break;
+      }
     }
+    await _loadCatalog(query: query, genreQuery: genreQuery);
+  }
 
+  Future<void> _selectGenre(CatalogGenre? genre) async {
     setState(() {
-      _loading = true;
-      _error = null;
+      _selectedGenreId = genre?.id;
+      if (genre != null) {
+        // Keep the chip as the filter; clear free-text so results match the mood.
+        _searchController.value = TextEditingValue(
+          text: '',
+          selection: TextSelection.collapsed(offset: 0),
+        );
+      }
     });
-    try {
-      final page = await _catalog.search(query: query);
-      if (!mounted) return;
-      setState(() {
-        _catalogConfigured = page.configured;
-        _tracks = page.tracks;
-        _attribution = page.attribution;
-        _loading = false;
-        if (!page.configured) {
-          _error = page.error;
-        }
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = 'search_failed';
-      });
-    }
+    await _loadCatalog(genreQuery: genre?.query);
+  }
+
+  Future<void> _applySuggestion(String text) async {
+    _searchController.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+    setState(() {
+      _showSuggestions = false;
+      _selectedGenreId = null;
+    });
+    _searchFocus.unfocus();
+    await _loadCatalog(query: text);
   }
 
   Future<void> _togglePreview(RoyaltyFreeTrack track) async {
@@ -197,37 +288,200 @@ class _MusicPickerScreenState extends State<MusicPickerScreen> {
     }
   }
 
+  String _genreLabel(AppLocalizations l10n, CatalogGenre genre) {
+    switch (genre.id) {
+      case 'travel':
+        return l10n.musicGenreTravel;
+      case 'beauty':
+        return l10n.musicGenreBeauty;
+      case 'fashion':
+        return l10n.musicGenreFashion;
+      case 'happy':
+        return l10n.musicGenreHappy;
+      case 'energetic':
+        return l10n.musicGenreEnergetic;
+      case 'chill':
+        return l10n.musicGenreChill;
+      case 'cinematic':
+        return l10n.musicGenreCinematic;
+      case 'romantic':
+        return l10n.musicGenreRomantic;
+      case 'sports':
+        return l10n.musicGenreSports;
+      case 'nature':
+        return l10n.musicGenreNature;
+      case 'cooking':
+        return l10n.musicGenreCooking;
+      case 'corporate':
+        return l10n.musicGenreCorporate;
+      case 'hip-hop':
+        return l10n.musicGenreHipHop;
+      case 'pop':
+        return l10n.musicGenrePop;
+      case 'children':
+        return l10n.musicGenreKids;
+      case 'whoosh':
+        return l10n.sfxGenreWhoosh;
+      case 'transition':
+        return l10n.sfxGenreTransition;
+      case 'impact':
+        return l10n.sfxGenreImpact;
+      case 'glitch':
+        return l10n.sfxGenreGlitch;
+      case 'notification':
+        return l10n.sfxGenreNotification;
+      case 'game':
+        return l10n.sfxGenreGame;
+      case 'technology':
+        return l10n.sfxGenreTech;
+      case 'ui':
+        return l10n.sfxGenreUi;
+      default:
+        return genre.label;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final isSfx = _kind == CatalogAudioKind.sfx;
 
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.addMusic)),
+      appBar: AppBar(
+        title: Text(l10n.addMusic),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: [
+            Tab(text: l10n.musicTabMusic),
+            Tab(text: l10n.musicTabSfx),
+          ],
+        ),
+      ),
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: TextField(
-              controller: _searchController,
-              enabled: _catalogConfigured || _loading,
-              decoration: InputDecoration(
-                hintText: l10n.searchMusicHint,
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: IconButton(
-                  onPressed: _loading ? null : _search,
-                  icon: const Icon(Icons.arrow_forward),
+            child: Column(
+              children: [
+                TextField(
+                  controller: _searchController,
+                  focusNode: _searchFocus,
+                  enabled: _catalogConfigured || _loading,
+                  decoration: InputDecoration(
+                    hintText: isSfx
+                        ? l10n.searchSfxHint
+                        : l10n.searchMusicHint,
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_searchController.text.isNotEmpty)
+                          IconButton(
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() {
+                                _suggestions = [];
+                                _showSuggestions = false;
+                              });
+                              unawaited(_runSearch());
+                            },
+                            icon: const Icon(Icons.clear),
+                          ),
+                        IconButton(
+                          onPressed: _loading
+                              ? null
+                              : () {
+                                  setState(() => _showSuggestions = false);
+                                  unawaited(_runSearch());
+                                },
+                          icon: const Icon(Icons.arrow_forward),
+                        ),
+                      ],
+                    ),
+                    filled: true,
+                    fillColor: AppTheme.surface,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  textInputAction: TextInputAction.search,
+                  onTap: () {
+                    if (_suggestions.isNotEmpty) {
+                      setState(() => _showSuggestions = true);
+                    }
+                  },
+                  onChanged: (_) {
+                    setState(() {}); // refresh clear button
+                    _scheduleSearch();
+                  },
+                  onSubmitted: (_) {
+                    setState(() => _showSuggestions = false);
+                    unawaited(_runSearch());
+                  },
                 ),
-                filled: true,
-                fillColor: AppTheme.surface,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-              textInputAction: TextInputAction.search,
-              onSubmitted: (_) => _search(),
+                if (_showSuggestions && _suggestions.isNotEmpty)
+                  Material(
+                    color: AppTheme.surface,
+                    elevation: 2,
+                    borderRadius: BorderRadius.circular(12),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 220),
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        itemCount: _suggestions.length,
+                        itemBuilder: (context, index) {
+                          final s = _suggestions[index];
+                          final icon = s.kind == 'genre'
+                              ? Icons.category_outlined
+                              : s.kind == 'tag'
+                                  ? Icons.tag
+                                  : Icons.music_note_outlined;
+                          return ListTile(
+                            dense: true,
+                            leading: Icon(icon, size: 20),
+                            title: Text(s.text),
+                            onTap: () => unawaited(_applySuggestion(s.text)),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
+          SizedBox(
+            height: 44,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: FilterChip(
+                    label: Text(l10n.musicGenreAll),
+                    selected: _selectedGenreId == null,
+                    onSelected: (_) => unawaited(_selectGenre(null)),
+                  ),
+                ),
+                for (final genre in _genres)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: FilterChip(
+                      label: Text(_genreLabel(l10n, genre)),
+                      selected: _selectedGenreId == genre.id,
+                      onSelected: (_) => unawaited(
+                        _selectGenre(
+                          _selectedGenreId == genre.id ? null : genre,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: Row(
@@ -259,7 +513,10 @@ class _MusicPickerScreenState extends State<MusicPickerScreen> {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Chip(
-                  avatar: const Icon(Icons.music_note, size: 18),
+                  avatar: Icon(
+                    isSfx ? Icons.graphic_eq : Icons.music_note,
+                    size: 18,
+                  ),
                   label: Text(widget.current!.title),
                 ),
               ),
@@ -303,10 +560,10 @@ class _MusicPickerScreenState extends State<MusicPickerScreen> {
       );
     }
 
-    if (_error != null) {
+    if (_error != null && _tracks.isEmpty) {
       return Center(
         child: TextButton(
-          onPressed: _loadFeatured,
+          onPressed: () => unawaited(_runSearch()),
           child: Text(l10n.retry),
         ),
       );
@@ -328,6 +585,7 @@ class _MusicPickerScreenState extends State<MusicPickerScreen> {
           track: track,
           busy: busy,
           previewing: previewing,
+          isSfx: _kind == CatalogAudioKind.sfx,
           onPreview: () => _togglePreview(track),
           onUse: busy ? null : () => _downloadTrack(track),
           useLabel: l10n.useMusicTrack,
@@ -342,6 +600,7 @@ class _TrackTile extends StatelessWidget {
     required this.track,
     required this.busy,
     required this.previewing,
+    required this.isSfx,
     required this.onPreview,
     required this.onUse,
     required this.useLabel,
@@ -350,6 +609,7 @@ class _TrackTile extends StatelessWidget {
   final RoyaltyFreeTrack track;
   final bool busy;
   final bool previewing;
+  final bool isSfx;
   final VoidCallback onPreview;
   final VoidCallback? onUse;
   final String useLabel;
@@ -363,7 +623,11 @@ class _TrackTile extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(10, 10, 8, 10),
         child: Row(
           children: [
-            _Cover(imageUrl: track.imageUrl, previewing: previewing),
+            _Cover(
+              imageUrl: track.imageUrl,
+              previewing: previewing,
+              isSfx: isSfx,
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -388,7 +652,9 @@ class _TrackTile extends StatelessWidget {
             IconButton(
               onPressed: track.previewUrl.isEmpty ? null : onPreview,
               icon: Icon(
-                previewing ? Icons.stop_circle_outlined : Icons.play_circle_outline,
+                previewing
+                    ? Icons.stop_circle_outlined
+                    : Icons.play_circle_outline,
               ),
               tooltip: previewing ? 'Stop' : 'Preview',
             ),
@@ -414,25 +680,32 @@ class _TrackTile extends StatelessWidget {
 }
 
 class _Cover extends StatelessWidget {
-  const _Cover({required this.imageUrl, required this.previewing});
+  const _Cover({
+    required this.imageUrl,
+    required this.previewing,
+    required this.isSfx,
+  });
 
   final String imageUrl;
   final bool previewing;
+  final bool isSfx;
 
   @override
   Widget build(BuildContext context) {
+    final placeholder = ColoredBox(
+      color: const Color(0xFF1C1F28),
+      child: Icon(
+        isSfx ? Icons.graphic_eq : Icons.music_note,
+        color: Colors.white54,
+      ),
+    );
+
     final child = imageUrl.isEmpty
-        ? const ColoredBox(
-            color: Color(0xFF1C1F28),
-            child: Icon(Icons.music_note, color: Colors.white54),
-          )
+        ? placeholder
         : Image.network(
             imageUrl,
             fit: BoxFit.cover,
-            errorBuilder: (_, error, stackTrace) => const ColoredBox(
-              color: Color(0xFF1C1F28),
-              child: Icon(Icons.music_note, color: Colors.white54),
-            ),
+            errorBuilder: (_, error, stackTrace) => placeholder,
           );
 
     return ClipRRect(
