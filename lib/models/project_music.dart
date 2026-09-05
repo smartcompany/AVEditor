@@ -229,8 +229,8 @@ class ProjectMusic {
 
 enum MusicSource { local, jamendo, pixabay, mixkit }
 
-/// Minimum length of a music clip after trim/split.
-const minMusicClipDuration = Duration(milliseconds: 500);
+/// Minimum length of a music clip after trim/split (CapCut-like, same as video).
+const minMusicClipDuration = Duration(seconds: 1);
 
 /// Small gap kept between fade-in end and fade-out start.
 const minMusicFadeGap = Duration(milliseconds: 80);

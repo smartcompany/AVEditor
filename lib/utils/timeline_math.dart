@@ -1,18 +1,68 @@
+import 'dart:math' as math;
+
 import 'package:aveditor/utils/duration_format.dart';
 
 const minTrimDuration = Duration(seconds: 1);
 const minSplitPartDuration = Duration(milliseconds: 100);
-const minOverlayDuration = Duration(milliseconds: 500);
+/// CapCut-like minimum for text overlays (same as video / music).
+const minOverlayDuration = Duration(seconds: 1);
 const handleHitWidth = 18.0;
 
-/// Minimum zoom: timeline content width = 2/3 of the viewport width.
+/// Minimum zoom: timeline content width = 2/3 of the viewport width
+/// when the sequence spans the full [scaleReference] (usually source duration).
 const minTimelineZoom = 2 / 3;
-const maxTimelineZoom = 24.0;
+
+/// At max zoom, a 1s clip body is this many logical pixels wide.
+/// CapCut iPhone capture: 120px body @ ~3x → 40pt (handles excluded).
+const maxZoomOneSecondLogicalWidth = 40.0;
+
+/// Hard ceiling so multi-hour sources cannot demand absurd zoom factors.
+const maxTimelineZoomCeiling = 200.0;
+
+/// Zoom multiplier where 1s of timeline ≈ [maxZoomOneSecondLogicalWidth] px
+/// on every phone (CapCut-style absolute time scale at max zoom).
+double maxTimelineZoomFor(
+  Duration scaleReference, {
+  required double viewportWidth,
+}) {
+  final refMs = scaleReference.inMilliseconds.clamp(1, 1 << 31);
+  final vp = viewportWidth.clamp(1.0, double.infinity);
+  final zoom = maxZoomOneSecondLogicalWidth * refMs / (1000.0 * vp);
+  return zoom.clamp(1.0, maxTimelineZoomCeiling);
+}
 
 /// The playhead is pinned to the middle of the viewport and the strip scrolls
 /// under it, so the content is padded by half a viewport at both ends: at time
 /// zero the clip starts under the indicator rather than at the left edge.
 double timelineContentInsetX(double viewportWidth) => viewportWidth / 2;
+
+/// Fixed time→pixel scale: zoom stretches [scaleReference] across the viewport,
+/// so shortening one clip does not widen its neighbors.
+double timelinePxPerMs({
+  required Duration scaleReference,
+  required double viewportWidth,
+  required double zoom,
+}) {
+  final refMs = scaleReference.inMilliseconds.clamp(1, 1 << 31);
+  return (viewportWidth * zoom) / refMs;
+}
+
+/// Content strip width for a packed sequence at the current zoom scale.
+double timelineContentWidth({
+  required Duration sequenceDuration,
+  required Duration scaleReference,
+  required double viewportWidth,
+  required double zoom,
+}) {
+  final seqMs = sequenceDuration.inMilliseconds.clamp(0, 1 << 31);
+  final width = seqMs *
+      timelinePxPerMs(
+        scaleReference: scaleReference,
+        viewportWidth: viewportWidth,
+        zoom: zoom,
+      );
+  return math.max(width, 1.0);
+}
 
 /// Scroll offset that parks [playhead] under the fixed centre indicator.
 ///

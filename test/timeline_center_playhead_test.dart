@@ -26,7 +26,12 @@ void main() {
 
   group('playhead geometry', () {
     test('the playhead sits at the viewport centre at every time and zoom', () {
-      for (final zoom in [minTimelineZoom, 1.0, 4.0, maxTimelineZoom]) {
+      for (final zoom in [
+        minTimelineZoom,
+        1.0,
+        4.0,
+        maxTimelineZoomFor(total, viewportWidth: viewport),
+      ]) {
         for (final seconds in [0, 1, 50, 99, 100]) {
           expect(
             centreXFor(Duration(seconds: seconds), zoom: zoom),
@@ -95,6 +100,49 @@ void main() {
       );
 
       expect(scrollPx, closeTo(viewport / 2, 0.001));
+    });
+
+    test('shortening the sequence does not widen earlier clips', () {
+      const source = Duration(seconds: 100);
+      const first = Duration(seconds: 40);
+      final fullWidth = timelineContentWidth(
+        sequenceDuration: source,
+        scaleReference: source,
+        viewportWidth: viewport,
+        zoom: 1,
+      );
+      final firstPxFull = durationToContentX(first, source, fullWidth);
+
+      const shortened = Duration(seconds: 70); // e.g. trimmed the tail
+      final shortWidth = timelineContentWidth(
+        sequenceDuration: shortened,
+        scaleReference: source,
+        viewportWidth: viewport,
+        zoom: 1,
+      );
+      final firstPxShort = durationToContentX(first, shortened, shortWidth);
+
+      expect(firstPxShort, closeTo(firstPxFull, 0.001));
+      expect(shortWidth, lessThan(fullWidth));
+    });
+
+    test('at max zoom a 1s clip is 40 logical px on any viewport', () {
+      const source = Duration(seconds: 184);
+      for (final vp in [320.0, 390.0, 430.0]) {
+        final zoom = maxTimelineZoomFor(source, viewportWidth: vp);
+        final width = timelineContentWidth(
+          sequenceDuration: source,
+          scaleReference: source,
+          viewportWidth: vp,
+          zoom: zoom,
+        );
+        final oneSecondPx = durationToContentX(
+          const Duration(seconds: 1),
+          source,
+          width,
+        );
+        expect(oneSecondPx, closeTo(maxZoomOneSecondLogicalWidth, 0.05));
+      }
     });
   });
 

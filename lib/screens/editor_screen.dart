@@ -61,6 +61,7 @@ class _EditorScreenState extends State<EditorScreen>
   String? _selectedOverlayId;
   String? _selectedSegmentId;
   String? _selectedMusicId;
+  int? _selectedTransitionAfterIndex;
 
   /// Overlay currently edited inline on the preview (keyboard open).
   String? _editingOverlayId;
@@ -82,6 +83,10 @@ class _EditorScreenState extends State<EditorScreen>
   final _previewKey = GlobalKey<VideoPreviewWithOverlaysState>();
   final _timelineKey = GlobalKey<TimelineWidgetState>();
   final _musicPlayer = AudioPlayer();
+
+  /// Last music clip loaded into [_musicPlayer]; null when stopped.
+  String? _syncedMusicId;
+  int _musicSyncGen = 0;
 
   List<TimelineFilmstripFrame> _filmstripFrames = [];
   final Map<String, List<double>> _musicWaveforms = {};
@@ -547,9 +552,11 @@ class _EditorScreenState extends State<EditorScreen>
         final next = nextSegmentStartAfter(project.segments, pos);
         if (next != null) {
           controller.seekTo(next);
+          unawaited(_syncMusicPlayback());
         } else {
           controller.pause();
           controller.seekTo(segment.end);
+          unawaited(_syncMusicPlayback());
         }
       }
       return;
@@ -558,10 +565,12 @@ class _EditorScreenState extends State<EditorScreen>
     final next = nextSegmentStartAfter(project.segments, pos);
     if (next != null) {
       controller.seekTo(next);
+      unawaited(_syncMusicPlayback());
     } else {
       final last = project.segments.last;
       controller.pause();
       controller.seekTo(last.end);
+      unawaited(_syncMusicPlayback());
     }
   }
 
@@ -634,6 +643,7 @@ class _EditorScreenState extends State<EditorScreen>
     }
     _advancePlaybackPastGaps();
     _syncVideoAudioVolume();
+    unawaited(_syncMusicOnTick());
     setState(() {});
   }
 
@@ -680,9 +690,11 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   Future<void> _syncMusicPlayback() async {
+    final gen = ++_musicSyncGen;
     final project = _project;
     final controller = _controller;
     if (project == null || controller == null) {
+      _syncedMusicId = null;
       await _musicPlayer.stop();
       return;
     }
@@ -690,6 +702,7 @@ class _EditorScreenState extends State<EditorScreen>
     final playhead = _playhead;
     final music = musicClipAtTime(project.musicTracks, playhead);
     if (music == null) {
+      _syncedMusicId = null;
       await _musicPlayer.stop();
       return;
     }
@@ -699,11 +712,20 @@ class _EditorScreenState extends State<EditorScreen>
       music,
     );
     if (!await File(musicPath).exists()) {
+      if (gen != _musicSyncGen) return;
+      _syncedMusicId = null;
       await _musicPlayer.stop();
       return;
     }
+    if (gen != _musicSyncGen) return;
 
-    await _musicPlayer.setSource(DeviceFileSource(musicPath));
+    final needsReload = _syncedMusicId != music.id;
+    if (needsReload) {
+      await _musicPlayer.setSource(DeviceFileSource(musicPath));
+      if (gen != _musicSyncGen) return;
+      _syncedMusicId = music.id;
+    }
+
     final localOffset = playhead - music.timelineStart;
     await _musicPlayer.setVolume(music.volumeAt(localOffset));
 
@@ -714,10 +736,35 @@ class _EditorScreenState extends State<EditorScreen>
     }
 
     await _musicPlayer.seek(musicPosition);
+    if (gen != _musicSyncGen) return;
     if (controller.value.isPlaying) {
       await _musicPlayer.resume();
     } else {
       await _musicPlayer.pause();
+    }
+  }
+
+  /// During continuous playback: start/stop when entering/leaving a clip,
+  /// update fade volume while inside — without reloading the file every tick.
+  Future<void> _syncMusicOnTick() async {
+    final project = _project;
+    final controller = _controller;
+    if (project == null || controller == null) return;
+
+    final playhead = _playhead;
+    final music = musicClipAtTime(project.musicTracks, playhead);
+    if (music?.id != _syncedMusicId) {
+      await _syncMusicPlayback();
+      return;
+    }
+    if (music == null) return;
+
+    final localOffset = playhead - music.timelineStart;
+    await _musicPlayer.setVolume(music.volumeAt(localOffset));
+
+    if (!controller.value.isPlaying) return;
+    if (_musicPlayer.state != PlayerState.playing) {
+      await _syncMusicPlayback();
     }
   }
 
@@ -826,7 +873,8 @@ class _EditorScreenState extends State<EditorScreen>
     }
 
     final sequenceTime = _sequenceTimeForSplit(project.segments, _playhead);
-    final cutIndex = nearestCutIndex(project.segments, sequenceTime);
+    final cutIndex = _selectedTransitionAfterIndex ??
+        nearestCutIndex(project.segments, sequenceTime);
     if (cutIndex < 0 || cutIndex >= project.segments.length - 1) {
       return;
     }
@@ -852,6 +900,12 @@ class _EditorScreenState extends State<EditorScreen>
     });
 
     if (!mounted) return;
+    setState(() {
+      _selectedTransitionAfterIndex = picked.isNone ? null : cutIndex;
+      _selectedSegmentId = null;
+      _selectedOverlayId = null;
+      _selectedMusicId = null;
+    });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(l10n.transitionApplied)),
     );
@@ -951,6 +1005,7 @@ class _EditorScreenState extends State<EditorScreen>
       _selectedMusicId = null;
     });
     unawaited(_musicPlayer.stop());
+    _syncedMusicId = null;
   }
 
   void _addTextOverlay() {
@@ -1668,6 +1723,7 @@ class _EditorScreenState extends State<EditorScreen>
       selectedOverlayId: _selectedOverlayId,
       selectedSegmentId: _selectedSegmentId,
       selectedMusicId: _selectedMusicId,
+      selectedTransitionAfterIndex: _selectedTransitionAfterIndex,
       onPlayheadChanged: _seek,
       onTrimStartChanged: (start) {
         setState(() {
@@ -1689,6 +1745,7 @@ class _EditorScreenState extends State<EditorScreen>
           _selectedOverlayId = overlay.id;
           _selectedSegmentId = null;
           _selectedMusicId = null;
+          _selectedTransitionAfterIndex = null;
         });
       },
       onMusicChanged: _replaceMusicClip,
@@ -1704,6 +1761,7 @@ class _EditorScreenState extends State<EditorScreen>
           _selectedMusicId = music.id;
           _selectedOverlayId = null;
           _selectedSegmentId = null;
+          _selectedTransitionAfterIndex = null;
         });
       },
       onSegmentSelected: (segment) {
@@ -1711,6 +1769,17 @@ class _EditorScreenState extends State<EditorScreen>
           _selectedSegmentId = segment.id;
           _selectedOverlayId = null;
           _selectedMusicId = null;
+          _selectedTransitionAfterIndex = null;
+        });
+      },
+      onTransitionSelected: (index) {
+        setState(() {
+          _selectedTransitionAfterIndex = index;
+          if (index != null) {
+            _selectedSegmentId = null;
+            _selectedOverlayId = null;
+            _selectedMusicId = null;
+          }
         });
       },
     );

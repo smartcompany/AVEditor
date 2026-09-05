@@ -1,5 +1,6 @@
 import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/text_overlay.dart';
+import 'package:aveditor/utils/duration_format.dart';
 import 'package:aveditor/utils/timeline_math.dart';
 
 List<ClipSegment> segmentsFromTrim({
@@ -182,6 +183,59 @@ List<ClipSegment> deleteSegment(
   return next;
 }
 
+/// Earliest source time [segment] may start — previous neighbor's end, or zero.
+Duration segmentTrimMinStart(List<ClipSegment> segments, ClipSegment segment) {
+  final index = segments.indexWhere((s) => s.id == segment.id);
+  if (index <= 0) return Duration.zero;
+  return segments[index - 1].end;
+}
+
+/// Latest source time [segment] may end — next neighbor's start, or [sourceDuration].
+Duration segmentTrimMaxEnd(
+  List<ClipSegment> segments,
+  ClipSegment segment, {
+  required Duration sourceDuration,
+}) {
+  final index = segments.indexWhere((s) => s.id == segment.id);
+  if (index < 0) return sourceDuration;
+  if (index >= segments.length - 1) return sourceDuration;
+  return segments[index + 1].start;
+}
+
+/// Trims [segment] start in place; packed timeline ripples followers automatically.
+ClipSegment? trimSegmentStart(
+  List<ClipSegment> segments,
+  ClipSegment segment, {
+  required Duration nextStart,
+  required Duration sourceDuration,
+}) {
+  final minStart = segmentTrimMinStart(segments, segment);
+  final maxStart = segment.end - minTrimDuration;
+  if (maxStart < minStart) return null;
+  final clamped = clampDuration(nextStart, minStart, maxStart);
+  if (clamped == segment.start) return segment;
+  return segment.copyWith(start: clamped);
+}
+
+/// Trims [segment] end; packed timeline ripples followers automatically.
+ClipSegment? trimSegmentEnd(
+  List<ClipSegment> segments,
+  ClipSegment segment, {
+  required Duration nextEnd,
+  required Duration sourceDuration,
+}) {
+  final minEnd = segment.start + minTrimDuration;
+  final maxEnd = segmentTrimMaxEnd(
+    segments,
+    segment,
+    sourceDuration: sourceDuration,
+  );
+  if (maxEnd < minEnd) return null;
+  final clamped = clampDuration(nextEnd, minEnd, maxEnd);
+  if (clamped == segment.end) return segment;
+  return segment.copyWith(end: clamped);
+}
+
 ClipSegment? segmentAt(
   List<ClipSegment> segments,
   Duration time, {
@@ -280,6 +334,38 @@ Duration cutExportTimeAfter(List<ClipSegment> segments, int afterIndex) {
     offset += segments[i].duration;
   }
   return offset;
+}
+
+/// Sequence-time span of a cut transition, centered on the cut.
+({Duration start, Duration end})? transitionSequenceSpan(
+  List<ClipSegment> segments,
+  int afterIndex,
+) {
+  if (afterIndex < 0 || afterIndex >= segments.length - 1) return null;
+  final segment = segments[afterIndex];
+  final next = segments[afterIndex + 1];
+  final td = clampedTransitionDuration(segment, next: next);
+  if (td <= Duration.zero) return null;
+
+  final cut = cutExportTimeAfter(segments, afterIndex);
+  final halfMs = td.inMilliseconds ~/ 2;
+  var startMs = cut.inMilliseconds - halfMs;
+  var endMs = startMs + td.inMilliseconds;
+  final totalMs = totalKeptDuration(segments).inMilliseconds;
+  if (startMs < 0) {
+    endMs -= startMs;
+    startMs = 0;
+  }
+  if (endMs > totalMs) {
+    startMs -= endMs - totalMs;
+    endMs = totalMs;
+    if (startMs < 0) startMs = 0;
+  }
+  if (endMs <= startMs) return null;
+  return (
+    start: Duration(milliseconds: startMs),
+    end: Duration(milliseconds: endMs),
+  );
 }
 
 /// Index of the cut (after segment i) nearest to [sequenceTime], or -1.

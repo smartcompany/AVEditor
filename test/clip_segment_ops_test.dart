@@ -308,4 +308,68 @@ void main() {
       const Duration(seconds: 3),
     );
   });
+
+  test('trimSegmentEnd shortens and can restore into a source gap', () {
+    final a = seg(Duration.zero, const Duration(seconds: 5), id: 'a');
+    final b = seg(const Duration(seconds: 5), const Duration(seconds: 10), id: 'b');
+    final segments = [a, b];
+    final source = const Duration(seconds: 10);
+
+    final shortened = trimSegmentEnd(
+      segments,
+      a,
+      nextEnd: const Duration(seconds: 3),
+      sourceDuration: source,
+    )!;
+    expect(shortened.end, const Duration(seconds: 3));
+
+    final gapped = [shortened, b];
+    final restored = trimSegmentEnd(
+      gapped,
+      shortened,
+      nextEnd: const Duration(seconds: 5),
+      sourceDuration: source,
+    )!;
+    expect(restored.end, const Duration(seconds: 5));
+
+    final blocked = trimSegmentEnd(
+      gapped,
+      shortened,
+      nextEnd: const Duration(seconds: 8),
+      sourceDuration: source,
+    )!;
+    expect(blocked.end, const Duration(seconds: 5)); // neighbor wall
+  });
+
+  test('trimSegmentStart shortens and can restore into a source gap', () {
+    final a = seg(Duration.zero, const Duration(seconds: 5), id: 'a');
+    final b = seg(const Duration(seconds: 5), const Duration(seconds: 10), id: 'b');
+    final segments = [a, b];
+    final source = const Duration(seconds: 10);
+
+    final shortened = trimSegmentStart(
+      segments,
+      b,
+      nextStart: const Duration(seconds: 7),
+      sourceDuration: source,
+    )!;
+    expect(shortened.start, const Duration(seconds: 7));
+
+    final gapped = [a, shortened];
+    final restored = trimSegmentStart(
+      gapped,
+      shortened,
+      nextStart: const Duration(seconds: 5),
+      sourceDuration: source,
+    )!;
+    expect(restored.start, const Duration(seconds: 5));
+
+    final blocked = trimSegmentStart(
+      gapped,
+      shortened,
+      nextStart: const Duration(seconds: 2),
+      sourceDuration: source,
+    )!;
+    expect(blocked.start, const Duration(seconds: 5));
+  });
 }

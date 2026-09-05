@@ -68,6 +68,25 @@ void main() {
       expect(graph, contains('[acat]'));
     });
 
+    test('transitionSequenceSpan centers on the cut', () {
+      final segments = [
+        ClipSegment(
+          start: Duration.zero,
+          end: const Duration(seconds: 3),
+          transitionId: 'fade',
+          transitionDuration: const Duration(milliseconds: 500),
+        ),
+        ClipSegment(
+          start: const Duration(seconds: 3),
+          end: const Duration(seconds: 6),
+        ),
+      ];
+
+      final span = transitionSequenceSpan(segments, 0)!;
+      expect(span.start, const Duration(milliseconds: 2750));
+      expect(span.end, const Duration(milliseconds: 3250));
+    });
+
     test('buildSegmentConcatGraph keeps concat without transitions', () {
       final segments = [
         ClipSegment(
