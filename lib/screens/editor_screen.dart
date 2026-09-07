@@ -1353,6 +1353,31 @@ class _EditorScreenState extends State<EditorScreen>
     });
   }
 
+  Future<void> _confirmDeleteOverlay(TextOverlay overlay) async {
+    final l10n = context.l10n;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(l10n.deleteText),
+          content: Text(l10n.deleteTextConfirm),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(l10n.cancel),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(l10n.deleteText),
+            ),
+          ],
+        );
+      },
+    );
+    if (!mounted || confirmed != true) return;
+    _deleteOverlay(overlay.id);
+  }
+
   void _editSelectedOverlay() {
     final overlay = _selectedOverlay;
     if (overlay == null) return;
@@ -1631,8 +1656,7 @@ class _EditorScreenState extends State<EditorScreen>
                                             current.copyWith(offset: offset),
                                       );
                                     },
-                                    onOverlayDeleted: (overlay) =>
-                                        _deleteOverlay(overlay.id),
+                                    onOverlayDeleted: _confirmDeleteOverlay,
                                     onOverlayDuplicated: _duplicateOverlay,
                                     onOverlayEdit: (overlay) {
                                       setState(

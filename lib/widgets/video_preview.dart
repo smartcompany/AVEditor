@@ -135,6 +135,9 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
   /// Pointer vector from the box centre when a resize+rotate drag began.
   Offset? _rotateStartVector;
 
+  /// Finger span when a two-finger pinch began.
+  double? _pinchStartSpan;
+
   /// Alignment guides shown while moving / rotating.
   Set<OverlayGuide> _activeGuides = {};
 
@@ -225,6 +228,7 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
     _resizeStartBox = null;
     _resizeAccumulated = Offset.zero;
     _rotateStartVector = null;
+    _pinchStartSpan = null;
     _clearLiveGeometry();
   }
 
@@ -288,10 +292,7 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
         (outward.dx * diagonal.dx + outward.dy * diagonal.dy) /
         diagonal.distanceSquared;
 
-    final scale = (1 + along).clamp(
-      _minResizeScale(start),
-      _maxResizeScale(start),
-    );
+    final scale = (1 + along).clamp(_minResizeScale(start), double.infinity);
     final next = start.scaled(scale);
 
     // Keep the opposite corner pinned. The box may be rotated, so the shift is
@@ -334,9 +335,9 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
     final to = local - centre;
     if (from == null || from.distance < 1 || to.distance < 1) return;
 
-    final scale = (to.distance / from.distance).clamp(
+    final scale = math.max(
+      to.distance / from.distance,
       _minResizeScale(start),
-      _maxResizeScale(start),
     );
     final rawRotation = start.rotation + (to.direction - from.direction);
     final scaled = start.scaled(scale);
@@ -370,15 +371,6 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
       minOverlayBoxHeight * scale / start.height,
       minOverlayFontSize * scale / start.fontSize,
     ].reduce((a, b) => a > b ? a : b);
-  }
-
-  double _maxResizeScale(OverlayBox start) {
-    final scale = _frameScale;
-    return [
-      maxOverlayBoxWidth * scale / start.width,
-      maxOverlayBoxHeight * scale / start.height,
-      maxOverlayFontSize * scale / start.fontSize,
-    ].reduce((a, b) => a < b ? a : b);
   }
 
   void _beginDrag(TextOverlay overlay, OverlayDrag drag, Offset local) {
@@ -449,8 +441,88 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
     return null;
   }
 
-  /// A second finger means the user is pinching — abandon any overlay drag
-  /// without committing and leave the video frame untouched.
+  /// Span between the two earliest active pointers (stable id order).
+  double? _pointerSpan() {
+    if (_downPointers.length < 2) return null;
+    final ids = _downPointers.keys.toList()..sort();
+    final a = _downPointers[ids[0]];
+    final b = _downPointers[ids[1]];
+    if (a == null || b == null) return null;
+    return (a - b).distance;
+  }
+
+  void _beginPinch(TextOverlay overlay) {
+    final start = _boxOf(overlay);
+    final span = _pointerSpan();
+    OverlayEventLog.log('PreviewDrag', 'pinchBegin', {
+      'id': overlay.id.substring(0, 8),
+      'span': span,
+      'boxW': start.width,
+      'boxH': start.height,
+    });
+    _activeDrag = OverlayDrag.pinch;
+    _activePointer = null;
+    _tapTarget = null;
+    _suppressEditOnRelease = true;
+    _gestureOverlay = overlay;
+    _lastLocal = null;
+    _pointerMoved = false;
+    _pointerTravel = 0;
+    _moveLogCounter = 0;
+    _resizeStartBox = start;
+    _resizeAccumulated = Offset.zero;
+    _rotateStartVector = null;
+    _pinchStartSpan = span;
+    _liveBox = start;
+  }
+
+  void _updatePinch() {
+    final overlay = _gestureOverlay ?? _selectedOverlay;
+    final start = _resizeStartBox;
+    final startSpan = _pinchStartSpan;
+    final span = _pointerSpan();
+    if (overlay == null || start == null || startSpan == null || span == null) {
+      return;
+    }
+    if (startSpan < 1) return;
+
+    final scale = math.max(span / startSpan, _minResizeScale(start));
+    if ((scale - 1).abs() > 0.01) _pointerMoved = true;
+    setState(() => _liveBox = start.scaled(scale));
+  }
+
+  void _endPinch() {
+    final overlay = _gestureOverlay ?? _selectedOverlay;
+    final moved = _pointerMoved;
+    if (overlay != null) {
+      OverlayEventLog.log('PreviewDrag', 'pinchEnd', {
+        'id': overlay.id.substring(0, 8),
+        'moved': moved,
+      });
+      _commitDrag(overlay, moved);
+      if (!moved && _liveBox != null) {
+        setState(_clearLiveGeometry);
+      }
+    }
+    _activeDrag = null;
+    _activePointer = null;
+    _tapTarget = null;
+    _gestureOverlay = null;
+    _suppressEditOnRelease = false;
+    _lastLocal = null;
+    _pointerMoved = false;
+    _pointerTravel = 0;
+    _moveLogCounter = 0;
+    _resizeStartBox = null;
+    _resizeAccumulated = Offset.zero;
+    _rotateStartVector = null;
+    _pinchStartSpan = null;
+    if (_activeGuides.isNotEmpty) {
+      setState(() => _activeGuides = {});
+    }
+  }
+
+  /// No selected overlay (or editing): a second finger abandons the gesture.
   void _cancelForMultiTouch() {
     _clearDragState();
   }
@@ -471,7 +543,12 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
 
     _downPointers[event.pointer] = local;
     if (_downPointers.length >= 2) {
-      _cancelForMultiTouch();
+      final overlay = _gestureOverlay ?? _selectedOverlay;
+      if (overlay != null && _editingOverlay == null) {
+        _beginPinch(overlay);
+      } else {
+        _cancelForMultiTouch();
+      }
       return;
     }
 
@@ -566,7 +643,12 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
       final local = _toPreviewLocal(event);
       if (local != null) _downPointers[event.pointer] = local;
     }
-    if (_downPointers.length >= 2) return;
+    if (_downPointers.length >= 2) {
+      if (_activeDrag?.kind == OverlayDragKind.pinch) {
+        _updatePinch();
+      }
+      return;
+    }
 
     if (event.pointer != _activePointer) return;
     _pointerTravel += event.delta.distance;
@@ -579,6 +661,11 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
   void handlePointerUp(int pointer) {
     _downPointers.remove(pointer);
     if (_downPointers.isNotEmpty) return;
+
+    if (_activeDrag?.kind == OverlayDragKind.pinch) {
+      _endPinch();
+      return;
+    }
 
     if (pointer != _activePointer) return;
     final target = _tapTarget;
@@ -616,6 +703,7 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
         case OverlayDragKind.move:
         case OverlayDragKind.resize:
         case OverlayDragKind.resizeRotate:
+        case OverlayDragKind.pinch:
           break;
       }
       return;
@@ -645,6 +733,11 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
   void handlePointerCancel(int pointer) {
     _downPointers.remove(pointer);
     if (_downPointers.isNotEmpty) return;
+
+    if (_activeDrag?.kind == OverlayDragKind.pinch) {
+      _endPinch();
+      return;
+    }
 
     if (pointer != _activePointer) return;
     final overlay = _gestureOverlay ?? _selectedOverlay;
@@ -701,10 +794,11 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
           fromLeft: drag.fromLeft!,
           fromTop: drag.fromTop!,
         );
+      case OverlayDragKind.pinch:
       case OverlayDragKind.delete:
       case OverlayDragKind.duplicate:
       case OverlayDragKind.edit:
-        // Corner buttons: travel is ignored, the action fires on release.
+        // Pinch is driven by multi-touch; corner buttons fire on release.
         break;
     }
   }
@@ -730,6 +824,7 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
     _resizeStartBox = null;
     _resizeAccumulated = Offset.zero;
     _rotateStartVector = null;
+    _pinchStartSpan = null;
     if (_activeGuides.isNotEmpty) {
       setState(() => _activeGuides = {});
     }
@@ -998,20 +1093,31 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
     );
   }
 
-  static const _iconKnobSize = 24.0;
+  static const _iconKnobSize = 50.0;
+  static const _iconGlyphSize = 28.0;
 
-  Widget _buildIconKnob(IconData icon) {
+  Widget _buildIconKnob(
+    IconData icon, {
+    Color iconColor = AppTheme.accent,
+    Color background = Colors.white,
+  }) {
     return Container(
       width: _iconKnobSize,
       height: _iconKnobSize,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: background,
         shape: BoxShape.circle,
-        border: Border.all(color: AppTheme.accent, width: 1.5),
-        boxShadow: const [BoxShadow(blurRadius: 3, color: Colors.black54)],
+        border: Border.all(color: iconColor, width: 2),
+        boxShadow: const [
+          BoxShadow(
+            blurRadius: 6,
+            offset: Offset(0, 1),
+            color: Colors.black54,
+          ),
+        ],
       ),
       child: Center(
-        child: Icon(icon, size: 14, color: AppTheme.accent),
+        child: Icon(icon, size: _iconGlyphSize, color: iconColor),
       ),
     );
   }
@@ -1073,12 +1179,24 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
               top: pad + boxH + OverlayGeometry.gripOutset - 3,
               child: IgnorePointer(child: _buildMoveGrip()),
             ),
-            _knobAt(corners.delete, _buildIconKnob(Icons.delete_outline)),
-            _knobAt(corners.edit, _buildIconKnob(Icons.edit_outlined)),
-            _knobAt(corners.duplicate, _buildIconKnob(Icons.content_copy)),
+            _knobAt(
+              corners.delete,
+              _buildIconKnob(
+                Icons.close_rounded,
+                iconColor: const Color(0xFFE53935),
+              ),
+            ),
+            _knobAt(
+              corners.edit,
+              _buildIconKnob(Icons.edit_rounded),
+            ),
+            _knobAt(
+              corners.duplicate,
+              _buildIconKnob(Icons.copy_all_rounded),
+            ),
             _knobAt(
               corners.resizeRotate,
-              _buildIconKnob(Icons.rotate_right),
+              _buildIconKnob(Icons.open_in_full_rounded),
             ),
           ],
         ],

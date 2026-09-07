@@ -112,6 +112,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deleteText => 'Delete';
 
   @override
+  String get deleteTextConfirm => 'Delete this text?';
+
+  @override
   String get fontSize => 'Size';
 
   @override

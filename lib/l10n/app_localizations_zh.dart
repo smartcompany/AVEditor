@@ -110,6 +110,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get deleteText => '删除';
 
   @override
+  String get deleteTextConfirm => '删除此文字？';
+
+  @override
   String get fontSize => '大小';
 
   @override

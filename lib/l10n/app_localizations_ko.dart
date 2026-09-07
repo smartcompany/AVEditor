@@ -110,6 +110,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get deleteText => '삭제';
 
   @override
+  String get deleteTextConfirm => '이 텍스트를 삭제할까요?';
+
+  @override
   String get fontSize => '크기';
 
   @override

@@ -6,7 +6,15 @@ import 'package:flutter/widgets.dart';
 ///
 /// [delete], [duplicate], and [edit] are one-shot taps; the rest are
 /// continuous gestures.
-enum OverlayDragKind { move, resize, resizeRotate, delete, duplicate, edit }
+enum OverlayDragKind {
+  move,
+  resize,
+  resizeRotate,
+  pinch,
+  delete,
+  duplicate,
+  edit,
+}
 
 class OverlayDrag {
   const OverlayDrag._(this.kind, {this.fromLeft, this.fromTop});
@@ -23,6 +31,9 @@ class OverlayDrag {
   /// Bottom-right: scales and rotates at once.
   static const resizeRotate = OverlayDrag._(OverlayDragKind.resizeRotate);
 
+  /// Two-finger pinch: uniform scale about the box centre.
+  static const pinch = OverlayDrag._(OverlayDragKind.pinch);
+
   static OverlayDrag resize({required bool fromLeft, required bool fromTop}) {
     return OverlayDrag._(
       OverlayDragKind.resize,
@@ -32,7 +43,9 @@ class OverlayDrag {
   }
 
   bool get isResize =>
-      kind == OverlayDragKind.resize || kind == OverlayDragKind.resizeRotate;
+      kind == OverlayDragKind.resize ||
+      kind == OverlayDragKind.resizeRotate ||
+      kind == OverlayDragKind.pinch;
 
   /// Fires on release without travel, so a slip does not destroy work.
   bool get isTapAction =>
@@ -52,6 +65,8 @@ class OverlayDrag {
         return 'edit';
       case OverlayDragKind.resizeRotate:
         return 'resize_rotate';
+      case OverlayDragKind.pinch:
+        return 'pinch';
       case OverlayDragKind.resize:
         return 'resize_'
             '${fromLeft == true ? 'L' : 'R'}${fromTop == true ? 'T' : 'B'}';
@@ -128,16 +143,16 @@ class OverlayChromeCorners {
 class OverlayGeometry {
   OverlayGeometry._();
 
-  static const handleHit = 56.0;
-  static const knobSize = 14.0;
-  static const knobOutset = 22.0;
+  static const handleHit = 64.0;
+  static const knobSize = 50.0;
+  static const knobOutset = 32.0;
   static const handlePad = knobOutset + knobSize / 2 + handleHit / 2 + 4;
 
   /// Grip sits in the padding ring below the box so it never eats text space.
   static const gripOutset = 18.0;
 
   /// Keep icon knobs this far inside the clamp rect so they stay tappable.
-  static const chromeKnobMargin = 18.0;
+  static const chromeKnobMargin = 28.0;
 
   /// Default clamp: the 9:16 video canvas (no letterbox gutters).
   static Rect previewClampRect(double previewW, double previewH) {

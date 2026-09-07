@@ -110,6 +110,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get deleteText => '削除';
 
   @override
+  String get deleteTextConfirm => 'このテキストを削除しますか？';
+
+  @override
   String get fontSize => 'サイズ';
 
   @override

@@ -38,6 +38,7 @@
   "videoLoadError": "Could not load video.",
   "editText": "Edit text",
   "deleteText": "Delete",
+  "deleteTextConfirm": "Delete this text?",
   "fontSize": "Size",
   "textColor": "Color",
   "textStyle": "Style",

@@ -300,6 +300,12 @@ abstract class AppLocalizations {
   /// **'Delete'**
   String get deleteText;
 
+  /// No description provided for @deleteTextConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete this text?'**
+  String get deleteTextConfirm;
+
   /// No description provided for @fontSize.
   ///
   /// In en, this message translates to:

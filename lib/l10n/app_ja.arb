@@ -33,6 +33,7 @@
   "videoLoadError": "動画を読み込めませんでした。",
   "editText": "テキストを編集",
   "deleteText": "削除",
+  "deleteTextConfirm": "このテキストを削除しますか？",
   "fontSize": "サイズ",
   "textColor": "色",
   "textStyle": "スタイル",

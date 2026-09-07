@@ -33,6 +33,7 @@
   "videoLoadError": "无法加载视频。",
   "editText": "编辑文字",
   "deleteText": "删除",
+  "deleteTextConfirm": "删除此文字？",
   "fontSize": "大小",
   "textColor": "颜色",
   "textStyle": "样式",
