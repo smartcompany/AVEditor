@@ -161,7 +161,7 @@ const _maxVisibleLanes = 3;
 /// Travel before a drag commits to scrolling lanes or panning time.
 const _axisSlop = 3.0;
 
-/// Finger travel still treated as a tap for clip-segment selection.
+/// Finger travel still treated as a tap for item selection (pointer-up only).
 const _segmentTapSlop = 12.0;
 
 enum TimelineDragTarget {
@@ -305,10 +305,14 @@ class TimelineWidgetState extends State<TimelineWidget> {
   /// the horizontal action the hit test picked.
   Axis? _dragAxis;
 
-  /// Selection is announced once the gesture proves it is not a lane scroll.
+  /// Selection is announced once on pointer-up when the gesture stayed a tap.
   bool _selectionAnnounced = false;
 
   bool _didMove = false;
+
+  /// Farthest distance from the down point during this gesture (not up−down).
+  double _maxTravelFromDown = 0;
+
   Offset? _pointerDownLocal;
   Offset? _lastSingleLocal;
   Duration? _panAnchorSequenceTime;
@@ -1288,6 +1292,7 @@ class TimelineWidgetState extends State<TimelineWidget> {
 
   void _beginSingle(Offset local) {
     _didMove = false;
+    _maxTravelFromDown = 0;
     _dragAxis = null;
     _selectionAnnounced = false;
     _pointerDownLocal = local;
@@ -1333,6 +1338,11 @@ class TimelineWidgetState extends State<TimelineWidget> {
     if (delta.dx.abs() > 0.5 || delta.dy.abs() > 0.5) {
       _didMove = true;
     }
+    final down = _pointerDownLocal;
+    if (down != null) {
+      final fromDown = (local - down).distance;
+      if (fromDown > _maxTravelFromDown) _maxTravelFromDown = fromDown;
+    }
 
     if (_dragAxis == null) {
       final axis = _resolveDragAxis(local);
@@ -1340,9 +1350,9 @@ class TimelineWidgetState extends State<TimelineWidget> {
       _dragAxis = axis;
       if (axis == Axis.vertical) {
         _dragTarget = TimelineDragTarget.scrollLanes;
-      } else {
-        _announceSelection();
       }
+      // Selection is pointer-up only — never announce here or drag pans
+      // would steal focus from neighboring clips.
     }
 
     _lastSingleLocal = local;
@@ -1753,14 +1763,14 @@ class TimelineWidgetState extends State<TimelineWidget> {
 
   void _endSingle() {
     final down = _pointerDownLocal;
-    final up = _lastSingleLocal;
     if (_isPinching || down == null) {
       _resetSingleGesture();
       return;
     }
 
-    final travel = up != null ? (up - down).distance : 0.0;
-    final tapped = !_didMove || travel < _segmentTapSlop;
+    // Use peak travel during the gesture — up near the start after a pan
+    // must not count as a tap / selection.
+    final tapped = _maxTravelFromDown < _segmentTapSlop;
     final onClipTrack = down.dy < _videoTrackHeight;
 
     if (tapped && _dragOverlay != null && _overlayDragOnBar) {
@@ -1817,6 +1827,7 @@ class TimelineWidgetState extends State<TimelineWidget> {
     _dragAxis = null;
     _selectionAnnounced = false;
     _didMove = false;
+    _maxTravelFromDown = 0;
     _dragTarget = TimelineDragTarget.panTimeline;
   }
 
