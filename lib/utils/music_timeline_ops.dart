@@ -11,16 +11,12 @@ import 'package:aveditor/utils/clip_segment_ops.dart';
     return (start: music.timelineStart, end: music.timelineEnd);
   }
 
-  var exportStart = sourceTimeToExportTime(segments, music.timelineStart);
-  exportStart ??= sourceTimeToExportTime(segments, segments.first.start);
-  if (exportStart == null) return null;
-
-  var exportEnd = sourceTimeToExportTime(segments, music.timelineEnd);
-  exportEnd ??= sourceTimeToExportTime(segments, segments.last.end);
-  if (exportEnd == null) return null;
+  final exportStart = sourceTimeToExportTime(segments, music.timelineStart);
+  final exportEnd = sourceTimeToExportTime(segments, music.timelineEnd);
+  if (exportStart == null || exportEnd == null) return null;
   if (exportEnd < exportStart) return null;
   if (exportEnd == exportStart) {
-    exportEnd = exportStart + minMusicClipDuration;
+    return (start: exportStart, end: exportStart + minMusicClipDuration);
   }
   return (start: exportStart, end: exportEnd);
 }

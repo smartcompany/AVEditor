@@ -18,10 +18,6 @@ export 'overlay_geometry.dart' show OverlayGeometry, OverlayBox;
 /// Limits in frame pixels — see [kOverlayFrameWidth].
 const double minOverlayFontSize = 24;
 const double maxOverlayFontSize = 240;
-const double minOverlayBoxWidth = 120;
-const double minOverlayBoxHeight = 96;
-const double maxOverlayBoxWidth = kOverlayFrameWidth * 1.3;
-const double maxOverlayBoxHeight = kOverlayFrameHeight * 1.3;
 
 /// Normalized offset from center — allows placing boxes into letterbox / past edges.
 const double maxOverlayOffset = 3.5;
@@ -194,14 +190,7 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
       final live = _liveBox;
       if (live != null) return live;
     }
-    final scale = _frameScale;
-    return OverlayBox(
-      width: overlay.boxWidth * scale,
-      height: overlay.boxHeight * scale,
-      fontSize: overlay.fontSize * scale,
-      offset: overlay.offset,
-      rotation: overlay.rotation,
-    );
+    return overlayBoxForFrame(overlay, frameWidth: _previewW);
   }
 
   void _clearLiveGeometry() {

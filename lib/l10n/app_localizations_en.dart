@@ -130,6 +130,27 @@ class AppLocalizationsEn extends AppLocalizations {
   String get textTemplatePacks => 'Packs';
 
   @override
+  String get textStudioTabTemplates => 'Templates';
+
+  @override
+  String get textStudioTabFonts => 'Fonts';
+
+  @override
+  String get textStudioTabStyle => 'Style';
+
+  @override
+  String get textStudioTabEffects => 'Effects';
+
+  @override
+  String get textStudioTabAnimation => 'Animation';
+
+  @override
+  String get textStudioTabBubbles => 'Bubbles';
+
+  @override
+  String get textStudioDefault => 'Default';
+
+  @override
   String get textPackSection => 'Text template server';
 
   @override

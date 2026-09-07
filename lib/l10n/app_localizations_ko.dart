@@ -128,6 +128,27 @@ class AppLocalizationsKo extends AppLocalizations {
   String get textTemplatePacks => '팩';
 
   @override
+  String get textStudioTabTemplates => '템플릿';
+
+  @override
+  String get textStudioTabFonts => '글꼴';
+
+  @override
+  String get textStudioTabStyle => '스타일';
+
+  @override
+  String get textStudioTabEffects => '편집효과';
+
+  @override
+  String get textStudioTabAnimation => '애니메이션';
+
+  @override
+  String get textStudioTabBubbles => '거품';
+
+  @override
+  String get textStudioDefault => '기본';
+
+  @override
   String get textPackSection => '텍스트 템플릿 서버';
 
   @override

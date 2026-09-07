@@ -12,8 +12,18 @@ import 'package:aveditor/utils/timeline_math.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+/// CapCut-style music / source-audio waveform colors.
+const _capCutAudioBg = Color(0xFF0B2342);
+const _capCutAudioBar = Color(0xFF4BA3D9);
+const _capCutAudioPeakTip = Color(0xFFE07A3A);
+const _capCutAudioBaseline = Color(0x66FFFFFF);
+const _capCutAudioTitleBg = Color(0x99000000);
+
+/// Text-lane clip fill — distinct from music navy; white label sits on top.
+const _textClipFill = Color(0xFF2A5F7A);
+
 /// Height of the fixed clip track at the top; it never scrolls away.
-/// Filmstrip on top, source-audio waveform + envelope along the bottom (iMovie).
+/// Filmstrip on top, source-audio waveform + envelope along the bottom.
 const _videoFilmstripHeight = 40.0;
 const _videoAudioHeight = 30.0;
 const _videoTrackHeight = _videoFilmstripHeight + _videoAudioHeight;
@@ -396,9 +406,19 @@ class TimelineWidgetState extends State<TimelineWidget> {
   double get _bodyHeight => _videoTrackHeight + _lanesViewportHeight;
 
   Duration get _sequenceDuration {
-    final kept = totalKeptDuration(widget.segments);
-    if (kept > Duration.zero) return kept;
-    return widget.duration;
+    var total = totalKeptDuration(widget.segments);
+    if (total <= Duration.zero) total = widget.duration;
+
+    // Music / text may sit past the video; grow the strip so they stay visible.
+    for (final music in widget.musicTracks) {
+      final span = musicSequenceSpan(music, widget.segments);
+      if (span != null && span.end > total) total = span.end;
+    }
+    for (final overlay in widget.overlays) {
+      final span = overlayTimelineSpan(overlay, widget.segments);
+      if (span != null && span.end > total) total = span.end;
+    }
+    return total;
   }
 
   Duration get _sequencePlayhead =>
@@ -1251,28 +1271,6 @@ class TimelineWidgetState extends State<TimelineWidget> {
         }
       }
 
-      final trimStartX = _viewportXForSequence(Duration.zero);
-      final trimEndX = _viewportXForSequence(_sequenceDuration);
-      final trimPoint = Offset(x, local.dy);
-      final trimStartHandle = overlayEdgeHandleRect(
-        trimStartX,
-        top: 0,
-        bottom: _videoTrackHeight,
-        atStart: true,
-      );
-      final trimEndHandle = overlayEdgeHandleRect(
-        trimEndX,
-        top: 0,
-        bottom: _videoTrackHeight,
-        atStart: false,
-      );
-      if (trimStartHandle.contains(trimPoint)) {
-        return TimelineDragTarget.trimStart;
-      }
-      if (trimEndHandle.contains(trimPoint)) {
-        return TimelineDragTarget.trimEnd;
-      }
-
       _tapSegment = _segmentAtViewportX(x);
     }
 
@@ -1423,15 +1421,24 @@ class TimelineWidgetState extends State<TimelineWidget> {
         );
       case TimelineDragTarget.overlayEnd:
         final overlay = _dragOverlay;
-        if (overlay == null) return;
-        final t = _timeAtViewportX(x);
+        final anchorStart = _overlayAnchorStart;
+        final anchorEnd = _overlayAnchorEnd;
+        final downLocal = _pointerDownLocal;
+        if (overlay == null ||
+            anchorStart == null ||
+            anchorEnd == null ||
+            downLocal == null) {
+          return;
+        }
+        final msPerPx = _sequenceDuration.inMilliseconds / _contentWidth;
+        final totalDeltaMs = ((x - downLocal.dx) * msPerPx).round();
         final minEnd = overlay.start + minOverlayDuration;
         final maxEnd = _overlayTrimMaxEnd(overlay);
-        widget.onOverlayChanged(
-          overlay.copyWith(
-            end: clampDuration(t, minEnd, maxEnd),
-          ),
+        var nextEnd = Duration(
+          milliseconds: anchorEnd.inMilliseconds + totalDeltaMs,
         );
+        nextEnd = clampDuration(nextEnd, minEnd, maxEnd);
+        widget.onOverlayChanged(overlay.copyWith(end: nextEnd));
       case TimelineDragTarget.overlayMove:
         final overlay = _dragOverlay;
         final anchorStart = _overlayAnchorStart;
@@ -1451,7 +1458,6 @@ class TimelineWidgetState extends State<TimelineWidget> {
         final msPerPx = _sequenceDuration.inMilliseconds / _contentWidth;
         final totalDeltaMs = ((x - downLocal.dx) * msPerPx).round();
         final sourceSpanMs = anchorEnd.inMilliseconds - anchorStart.inMilliseconds;
-        final exportSpanMs = exportEnd.inMilliseconds - exportStart.inMilliseconds;
 
         var nextExportStart = Duration(
           milliseconds: exportStart.inMilliseconds + totalDeltaMs,
@@ -1459,23 +1465,12 @@ class TimelineWidgetState extends State<TimelineWidget> {
         if (nextExportStart < Duration.zero) {
           nextExportStart = Duration.zero;
         }
-        final maxExportStartMs = _sequenceDuration.inMilliseconds - exportSpanMs;
-        if (nextExportStart.inMilliseconds > maxExportStartMs) {
-          nextExportStart = Duration(milliseconds: maxExportStartMs);
-        }
 
-        var nextStart = exportTimeToSourceTime(widget.segments, nextExportStart);
-        var nextEnd = Duration(
+        final nextStart =
+            exportTimeToSourceTime(widget.segments, nextExportStart);
+        final nextEnd = Duration(
           milliseconds: nextStart.inMilliseconds + sourceSpanMs,
         );
-        if (nextEnd > widget.duration) {
-          nextEnd = widget.duration;
-          nextStart = Duration(milliseconds: nextEnd.inMilliseconds - sourceSpanMs);
-          if (nextStart < Duration.zero) {
-            nextStart = Duration.zero;
-            nextEnd = Duration(milliseconds: sourceSpanMs.clamp(0, widget.duration.inMilliseconds));
-          }
-        }
         final targetLane = _textLaneAtLocal(local, currentLane: overlay.lane);
         widget.onOverlayChanged(
           overlay.copyWith(
@@ -1501,18 +1496,23 @@ class TimelineWidgetState extends State<TimelineWidget> {
           milliseconds: anchorStart.inMilliseconds + totalDeltaMs,
         );
         if (nextStart < Duration.zero) nextStart = Duration.zero;
-        final maxStart = widget.duration - anchorSpan;
-        if (nextStart > maxStart) {
-          nextStart = maxStart.isNegative ? Duration.zero : maxStart;
-        }
         final targetLane = _musicLaneAtLocal(local, currentLane: music.lane);
         widget.onMusicChanged?.call(
           music.copyWith(timelineStart: nextStart, lane: targetLane),
         );
       case TimelineDragTarget.musicEnd:
         final music = _liveMusic(_dragMusic) ?? _dragMusic;
-        if (music == null) return;
-        final t = _timeAtViewportX(x);
+        final anchorStart = _musicAnchorStart;
+        final anchorSpan = _musicAnchorSpan;
+        final downLocal = _pointerDownLocal;
+        if (music == null ||
+            anchorStart == null ||
+            anchorSpan == null ||
+            downLocal == null) {
+          return;
+        }
+        final msPerPx = _sequenceDuration.inMilliseconds / _contentWidth;
+        final totalDeltaMs = ((x - downLocal.dx) * msPerPx).round();
         final minEnd = music.timelineStart + minMusicClipDuration;
         // iMovie-style: extend reveals more of the file at 1x. Never past EOF.
         // Until fileDuration is known, only allow shortening (not extending).
@@ -1521,9 +1521,12 @@ class TimelineWidgetState extends State<TimelineWidget> {
             : music.timelineStart +
                 (music.fileDuration! - music.sourceOffset);
         final neighborWall = _musicTrimMaxEnd(music);
-        var nextEnd = clampDuration(t, minEnd, widget.duration);
+        var nextEnd = Duration(
+          milliseconds:
+              (anchorStart + anchorSpan).inMilliseconds + totalDeltaMs,
+        );
+        nextEnd = clampDuration(nextEnd, minEnd, neighborWall);
         if (nextEnd > maxFromFile) nextEnd = maxFromFile;
-        if (nextEnd > neighborWall) nextEnd = neighborWall;
         final nextClip = nextEnd - music.timelineStart;
         if (nextClip < minMusicClipDuration) return;
         if (music.fileDuration != null) {
@@ -1667,8 +1670,9 @@ class TimelineWidgetState extends State<TimelineWidget> {
   }
 
   /// Same-lane clip that starts at/after [clip] — blocks extending the end.
+  /// No video-duration ceiling: text may extend past the picture.
   Duration _overlayTrimMaxEnd(TextOverlay clip) {
-    var maxEnd = widget.duration;
+    var maxEnd = const Duration(days: 365);
     for (final other in widget.overlays) {
       if (other.id == clip.id || other.lane != clip.lane) continue;
       if (other.start >= clip.start && other.start < maxEnd) {
@@ -1692,8 +1696,9 @@ class TimelineWidgetState extends State<TimelineWidget> {
     return minStart;
   }
 
+  /// Neighbor wall only — music may extend past the video (file EOF still applies).
   Duration _musicTrimMaxEnd(ProjectMusic clip) {
-    var maxEnd = widget.duration;
+    var maxEnd = const Duration(days: 365);
     for (final other in widget.musicTracks) {
       if (other.id == clip.id || other.lane != clip.lane) continue;
       if (other.timelineStart >= clip.timelineStart &&
@@ -2041,7 +2046,8 @@ class TimelineWidgetState extends State<TimelineWidget> {
                         laneLabelStyle: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: AppTheme.background,
+                          color: Colors.white,
+                          letterSpacing: 0.2,
                         ),
                       ),
                       child: const SizedBox.expand(),
@@ -2197,37 +2203,33 @@ class _TimelinePainter extends CustomPainter {
       canvas.save();
       canvas.clipRRect(clipRRect);
 
-      canvas.drawRRect(
-        clipRRect,
-        Paint()
-          ..color = selected
-              ? const Color(0xFF3DDC97)
-              : const Color(0xFF2A9D8F).withValues(alpha: 0.9),
-      );
+      canvas.drawRRect(clipRRect, Paint()..color = _capCutAudioBg);
 
       final peaks = musicWaveforms[music.fileName] ?? const <double>[];
-      _paintMusicWaveform(canvas, rect, music, peaks);
+      _paintCapCutWaveform(canvas, rect, _musicPeakSlice(music, peaks));
 
-      final darkAbove = _musicDarkAbovePath(music, rect);
-      canvas.drawPath(
-        darkAbove,
-        Paint()..color = Colors.black.withValues(alpha: 0.28),
-      );
-
+      // Volume envelope stays interactive but stays light over CapCut bars.
       canvas.drawPath(
         _musicEnvelopePath(music, rect),
         Paint()
-          ..color = selected ? Colors.white : Colors.white.withValues(alpha: 0.75)
+          ..color = Colors.white.withValues(alpha: selected ? 0.85 : 0.45)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = selected ? 1.6 : 1.2
+          ..strokeWidth = selected ? 1.4 : 1.0
           ..strokeCap = StrokeCap.round
           ..strokeJoin = StrokeJoin.round,
       );
 
-      _paintLaneLabel(canvas, rect, '♪ ${music.title}');
+      _paintAudioTitleBadge(canvas, rect, music.title);
       canvas.restore();
 
       if (selected) {
+        canvas.drawRRect(
+          clipRRect,
+          Paint()
+            ..color = Colors.white
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5,
+        );
         if (kDebugMode) {
           _paintMusicDebugHitZones(
             canvas,
@@ -2352,27 +2354,6 @@ class _TimelinePainter extends CustomPainter {
     return path;
   }
 
-  /// Region above the volume envelope — shaded so the line reads clearly.
-  Path _musicDarkAbovePath(ProjectMusic music, Rect rect) {
-    const pad = 4.0;
-    final usable = (rect.height - pad * 2).clamp(1.0, double.infinity);
-    final bottom = rect.bottom - pad;
-    const samples = 64;
-    final clipMs = music.clipDuration.inMilliseconds.clamp(1, 1 << 31);
-    final path = Path()
-      ..moveTo(rect.left, rect.top)
-      ..lineTo(rect.right, rect.top);
-    for (var i = samples; i >= 0; i--) {
-      final t = i / samples;
-      final local = Duration(milliseconds: (clipMs * t).round());
-      final y = bottom - music.volumeAt(local) * usable;
-      final x = rect.left + rect.width * t;
-      path.lineTo(x, y);
-    }
-    path.close();
-    return path;
-  }
-
   Offset _fadeHandleOffset(
     ProjectMusic music,
     double left,
@@ -2410,18 +2391,10 @@ class _TimelinePainter extends CustomPainter {
     );
   }
 
-  void _paintMusicWaveform(
-    Canvas canvas,
-    Rect rect,
-    ProjectMusic music,
-    List<double> peaks,
-  ) {
-    if (peaks.isEmpty || rect.width < 4) return;
-
-    // Map the visible source window onto the file. Without fileDuration the
-    // same peaks would stretch when the clip grows — that looks like slow-mo.
+  List<double> _musicPeakSlice(ProjectMusic music, List<double> peaks) {
+    if (peaks.isEmpty) return const [];
     final fileMs = music.fileDuration?.inMilliseconds;
-    if (fileMs == null || fileMs <= 0) return;
+    if (fileMs == null || fileMs <= 0) return peaks;
 
     final startF =
         (music.sourceOffset.inMilliseconds / fileMs).clamp(0.0, 1.0);
@@ -2433,31 +2406,117 @@ class _TimelinePainter extends CustomPainter {
     final i1 = (endF * (peaks.length - 1))
         .ceil()
         .clamp(i0 + 1, peaks.length);
-    final slice = peaks.sublist(i0, i1);
-    if (slice.isEmpty) return;
+    return peaks.sublist(i0, i1);
+  }
 
-    final mid = rect.center.dy;
-    final half = rect.height * 0.4;
-    final barW = rect.width / slice.length;
-    final paint = Paint()..color = Colors.black.withValues(alpha: 0.32);
+  /// CapCut-style: bars grow upward from the bottom baseline (not mirrored).
+  void _paintCapCutWaveform(Canvas canvas, Rect rect, List<double> peaks) {
+    if (peaks.isEmpty || rect.width < 4 || rect.height < 6) return;
 
-    for (var i = 0; i < slice.length; i++) {
-      final amp = slice[i].clamp(0.06, 1.0);
-      final h = half * amp;
-      final x = rect.left + i * barW;
-      final w = math.max(1.0, barW * 0.72);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromCenter(
-            center: Offset(x + barW / 2, mid),
-            width: w,
-            height: h * 2,
-          ),
-          const Radius.circular(1),
-        ),
-        paint,
+    const pitch = 3.0;
+    const barW = 2.0;
+    final barCount = math.max(1, (rect.width / pitch).floor());
+    final bars = _resamplePeaks(peaks, barCount);
+    if (bars.isEmpty) return;
+
+    const bottomPad = 3.0;
+    const topPad = 10.0; // leave room for the title badge
+    final baseline = rect.bottom - bottomPad;
+    final maxH = (rect.height - bottomPad - topPad).clamp(4.0, rect.height);
+    const tipH = 2.2;
+    const peakThreshold = 0.72;
+
+    canvas.drawLine(
+      Offset(rect.left, baseline),
+      Offset(rect.right, baseline),
+      Paint()
+        ..color = _capCutAudioBaseline
+        ..strokeWidth = 1,
+    );
+
+    final barPaint = Paint()..color = _capCutAudioBar;
+    final tipPaint = Paint()..color = _capCutAudioPeakTip;
+
+    for (var i = 0; i < bars.length; i++) {
+      final amp = bars[i].clamp(0.04, 1.0);
+      final h = maxH * amp;
+      final left = rect.left + i * pitch + (pitch - barW) / 2;
+      final top = baseline - h;
+      final barRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(left, top, barW, h),
+        const Radius.circular(0.8),
       );
+      canvas.drawRRect(barRect, barPaint);
+
+      if (amp >= peakThreshold && h > tipH + 1) {
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(left, top, barW, tipH),
+            const Radius.circular(0.6),
+          ),
+          tipPaint,
+        );
+      }
     }
+  }
+
+  List<double> _resamplePeaks(List<double> peaks, int barCount) {
+    if (peaks.isEmpty || barCount <= 0) return const [];
+    if (peaks.length == barCount) return List<double>.from(peaks);
+    final out = List<double>.filled(barCount, 0);
+    for (var i = 0; i < barCount; i++) {
+      final a = (i * peaks.length / barCount).floor();
+      final b = (((i + 1) * peaks.length / barCount).ceil())
+          .clamp(a + 1, peaks.length);
+      var m = 0.0;
+      for (var j = a; j < b; j++) {
+        if (peaks[j] > m) m = peaks[j];
+      }
+      out[i] = m;
+    }
+    return out;
+  }
+
+  void _paintAudioTitleBadge(Canvas canvas, Rect rect, String title) {
+    final trimmed = title.trim();
+    if (trimmed.isEmpty || rect.width < 28) return;
+
+    const padH = 6.0;
+    const padV = 3.0;
+    const margin = 4.0;
+    final maxTextW = rect.width - margin * 2 - padH * 2;
+    if (maxTextW < 12) return;
+
+    final painter = TextPainter(
+      text: TextSpan(
+        text: trimmed,
+        style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          color: Colors.white,
+          height: 1.1,
+        ),
+      ),
+      maxLines: 1,
+      ellipsis: '…',
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: maxTextW);
+
+    final badge = RRect.fromRectAndRadius(
+      Rect.fromLTWH(
+        rect.left + margin,
+        rect.top + margin,
+        painter.width + padH * 2,
+        painter.height + padV * 2,
+      ),
+      const Radius.circular(4),
+    );
+    canvas.drawRRect(badge, Paint()..color = _capCutAudioTitleBg);
+    painter.paint(
+      canvas,
+      Offset(rect.left + margin + padH, rect.top + margin + padV),
+    );
+    painter.dispose();
   }
 
   void _paintClipTrack(Canvas canvas, Size size) {
@@ -2508,10 +2567,7 @@ class _TimelinePainter extends CustomPainter {
 
       canvas.drawRRect(
         filmRounded,
-        Paint()
-          ..color = selected
-              ? AppTheme.accent.withValues(alpha: 0.28)
-              : Colors.black.withValues(alpha: 0.12),
+        Paint()..color = Colors.black.withValues(alpha: 0.12),
       );
 
       if (hasSourceAudio) {
@@ -2547,23 +2603,6 @@ class _TimelinePainter extends CustomPainter {
     }
 
     _paintTransitions(canvas, filmTop, audioBottom);
-
-    _drawHandle(
-      canvas,
-      _x(Duration.zero),
-      top: filmTop,
-      bottom: audioBottom,
-      color: AppTheme.accent,
-      atStart: true,
-    );
-    _drawHandle(
-      canvas,
-      _x(sequenceDuration),
-      top: filmTop,
-      bottom: audioBottom,
-      color: AppTheme.accent,
-      atStart: false,
-    );
 
     // Selected trim caps last — outside end-caps would otherwise be covered by
     // the next segment painted later in the loop.
@@ -2693,27 +2732,19 @@ class _TimelinePainter extends CustomPainter {
     required bool selected,
   }) {
     final rounded = RRect.fromRectAndRadius(rect, const Radius.circular(3));
-    canvas.drawRRect(
-      rounded,
-      Paint()..color = const Color(0xFF1B3A3A),
-    );
+    canvas.drawRRect(rounded, Paint()..color = _capCutAudioBg);
 
     canvas.save();
     canvas.clipRRect(rounded);
 
     _paintSegmentWaveform(canvas, rect, segment);
 
-    final darkAbove = _segmentDarkAbovePath(segment, rect);
-    canvas.drawPath(
-      darkAbove,
-      Paint()..color = Colors.black.withValues(alpha: 0.3),
-    );
     canvas.drawPath(
       _segmentEnvelopePath(segment, rect),
       Paint()
-        ..color = selected ? Colors.white : Colors.white.withValues(alpha: 0.7)
+        ..color = Colors.white.withValues(alpha: selected ? 0.85 : 0.45)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = selected ? 1.5 : 1.1
+        ..strokeWidth = selected ? 1.3 : 1.0
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round,
     );
@@ -2749,26 +2780,6 @@ class _TimelinePainter extends CustomPainter {
         path.lineTo(x, y);
       }
     }
-    return path;
-  }
-
-  Path _segmentDarkAbovePath(ClipSegment segment, Rect rect) {
-    const pad = 3.0;
-    final usable = (rect.height - pad * 2).clamp(1.0, double.infinity);
-    final bottom = rect.bottom - pad;
-    const samples = 48;
-    final clipMs = segment.duration.inMilliseconds.clamp(1, 1 << 31);
-    final path = Path()
-      ..moveTo(rect.left, rect.top)
-      ..lineTo(rect.right, rect.top);
-    for (var i = samples; i >= 0; i--) {
-      final t = i / samples;
-      final local = Duration(milliseconds: (clipMs * t).round());
-      final y = bottom - segment.volumeAt(local) * usable;
-      final x = rect.left + rect.width * t;
-      path.lineTo(x, y);
-    }
-    path.close();
     return path;
   }
 
@@ -2811,30 +2822,7 @@ class _TimelinePainter extends CustomPainter {
         .ceil()
         .clamp(i0 + 1, sourceAudioWaveform.length);
     final slice = sourceAudioWaveform.sublist(i0, i1);
-    if (slice.isEmpty) return;
-
-    final mid = rect.center.dy;
-    final half = rect.height * 0.42;
-    final barW = rect.width / slice.length;
-    final paint = Paint()..color = const Color(0xFF3DDC97).withValues(alpha: 0.55);
-
-    for (var i = 0; i < slice.length; i++) {
-      final amp = slice[i].clamp(0.06, 1.0);
-      final h = half * amp;
-      final x = rect.left + i * barW;
-      final w = math.max(1.0, barW * 0.72);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromCenter(
-            center: Offset(x + barW / 2, mid),
-            width: w,
-            height: h * 2,
-          ),
-          const Radius.circular(1),
-        ),
-        paint,
-      );
-    }
+    _paintCapCutWaveform(canvas, rect, slice);
   }
 
   void _paintTextInScrollContent(
@@ -2890,16 +2878,20 @@ class _TimelinePainter extends CustomPainter {
       if (right < 0 || left > size.width) return;
 
       final rect = Rect.fromLTRB(left, laneTop, right, laneTop + _laneHeight);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(rect, const Radius.circular(4)),
-        Paint()
-          ..color = selected
-              ? AppTheme.accent
-              : Colors.white.withValues(alpha: 0.45),
-      );
+      final rounded = RRect.fromRectAndRadius(rect, const Radius.circular(4));
+
+      // Same fill selected or not — only the white chrome marks focus.
+      canvas.drawRRect(rounded, Paint()..color = _textClipFill);
       _paintLaneLabel(canvas, rect, overlay.text);
 
       if (selected) {
+        canvas.drawRRect(
+          rounded,
+          Paint()
+            ..color = Colors.white
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2,
+        );
         _drawHandle(
           canvas,
           left,
@@ -2916,42 +2908,33 @@ class _TimelinePainter extends CustomPainter {
           color: Colors.white,
           atStart: false,
         );
-        if (kDebugMode) {
-          _paintDebugEdgeHitZone(
-            canvas,
-            left,
-            top: laneTop,
-            bottom: laneTop + _laneHeight,
-            atStart: true,
-          );
-          _paintDebugEdgeHitZone(
-            canvas,
-            right,
-            top: laneTop,
-            bottom: laneTop + _laneHeight,
-            atStart: false,
-          );
-        }
       }
   }
 
   /// Names the layer inside its bar so stacked lanes stay distinguishable.
   void _paintLaneLabel(Canvas canvas, Rect rect, String text) {
-    const padding = 6.0;
+    const padding = 8.0;
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
     final maxWidth = rect.width - padding * 2;
     if (maxWidth < 16) return;
 
     final painter = TextPainter(
-      text: TextSpan(text: trimmed, style: laneLabelStyle),
+      text: TextSpan(
+        text: trimmed,
+        style: laneLabelStyle.copyWith(
+          shadows: const [
+            Shadow(blurRadius: 2, color: Color(0x66000000)),
+          ],
+        ),
+      ),
       maxLines: 1,
       ellipsis: '…',
       textDirection: TextDirection.ltr,
     )..layout(maxWidth: maxWidth);
 
     canvas.save();
-    canvas.clipRect(rect);
+    canvas.clipRect(rect.deflate(1));
     painter.paint(
       canvas,
       Offset(rect.left + padding, rect.center.dy - painter.height / 2),

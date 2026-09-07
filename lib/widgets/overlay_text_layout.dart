@@ -7,6 +7,12 @@ import 'package:aveditor/services/text_template_pack_service.dart';
 import 'package:aveditor/widgets/overlay_geometry.dart';
 import 'package:flutter/material.dart';
 
+/// Soft floor so a single glyph still has a grab target; chrome hugs text.
+const double minOverlayBoxWidth = 32;
+const double minOverlayBoxHeight = 32;
+const double maxOverlayBoxWidth = kOverlayFrameWidth * 1.3;
+const double maxOverlayBoxHeight = kOverlayFrameHeight * 1.3;
+
 /// Bundled font used for overlay text.
 ///
 /// Pinned rather than inherited from the theme so the preview and the exported
@@ -197,18 +203,66 @@ TextPainter layoutOverlayText({
 }
 
 /// Resolves [overlay] into a frame of [frameWidth] x [frameHeight] pixels.
+///
+/// Box size hugs the glyphs so selection chrome and export layout match.
 OverlayBox overlayBoxForFrame(
   TextOverlay overlay, {
   required double frameWidth,
 }) {
   final scale = frameWidth / kOverlayFrameWidth;
+  final fitted = measureFittedOverlayBox(
+    text: overlay.text,
+    fontSize: overlay.fontSize,
+  );
   return OverlayBox(
-    width: overlay.boxWidth * scale,
-    height: overlay.boxHeight * scale,
+    width: fitted.width * scale,
+    height: fitted.height * scale,
     fontSize: overlay.fontSize * scale,
     offset: overlay.offset,
     rotation: overlay.rotation,
   );
+}
+
+/// Frame-pixel size that tightly wraps the laid-out text.
+///
+/// Empty text uses a one-glyph placeholder so the selection box stays usable
+/// while editing.
+Size measureFittedOverlayBox({
+  required String text,
+  required double fontSize,
+  double maxWidth = maxOverlayBoxWidth,
+}) {
+  final sample = text.trim().isEmpty ? '가' : text;
+  final strokePad = overlayStrokeWidth(fontSize) * 0.55;
+  final softPad = fontSize * 0.06;
+  final pad = (strokePad + softPad).clamp(2.0, 18.0);
+  final innerMax = (maxWidth - pad * 2).clamp(1.0, maxWidth);
+
+  final painter = createOverlayTextPainter(
+    text: sample,
+    style: _baseTextStyle(fontSize: fontSize, color: const Color(0xFFFFFFFF)),
+    maxWidth: innerMax,
+  );
+  final width =
+      (painter.width + pad * 2).clamp(minOverlayBoxWidth, maxOverlayBoxWidth);
+  final height =
+      (painter.height + pad * 2).clamp(minOverlayBoxHeight, maxOverlayBoxHeight);
+  painter.dispose();
+  return Size(width.toDouble(), height.toDouble());
+}
+
+/// Returns [overlay] with [TextOverlay.boxWidth]/[TextOverlay.boxHeight] fitted
+/// to the current text and font size (center / offset unchanged).
+TextOverlay fitOverlayBoxToText(TextOverlay overlay) {
+  final size = measureFittedOverlayBox(
+    text: overlay.text,
+    fontSize: overlay.fontSize,
+  );
+  if ((overlay.boxWidth - size.width).abs() < 0.5 &&
+      (overlay.boxHeight - size.height).abs() < 0.5) {
+    return overlay;
+  }
+  return overlay.copyWith(boxWidth: size.width, boxHeight: size.height);
 }
 
 /// Where the laid-out text block sits inside the frame, in frame pixels.

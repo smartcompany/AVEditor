@@ -2,12 +2,12 @@ import 'dart:math' as math;
 
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/widgets/overflow_hit_stack.dart';
+import 'package:aveditor/widgets/overlay_geometry.dart';
+import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/widgets/video_preview.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// Mirrors the editor's preview slot: a 9:16 canvas scaled down by [FittedBox],
-/// so there is dead space beside the canvas and letterbox inside it.
 class _PreviewHarness extends StatefulWidget {
   const _PreviewHarness({
     required this.overlays,
@@ -185,18 +185,20 @@ class _EditorReplicaState extends State<_EditorReplica> {
   }
 }
 
+
 void main() {
-  // Sizes are frame pixels. The harness canvas is 360 wide, so a third of the
-  // 1080 frame: these values render as a 340x300 box with a 28px font, big
-  // enough that the corner handles land in the letterbox and past the edge.
+  // Selection chrome hugs glyphs; stored boxWidth/Height are ignored for layout.
   TextOverlay buildOverlay() => TextOverlay(
         id: 'overlay-1',
         text: 'hello',
         start: Duration.zero,
         end: const Duration(seconds: 5),
         fontSize: 84,
-        boxWidth: 1020,
-        boxHeight: 900,
+      );
+
+  Size measureFittedFrame(TextOverlay overlay) => measureFittedOverlayBox(
+        text: overlay.text,
+        fontSize: overlay.fontSize,
       );
 
   Offset Function(Offset) previewMapper(WidgetTester tester) {
@@ -206,30 +208,49 @@ void main() {
     return box.localToGlobal;
   }
 
-  /// Resolves an overlay into canvas pixels the way the preview does.
   OverlayBox canvasBox(TextOverlay overlay, RenderBox previewBox) {
-    final scale = previewBox.size.width / kOverlayFrameWidth;
-    return OverlayBox(
-      width: overlay.boxWidth * scale,
-      height: overlay.boxHeight * scale,
-      fontSize: overlay.fontSize * scale,
-      offset: overlay.offset,
-      rotation: overlay.rotation,
+    return overlayBoxForFrame(overlay, frameWidth: previewBox.size.width);
+  }
+
+  ({
+    Offset delete,
+    Offset edit,
+    Offset duplicate,
+    Offset resize,
+    Offset centre,
+    OverlayBox box,
+  }) chromeAnchors(TextOverlay overlay, RenderBox previewBox) {
+    final box = canvasBox(overlay, previewBox);
+    final body = OverlayGeometry.bodyRect(
+      previewW: previewBox.size.width,
+      previewH: previewBox.size.height,
+      box: box,
+    );
+    final topLeft = OverlayGeometry.chromeTopLeft(
+      previewW: previewBox.size.width,
+      previewH: previewBox.size.height,
+      box: box,
+    );
+    final corners = OverlayGeometry.resolveChromeCorners(
+      previewW: previewBox.size.width,
+      previewH: previewBox.size.height,
+      box: box,
+    );
+    return (
+      delete: topLeft + corners.delete,
+      edit: topLeft + corners.edit,
+      duplicate: topLeft + corners.duplicate,
+      resize: topLeft + corners.resizeRotate,
+      centre: body.center,
+      box: box,
     );
   }
 
-  // Corner anchors for [buildOverlay] in canvas pixels. The box spans
-  // x 10..350, y 170..470 and the handles sit 15px outside each edge.
-  const topLeftCorner = Offset(-5, 155);
-  const topRightCorner = Offset(365, 155);
-  const bottomLeftCorner = Offset(-5, 485);
-  const bottomRightCorner = Offset(365, 485);
-  const boxCentre = Offset(180, 320);
-
   testWidgets('resize handle outside the canvas still drives a resize',
       (tester) async {
-    final overlay = buildOverlay();
+    final overlay = buildOverlay()..offset = const Offset(0.85, 0.55);
     double? width;
+    final fitted = measureFittedFrame(overlay);
 
     await tester.pumpWidget(
       _PreviewHarness(
@@ -239,9 +260,12 @@ void main() {
       ),
     );
 
+    final previewBox = tester.renderObject<RenderBox>(
+      find.byType(VideoPreviewWithOverlays),
+    );
+    final anchors = chromeAnchors(overlay, previewBox);
     final toGlobal = previewMapper(tester);
-    // Bottom-right knob: x is past the canvas width (360), y is in the letterbox.
-    final gesture = await tester.startGesture(toGlobal(bottomRightCorner));
+    final gesture = await tester.startGesture(toGlobal(anchors.resize));
     await tester.pump();
     await gesture.moveBy(const Offset(30, 30));
     await tester.pump();
@@ -249,12 +273,13 @@ void main() {
     await tester.pump();
 
     expect(width, isNotNull, reason: 'resize never reached the preview');
-    expect(width, greaterThan(overlay.boxWidth));
+    expect(width, greaterThan(fitted.width));
   });
 
   testWidgets('resize scales box and font by the same factor', (tester) async {
     final overlay = buildOverlay();
     OverlayTransform? result;
+    final fitted = measureFittedFrame(overlay);
 
     await tester.pumpWidget(
       _PreviewHarness(
@@ -264,18 +289,21 @@ void main() {
       ),
     );
 
+    final previewBox = tester.renderObject<RenderBox>(
+      find.byType(VideoPreviewWithOverlays),
+    );
+    final anchors = chromeAnchors(overlay, previewBox);
     final toGlobal = previewMapper(tester);
-    // Bottom-right knob: scale+rotate; drag out to grow.
-    final gesture = await tester.startGesture(toGlobal(bottomRightCorner));
+    final gesture = await tester.startGesture(toGlobal(anchors.resize));
     await tester.pump();
     await gesture.moveBy(const Offset(40, 40));
     await tester.pump();
     await gesture.up();
     await tester.pump();
 
-    final widthFactor = result!.width / overlay.boxWidth;
+    final widthFactor = result!.width / fitted.width;
     expect(widthFactor, greaterThan(1.05), reason: 'drag should grow the box');
-    expect(result!.height / overlay.boxHeight, closeTo(widthFactor, 0.001));
+    expect(result!.height / fitted.height, closeTo(widthFactor, 0.001));
     expect(result!.fontSize / overlay.fontSize, closeTo(widthFactor, 0.001));
   });
 
@@ -293,7 +321,11 @@ void main() {
       ),
     );
 
-    await tester.tapAt(previewMapper(tester)(topRightCorner));
+    final previewBox = tester.renderObject<RenderBox>(
+      find.byType(VideoPreviewWithOverlays),
+    );
+    final anchors = chromeAnchors(overlay, previewBox);
+    await tester.tapAt(previewMapper(tester)(anchors.edit));
     await tester.pump();
 
     expect(edited?.id, overlay.id);
@@ -314,7 +346,11 @@ void main() {
       ),
     );
 
-    await tester.tapAt(previewMapper(tester)(topLeftCorner));
+    final previewBox = tester.renderObject<RenderBox>(
+      find.byType(VideoPreviewWithOverlays),
+    );
+    final anchors = chromeAnchors(overlay, previewBox);
+    await tester.tapAt(previewMapper(tester)(anchors.delete));
     await tester.pump();
 
     expect(deleted?.id, overlay.id);
@@ -333,7 +369,11 @@ void main() {
       ),
     );
 
-    await tester.tapAt(previewMapper(tester)(bottomLeftCorner));
+    final previewBox = tester.renderObject<RenderBox>(
+      find.byType(VideoPreviewWithOverlays),
+    );
+    final anchors = chromeAnchors(overlay, previewBox);
+    await tester.tapAt(previewMapper(tester)(anchors.duplicate));
     await tester.pump();
 
     expect(duplicated?.id, overlay.id);
@@ -352,8 +392,12 @@ void main() {
       ),
     );
 
+    final previewBox = tester.renderObject<RenderBox>(
+      find.byType(VideoPreviewWithOverlays),
+    );
+    final anchors = chromeAnchors(overlay, previewBox);
     final gesture = await tester.startGesture(
-      previewMapper(tester)(topLeftCorner),
+      previewMapper(tester)(anchors.delete),
     );
     await tester.pump();
     await gesture.moveBy(const Offset(40, 40));
@@ -368,6 +412,7 @@ void main() {
       (tester) async {
     final overlay = buildOverlay();
     OverlayTransform? result;
+    final fitted = measureFittedFrame(overlay);
 
     await tester.pumpWidget(
       _PreviewHarness(
@@ -377,13 +422,15 @@ void main() {
       ),
     );
 
+    final previewBox = tester.renderObject<RenderBox>(
+      find.byType(VideoPreviewWithOverlays),
+    );
+    final anchors = chromeAnchors(overlay, previewBox);
     final toGlobal = previewMapper(tester);
-    // Swing the corner a quarter turn clockwise about the centre, keeping its
-    // distance so only the angle changes.
-    final arm = bottomRightCorner - boxCentre;
-    final quarterTurn = boxCentre + Offset(-arm.dy, arm.dx);
+    final arm = anchors.resize - anchors.centre;
+    final quarterTurn = anchors.centre + Offset(-arm.dy, arm.dx);
 
-    final gesture = await tester.startGesture(toGlobal(bottomRightCorner));
+    final gesture = await tester.startGesture(toGlobal(anchors.resize));
     await tester.pump();
     await gesture.moveTo(toGlobal(quarterTurn));
     await tester.pump();
@@ -392,7 +439,7 @@ void main() {
 
     expect(result, isNotNull, reason: 'rotate never reached the preview');
     expect(result!.rotation, closeTo(math.pi / 2, 0.01));
-    expect(result!.width / overlay.boxWidth, closeTo(1, 0.01),
+    expect(result!.width / fitted.width, closeTo(1, 0.01),
         reason: 'a pure rotation must not change the size');
   });
 
@@ -400,6 +447,7 @@ void main() {
       (tester) async {
     final overlay = buildOverlay();
     OverlayTransform? result;
+    final fitted = measureFittedFrame(overlay);
 
     await tester.pumpWidget(
       _PreviewHarness(
@@ -409,12 +457,15 @@ void main() {
       ),
     );
 
+    final previewBox = tester.renderObject<RenderBox>(
+      find.byType(VideoPreviewWithOverlays),
+    );
+    final anchors = chromeAnchors(overlay, previewBox);
     final toGlobal = previewMapper(tester);
-    // Straight out along the centre→corner line: distance grows, angle does not.
-    final arm = bottomRightCorner - boxCentre;
-    final pulled = boxCentre + arm * 1.2;
+    final arm = anchors.resize - anchors.centre;
+    final pulled = anchors.centre + arm * 1.2;
 
-    final gesture = await tester.startGesture(toGlobal(bottomRightCorner));
+    final gesture = await tester.startGesture(toGlobal(anchors.resize));
     await tester.pump();
     await gesture.moveTo(toGlobal(pulled));
     await tester.pump();
@@ -422,14 +473,12 @@ void main() {
     await tester.pump();
 
     expect(result!.rotation, closeTo(0, 0.001));
-    expect(result!.width / overlay.boxWidth, closeTo(1.2, 0.01));
+    expect(result!.width / fitted.width, closeTo(1.2, 0.01));
     expect(result!.fontSize / overlay.fontSize, closeTo(1.2, 0.01));
   });
 
   testWidgets('a rotated overlay is hit tested in its own frame',
       (tester) async {
-    // Quarter turn: the box's long axis now runs vertically, so a point above
-    // the centre falls inside the body while the un-rotated box misses it.
     final overlay = buildOverlay()..rotation = math.pi / 2;
     TextOverlay? selected;
 
@@ -440,8 +489,14 @@ void main() {
       ),
     );
 
-    final toGlobal = previewMapper(tester);
-    await tester.tapAt(toGlobal(boxCentre - const Offset(0, 165)));
+    final previewBox = tester.renderObject<RenderBox>(
+      find.byType(VideoPreviewWithOverlays),
+    );
+    final anchors = chromeAnchors(overlay, previewBox);
+    final alongLong = anchors.box.width * 0.35;
+    await tester.tapAt(
+      previewMapper(tester)(anchors.centre - Offset(0, alongLong)),
+    );
     await tester.pump();
 
     expect(selected?.id, overlay.id);
@@ -459,9 +514,14 @@ void main() {
       ),
     );
 
-    final toGlobal = previewMapper(tester);
-    // Inside the un-rotated box, outside the rotated one (now 300 wide).
-    await tester.tapAt(toGlobal(boxCentre + const Offset(165, 0)));
+    final previewBox = tester.renderObject<RenderBox>(
+      find.byType(VideoPreviewWithOverlays),
+    );
+    final anchors = chromeAnchors(overlay, previewBox);
+    final pastShort = anchors.box.height * 0.9;
+    await tester.tapAt(
+      previewMapper(tester)(anchors.centre + Offset(pastShort, 0)),
+    );
     await tester.pump();
 
     expect(selected, isNull);
@@ -480,8 +540,11 @@ void main() {
       ),
     );
 
-    final toGlobal = previewMapper(tester);
-    await tester.tapAt(toGlobal(const Offset(180, 320)));
+    final previewBox = tester.renderObject<RenderBox>(
+      find.byType(VideoPreviewWithOverlays),
+    );
+    final anchors = chromeAnchors(overlay, previewBox);
+    await tester.tapAt(previewMapper(tester)(anchors.centre));
     await tester.pump();
 
     expect(edited?.id, overlay.id);
@@ -498,8 +561,11 @@ void main() {
       ),
     );
 
-    final toGlobal = previewMapper(tester);
-    await tester.tapAt(toGlobal(const Offset(180, 320)));
+    final previewBox = tester.renderObject<RenderBox>(
+      find.byType(VideoPreviewWithOverlays),
+    );
+    final anchors = chromeAnchors(overlay, previewBox);
+    await tester.tapAt(previewMapper(tester)(anchors.centre));
     await tester.pump();
 
     expect(selected?.id, overlay.id);
@@ -520,9 +586,7 @@ void main() {
     );
     await tester.pump();
 
-    final toGlobal = previewMapper(tester);
-    // Below the overlay chrome, inside the black letterbox.
-    await tester.tapAt(toGlobal(const Offset(180, 600)));
+    await tester.tapAt(previewMapper(tester)(const Offset(180, 600)));
     await tester.pump();
 
     expect(source, isNotNull);
@@ -530,13 +594,10 @@ void main() {
 
   testWidgets('dead space left of the scaled canvas reaches the preview',
       (tester) async {
-    // Wide, short window: FittedBox shrinks the 9:16 canvas so a wide black
-    // gutter appears on both sides of it — the area the user taps.
     tester.view.physicalSize = const Size(1600, 1000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    // Pushed hard left so the left handles land outside the canvas.
     final overlay = buildOverlay()..offset = const Offset(-1, 0);
     TextOverlay? deleted;
 
@@ -571,7 +632,6 @@ void main() {
       box: canvasBox(overlay, previewBox),
     );
     final deletePreview = topLeft + corners.delete;
-    // Even when the box is shoved left, the delete knob stays on-canvas.
     expect(deletePreview.dx, greaterThanOrEqualTo(0));
     await tester.tapAt(previewBox.localToGlobal(deletePreview));
     await tester.pump();
@@ -591,9 +651,7 @@ void main() {
       ),
     );
 
-    final toGlobal = previewMapper(tester);
-    // Letterbox below the overlay body, which spans y 170..470.
-    await tester.tapAt(toGlobal(const Offset(180, 600)));
+    await tester.tapAt(previewMapper(tester)(const Offset(180, 600)));
     await tester.pump();
 
     expect(taps, 1);
@@ -611,8 +669,11 @@ void main() {
       ),
     );
 
-    final toGlobal = previewMapper(tester);
-    await tester.tapAt(toGlobal(const Offset(180, 320)));
+    final previewBox = tester.renderObject<RenderBox>(
+      find.byType(VideoPreviewWithOverlays),
+    );
+    final anchors = chromeAnchors(overlay, previewBox);
+    await tester.tapAt(previewMapper(tester)(anchors.centre));
     await tester.pump();
 
     expect(taps, 0);
@@ -649,12 +710,20 @@ void main() {
         overlays: [overlay],
         selectedId: overlay.id,
         onBackgroundTap: () => taps++,
+        onBoxChanged: (_, __) {},
       ),
     );
 
+    final previewBox = tester.renderObject<RenderBox>(
+      find.byType(VideoPreviewWithOverlays),
+    );
+    final anchors = chromeAnchors(overlay, previewBox);
     final toGlobal = previewMapper(tester);
-    // Press the bottom-right knob and release without travelling.
-    await tester.tapAt(toGlobal(bottomRightCorner));
+    final gesture = await tester.startGesture(toGlobal(anchors.resize));
+    await tester.pump();
+    await gesture.moveBy(const Offset(24, 24));
+    await tester.pump();
+    await gesture.up();
     await tester.pump();
 
     expect(taps, 0);
@@ -675,8 +744,11 @@ void main() {
     );
     await tester.pump();
 
-    final toGlobal = previewMapper(tester);
-    await tester.tapAt(toGlobal(const Offset(180, 320)));
+    final previewBox = tester.renderObject<RenderBox>(
+      find.byType(VideoPreviewWithOverlays),
+    );
+    final anchors = chromeAnchors(overlay, previewBox);
+    await tester.tapAt(previewMapper(tester)(anchors.centre));
     await tester.pump();
 
     expect(source, isNull);
@@ -720,8 +792,12 @@ void main() {
       ),
     );
 
+    final previewBox = tester.renderObject<RenderBox>(
+      find.byType(VideoPreviewWithOverlays),
+    );
+    final anchors = chromeAnchors(overlay, previewBox);
     final toGlobal = previewMapper(tester);
-    final resize = await tester.startGesture(toGlobal(bottomRightCorner));
+    final resize = await tester.startGesture(toGlobal(anchors.resize));
     await tester.pump();
     await resize.moveBy(const Offset(20, 20));
     await tester.pump();

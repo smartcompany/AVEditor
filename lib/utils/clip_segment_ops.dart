@@ -391,6 +391,7 @@ Duration? sourceTimeToExportTime(
   Duration sourceTime, {
   bool applyTransitions = false,
 }) {
+  if (segments.isEmpty) return sourceTime;
   var offset = Duration.zero;
   for (var i = 0; i < segments.length; i++) {
     final segment = segments[i];
@@ -408,6 +409,11 @@ Duration? sourceTimeToExportTime(
       offset -= clampedTransitionDuration(segment, next: segments[i + 1]);
     }
   }
+  // Past the last kept frame: continue linearly so music/text can sit after video.
+  final last = segments.last;
+  if (sourceTime > last.end) {
+    return offset + (sourceTime - last.end);
+  }
   return null;
 }
 
@@ -417,7 +423,7 @@ Duration exportTimeToSourceTime(
   Duration exportTime, {
   bool applyTransitions = false,
 }) {
-  if (segments.isEmpty) return Duration.zero;
+  if (segments.isEmpty) return exportTime < Duration.zero ? Duration.zero : exportTime;
   if (exportTime <= Duration.zero) return segments.first.start;
 
   var offset = Duration.zero;
@@ -434,7 +440,8 @@ Duration exportTimeToSourceTime(
       offset -= clampedTransitionDuration(segment, next: segments[i + 1]);
     }
   }
-  return segments.last.end;
+  // Past packed video: keep advancing source time so layers can live after EOF.
+  return segments.last.end + (exportTime - offset);
 }
 
 ClipSegment? segmentAtExportTime(
@@ -572,6 +579,14 @@ Duration? overlayExportTimeForEnd(
   TextOverlay overlay,
   List<ClipSegment> segments,
 ) {
+  // Direct mapping first so text can live (and move) past the video end.
+  final directStart = sourceTimeToExportTime(segments, overlay.start);
+  final directEnd = sourceTimeToExportTime(segments, overlay.end) ??
+      overlayExportTimeForEnd(segments, overlay.end);
+  if (directStart != null && directEnd != null && directEnd > directStart) {
+    return (start: directStart, end: directEnd);
+  }
+
   final ranges = overlayKeptRanges(overlay, segments);
   if (ranges.isEmpty) return null;
 

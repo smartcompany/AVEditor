@@ -153,6 +153,18 @@ void main() {
     expect(sourceTimeToExportTime(segments, const Duration(seconds: 5)), isNull);
   });
 
+  test('sourceTimeToExportTime extends linearly past last kept frame', () {
+    final segments = [
+      seg(Duration.zero, const Duration(seconds: 3)),
+      seg(const Duration(seconds: 7), const Duration(seconds: 10)),
+    ];
+
+    expect(
+      sourceTimeToExportTime(segments, const Duration(seconds: 12)),
+      const Duration(seconds: 8),
+    );
+  });
+
   test('overlayKeptRanges clips to kept segments without duplicating layers', () {
     final overlay = TextOverlay(
       text: 'hello',
@@ -306,6 +318,10 @@ void main() {
     expect(
       timelinePlayheadFromSource(segments, const Duration(seconds: 5)),
       const Duration(seconds: 3),
+    );
+    expect(
+      exportTimeToSourceTime(segments, const Duration(seconds: 8)),
+      const Duration(seconds: 12),
     );
   });
 

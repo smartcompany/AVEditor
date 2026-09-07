@@ -74,11 +74,14 @@ class _TextOverlayEditorSheetState extends State<_TextOverlayEditorSheet> {
   }
 
   TextOverlay _draft() {
-    final factor = _fontSize / widget.overlay.fontSize;
+    final fitted = measureFittedOverlayBox(
+      text: widget.overlay.text,
+      fontSize: _fontSize,
+    );
     return widget.overlay.copyWith(
       fontSize: _fontSize,
-      boxWidth: widget.overlay.boxWidth * factor,
-      boxHeight: widget.overlay.boxHeight * factor,
+      boxWidth: fitted.width,
+      boxHeight: fitted.height,
       color: _color,
       style: _style,
       templateId: _templateId,

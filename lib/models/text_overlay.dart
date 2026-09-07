@@ -33,8 +33,8 @@ class TextOverlay {
     this.packItemId,
     this.alignment = Alignment.center,
     this.offset = Offset.zero,
-    this.boxWidth = 540,
-    this.boxHeight = 264,
+    this.boxWidth = 200,
+    this.boxHeight = 100,
     this.rotation = 0,
     this.lane = 0,
   }) : id = id ?? const Uuid().v4();

@@ -336,6 +336,48 @@ abstract class AppLocalizations {
   /// **'Packs'**
   String get textTemplatePacks;
 
+  /// No description provided for @textStudioTabTemplates.
+  ///
+  /// In en, this message translates to:
+  /// **'Templates'**
+  String get textStudioTabTemplates;
+
+  /// No description provided for @textStudioTabFonts.
+  ///
+  /// In en, this message translates to:
+  /// **'Fonts'**
+  String get textStudioTabFonts;
+
+  /// No description provided for @textStudioTabStyle.
+  ///
+  /// In en, this message translates to:
+  /// **'Style'**
+  String get textStudioTabStyle;
+
+  /// No description provided for @textStudioTabEffects.
+  ///
+  /// In en, this message translates to:
+  /// **'Effects'**
+  String get textStudioTabEffects;
+
+  /// No description provided for @textStudioTabAnimation.
+  ///
+  /// In en, this message translates to:
+  /// **'Animation'**
+  String get textStudioTabAnimation;
+
+  /// No description provided for @textStudioTabBubbles.
+  ///
+  /// In en, this message translates to:
+  /// **'Bubbles'**
+  String get textStudioTabBubbles;
+
+  /// No description provided for @textStudioDefault.
+  ///
+  /// In en, this message translates to:
+  /// **'Default'**
+  String get textStudioDefault;
+
   /// No description provided for @textPackSection.
   ///
   /// In en, this message translates to:
