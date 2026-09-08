@@ -680,6 +680,9 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
     final drag = _activeDrag;
     final dragged = _gestureOverlay ?? _selectedOverlay;
     final suppressEdit = _suppressEditOnRelease;
+    // Capture before [_onPreviewPointerEnd] clears travel counters.
+    final travel = _pointerTravel;
+    final moved = _pointerMoved || travel > _tapSlop;
 
     if (drag != null && dragged != null) {
       // Corner buttons commit on release themselves — don't treat jitter as a
@@ -696,7 +699,6 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
     _gestureOverlay = null;
     _suppressEditOnRelease = false;
     _lastLocal = null;
-    final travel = _pointerTravel;
     _pointerMoved = false;
     _pointerTravel = 0;
 
@@ -729,7 +731,8 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
       return;
     }
 
-    if (travel > _tapSlop) return;
+    // A real drag (move / resize) must never open the editor on release.
+    if (moved) return;
 
     if (target == null) {
       // Corner presses also clear the tap target, so check no drag ran.

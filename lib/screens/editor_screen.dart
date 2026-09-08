@@ -20,6 +20,7 @@ import 'package:aveditor/services/video_probe_service.dart';
 import 'package:aveditor/utils/clip_rotation.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
 import 'package:aveditor/utils/duration_format.dart';
+import 'package:aveditor/utils/editor_sheet_metrics.dart';
 import 'package:aveditor/utils/overlay_event_log.dart';
 import 'package:aveditor/utils/timeline_math.dart';
 import 'package:aveditor/services/app_settings_service.dart';
@@ -93,6 +94,10 @@ class _EditorScreenState extends State<EditorScreen>
   /// Bumped to cancel an in-flight [_previewTransitionAtCut] (e.g. panel close).
   int _transitionPreviewGen = 0;
 
+  /// True while the transition picker sheet is up — hide the timeline chrome
+  /// grab so it does not sit next to the sheet's own handle.
+  var _transitionPickerOpen = false;
+
   VideoProject? _project;
   String? _selectedOverlayId;
   String? _selectedSegmentId;
@@ -150,9 +155,6 @@ class _EditorScreenState extends State<EditorScreen>
   var _textStudioSheetBottom = 0.0;
 
   static const _chromeHandleHeight = 26.0;
-
-  /// First-open browse sheet (~2/3 of editor body).
-  static const _textStudioEntryFraction = 2 / 3;
 
   Duration get _playhead {
     return _scrubPlayhead ?? _controller?.value.position ?? Duration.zero;
@@ -1062,6 +1064,9 @@ class _EditorScreenState extends State<EditorScreen>
 
   bool get _inTextStudio => _textStudioOverlayId != null;
 
+  /// Bottom sheets that already have a drag pill — hide the chrome handle.
+  bool get _hideChromeHandle => _inTextStudio || _transitionPickerOpen;
+
   void _seek(Duration position) {
     final controller = _controller;
     final project = _project;
@@ -1311,6 +1316,7 @@ class _EditorScreenState extends State<EditorScreen>
       _selectedSegmentId = null;
       _selectedOverlayId = null;
       _selectedMusicId = null;
+      _transitionPickerOpen = true;
     });
 
     await showTransitionPickerSheet(
@@ -1393,6 +1399,7 @@ class _EditorScreenState extends State<EditorScreen>
     // from [_previewTransitionAtCut] / fade handoff can resume after this close.
     _transitionPreviewGen++;
     _transitionPreviewUntil = null;
+    _transitionPickerOpen = false;
     await _tearDownFadePreview();
     await _controller?.pause();
     await _auxController?.pause();
@@ -1809,7 +1816,23 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   void _startInlineEditing(TextOverlay overlay) {
-    _openTextStudio(overlay);
+    final controller = _controller;
+    if (controller != null && controller.value.isPlaying) {
+      controller.pause();
+    }
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() {
+      // Body tap → on-canvas edit only. Studio opens from add / corner edit.
+      _textStudioOverlayId = null;
+      _textStudioFieldFocused = false;
+      _textStudioHeightOverride = null;
+      _textStudioSheetBottom = 0;
+      _selectedOverlayId = overlay.id;
+      _selectedSegmentId = null;
+      _selectedMusicId = null;
+      _selectedTransitionAfterIndex = null;
+      _editingOverlayId = overlay.id;
+    });
   }
 
   void _deleteOverlay(String id) {
@@ -2040,12 +2063,6 @@ class _EditorScreenState extends State<EditorScreen>
               icon: const Icon(Icons.redo),
               tooltip: l10n.redo,
             ),
-            if (_selectedOverlay != null)
-              IconButton(
-                onPressed: _editSelectedOverlay,
-                icon: const Icon(Icons.edit_outlined),
-                tooltip: l10n.editText,
-              ),
             IconButton(
               onPressed: _exporting ? null : _showExportOptions,
               icon: const Icon(Icons.upload_outlined),
@@ -2056,8 +2073,12 @@ class _EditorScreenState extends State<EditorScreen>
       ),
       body: LayoutBuilder(
         builder: (context, bodyConstraints) {
-          final entryH = bodyConstraints.maxHeight * _textStudioEntryFraction;
-          final sheetH = _textStudioHeightOverride ?? entryH;
+          final metrics = EditorSheetMetrics.of(context);
+          final bodyH = bodyConstraints.maxHeight;
+          final maxH = metrics.maxHeight.clamp(0.0, bodyH);
+          // Open at max (2/3 screen); user can snap down to entry via the handle.
+          final sheetH =
+              (_textStudioHeightOverride ?? maxH).clamp(0.0, bodyH);
 
           return Stack(
             clipBehavior: Clip.none,
@@ -2194,7 +2215,12 @@ class _EditorScreenState extends State<EditorScreen>
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        _buildChromeHandle(l10n),
+                        // Keep the slot so the preview does not jump when a
+                        // bottom sheet hides the grab pill.
+                        if (_hideChromeHandle)
+                          const SizedBox(height: _chromeHandleHeight)
+                        else
+                          _buildChromeHandle(l10n),
                         _buildCollapsibleChrome(
                           l10n: l10n,
                           project: project,
@@ -2217,6 +2243,7 @@ class _EditorScreenState extends State<EditorScreen>
                     child: TextStudioPanel(
                       overlay: studioOverlay,
                       textHint: l10n.textOverlayHint,
+                      maxSheetHeight: bodyH,
                       onChanged: _updateOverlay,
                       onTextChanged: (text) {
                         final current = _textStudioOverlay;
@@ -2240,12 +2267,13 @@ class _EditorScreenState extends State<EditorScreen>
                           });
                           return;
                         }
-                        if (_textStudioHeightOverride == height &&
+                        final clamped = height.clamp(0.0, bodyH);
+                        if (_textStudioHeightOverride == clamped &&
                             _textStudioSheetBottom == bottom) {
                           return;
                         }
                         setState(() {
-                          _textStudioHeightOverride = height;
+                          _textStudioHeightOverride = clamped;
                           _textStudioSheetBottom = bottom;
                         });
                       },

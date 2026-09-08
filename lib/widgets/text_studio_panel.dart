@@ -6,6 +6,7 @@ import 'package:aveditor/models/text_style_template.dart';
 import 'package:aveditor/models/text_template_pack.dart';
 import 'package:aveditor/services/text_template_pack_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
+import 'package:aveditor/utils/editor_sheet_metrics.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/widgets/text_template_pack_browser.dart';
 import 'package:aveditor/widgets/video_preview.dart';
@@ -23,6 +24,7 @@ class TextStudioPanel extends StatefulWidget {
     required this.onChanged,
     required this.onTextChanged,
     required this.onConfirm,
+    required this.maxSheetHeight,
     this.onFieldFocusChanged,
     this.onHeightChanged,
   });
@@ -30,16 +32,21 @@ class TextStudioPanel extends StatefulWidget {
   /// Input bar + tab bar — used by the editor to size the compose slot.
   static const composeChromeHeight = 120.0;
 
+  /// Top grab strip (matches transition sheet feel).
+  static const handleHeight = 28.0;
+
   final TextOverlay overlay;
   final String textHint;
   final ValueChanged<TextOverlay> onChanged;
   final ValueChanged<String> onTextChanged;
   final VoidCallback onConfirm;
+
+  /// Max height available in the editor body (usually full body height).
+  final double maxSheetHeight;
+
   final ValueChanged<bool>? onFieldFocusChanged;
 
-  /// Compose slot: [height] = input+tabs, [bottom] = keyboard while focused.
-  /// On dismiss: tall lock (height = chrome+keyboard, bottom = 0) so chrome
-  /// stays put. Pass `null` height only if the parent restores entry size.
+  /// Compose slot / sheet height. [height] null restores the editor entry size.
   final void Function(double? height, {double bottom})? onHeightChanged;
 
   @override
@@ -121,7 +128,60 @@ class _TextStudioPanelState extends State<TextStudioPanel>
   }
 
   double _chromeHeight() {
-    return _renderHeight(_inputBarKey) + _renderHeight(_tabBarKey);
+    return TextStudioPanel.handleHeight +
+        _renderHeight(_inputBarKey) +
+        _renderHeight(_tabBarKey);
+  }
+
+  void _onHandleDragUpdate(DragUpdateDetails details) {
+    // Don't fight the IME compose slot while the keyboard is rising.
+    if (_focusNode.hasFocus && !_composeLockedTall) return;
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return;
+    final metrics = EditorSheetMetrics.of(context);
+    final maxH = metrics.maxHeight.clamp(0.0, widget.maxSheetHeight);
+    final minH = metrics.minHeight;
+    final next = (box.size.height - details.delta.dy).clamp(minH, maxH);
+    _composeLockedTall = false;
+    _pinnedKeyboard = 0;
+    widget.onHeightChanged?.call(next, bottom: 0);
+  }
+
+  void _onHandleDragEnd(DragEndDetails details) {
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return;
+    final metrics = EditorSheetMetrics.of(context);
+    final snapped = metrics.snapHeight(
+      box.size.height,
+      maxAvailable: widget.maxSheetHeight,
+      velocity: details.primaryVelocity ?? 0,
+    );
+    if (snapped == null) {
+      widget.onConfirm();
+      return;
+    }
+    widget.onHeightChanged?.call(snapped, bottom: 0);
+  }
+
+  Widget _buildDragHandle() {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onVerticalDragUpdate: _onHandleDragUpdate,
+      onVerticalDragEnd: _onHandleDragEnd,
+      child: SizedBox(
+        height: TextStudioPanel.handleHeight,
+        child: Center(
+          child: Container(
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.28),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   /// Fill the keyboard gap; chrome Y stays fixed. Used on IME dismiss.
@@ -135,9 +195,13 @@ class _TextStudioPanelState extends State<TextStudioPanel>
 
   void _reportComposeSlot() {
     if (!mounted || !_focusNode.hasFocus || _composeLockedTall) return;
-    final chrome = _chromeHeight();
+    final measured = _chromeHeight();
+    // Keys may not be laid out on the first focus frame — never shrink to
+    // handle-only or the sheet looks like it vanished.
+    final chrome = measured >= TextStudioPanel.handleHeight + 80
+        ? measured
+        : TextStudioPanel.composeChromeHeight + TextStudioPanel.handleHeight;
     final keyboard = _keyboardInset();
-    if (chrome <= 0) return;
 
     if (keyboard > _pinnedKeyboard) {
       _pinnedKeyboard = keyboard;
@@ -270,16 +334,60 @@ class _TextStudioPanelState extends State<TextStudioPanel>
     // Fixed-height sheet from parent; focus only opens the keyboard.
     return Material(
       color: const Color(0xFF12141A),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          KeyedSubtree(
-            key: _inputBarKey,
-            child: _buildInputBar(l10n, focused: focused),
-          ),
-          KeyedSubtree(key: _tabBarKey, child: _buildTabBar(l10n)),
-          Expanded(child: _buildTabBody(l10n)),
-        ],
+      elevation: 8,
+      shadowColor: Colors.black54,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+      clipBehavior: Clip.antiAlias,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildDragHandle(),
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, inner) {
+                    // Compose (focused): always keep the input visible above the
+                    // keyboard. Browse: hide chrome only while collapsing away.
+                    if (!focused && inner.maxHeight < 140) {
+                      return const SizedBox.shrink();
+                    }
+                    if (focused) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          KeyedSubtree(
+                            key: _inputBarKey,
+                            child: _buildInputBar(l10n, focused: focused),
+                          ),
+                          if (inner.maxHeight >= 100)
+                            KeyedSubtree(
+                              key: _tabBarKey,
+                              child: _buildTabBar(l10n),
+                            ),
+                        ],
+                      );
+                    }
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        KeyedSubtree(
+                          key: _inputBarKey,
+                          child: _buildInputBar(l10n, focused: focused),
+                        ),
+                        KeyedSubtree(
+                          key: _tabBarKey,
+                          child: _buildTabBar(l10n),
+                        ),
+                        Expanded(child: _buildTabBody(l10n)),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

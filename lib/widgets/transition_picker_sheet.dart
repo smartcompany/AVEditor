@@ -3,11 +3,15 @@ import 'package:aveditor/models/applied_transition.dart';
 import 'package:aveditor/models/transition_item.dart';
 import 'package:aveditor/services/transition_asset_store.dart';
 import 'package:aveditor/services/transition_catalog_service.dart';
+import 'package:aveditor/utils/editor_sheet_metrics.dart';
 import 'package:flutter/material.dart';
 
 /// Live cut-transition editor sheet. Applies as the user taps; dismiss with
 /// the check button, or by dragging the top handle fully down.
 /// Item grid scrolls independently; only the handle resizes the sheet.
+///
+/// Height stages match [EditorSheetMetrics]: entry (preview visible) → max →
+/// dismiss.
 Future<void> showTransitionPickerSheet(
   BuildContext context, {
   required String initialSelectedId,
@@ -19,16 +23,10 @@ Future<void> showTransitionPickerSheet(
   required ValueChanged<Duration> onDurationChanged,
   ValueChanged<Map<String, double>>? onParametersChanged,
 }) {
-  final media = MediaQuery.of(context);
-  final screenH = media.size.height;
-  // Entry height: leave the 16:9 preview (top of the editor body) uncovered.
-  final contentW = media.size.width - 24;
-  final videoH = contentW * 16 / 9;
-  final reservedTop = (media.padding.top + kToolbarHeight + 8 + videoH)
-      .clamp(screenH * 0.32, screenH * 0.58);
-  final entrySize = ((screenH - reservedTop) / screenH).clamp(0.28, 0.48);
-  const minSize = 0.12;
-  const maxSize = 0.92;
+  final metrics = EditorSheetMetrics.of(context);
+  final entrySize = metrics.entryFraction;
+  final minSize = metrics.minFraction;
+  final maxSize = metrics.maxFraction;
 
   return showModalBottomSheet<void>(
     context: context,
@@ -44,10 +42,7 @@ Future<void> showTransitionPickerSheet(
         maxChildSize: maxSize,
         expand: false,
         snap: true,
-        snapSizes: [
-          entrySize,
-          ((entrySize + maxSize) / 2).clamp(entrySize, maxSize),
-        ],
+        snapSizes: [entrySize],
         shouldCloseOnMinExtent: true,
         builder: (context, scrollController) {
           return TransitionPickerSheet(
@@ -281,179 +276,227 @@ class _TransitionPickerSheetState extends State<TransitionPickerSheet> {
       clipBehavior: Clip.antiAlias,
       child: Padding(
         padding: EdgeInsets.only(bottom: bottomInset),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Sheet resize / dismiss: ONLY this handle strip uses the
-            // DraggableScrollableSheet scrollController.
-            SizedBox(
-              height: 36,
-              child: ListView(
-                controller: widget.scrollController,
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: EdgeInsets.zero,
-                children: [
-                  SizedBox(
-                    height: 36,
-                    child: Center(
-                      child: Container(
-                        width: 36,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.onSurfaceVariant.withValues(
-                            alpha: 0.35,
-                          ),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      l10n.transitionSheetTitle,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: l10n.transitionApplied,
-                    onPressed: _closeSheet,
-                    icon: const Icon(Icons.check),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                l10n.transitionSheetSubtitle,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            if (categories.length > 1) ...[
-              SizedBox(
-                height: 36,
-                child: ListView.separated(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  scrollDirection: Axis.horizontal,
-                  itemCount: categories.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 8),
-                  itemBuilder: (context, index) {
-                    final cat = categories[index];
-                    final selected = cat.id == (category?.id);
-                    return ChoiceChip(
-                      label: Text(cat.title),
-                      selected: selected,
-                      onSelected: (_) => setState(() => _categoryId = cat.id),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 12),
-            ],
-            Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : categories.isEmpty
-                      ? Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 24,
-                          ),
-                          child: Text(l10n.transitionCatalogUnavailable),
-                        )
-                      : GridView.builder(
-                          // Independent of sheet drag — scrolls items only.
-                          physics: const BouncingScrollPhysics(
-                            parent: AlwaysScrollableScrollPhysics(),
-                          ),
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 3,
-                            mainAxisSpacing: 10,
-                            crossAxisSpacing: 10,
-                            childAspectRatio: 0.86,
-                          ),
-                          itemCount: items.length,
-                          itemBuilder: (context, index) {
-                            final item = items[index];
-                            final isSelected = item.id == _selectedId ||
-                                (item.isNone &&
-                                    (_selectedId.isEmpty ||
-                                        _selectedId == 'none'));
-                            return _TransitionTile(
-                              item: item,
-                              label: item.isNone
-                                  ? l10n.transitionNone
-                                  : item.title,
-                              accent: _parseAccent(item.accent),
-                              thumbUrl: _service.resolvedThumbnailUrl(item),
-                              selected: isSelected,
-                              installed: _assets.isInstalled(item),
-                              downloading: _assets.isDownloading(item.id),
-                              onTap: () => _selectItem(item),
-                            );
-                          },
-                        ),
-            ),
-            if (showDuration)
-              Material(
-                color: theme.colorScheme.surface,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: Row(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // Handle always stays; remaining chrome collapses inside Expanded
+            // so min-extent dismiss never overflows the outer Column.
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Sheet resize / dismiss: ONLY this handle strip uses the
+                // DraggableScrollableSheet scrollController.
+                SizedBox(
+                  height: 36,
+                  child: ListView(
+                    controller: widget.scrollController,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: EdgeInsets.zero,
                     children: [
-                      Text(
-                        l10n.transitionDuration,
-                        style: theme.textTheme.labelMedium,
-                      ),
-                      Expanded(
-                        child: SliderTheme(
-                          data: SliderTheme.of(context).copyWith(
-                            trackHeight: 2,
-                            thumbShape: const RoundSliderThumbShape(
-                              enabledThumbRadius: 7,
-                            ),
-                            overlayShape: const RoundSliderOverlayShape(
-                              overlayRadius: 14,
+                      SizedBox(
+                        height: 36,
+                        child: Center(
+                          child: Container(
+                            width: 36,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.onSurfaceVariant
+                                  .withValues(alpha: 0.35),
+                              borderRadius: BorderRadius.circular(2),
                             ),
                           ),
-                          child: Slider(
-                            value: _duration.inMilliseconds
-                                .toDouble()
-                                .clamp(minMs, maxMs),
-                            min: minMs,
-                            max: maxMs,
-                            onChanged: _onDurationSlider,
-                            onChangeEnd: (_) => _commitDuration(),
-                          ),
-                        ),
-                      ),
-                      Text(
-                        '${(_duration.inMilliseconds / 1000).toStringAsFixed(1)}s',
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          fontFeatures: const [
-                            FontFeature.tabularFigures(),
-                          ],
                         ),
                       ),
                     ],
                   ),
                 ),
-              ),
-          ],
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, inner) {
+                      if (inner.maxHeight < 48) {
+                        return const SizedBox.shrink();
+                      }
+                      final showChips =
+                          categories.length > 1 && inner.maxHeight >= 140;
+                      final showGrid = inner.maxHeight >= 100;
+                      final showDurationBar =
+                          showDuration && inner.maxHeight >= 160;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    l10n.transitionSheetTitle,
+                                    style:
+                                        theme.textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: l10n.transitionApplied,
+                                  onPressed: _closeSheet,
+                                  icon: const Icon(Icons.check),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (showChips) ...[
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              height: 36,
+                              child: ListView.separated(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                ),
+                                scrollDirection: Axis.horizontal,
+                                itemCount: categories.length,
+                                separatorBuilder: (_, _) =>
+                                    const SizedBox(width: 8),
+                                itemBuilder: (context, index) {
+                                  final cat = categories[index];
+                                  final selected = cat.id == (category?.id);
+                                  return ChoiceChip(
+                                    label: Text(cat.title),
+                                    selected: selected,
+                                    onSelected: (_) => setState(
+                                      () => _categoryId = cat.id,
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                          ] else
+                            const SizedBox(height: 4),
+                          if (showGrid)
+                            Expanded(
+                              child: _loading
+                                  ? const Center(
+                                      child: CircularProgressIndicator(),
+                                    )
+                                  : categories.isEmpty
+                                      ? Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 24,
+                                          ),
+                                          child: Text(
+                                            l10n.transitionCatalogUnavailable,
+                                          ),
+                                        )
+                                      : GridView.builder(
+                                          physics:
+                                              const BouncingScrollPhysics(
+                                            parent:
+                                                AlwaysScrollableScrollPhysics(),
+                                          ),
+                                          padding: const EdgeInsets.fromLTRB(
+                                            16,
+                                            0,
+                                            16,
+                                            8,
+                                          ),
+                                          gridDelegate:
+                                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                            crossAxisCount: 3,
+                                            mainAxisSpacing: 10,
+                                            crossAxisSpacing: 10,
+                                            childAspectRatio: 0.86,
+                                          ),
+                                          itemCount: items.length,
+                                          itemBuilder: (context, index) {
+                                            final item = items[index];
+                                            final isSelected =
+                                                item.id == _selectedId ||
+                                                    (item.isNone &&
+                                                        (_selectedId
+                                                                .isEmpty ||
+                                                            _selectedId ==
+                                                                'none'));
+                                            return _TransitionTile(
+                                              item: item,
+                                              label: item.isNone
+                                                  ? l10n.transitionNone
+                                                  : item.title,
+                                              accent:
+                                                  _parseAccent(item.accent),
+                                              thumbUrl: _service
+                                                  .resolvedThumbnailUrl(item),
+                                              selected: isSelected,
+                                              installed: _assets
+                                                  .isInstalled(item),
+                                              downloading: _assets
+                                                  .isDownloading(item.id),
+                                              onTap: () => _selectItem(item),
+                                            );
+                                          },
+                                        ),
+                            )
+                          else
+                            const Spacer(),
+                          if (showDurationBar)
+                            Material(
+                              color: theme.colorScheme.surface,
+                              child: Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                                child: Row(
+                                  children: [
+                                    Text(
+                                      l10n.transitionDuration,
+                                      style: theme.textTheme.labelMedium,
+                                    ),
+                                    Expanded(
+                                      child: SliderTheme(
+                                        data: SliderTheme.of(context)
+                                            .copyWith(
+                                          trackHeight: 2,
+                                          thumbShape:
+                                              const RoundSliderThumbShape(
+                                            enabledThumbRadius: 7,
+                                          ),
+                                          overlayShape:
+                                              const RoundSliderOverlayShape(
+                                            overlayRadius: 14,
+                                          ),
+                                        ),
+                                        child: Slider(
+                                          value: _duration.inMilliseconds
+                                              .toDouble()
+                                              .clamp(minMs, maxMs),
+                                          min: minMs,
+                                          max: maxMs,
+                                          onChanged: _onDurationSlider,
+                                          onChangeEnd: (_) =>
+                                              _commitDuration(),
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                      '${(_duration.inMilliseconds / 1000).toStringAsFixed(1)}s',
+                                      style: theme.textTheme.labelMedium
+                                          ?.copyWith(
+                                        fontFeatures: const [
+                                          FontFeature.tabularFigures(),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
