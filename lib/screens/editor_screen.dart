@@ -1657,16 +1657,6 @@ class _EditorScreenState extends State<EditorScreen>
     });
   }
 
-  void _openTextStudioForSelectionOrAdd() {
-    if (_exporting) return;
-    final selected = _selectedOverlay;
-    if (selected != null) {
-      _openTextStudio(selected);
-      return;
-    }
-    _addTextOverlay();
-  }
-
   void _setClipRotation(double radians) {
     final project = _project;
     if (project == null) return;
@@ -1840,8 +1830,15 @@ class _EditorScreenState extends State<EditorScreen>
       }
       if (_textStudioOverlayId == id) {
         _textStudioOverlayId = null;
+        _textStudioFieldFocused = false;
+        _textStudioHeightOverride = null;
+        _textStudioSheetBottom = 0;
       }
     });
+  }
+
+  void _deleteOverlayByOverlay(TextOverlay overlay) {
+    unawaited(_confirmDeleteOverlay(overlay));
   }
 
   Future<void> _confirmDeleteOverlay(TextOverlay overlay) async {
@@ -2147,7 +2144,7 @@ class _EditorScreenState extends State<EditorScreen>
                                             current.copyWith(offset: offset),
                                       );
                                     },
-                                    onOverlayDeleted: _confirmDeleteOverlay,
+                                    onOverlayDeleted: _deleteOverlayByOverlay,
                                     onOverlayDuplicated: _duplicateOverlay,
                                     onOverlayEdit: (overlay) {
                                       setState(
@@ -2450,7 +2447,7 @@ class _EditorScreenState extends State<EditorScreen>
               children: [
                 IconButton.outlined(
                   onPressed: _exporting ? null : _addTextOverlay,
-                  icon: const Icon(Icons.text_fields),
+                  icon: const Icon(Icons.text_increase),
                   tooltip: l10n.addText,
                 ),
                 const SizedBox(width: 8),
@@ -2460,14 +2457,6 @@ class _EditorScreenState extends State<EditorScreen>
                       : _editSelectedOverlay,
                   icon: const Icon(Icons.edit_note_outlined),
                   tooltip: l10n.editText,
-                ),
-                const SizedBox(width: 8),
-                IconButton.outlined(
-                  onPressed: _exporting
-                      ? null
-                      : _openTextStudioForSelectionOrAdd,
-                  icon: const Icon(Icons.auto_awesome),
-                  tooltip: l10n.textTemplatePacks,
                 ),
                 const SizedBox(width: 8),
                 IconButton.outlined(

@@ -114,7 +114,12 @@ class VideoPreviewWithOverlays extends StatefulWidget {
 /// Public state for [GlobalKey] pointer routing from [EditorScreen].
 class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
   /// Travel below this stays a tap instead of becoming a drag.
-  static const _tapSlop = 4.0;
+  /// Travel beyond this cancels a plain tap (select / open editor).
+  static const _tapSlop = 18.0;
+
+  /// Corner X / copy / edit may jitter more than [_tapSlop] before we treat
+  /// the press as a cancelled drag-away.
+  static const _tapActionCancelSlop = 32.0;
 
   OverlayDrag? _activeDrag;
   int? _activePointer;
@@ -398,7 +403,10 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
 
   void _commitDrag(TextOverlay overlay, bool moved) {
     final drag = _activeDrag;
-    if (!moved || drag == null) return;
+    if (drag == null) return;
+    // Geometry commits on any real travel — tap-vs-drag slop is larger and
+    // must not swallow small resize/rotate adjustments.
+    if (_pointerTravel < 1.0 && !moved) return;
 
     final box = _boxOf(overlay);
     final scale = _frameScale;
@@ -669,13 +677,18 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
 
     if (pointer != _activePointer) return;
     final target = _tapTarget;
-    final moved = _pointerMoved;
     final drag = _activeDrag;
     final dragged = _gestureOverlay ?? _selectedOverlay;
     final suppressEdit = _suppressEditOnRelease;
 
     if (drag != null && dragged != null) {
-      _onPreviewPointerEnd(dragged, pointer);
+      // Corner buttons commit on release themselves — don't treat jitter as a
+      // geometry drag.
+      if (!drag.isTapAction) {
+        _onPreviewPointerEnd(dragged, pointer);
+      } else {
+        _activeDrag = null;
+      }
     }
 
     _activePointer = null;
@@ -683,12 +696,19 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
     _gestureOverlay = null;
     _suppressEditOnRelease = false;
     _lastLocal = null;
+    final travel = _pointerTravel;
     _pointerMoved = false;
     _pointerTravel = 0;
 
-    if (moved) return;
-
     if (drag != null && drag.isTapAction && dragged != null) {
+      if (travel > _tapActionCancelSlop) {
+        OverlayEventLog.log('PreviewCanvas', 'cornerActionCancelled', {
+          'id': dragged.id,
+          'drag': drag.label,
+          'travel': travel,
+        });
+        return;
+      }
       OverlayEventLog.log('PreviewCanvas', 'cornerAction', {
         'id': dragged.id,
         'drag': drag.label,
@@ -708,6 +728,8 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
       }
       return;
     }
+
+    if (travel > _tapSlop) return;
 
     if (target == null) {
       // Corner presses also clear the tap target, so check no drag ran.
