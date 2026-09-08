@@ -29,7 +29,9 @@ import 'package:aveditor/widgets/export_progress_dialog.dart';
 import 'package:aveditor/widgets/text_studio_panel.dart';
 import 'package:aveditor/widgets/timeline_widget.dart';
 import 'package:aveditor/widgets/transition_picker_sheet.dart';
+import 'package:aveditor/widgets/transition_preview_compositor.dart';
 import 'package:aveditor/widgets/overflow_hit_stack.dart';
+import 'package:aveditor/services/transition_engine.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/widgets/video_preview.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -54,7 +56,43 @@ class _EditorScreenState extends State<EditorScreen>
   /// Drag speed past which the chrome finishes in the flung direction.
   static const _chromeFlingVelocity = 320.0;
 
-  VideoPlayerController? _controller;
+  /// Physical decoder slots. [_controller]/[_auxController] flip via [_slotsSwapped]
+  /// on transition handoff so we never seek the visible stream (avoids jumps).
+  VideoPlayerController? _slotMain;
+  VideoPlayerController? _slotAux;
+  var _slotsSwapped = false;
+  final _slotMainKey = GlobalKey();
+  final _slotAuxKey = GlobalKey();
+
+  VideoPlayerController? get _controller =>
+      _slotsSwapped ? _slotAux : _slotMain;
+  VideoPlayerController? get _auxController =>
+      _slotsSwapped ? _slotMain : _slotAux;
+
+  Key get _primarySlotKey => _slotsSwapped ? _slotAuxKey : _slotMainKey;
+  Key get _secondarySlotKey => _slotsSwapped ? _slotMainKey : _slotAuxKey;
+
+  /// Aux opacity while a fade is active; null when not fading.
+  double? _fadeProgress;
+
+  /// Last fade window driven this playthrough (for handoff past [outgoing.end]).
+  PreviewFadeWindow? _activeFade;
+
+  /// Cut index whose aux stream is already anchored (avoid per-tick reseek).
+  int? _fadeAnchoredAfterIndex;
+
+  /// True while [_completeFadeHandoff] is awaiting the main seek settle.
+  var _fadeHandoffInFlight = false;
+
+  /// Serializes aux seeks so overlapping fade ticks don't race.
+  int _fadeSyncGen = 0;
+
+  /// Pause once the main playhead reaches this time (transition-length preview).
+  Duration? _transitionPreviewUntil;
+
+  /// Bumped to cancel an in-flight [_previewTransitionAtCut] (e.g. panel close).
+  int _transitionPreviewGen = 0;
+
   VideoProject? _project;
   String? _selectedOverlayId;
   String? _selectedSegmentId;
@@ -118,6 +156,27 @@ class _EditorScreenState extends State<EditorScreen>
 
   Duration get _playhead {
     return _scrubPlayhead ?? _controller?.value.position ?? Duration.zero;
+  }
+
+  /// Timeline playhead during a dual-layer transition.
+  ///
+  /// Packed timeline time does not overlap clips, but preview plays outgoing
+  /// tail and incoming head in the same wall-clock window. Mapping the live
+  /// decoder position alone therefore crawls to the cut, then jumps ~[td]
+  /// into the next clip at handoff. Remap with [t] so the playhead advances
+  /// continuously across both halves and lands where the swapped controller is.
+  Duration get _timelinePlayhead {
+    final project = _project;
+    final fade = _activeFade;
+    if (project == null || fade == null || fade.td <= Duration.zero) {
+      return _playhead;
+    }
+    final cut = cutExportTimeAfter(project.segments, fade.afterIndex);
+    final t = _fadeHandoffInFlight ? 1.0 : fade.t;
+    final traveledMs =
+        (t * 2 * fade.td.inMilliseconds).round().clamp(0, 1 << 30);
+    final sequenceTime = cut - fade.td + Duration(milliseconds: traveledMs);
+    return exportTimeToSourceTime(project.segments, sequenceTime);
   }
 
   @override
@@ -207,7 +266,8 @@ class _EditorScreenState extends State<EditorScreen>
       }
 
       setState(() {
-        _controller = controller;
+        _slotMain = controller;
+        _slotsSwapped = false;
         _project = project;
         _ready = true;
         _errorMessage = null;
@@ -565,14 +625,82 @@ class _EditorScreenState extends State<EditorScreen>
     if (controller == null || project == null || !controller.value.isPlaying) {
       return;
     }
+    if (_fadeHandoffInFlight) return;
 
     final pos = controller.value.position;
+
+    final fade = previewFadeAt(project.segments, pos);
+    if (fade != null) {
+      final entering = _fadeAnchoredAfterIndex != fade.afterIndex;
+      _activeFade = fade;
+      if (entering || _auxController == null) {
+        // Only the first entry into a cut does async seek/play setup.
+        unawaited(_driveFadePreview(fade));
+      } else {
+        // Already anchored — update blend progress without reseeking.
+        if (_fadeProgress != fade.t) {
+          setState(() => _fadeProgress = fade.t);
+        }
+        final aux = _auxController;
+        if (aux != null &&
+            aux.value.isInitialized &&
+            controller.value.isPlaying &&
+            !aux.value.isPlaying) {
+          unawaited(aux.play());
+        }
+      }
+      return;
+    }
+
+    if (_activeFade != null) {
+      final active = _activeFade!;
+      // Past the outgoing end → hand off to the incoming side once.
+      if (pos >= active.outgoing.end) {
+        if (!_fadeHandoffInFlight) {
+          unawaited(_completeFadeHandoff(active));
+        }
+        return;
+      }
+      // Still inside the fade span but previewFadeAt missed a frame — keep going.
+      final windowStart = active.outgoing.end - active.td;
+      if (pos >= windowStart && pos < active.outgoing.end) {
+        final span = active.td.inMilliseconds;
+        final t = span <= 0
+            ? 1.0
+            : ((pos.inMilliseconds - windowStart.inMilliseconds) / span)
+                .clamp(0.0, 1.0);
+        final continued = PreviewFadeWindow(
+          afterIndex: active.afterIndex,
+          t: t,
+          outgoing: active.outgoing,
+          incoming: active.incoming,
+          td: active.td,
+        );
+        _activeFade = continued;
+        if (_fadeProgress != t) {
+          setState(() => _fadeProgress = t);
+        }
+        return;
+      }
+      unawaited(_tearDownFadePreview());
+    }
+
     if (isInKeptRegion(project.segments, pos)) {
       final segment = segmentAt(project.segments, pos);
       if (segment != null &&
           pos >= segment.end - const Duration(milliseconds: 80)) {
         final next = nextSegmentStartAfter(project.segments, pos);
         if (next != null) {
+          // Soft-cut (dual-layer) is handled above; remaining cuts stay hard seeks.
+          final idx = project.segments.indexWhere((s) => s.id == segment.id);
+          final incoming = idx >= 0 && idx < project.segments.length - 1
+              ? project.segments[idx + 1]
+              : null;
+          if (incoming != null && previewUsesFade(segment, incoming)) {
+            return;
+          }
+          // Guard: never hard-seek while a dual-layer handoff is in flight.
+          if (_fadeAnchoredAfterIndex != null) return;
           controller.seekTo(next);
           unawaited(_syncMusicPlayback());
         } else {
@@ -594,6 +722,202 @@ class _EditorScreenState extends State<EditorScreen>
       controller.seekTo(last.end);
       unawaited(_syncMusicPlayback());
     }
+  }
+
+  Future<void> _ensureAuxController() async {
+    final project = _project;
+    if (project == null) return;
+    if (_slotAux != null && _slotAux!.value.isInitialized) return;
+
+    final aux = VideoPlayerController.file(File(project.sourcePath));
+    await aux.initialize();
+    aux.setLooping(false);
+    await aux.setVolume(0);
+    if (!mounted) {
+      await aux.dispose();
+      return;
+    }
+    final previous = _slotAux;
+    _slotAux = aux;
+    await previous?.dispose();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _driveFadePreview(PreviewFadeWindow fade) async {
+    // Do NOT bump _fadeSyncGen here — every tick used to cancel in-flight
+    // seeks and made the incoming layer hitch / jump backward.
+    final gen = _fadeSyncGen;
+    final main = _controller;
+    if (main == null || _fadeHandoffInFlight) return;
+
+    await _ensureAuxController();
+    if (!mounted || gen != _fadeSyncGen) return;
+    final aux = _auxController;
+    if (aux == null || !aux.value.isInitialized) return;
+
+    if (_fadeAnchoredAfterIndex != fade.afterIndex) {
+      _fadeAnchoredAfterIndex = fade.afterIndex;
+      // Pause aux, seek to the incoming start, then play with main.
+      try {
+        await aux.pause();
+      } catch (_) {}
+      if (!mounted || gen != _fadeSyncGen) return;
+      await aux.seekTo(fade.incoming.start);
+      if (!mounted || gen != _fadeSyncGen) return;
+      // Wait briefly so the first incoming frame is decoded before blending.
+      final deadline = DateTime.now().add(const Duration(milliseconds: 200));
+      while (DateTime.now().isBefore(deadline)) {
+        if (!mounted || gen != _fadeSyncGen) return;
+        final drift =
+            (aux.value.position - fade.incoming.start).inMilliseconds.abs();
+        if (drift <= 50 && !aux.value.isBuffering) break;
+        await Future<void>.delayed(const Duration(milliseconds: 16));
+      }
+      if (!mounted || gen != _fadeSyncGen) return;
+      if (main.value.isPlaying) {
+        await aux.play();
+      }
+    } else if (main.value.isPlaying) {
+      if (!aux.value.isPlaying) await aux.play();
+    } else if (aux.value.isPlaying) {
+      await aux.pause();
+    }
+    if (!mounted || gen != _fadeSyncGen) return;
+
+    if (_fadeProgress != fade.t) {
+      setState(() => _fadeProgress = fade.t);
+    }
+  }
+
+  /// Finish a dual-layer preview without seeking the visible stream.
+  ///
+  /// Seeking the main player to match aux lands on keyframes and causes the
+  /// visible "frame jump". Instead we promote the already-correct aux player
+  /// to be the primary controller.
+  Future<void> _completeFadeHandoff(PreviewFadeWindow done) async {
+    if (_fadeHandoffInFlight) return;
+    _fadeHandoffInFlight = true;
+    final gen = ++_fadeSyncGen;
+    final main = _controller;
+    final aux = _auxController;
+
+    try {
+      if (main == null) return;
+
+      // Fallback: no aux → hard seek (should be rare).
+      if (aux == null || !aux.value.isInitialized) {
+        final handoff = done.incoming.start + done.td;
+        await main.seekTo(
+          handoff > done.incoming.end ? done.incoming.end : handoff,
+        );
+        _activeFade = null;
+        _fadeProgress = null;
+        _fadeAnchoredAfterIndex = null;
+        if (mounted) setState(() {});
+        return;
+      }
+
+      final wasPlaying = main.value.isPlaying || aux.value.isPlaying;
+
+      // Hold the last blend frame on incoming only, then swap controllers so
+      // the already-decoded incoming stream continues without a seek hitch.
+      if (mounted) {
+        setState(() => _fadeProgress = 1.0);
+      }
+      try {
+        await main.pause();
+      } catch (_) {}
+      if (!mounted || gen != _fadeSyncGen) return;
+
+      // One frame so the compositor can paint full-incoming before the swap.
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      if (!mounted || gen != _fadeSyncGen) return;
+
+      main.removeListener(_onVideoTick);
+      // Flip which physical slot is the live timeline player — no seek.
+      _slotsSwapped = !_slotsSwapped;
+      _controller!.addListener(_onVideoTick);
+
+      _activeFade = null;
+      _fadeProgress = null;
+      _fadeAnchoredAfterIndex = null;
+
+      try {
+        await _auxController?.setVolume(0);
+        await _auxController?.pause();
+      } catch (_) {}
+
+      if (wasPlaying) {
+        if (!_controller!.value.isPlaying) {
+          await _controller!.play();
+        }
+      } else if (_controller!.value.isPlaying) {
+        await _controller!.pause();
+      }
+
+      if (mounted) setState(() {});
+      _syncVideoAudioVolume();
+      unawaited(_syncMusicPlayback());
+    } finally {
+      _fadeHandoffInFlight = false;
+    }
+  }
+
+  Future<void> _tearDownFadePreview() async {
+    _fadeSyncGen++;
+    _fadeHandoffInFlight = false;
+    _activeFade = null;
+    _fadeProgress = null;
+    _fadeAnchoredAfterIndex = null;
+    final aux = _auxController;
+    if (aux != null && aux.value.isInitialized) {
+      try {
+        await aux.pause();
+        await aux.setVolume(0);
+      } catch (_) {}
+    }
+    if (mounted) setState(() {});
+  }
+
+  Widget _buildPreviewVideoChild(VideoPlayerController main) {
+    final progress = _fadeProgress;
+    final aux = _auxController;
+    final active = _activeFade;
+    final slotMain = _slotMain;
+    final slotAux = _slotAux;
+
+    // Physical slots keep stable GlobalKeys forever. Roles flip via
+    // [_slotsSwapped] so platform views are never disposed mid-handoff.
+    if (slotMain == null) {
+      return const SizedBox.shrink();
+    }
+    if (slotAux == null || !slotAux.value.isInitialized) {
+      return VideoPlayer(slotMain, key: _slotMainKey);
+    }
+
+    if (progress == null || active == null || aux == null) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          VideoPlayer(_controller!, key: _primarySlotKey),
+          Offstage(
+            offstage: true,
+            child: VideoPlayer(_auxController!, key: _secondarySlotKey),
+          ),
+        ],
+      );
+    }
+
+    final plan = TransitionEngine.instance.plan(active.outgoing.transition);
+    return TransitionPreviewCompositor(
+      key: const ValueKey('preview_transition'),
+      outgoing: main,
+      incoming: aux,
+      outgoingPlayerKey: _primarySlotKey,
+      incomingPlayerKey: _secondarySlotKey,
+      t: progress,
+      plan: plan,
+    );
   }
 
   Future<void> _loadSourceAudioWaveform(String sourcePath) async {
@@ -623,9 +947,22 @@ class _EditorScreenState extends State<EditorScreen>
     if (controller == null || project == null) return;
     if (!_hasSourceAudio) {
       controller.setVolume(0);
+      _auxController?.setVolume(0);
       return;
     }
     final playhead = _playhead;
+    final fade = previewFadeAt(project.segments, playhead);
+    if (fade != null) {
+      final outLocal = playhead - fade.outgoing.start;
+      final inLocal = fade.auxSourceTime - fade.incoming.start;
+      final outVol = fade.outgoing.volumeAt(outLocal);
+      final inVol = fade.incoming.volumeAt(inLocal);
+      controller.setVolume(outVol * (1.0 - fade.t));
+      _auxController?.setVolume(inVol * fade.t);
+      return;
+    }
+    _auxController?.setVolume(0);
+
     ClipSegment? segment;
     for (final candidate in project.segments) {
       if (playhead >= candidate.start && playhead < candidate.end) {
@@ -660,6 +997,16 @@ class _EditorScreenState extends State<EditorScreen>
         _scrubPlayhead = null;
       }
     }
+
+    // Transition picker preview: play only through the applied effect window.
+    final previewUntil = _transitionPreviewUntil;
+    if (previewUntil != null && pos >= previewUntil) {
+      _transitionPreviewUntil = null;
+      controller.pause();
+      unawaited(_auxController?.pause() ?? Future<void>.value());
+      unawaited(_syncMusicPlayback());
+    }
+
     if (pos >= project.trim.end) {
       controller.pause();
       controller.seekTo(project.trim.end);
@@ -678,8 +1025,14 @@ class _EditorScreenState extends State<EditorScreen>
       unawaited(_projectStorage.save(project));
     }
     _disposeFilmstrip();
-    _controller?.removeListener(_onVideoTick);
-    _controller?.dispose();
+    _slotMain?.removeListener(_onVideoTick);
+    _slotAux?.removeListener(_onVideoTick);
+    final main = _slotMain;
+    final aux = _slotAux;
+    _slotMain = null;
+    _slotAux = null;
+    unawaited(main?.dispose() ?? Future<void>.value());
+    unawaited(aux?.dispose() ?? Future<void>.value());
     unawaited(_musicPlayer.dispose());
     _chrome.dispose();
     super.dispose();
@@ -719,6 +1072,7 @@ class _EditorScreenState extends State<EditorScreen>
     // its trim handles — unreachable. Playback still stops at the trim end.
     final clamped = clampDuration(position, Duration.zero, project.duration);
     _scrubPlayhead = clamped;
+    unawaited(_tearDownFadePreview());
     controller.seekTo(clamped);
     unawaited(_syncMusicPlayback());
     _syncVideoAudioVolume();
@@ -824,9 +1178,12 @@ class _EditorScreenState extends State<EditorScreen>
     final project = _project;
     if (controller == null || project == null) return;
 
+    // Manual transport cancels a bounded transition preview.
+    _transitionPreviewUntil = null;
     _scrubPlayhead = null;
     if (controller.value.isPlaying) {
       controller.pause();
+      unawaited(_auxController?.pause() ?? Future<void>.value());
     } else {
       if (controller.value.position >= project.trim.end ||
           controller.value.position < project.trim.start ||
@@ -837,6 +1194,10 @@ class _EditorScreenState extends State<EditorScreen>
         controller.seekTo(start);
       }
       controller.play();
+      final fade = previewFadeAt(project.segments, controller.value.position);
+      if (fade != null) {
+        unawaited(_driveFadePreview(fade));
+      }
     }
     unawaited(_syncMusicPlayback());
     setState(() {});
@@ -913,7 +1274,7 @@ class _EditorScreenState extends State<EditorScreen>
     await _syncMusicPlayback();
   }
 
-  Future<void> _openTransitionPicker() async {
+  Future<void> _openTransitionPicker({int? cutIndex}) async {
     final project = _project;
     final l10n = AppLocalizations.of(context);
     if (project == null || _exporting) return;
@@ -926,43 +1287,173 @@ class _EditorScreenState extends State<EditorScreen>
     }
 
     final sequenceTime = _sequenceTimeForSplit(project.segments, _playhead);
-    final cutIndex =
+    final index = cutIndex ??
         _selectedTransitionAfterIndex ??
         nearestCutIndex(project.segments, sequenceTime);
-    if (cutIndex < 0 || cutIndex >= project.segments.length - 1) {
+    if (index < 0 || index >= project.segments.length - 1) {
       return;
     }
 
-    final current = project.segments[cutIndex];
-    final picked = await showTransitionPickerSheet(
-      context,
-      selectedId: current.transitionId ?? 'none',
-    );
-    if (picked == null || !mounted) return;
+    final current = project.segments[index];
+    final next = project.segments[index + 1];
+    final maxTd = () {
+      final maxMs = [
+        current.duration.inMilliseconds,
+        next.duration.inMilliseconds,
+      ].reduce((a, b) => a < b ? a : b);
+      final limit = maxMs > 100 ? maxMs - 50 : maxMs;
+      return Duration(milliseconds: limit.clamp(50, 1 << 30));
+    }();
+    const minTd = Duration(milliseconds: 50);
 
-    _mutate((p) {
-      if (cutIndex >= p.segments.length - 1) return;
-      final segment = p.segments[cutIndex];
-      if (picked.isNone) {
-        p.segments[cutIndex] = segment.copyWith(clearTransition: true);
-      } else {
-        p.segments[cutIndex] = segment.copyWith(
-          transitionId: picked.id,
-          transitionDuration: Duration(milliseconds: picked.defaultDurationMs),
-        );
-      }
-    });
-
-    if (!mounted) return;
     setState(() {
-      _selectedTransitionAfterIndex = picked.isNone ? null : cutIndex;
+      _selectedTransitionAfterIndex = index;
       _selectedSegmentId = null;
       _selectedOverlayId = null;
       _selectedMusicId = null;
     });
-    ScaffoldMessenger.of(
+
+    await showTransitionPickerSheet(
       context,
-    ).showSnackBar(SnackBar(content: Text(l10n.transitionApplied)));
+      initialSelectedId: current.transitionId ?? 'none',
+      initialDuration: current.hasTransition
+          ? clampedTransitionDuration(current, next: next)
+          : const Duration(milliseconds: 500),
+      minDuration: minTd,
+      maxDuration: maxTd < minTd ? minTd : maxTd,
+      initialParameters: current.transition?.parameters ?? const {},
+      onApplied: (applied) {
+        if (!mounted) return;
+        _mutate((p) {
+          if (index >= p.segments.length - 1) return;
+          final segment = p.segments[index];
+          if (applied.isNone) {
+            p.segments[index] = segment.copyWith(clearTransition: true);
+          } else {
+            final clamped = clampedTransitionDuration(
+              segment.copyWith(transition: applied),
+              next: p.segments[index + 1],
+            );
+            p.segments[index] = segment.copyWith(
+              transition: applied.copyWith(
+                duration: clamped <= Duration.zero
+                    ? applied.duration
+                    : clamped,
+              ),
+            );
+          }
+        });
+        setState(() {
+          _selectedTransitionAfterIndex = applied.isNone ? null : index;
+        });
+        if (applied.isNone) {
+          _transitionPreviewUntil = null;
+          unawaited(_tearDownFadePreview());
+          unawaited(_controller?.pause() ?? Future<void>.value());
+          return;
+        }
+        // Re-tap / apply: play exactly the transition window on the main timeline.
+        unawaited(_previewTransitionAtCut(index));
+      },
+      onDurationChanged: (duration) {
+        if (!mounted) return;
+        final project = _project;
+        if (project == null || index >= project.segments.length - 1) return;
+        final segment = project.segments[index];
+        if (!segment.hasTransition) return;
+        final nextSeg = project.segments[index + 1];
+        final tentative = segment.copyWith(
+          transition: segment.transition!.copyWith(duration: duration),
+        );
+        final clamped = clampedTransitionDuration(tentative, next: nextSeg);
+        project.segments[index] = segment.copyWith(
+          transition: segment.transition!.copyWith(
+            duration: clamped <= Duration.zero ? duration : clamped,
+          ),
+        );
+        // Rebuild timeline so the transition chip width tracks the slider.
+        // Avoid _mutate here — slider ticks must not flood undo history.
+        setState(() {});
+        _scheduleSave();
+      },
+      onParametersChanged: (parameters) {
+        if (!mounted) return;
+        final project = _project;
+        if (project == null || index >= project.segments.length - 1) return;
+        final segment = project.segments[index];
+        if (!segment.hasTransition) return;
+        project.segments[index] = segment.copyWith(
+          transition: segment.transition!.copyWith(parameters: parameters),
+        );
+        _scheduleSave();
+      },
+    );
+    if (!mounted) return;
+    // Cancel any in-flight preview before pausing — otherwise a late play()
+    // from [_previewTransitionAtCut] / fade handoff can resume after this close.
+    _transitionPreviewGen++;
+    _transitionPreviewUntil = null;
+    await _tearDownFadePreview();
+    await _controller?.pause();
+    await _auxController?.pause();
+    unawaited(_syncMusicPlayback());
+    if (mounted) setState(() {});
+  }
+
+  /// Seek to the cut and play only for the transition duration on the main timeline.
+  Future<void> _previewTransitionAtCut(int cutIndex) async {
+    final controller = _controller;
+    final project = _project;
+    if (controller == null || project == null) return;
+    if (cutIndex < 0 || cutIndex >= project.segments.length - 1) return;
+
+    final gen = ++_transitionPreviewGen;
+    final outgoing = project.segments[cutIndex];
+    final incoming = project.segments[cutIndex + 1];
+    final td = clampedTransitionDuration(outgoing, next: incoming);
+    final previewStart = td > Duration.zero
+        ? outgoing.end - td
+        : outgoing.end - const Duration(milliseconds: 400);
+    final clampedStart = previewStart < outgoing.start
+        ? outgoing.start
+        : previewStart;
+
+    _scrubPlayhead = clampedStart;
+    _transitionPreviewUntil =
+        td > Duration.zero ? clampedStart + td : null;
+
+    await _tearDownFadePreview();
+    if (!mounted || gen != _transitionPreviewGen) return;
+
+    if (outgoing.hasTransition && td > Duration.zero) {
+      await _ensureAuxController();
+      if (!mounted || gen != _transitionPreviewGen) return;
+      final aux = _auxController;
+      if (aux != null && aux.value.isInitialized) {
+        try {
+          await aux.pause();
+          await aux.seekTo(incoming.start);
+        } catch (_) {}
+      }
+    }
+    if (!mounted || gen != _transitionPreviewGen) return;
+    await controller.seekTo(clampedStart);
+    if (!mounted || gen != _transitionPreviewGen) return;
+    if (td <= Duration.zero) {
+      await controller.pause();
+      _transitionPreviewUntil = null;
+    } else {
+      await controller.play();
+    }
+    if (!mounted || gen != _transitionPreviewGen) {
+      // Panel closed (or a newer preview started) while play() was in flight.
+      await controller.pause();
+      await _auxController?.pause();
+      return;
+    }
+    unawaited(_syncMusicPlayback());
+    _syncVideoAudioVolume();
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadMusicWaveforms(VideoProject project) async {
@@ -1616,7 +2107,7 @@ class _EditorScreenState extends State<EditorScreen>
                                   child: VideoPreviewWithOverlays(
                                     key: _previewKey,
                                     videoAspectRatio: aspectRatio,
-                                    videoChild: VideoPlayer(controller),
+                                    videoChild: _buildPreviewVideoChild(controller),
                                     overlays: project.overlays,
                                     segments: project.segments,
                                     position: _playhead,
@@ -1874,7 +2365,7 @@ class _EditorScreenState extends State<EditorScreen>
       sourceAudioWaveform: _sourceAudioWaveform,
       hasSourceAudio: _hasSourceAudio,
       filmstripFrames: _filmstripFrames,
-      playhead: _playhead,
+      playhead: _timelinePlayhead,
       isPlaying: controller.value.isPlaying,
       onTogglePlay: _togglePlay,
       onHandleDragUpdate: _onChromeDragUpdate,
@@ -1940,6 +2431,9 @@ class _EditorScreenState extends State<EditorScreen>
             _selectedMusicId = null;
           }
         });
+        if (index != null && !_exporting) {
+          unawaited(_openTransitionPicker(cutIndex: index));
+        }
       },
     );
   }

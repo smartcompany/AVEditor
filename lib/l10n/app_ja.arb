@@ -133,6 +133,7 @@
   "transitionCatalogUnavailable": "トランジションを読み込めませんでした。",
   "transitionApplied": "トランジションを適用しました。",
   "transitionNeedsCuts": "トランジションを追加するには、先にクリップを分割してください。",
+  "transitionDuration": "長さ",
   "deleteSegment": "セグメントを削除",
   "splitOutOfRange": "クリップ内に再生位置を移動してから分割してください。",
   "splitTooShort": "各パートは少なくとも1秒必要です。",

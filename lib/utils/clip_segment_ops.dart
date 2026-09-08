@@ -1,5 +1,6 @@
 import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/text_overlay.dart';
+import 'package:aveditor/services/transition_engine.dart';
 import 'package:aveditor/utils/duration_format.dart';
 import 'package:aveditor/utils/timeline_math.dart';
 
@@ -325,6 +326,78 @@ Duration clampedTransitionDuration(
   if (limit <= 0) return Duration.zero;
   final safe = requested > limit ? limit : requested;
   return Duration(milliseconds: safe);
+}
+
+/// Dual-player transition window on the **source** timeline.
+///
+/// Window is `[outgoing.end - td, outgoing.end)`. Progress [t] is 0 at the
+/// start of the window and 1 at [outgoing.end].
+///
+/// Any non-cut transition with a dual-layer preview plan is included so the
+/// editor top video can approximate Slide / Zoom / Wipe / Fade, etc.
+class PreviewFadeWindow {
+  const PreviewFadeWindow({
+    required this.afterIndex,
+    required this.t,
+    required this.outgoing,
+    required this.incoming,
+    required this.td,
+  });
+
+  final int afterIndex;
+  final double t;
+  final ClipSegment outgoing;
+  final ClipSegment incoming;
+  final Duration td;
+
+  Duration get windowStart => outgoing.end - td;
+
+  /// Source time the aux player should show for this [t].
+  Duration get auxSourceTime {
+    final ms = incoming.start.inMilliseconds + (t * td.inMilliseconds).round();
+    final endMs = incoming.end.inMilliseconds;
+    return Duration(
+      milliseconds: ms.clamp(incoming.start.inMilliseconds, endMs),
+    );
+  }
+}
+
+/// Returns the active dual-layer transition preview at [sourcePos], or null.
+PreviewFadeWindow? previewFadeAt(
+  List<ClipSegment> segments,
+  Duration sourcePos,
+) {
+  if (segments.length < 2) return null;
+  final posMs = sourcePos.inMilliseconds;
+  final engine = TransitionEngine.instance;
+  for (var i = 0; i < segments.length - 1; i++) {
+    final outgoing = segments[i];
+    final incoming = segments[i + 1];
+    final plan = engine.plan(outgoing.transition);
+    if (plan.previewKind != TransitionPreviewKind.dualLayer) continue;
+    final td = clampedTransitionDuration(outgoing, next: incoming);
+    if (td <= Duration.zero) continue;
+    final startMs = outgoing.end.inMilliseconds - td.inMilliseconds;
+    final endMs = outgoing.end.inMilliseconds;
+    if (posMs < startMs || posMs >= endMs) continue;
+    final span = td.inMilliseconds;
+    final t = span <= 0 ? 1.0 : ((posMs - startMs) / span).clamp(0.0, 1.0);
+    return PreviewFadeWindow(
+      afterIndex: i,
+      t: t,
+      outgoing: outgoing,
+      incoming: incoming,
+      td: td,
+    );
+  }
+  return null;
+}
+
+/// True when [outgoing] into [next] should soft-cut in preview (dual layer).
+bool previewUsesFade(ClipSegment outgoing, ClipSegment next) {
+  final plan = TransitionEngine.instance.plan(outgoing.transition);
+  if (plan.previewKind != TransitionPreviewKind.dualLayer) return false;
+  return clampedTransitionDuration(outgoing, next: next) > Duration.zero;
 }
 
 /// Packed-timeline time of the cut **after** [afterIndex] (0..n-2).

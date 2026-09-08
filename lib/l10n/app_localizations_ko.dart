@@ -441,6 +441,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get transitionNeedsCuts => '전환을 추가하려면 먼저 클립을 분할하세요.';
 
   @override
+  String get transitionDuration => '길이';
+
+  @override
   String get deleteSegment => '구간 삭제';
 
   @override

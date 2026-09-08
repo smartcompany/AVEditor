@@ -1909,12 +1909,8 @@ class TimelineWidgetState extends State<TimelineWidget> {
     }
   }
 
-  /// Play button, times and zoom controls.
-  ///
-  /// Split into two groups instead of one flat [Row] with a [Spacer]: a Spacer
-  /// claims its share of the free space unconditionally, which starved the
-  /// range label and overflowed the row once the system text scale grew.
-  Widget _buildTransportRow(Duration visibleStart, Duration visibleEnd) {
+  /// Play button, current/total time, and zoom controls.
+  Widget _buildTransportRow() {
     final labelStyle = Theme.of(context).textTheme.bodySmall;
 
     return MediaQuery.withClampedTextScaling(
@@ -1944,46 +1940,33 @@ class TimelineWidgetState extends State<TimelineWidget> {
                 ),
                 const SizedBox(width: 2),
               ],
-              Text(formatDuration(_sequencePlayhead), style: labelStyle),
+              Text(
+                '${formatDuration(_sequencePlayhead)} / ${formatDuration(_sequenceDuration)}',
+                style: labelStyle,
+              ),
             ],
           ),
-          Flexible(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  visualDensity: VisualDensity.compact,
-                  tooltip: 'Zoom out',
-                  onPressed: _zoom <= minTimelineZoom
-                      ? null
-                      : () => _zoomByFactor(1 / 1.4),
-                  icon: const Icon(Icons.remove, size: 18),
-                ),
-                Text(_formatZoomLabel(_zoom), style: labelStyle),
-                IconButton(
-                  visualDensity: VisualDensity.compact,
-                  tooltip: 'Zoom in',
-                  onPressed: _zoom >= _maxZoom
-                      ? null
-                      : () => _zoomByFactor(1.4),
-                  icon: const Icon(Icons.add, size: 18),
-                ),
-                const SizedBox(width: 4),
-                // Last to be given room, first to give it back.
-                Flexible(
-                  child: Text(
-                    _zoom > 1.01
-                        ? formatTimelineRange(visibleStart, visibleEnd)
-                        : formatDuration(_sequenceDuration),
-                    style: labelStyle,
-                    textAlign: TextAlign.end,
-                    maxLines: 1,
-                    softWrap: false,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                tooltip: 'Zoom out',
+                onPressed: _zoom <= minTimelineZoom
+                    ? null
+                    : () => _zoomByFactor(1 / 1.4),
+                icon: const Icon(Icons.remove, size: 18),
+              ),
+              Text(_formatZoomLabel(_zoom), style: labelStyle),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                tooltip: 'Zoom in',
+                onPressed: _zoom >= _maxZoom
+                    ? null
+                    : () => _zoomByFactor(1.4),
+                icon: const Icon(Icons.add, size: 18),
+              ),
+            ],
           ),
         ],
       ),
@@ -1995,9 +1978,6 @@ class TimelineWidgetState extends State<TimelineWidget> {
     if (_sequenceDuration == Duration.zero) {
       return const SizedBox(height: 120);
     }
-
-    final visibleStart = _sequenceTimeAtViewportX(0);
-    final visibleEnd = _sequenceTimeAtViewportX(_viewportWidth);
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -2014,7 +1994,7 @@ class TimelineWidgetState extends State<TimelineWidget> {
             behavior: HitTestBehavior.translucent,
             onVerticalDragUpdate: widget.onHandleDragUpdate,
             onVerticalDragEnd: widget.onHandleDragEnd,
-            child: _buildTransportRow(visibleStart, visibleEnd),
+            child: _buildTransportRow(),
           ),
           const SizedBox(height: 4),
           LayoutBuilder(
@@ -2034,7 +2014,9 @@ class TimelineWidgetState extends State<TimelineWidget> {
                       painter: _TimelinePainter(
                         sequenceDuration: _sequenceDuration,
                         sequencePlayhead: _sequencePlayhead,
-                        segments: widget.segments,
+                        // Snapshot refs so in-place segment edits (e.g. transition
+                        // duration) still trip shouldRepaint vs the previous frame.
+                        segments: List<ClipSegment>.of(widget.segments),
                         overlays: widget.overlays,
                         musicTracks: widget.musicTracks,
                         musicWaveforms: widget.musicWaveforms,

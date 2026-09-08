@@ -1,75 +1,446 @@
 {
-  "version": 1,
-  "items": [
+  "version": 3,
+  "baseUrl": "",
+  "categories": [
     {
-      "id": "none",
-      "title": "None",
-      "ffmpegName": "",
-      "defaultDurationMs": 0,
-      "accent": "#6B7280"
+      "id": "trending",
+      "title": "Trending",
+      "items": [
+        {
+          "id": "fade",
+          "version": 1,
+          "title": "Fade",
+          "category": "trending",
+          "renderer": "xfade",
+          "effectType": "xfade",
+          "ffmpegName": "fade",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#60A5FA"
+        },
+        {
+          "id": "zoomin",
+          "version": 1,
+          "title": "Zoom In",
+          "category": "trending",
+          "renderer": "xfade",
+          "ffmpegName": "zoomin",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#F472B6"
+        },
+        {
+          "id": "flash",
+          "version": 1,
+          "title": "Flash",
+          "category": "trending",
+          "renderer": "primitive",
+          "ffmpegName": "fadewhite",
+          "defaultDurationMs": 250,
+          "minDurationMs": 80,
+          "maxDurationMs": 800,
+          "accent": "#FDE68A",
+          "parameters": {
+            "intensity": { "type": "double", "default": 0.7, "min": 0, "max": 1 }
+          },
+          "controls": [
+            {
+              "type": "slider",
+              "key": "intensity",
+              "label": "Intensity",
+              "min": 0,
+              "max": 1,
+              "default": 0.7
+            }
+          ],
+          "layers": [
+            {
+              "property": "brightness",
+              "from": 0,
+              "to": 1,
+              "easing": "easeOut",
+              "target": "both"
+            }
+          ]
+        },
+        {
+          "id": "pushleft",
+          "version": 1,
+          "title": "Push Left",
+          "category": "trending",
+          "renderer": "xfade",
+          "ffmpegName": "coverleft",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#34D399"
+        }
+      ]
     },
     {
-      "id": "fade",
-      "title": "Fade",
-      "ffmpegName": "fade",
-      "defaultDurationMs": 500,
-      "accent": "#60A5FA"
+      "id": "basic",
+      "title": "Basic",
+      "items": [
+        {
+          "id": "none",
+          "version": 1,
+          "title": "None",
+          "category": "basic",
+          "renderer": "cut",
+          "effectType": "cut",
+          "ffmpegName": "",
+          "defaultDurationMs": 0,
+          "minDurationMs": 0,
+          "maxDurationMs": 0,
+          "accent": "#6B7280"
+        },
+        {
+          "id": "fade",
+          "version": 1,
+          "title": "Fade",
+          "category": "basic",
+          "renderer": "xfade",
+          "ffmpegName": "fade",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#60A5FA",
+          "layers": [
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "easing": "easeInOut",
+              "target": "outgoing"
+            }
+          ]
+        },
+        {
+          "id": "dissolve",
+          "version": 1,
+          "title": "Cross Dissolve",
+          "category": "dissolve",
+          "renderer": "xfade",
+          "ffmpegName": "dissolve",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#A78BFA"
+        },
+        {
+          "id": "fadeblack",
+          "version": 1,
+          "title": "Dip To Black",
+          "category": "dissolve",
+          "renderer": "xfade",
+          "ffmpegName": "fadeblack",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#1F2937"
+        },
+        {
+          "id": "fadewhite",
+          "version": 1,
+          "title": "Dip To White",
+          "category": "dissolve",
+          "renderer": "xfade",
+          "ffmpegName": "fadewhite",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#E5E7EB"
+        }
+      ]
     },
     {
-      "id": "dissolve",
-      "title": "Dissolve",
-      "ffmpegName": "dissolve",
-      "defaultDurationMs": 500,
-      "accent": "#A78BFA"
+      "id": "motion",
+      "title": "Motion",
+      "items": [
+        {
+          "id": "slideleft",
+          "version": 1,
+          "title": "Slide Left",
+          "category": "motion",
+          "renderer": "xfade",
+          "ffmpegName": "slideleft",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#FBBF24"
+        },
+        {
+          "id": "slideright",
+          "version": 1,
+          "title": "Slide Right",
+          "category": "motion",
+          "renderer": "xfade",
+          "ffmpegName": "slideright",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#F59E0B"
+        },
+        {
+          "id": "slideup",
+          "version": 1,
+          "title": "Slide Up",
+          "category": "motion",
+          "renderer": "xfade",
+          "ffmpegName": "slideup",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#FCD34D"
+        },
+        {
+          "id": "slidedown",
+          "version": 1,
+          "title": "Slide Down",
+          "category": "motion",
+          "renderer": "xfade",
+          "ffmpegName": "slidedown",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#D97706"
+        },
+        {
+          "id": "pushleft",
+          "version": 1,
+          "title": "Push Left",
+          "category": "motion",
+          "renderer": "xfade",
+          "ffmpegName": "coverleft",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#34D399"
+        },
+        {
+          "id": "pushright",
+          "version": 1,
+          "title": "Push Right",
+          "category": "motion",
+          "renderer": "xfade",
+          "ffmpegName": "coverright",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#10B981"
+        },
+        {
+          "id": "pushup",
+          "version": 1,
+          "title": "Push Up",
+          "category": "motion",
+          "renderer": "xfade",
+          "ffmpegName": "coverup",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#6EE7B7"
+        },
+        {
+          "id": "pushdown",
+          "version": 1,
+          "title": "Push Down",
+          "category": "motion",
+          "renderer": "xfade",
+          "ffmpegName": "coverdown",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#059669"
+        }
+      ]
     },
     {
-      "id": "wipeleft",
-      "title": "Wipe left",
-      "ffmpegName": "wipeleft",
-      "defaultDurationMs": 500,
-      "accent": "#34D399"
+      "id": "zoom",
+      "title": "Zoom",
+      "items": [
+        {
+          "id": "zoomin",
+          "version": 1,
+          "title": "Zoom In",
+          "category": "zoom",
+          "renderer": "xfade",
+          "ffmpegName": "zoomin",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#F472B6",
+          "parameters": {
+            "intensity": { "type": "double", "default": 0.7, "min": 0, "max": 1 }
+          },
+          "controls": [
+            {
+              "type": "slider",
+              "key": "intensity",
+              "label": "Intensity",
+              "min": 0,
+              "max": 1,
+              "default": 0.7
+            }
+          ]
+        },
+        {
+          "id": "zoomout",
+          "version": 1,
+          "title": "Zoom Out",
+          "category": "zoom",
+          "renderer": "primitive",
+          "ffmpegName": "squeezev",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#FB7185",
+          "layers": [
+            {
+              "property": "scale",
+              "from": 1.35,
+              "to": 1,
+              "easing": "easeInOut",
+              "target": "outgoing"
+            }
+          ]
+        },
+        {
+          "id": "crosszoom",
+          "version": 1,
+          "title": "Cross Zoom",
+          "category": "zoom",
+          "renderer": "primitive",
+          "ffmpegName": "zoomin",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#E879F9"
+        },
+        {
+          "id": "zoomblur",
+          "version": 1,
+          "title": "Zoom Blur",
+          "category": "zoom",
+          "renderer": "primitive",
+          "ffmpegName": "hblur",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#C084FC"
+        }
+      ]
     },
     {
-      "id": "wiperight",
-      "title": "Wipe right",
-      "ffmpegName": "wiperight",
-      "defaultDurationMs": 500,
-      "accent": "#2DD4BF"
+      "id": "wipe",
+      "title": "Wipe",
+      "items": [
+        {
+          "id": "wipeleft",
+          "version": 1,
+          "title": "Wipe Left",
+          "category": "wipe",
+          "renderer": "xfade",
+          "ffmpegName": "wipeleft",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#34D399"
+        },
+        {
+          "id": "wiperight",
+          "version": 1,
+          "title": "Wipe Right",
+          "category": "wipe",
+          "renderer": "xfade",
+          "ffmpegName": "wiperight",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#2DD4BF"
+        },
+        {
+          "id": "wipeup",
+          "version": 1,
+          "title": "Wipe Up",
+          "category": "wipe",
+          "renderer": "xfade",
+          "ffmpegName": "wipeup",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#5EEAD4"
+        },
+        {
+          "id": "wipedown",
+          "version": 1,
+          "title": "Wipe Down",
+          "category": "wipe",
+          "renderer": "xfade",
+          "ffmpegName": "wipedown",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#14B8A6"
+        },
+        {
+          "id": "circleopen",
+          "version": 1,
+          "title": "Circle / Iris",
+          "category": "wipe",
+          "renderer": "xfade",
+          "ffmpegName": "circleopen",
+          "defaultDurationMs": 600,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#F472B6"
+        },
+        {
+          "id": "radial",
+          "version": 1,
+          "title": "Radial Wipe",
+          "category": "wipe",
+          "renderer": "xfade",
+          "ffmpegName": "radial",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#FB7185"
+        }
+      ]
     },
     {
-      "id": "slideleft",
-      "title": "Slide left",
-      "ffmpegName": "slideleft",
-      "defaultDurationMs": 500,
-      "accent": "#FBBF24"
-    },
-    {
-      "id": "slideright",
-      "title": "Slide right",
-      "ffmpegName": "slideright",
-      "defaultDurationMs": 500,
-      "accent": "#F59E0B"
-    },
-    {
-      "id": "circleopen",
-      "title": "Circle open",
-      "ffmpegName": "circleopen",
-      "defaultDurationMs": 600,
-      "accent": "#F472B6"
-    },
-    {
-      "id": "circleclose",
-      "title": "Circle close",
-      "ffmpegName": "circleclose",
-      "defaultDurationMs": 600,
-      "accent": "#FB7185"
-    },
-    {
-      "id": "pixelize",
-      "title": "Pixelize",
-      "ffmpegName": "pixelize",
-      "defaultDurationMs": 500,
-      "accent": "#94A3B8"
+      "id": "effect",
+      "title": "Effect",
+      "items": [
+        {
+          "id": "flash",
+          "version": 1,
+          "title": "Flash",
+          "category": "effect",
+          "renderer": "primitive",
+          "ffmpegName": "fadewhite",
+          "defaultDurationMs": 250,
+          "minDurationMs": 80,
+          "maxDurationMs": 800,
+          "accent": "#FDE68A",
+          "parameters": {
+            "intensity": { "type": "double", "default": 0.7, "min": 0, "max": 1 }
+          },
+          "controls": [
+            {
+              "type": "slider",
+              "key": "intensity",
+              "label": "Intensity",
+              "min": 0,
+              "max": 1,
+              "default": 0.7
+            }
+          ]
+        }
+      ]
     }
   ]
 }

@@ -2,6 +2,7 @@ import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/models/export_quality_profile.dart';
 import 'package:aveditor/services/app_settings_service.dart';
 import 'package:aveditor/services/text_template_pack_service.dart';
+import 'package:aveditor/services/transition_catalog_service.dart';
 import 'package:flutter/material.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -54,12 +55,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await TextTemplatePackService.instance.setRemoteBaseUrl(
         _packUrlController.text.trim(),
       );
+      // Same base hosts the transition catalog.
+      await TransitionCatalogService.instance.refresh();
       if (!mounted) return;
-      final error = TextTemplatePackService.instance.lastError;
+      final packError = TextTemplatePackService.instance.lastError;
+      final transitionError = TransitionCatalogService.instance.lastError;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            error == null
+            packError == null && transitionError == null
                 ? context.l10n.textPackUrlSaved
                 : context.l10n.textPackUrlSavePartial,
           ),

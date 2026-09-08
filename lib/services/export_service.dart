@@ -7,8 +7,10 @@ import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/project_music.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/video_project.dart';
+import 'package:aveditor/models/applied_transition.dart';
 import 'package:aveditor/services/export_save_service.dart';
 import 'package:aveditor/services/overlay_raster_service.dart';
+import 'package:aveditor/services/transition_engine.dart';
 import 'package:aveditor/services/video_probe_service.dart';
 import 'package:aveditor/utils/clip_rotation.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
@@ -492,7 +494,7 @@ class ExportService {
       final outA = i == segments.length - 2 ? 'acat' : 'ax$i';
 
       if (current.hasTransition && td > Duration.zero) {
-        final name = _ffmpegTransitionName(current.transitionId);
+        final name = ffmpegTransitionNameFor(current.transition);
         final durationSec = td.inMilliseconds / 1000.0;
         final offsetSec =
             (cursorSec - durationSec).clamp(0.0, double.infinity);
@@ -520,32 +522,28 @@ class ExportService {
     return parts.join(';');
   }
 
-  /// Maps catalog transition ids to FFmpeg `xfade` names.
-  static String _ffmpegTransitionName(String? transitionId) {
-    final id = transitionId?.trim() ?? '';
-    if (id.isEmpty || id == 'none') return 'fade';
-    const known = <String>{
-      'fade',
-      'dissolve',
-      'wipeleft',
-      'wiperight',
-      'wipeup',
-      'wipedown',
-      'slideleft',
-      'slideright',
-      'slideup',
-      'slidedown',
-      'circlecrop',
-      'circleopen',
-      'circleclose',
-      'pixelize',
-      'fadeblack',
-      'fadewhite',
-      'distance',
-      'hblur',
-    };
-    if (known.contains(id)) return id;
-    return 'fade';
+  /// Resolves an FFmpeg `xfade` name through [TransitionEngine].
+  ///
+  /// Falls back to `fade` when the engine has no usable name.
+  @visibleForTesting
+  static String ffmpegTransitionNameFor(AppliedTransition? applied) {
+    final name = TransitionEngine.instance.ffmpegNameFor(applied);
+    if (name == null || name.isEmpty) return 'fade';
+    return name;
+  }
+
+  /// Legacy helper — prefer [ffmpegTransitionNameFor].
+  @visibleForTesting
+  static String ffmpegTransitionName(String? transitionId) {
+    return ffmpegTransitionNameFor(
+      transitionId == null || transitionId.isEmpty || transitionId == 'none'
+          ? null
+          : AppliedTransition(
+              id: transitionId,
+              version: 1,
+              duration: const Duration(milliseconds: 500),
+            ),
+    );
   }
 
   /// Builds the crop-and-composite graph.

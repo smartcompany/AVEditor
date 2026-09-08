@@ -1,7 +1,5 @@
 import 'dart:math' as math;
 
-import 'package:aveditor/utils/duration_format.dart';
-
 const minTrimDuration = Duration(seconds: 1);
 const minSplitPartDuration = Duration(milliseconds: 100);
 /// CapCut-like minimum for text overlays (same as video / music).
@@ -125,8 +123,4 @@ Duration snapDuration(Duration value, {int stepMs = 50}) {
 
 bool nearX(double a, double b, {double threshold = handleHitWidth}) {
   return (a - b).abs() <= threshold;
-}
-
-String formatTimelineRange(Duration start, Duration end) {
-  return '${formatDuration(start)} – ${formatDuration(end)}';
 }

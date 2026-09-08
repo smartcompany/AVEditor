@@ -169,6 +169,7 @@
   "transitionCatalogUnavailable": "Could not load transitions.",
   "transitionApplied": "Transition applied.",
   "transitionNeedsCuts": "Split the clip first to add a transition.",
+  "transitionDuration": "Duration",
   "deleteSegment": "Delete segment",
   "splitOutOfRange": "Move the playhead inside the clip to split.",
   "splitTooShort": "Each part must be at least 1 second.",

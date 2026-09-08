@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:aveditor/l10n/app_localizations.dart';
 import 'package:aveditor/screens/home_screen.dart';
 import 'package:aveditor/services/text_template_pack_service.dart';
+import 'package:aveditor/services/transition_catalog_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -35,7 +36,8 @@ Future<void> main() async {
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
-  // Warm the pack catalog so Edit text → packs opens instantly.
+  // Warm catalogs so text packs / transitions open instantly.
   unawaited(TextTemplatePackService.instance.ensureInitialized());
+  unawaited(TransitionCatalogService.instance.ensureInitialized());
   runApp(const AveditorApp());
 }

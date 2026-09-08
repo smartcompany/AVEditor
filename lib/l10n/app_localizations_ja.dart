@@ -440,6 +440,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get transitionNeedsCuts => 'トランジションを追加するには、先にクリップを分割してください。';
 
   @override
+  String get transitionDuration => '長さ';
+
+  @override
   String get deleteSegment => 'セグメントを削除';
 
   @override

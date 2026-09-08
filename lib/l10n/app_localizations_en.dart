@@ -447,6 +447,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get transitionNeedsCuts => 'Split the clip first to add a transition.';
 
   @override
+  String get transitionDuration => 'Duration';
+
+  @override
   String get deleteSegment => 'Delete segment';
 
   @override

@@ -133,6 +133,7 @@
   "transitionCatalogUnavailable": "无法加载转场效果。",
   "transitionApplied": "已应用转场。",
   "transitionNeedsCuts": "请先分割片段再添加转场。",
+  "transitionDuration": "时长",
   "deleteSegment": "删除片段",
   "splitOutOfRange": "请将播放头移到片段内再分割。",
   "splitTooShort": "每段至少需要 1 秒。",

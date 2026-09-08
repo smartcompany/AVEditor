@@ -133,6 +133,7 @@
   "transitionCatalogUnavailable": "전환 효과를 불러올 수 없습니다.",
   "transitionApplied": "전환이 적용되었습니다.",
   "transitionNeedsCuts": "전환을 추가하려면 먼저 클립을 분할하세요.",
+  "transitionDuration": "길이",
   "deleteSegment": "구간 삭제",
   "splitOutOfRange": "재생 위치를 클립 안으로 옮긴 뒤 분할하세요.",
   "splitTooShort": "각 구간은 최소 1초 이상이어야 합니다.",

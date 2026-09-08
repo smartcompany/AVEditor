@@ -437,6 +437,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get transitionNeedsCuts => '请先分割片段再添加转场。';
 
   @override
+  String get transitionDuration => '时长';
+
+  @override
   String get deleteSegment => '删除片段';
 
   @override

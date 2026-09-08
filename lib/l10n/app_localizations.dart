@@ -900,6 +900,12 @@ abstract class AppLocalizations {
   /// **'Split the clip first to add a transition.'**
   String get transitionNeedsCuts;
 
+  /// No description provided for @transitionDuration.
+  ///
+  /// In en, this message translates to:
+  /// **'Duration'**
+  String get transitionDuration;
+
   /// No description provided for @deleteSegment.
   ///
   /// In en, this message translates to:
