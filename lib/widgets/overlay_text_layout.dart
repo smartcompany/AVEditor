@@ -4,6 +4,7 @@ import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/text_overlay_style.dart';
 import 'package:aveditor/models/text_style_template.dart';
 import 'package:aveditor/services/text_template_pack_service.dart';
+import 'package:aveditor/widgets/overlay_fonts.dart';
 import 'package:aveditor/widgets/overlay_geometry.dart';
 import 'package:flutter/material.dart';
 
@@ -47,7 +48,7 @@ Color overlayStyleBackgroundColor({
     case TextOverlayStyle.box:
       return accent;
     case TextOverlayStyle.boxDim:
-      return const Color(0x8C000000);
+      return accent.withValues(alpha: 0.55);
   }
 }
 
@@ -61,7 +62,19 @@ TextStyleTemplate templateForBasicStyle(TextOverlayStyle style) {
     case TextOverlayStyle.box:
       return TextStyleTemplateCatalog.banner;
     case TextOverlayStyle.boxDim:
-      return TextStyleTemplateCatalog.dimBanner;
+      return const TextStyleTemplate(
+        id: 'basic_box_dim',
+        label: 'Dim',
+        fillArgb: 0xFFFFFFFF,
+        fillUseAccent: false,
+        lineBackground: TextStyleLineBackground(
+          useAccent: true,
+          opacity: 0.55,
+          padHFactor: 0.28,
+          padVFactor: 0.16,
+          radiusFactor: 0.2,
+        ),
+      );
   }
 }
 
@@ -114,11 +127,12 @@ void paintOverlayLineBackgrounds({
 
 TextStyle _baseTextStyle({
   required double fontSize,
+  String? fontFamily,
   Color? color,
   Paint? foreground,
   List<Shadow>? shadows,
 }) {
-  return TextStyle(
+  final base = TextStyle(
     fontFamily: overlayFontFamily,
     color: foreground == null ? color : null,
     fontSize: fontSize,
@@ -127,6 +141,7 @@ TextStyle _baseTextStyle({
     foreground: foreground,
     shadows: shadows,
   );
+  return OverlayFonts.resolve(fontFamily, base);
 }
 
 /// Fill layer for overlay text (basic style path / editing field).
@@ -134,16 +149,22 @@ TextStyle overlayTextFillStyle({
   required Color color,
   required double fontSize,
   TextOverlayStyle style = TextOverlayStyle.plain,
+  String? fontFamily,
 }) {
   final fill = overlayTextFillColor(style: style, accent: color);
   if (style == TextOverlayStyle.plain) {
     return _baseTextStyle(
       fontSize: fontSize,
+      fontFamily: fontFamily,
       color: fill,
       shadows: const [Shadow(blurRadius: 8, color: Color(0x8A000000))],
     );
   }
-  return _baseTextStyle(fontSize: fontSize, color: fill);
+  return _baseTextStyle(
+    fontSize: fontSize,
+    fontFamily: fontFamily,
+    color: fill,
+  );
 }
 
 /// Stroke layer for outline mode.
@@ -151,9 +172,11 @@ TextStyle overlayTextStrokeStyle({
   required Color color,
   required double fontSize,
   double? width,
+  String? fontFamily,
 }) {
   return _baseTextStyle(
     fontSize: fontSize,
+    fontFamily: fontFamily,
     foreground: Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = width ?? overlayStrokeWidth(fontSize)
@@ -166,18 +189,25 @@ TextStyle overlayTextStyle({
   required Color color,
   required double fontSize,
   TextOverlayStyle style = TextOverlayStyle.plain,
+  String? fontFamily,
 }) {
-  return overlayTextFillStyle(color: color, fontSize: fontSize, style: style);
+  return overlayTextFillStyle(
+    color: color,
+    fontSize: fontSize,
+    style: style,
+    fontFamily: fontFamily,
+  );
 }
 
 TextPainter createOverlayTextPainter({
   required String text,
   required TextStyle style,
   required double maxWidth,
+  TextAlign textAlign = TextAlign.center,
 }) {
   return TextPainter(
     text: TextSpan(text: text, style: style),
-    textAlign: TextAlign.center,
+    textAlign: textAlign,
     textDirection: TextDirection.ltr,
     textScaler: TextScaler.noScaling,
   )..layout(maxWidth: maxWidth);
@@ -190,6 +220,8 @@ TextPainter layoutOverlayText({
   required double fontSize,
   required double maxWidth,
   TextOverlayStyle style = TextOverlayStyle.plain,
+  String? fontFamily,
+  TextAlign textAlign = TextAlign.center,
 }) {
   return createOverlayTextPainter(
     text: text,
@@ -197,8 +229,10 @@ TextPainter layoutOverlayText({
       color: color,
       fontSize: fontSize,
       style: style,
+      fontFamily: fontFamily,
     ),
     maxWidth: maxWidth,
+    textAlign: textAlign,
   );
 }
 
@@ -213,6 +247,8 @@ OverlayBox overlayBoxForFrame(
   final fitted = measureFittedOverlayBox(
     text: overlay.text,
     fontSize: overlay.fontSize,
+    fontFamily: overlay.fontFamily,
+    textAlign: overlay.textAlign,
   );
   return OverlayBox(
     width: fitted.width * scale,
@@ -230,6 +266,8 @@ OverlayBox overlayBoxForFrame(
 Size measureFittedOverlayBox({
   required String text,
   required double fontSize,
+  String? fontFamily,
+  TextAlign textAlign = TextAlign.center,
   double maxWidth = maxOverlayBoxWidth,
 }) {
   final sample = text.trim().isEmpty ? '가' : text;
@@ -240,8 +278,13 @@ Size measureFittedOverlayBox({
 
   final painter = createOverlayTextPainter(
     text: sample,
-    style: _baseTextStyle(fontSize: fontSize, color: const Color(0xFFFFFFFF)),
+    style: _baseTextStyle(
+      fontSize: fontSize,
+      fontFamily: fontFamily,
+      color: const Color(0xFFFFFFFF),
+    ),
     maxWidth: innerMax,
+    textAlign: textAlign,
   );
   final width =
       (painter.width + pad * 2).clamp(minOverlayBoxWidth, maxOverlayBoxWidth);
@@ -257,6 +300,8 @@ TextOverlay fitOverlayBoxToText(TextOverlay overlay) {
   final size = measureFittedOverlayBox(
     text: overlay.text,
     fontSize: overlay.fontSize,
+    fontFamily: overlay.fontFamily,
+    textAlign: overlay.textAlign,
   );
   if ((overlay.boxWidth - size.width).abs() < 0.5 &&
       (overlay.boxHeight - size.height).abs() < 0.5) {
@@ -291,6 +336,8 @@ void _paintStrokeLayer({
   required Offset origin,
   required Color color,
   required double width,
+  String? fontFamily,
+  TextAlign textAlign = TextAlign.center,
   double blur = 0,
 }) {
   final paint = Paint()
@@ -304,8 +351,13 @@ void _paintStrokeLayer({
 
   final painter = createOverlayTextPainter(
     text: text,
-    style: _baseTextStyle(fontSize: fontSize, foreground: paint),
+    style: _baseTextStyle(
+      fontSize: fontSize,
+      fontFamily: fontFamily,
+      foreground: paint,
+    ),
     maxWidth: maxWidth,
+    textAlign: textAlign,
   );
   painter.paint(canvas, origin);
   painter.dispose();
@@ -318,12 +370,20 @@ void _paintFillLayer({
   required double maxWidth,
   required Offset origin,
   required Color color,
+  String? fontFamily,
+  TextAlign textAlign = TextAlign.center,
   List<Shadow>? shadows,
 }) {
   final painter = createOverlayTextPainter(
     text: text,
-    style: _baseTextStyle(fontSize: fontSize, color: color, shadows: shadows),
+    style: _baseTextStyle(
+      fontSize: fontSize,
+      fontFamily: fontFamily,
+      color: color,
+      shadows: shadows,
+    ),
     maxWidth: maxWidth,
+    textAlign: textAlign,
   );
   painter.paint(canvas, origin);
   painter.dispose();
@@ -338,12 +398,19 @@ void paintTextStyleTemplate({
   required double maxWidth,
   required Offset origin,
   required TextStyleTemplate template,
+  String? fontFamily,
+  TextAlign textAlign = TextAlign.center,
 }) {
   final fillColor = template.resolveFill(accent);
   final metricsPainter = createOverlayTextPainter(
     text: text,
-    style: _baseTextStyle(fontSize: fontSize, color: fillColor),
+    style: _baseTextStyle(
+      fontSize: fontSize,
+      fontFamily: fontFamily,
+      color: fillColor,
+    ),
     maxWidth: maxWidth,
+    textAlign: textAlign,
   );
 
   final lineBg = template.lineBackground;
@@ -370,6 +437,8 @@ void paintTextStyleTemplate({
       origin: origin,
       color: glow.resolveColor(accent),
       width: (fontSize * glow.widthFactor).clamp(1.0, 40.0),
+      fontFamily: fontFamily,
+      textAlign: textAlign,
       blur: (fontSize * glow.blurFactor).clamp(1.0, 48.0),
     );
   }
@@ -386,6 +455,8 @@ void paintTextStyleTemplate({
       maxWidth: maxWidth,
       origin: origin + Offset(dx, dy),
       color: shadow.resolveColor(accent),
+      fontFamily: fontFamily,
+      textAlign: textAlign,
       shadows: blur > 0
           ? [Shadow(blurRadius: blur, color: shadow.resolveColor(accent))]
           : null,
@@ -404,6 +475,8 @@ void paintTextStyleTemplate({
       origin: origin,
       color: stroke.resolveColor(accent),
       width: (fontSize * stroke.widthFactor).clamp(1.0, 40.0),
+      fontFamily: fontFamily,
+      textAlign: textAlign,
     );
   }
 
@@ -414,6 +487,8 @@ void paintTextStyleTemplate({
     maxWidth: maxWidth,
     origin: origin,
     color: fillColor,
+    fontFamily: fontFamily,
+    textAlign: textAlign,
   );
 
   metricsPainter.dispose();
@@ -431,8 +506,13 @@ void paintOverlayTextLayer({
   final fillColor = template.resolveFill(overlay.color);
   final metricsPainter = createOverlayTextPainter(
     text: overlay.text,
-    style: _baseTextStyle(fontSize: box.fontSize, color: fillColor),
+    style: _baseTextStyle(
+      fontSize: box.fontSize,
+      fontFamily: overlay.fontFamily,
+      color: fillColor,
+    ),
     maxWidth: box.width,
+    textAlign: overlay.textAlign,
   );
   final origin = overlayTextOrigin(
     painter: metricsPainter,
@@ -450,6 +530,8 @@ void paintOverlayTextLayer({
     maxWidth: box.width,
     origin: origin,
     template: template,
+    fontFamily: overlay.fontFamily,
+    textAlign: overlay.textAlign,
   );
 }
 
@@ -462,6 +544,8 @@ class OverlayTextDisplay extends StatelessWidget {
     required this.fontSize,
     required this.maxWidth,
     required this.template,
+    this.fontFamily,
+    this.textAlign = TextAlign.center,
     this.hintColor,
   });
 
@@ -470,6 +554,8 @@ class OverlayTextDisplay extends StatelessWidget {
   final double fontSize;
   final double maxWidth;
   final TextStyleTemplate template;
+  final String? fontFamily;
+  final TextAlign textAlign;
   final Color? hintColor;
 
   @override
@@ -477,8 +563,13 @@ class OverlayTextDisplay extends StatelessWidget {
     final fill = hintColor ?? template.resolveFill(color);
     final probe = createOverlayTextPainter(
       text: text,
-      style: _baseTextStyle(fontSize: fontSize, color: fill),
+      style: _baseTextStyle(
+        fontSize: fontSize,
+        fontFamily: fontFamily,
+        color: fill,
+      ),
       maxWidth: maxWidth,
+      textAlign: textAlign,
     );
     final size = Size(probe.width, probe.height);
     probe.dispose();
@@ -491,6 +582,8 @@ class OverlayTextDisplay extends StatelessWidget {
         fontSize: fontSize,
         maxWidth: maxWidth,
         template: template,
+        fontFamily: fontFamily,
+        textAlign: textAlign,
         hintColor: hintColor,
       ),
     );
@@ -504,6 +597,8 @@ class _OverlayTextDisplayPainter extends CustomPainter {
     required this.fontSize,
     required this.maxWidth,
     required this.template,
+    this.fontFamily,
+    this.textAlign = TextAlign.center,
     this.hintColor,
   });
 
@@ -512,6 +607,8 @@ class _OverlayTextDisplayPainter extends CustomPainter {
   final double fontSize;
   final double maxWidth;
   final TextStyleTemplate template;
+  final String? fontFamily;
+  final TextAlign textAlign;
   final Color? hintColor;
 
   @override
@@ -524,6 +621,8 @@ class _OverlayTextDisplayPainter extends CustomPainter {
         maxWidth: maxWidth,
         origin: Offset.zero,
         color: hintColor!,
+        fontFamily: fontFamily,
+        textAlign: textAlign,
       );
       return;
     }
@@ -536,6 +635,8 @@ class _OverlayTextDisplayPainter extends CustomPainter {
       maxWidth: maxWidth,
       origin: Offset.zero,
       template: template,
+      fontFamily: fontFamily,
+      textAlign: textAlign,
     );
   }
 
@@ -546,6 +647,8 @@ class _OverlayTextDisplayPainter extends CustomPainter {
         oldDelegate.fontSize != fontSize ||
         oldDelegate.maxWidth != maxWidth ||
         oldDelegate.template.id != template.id ||
+        oldDelegate.fontFamily != fontFamily ||
+        oldDelegate.textAlign != textAlign ||
         oldDelegate.hintColor != hintColor;
   }
 }

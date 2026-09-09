@@ -2,10 +2,12 @@ import 'dart:math' as math;
 
 import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/text_overlay.dart';
+import 'package:aveditor/models/text_overlay_style.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
 import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/utils/overlay_event_log.dart';
 import 'package:aveditor/utils/overlay_guides.dart';
+import 'package:aveditor/widgets/basic_text_edit_toolbar.dart';
 import 'package:aveditor/widgets/overlay_geometry.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/widgets/overflow_hit_stack.dart';
@@ -1007,6 +1009,17 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
           );
         }
       });
+    } else if (widget.editing &&
+        (oldWidget.overlay.style != widget.overlay.style ||
+            oldWidget.overlay.color != widget.overlay.color ||
+            oldWidget.overlay.fontFamily != widget.overlay.fontFamily ||
+            oldWidget.overlay.textAlign != widget.overlay.textAlign)) {
+      // Style chrome can briefly drop focus on iOS — restore only if lost.
+      // Do not call TextInput.show while the keyboard is already up (toggles off).
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !widget.editing) return;
+        if (!_focusNode.hasFocus) _focusNode.requestFocus();
+      });
     }
   }
 
@@ -1020,10 +1033,16 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
 
   TextStyle get _fillStyle {
     final template = resolveOverlayTemplate(widget.overlay);
-    return TextStyle(
-      fontFamily: overlayFontFamily,
-      color: template.resolveFill(widget.overlay.color),
+    return overlayTextFillStyle(
+      color: widget.overlay.color,
       fontSize: widget.box.fontSize,
+      style: widget.overlay.templateId == null &&
+              widget.overlay.packItemId == null
+          ? widget.overlay.style
+          : TextOverlayStyle.plain,
+      fontFamily: widget.overlay.fontFamily,
+    ).copyWith(
+      color: template.resolveFill(widget.overlay.color),
       fontWeight: FontWeight.w700,
       height: 1.15,
     );
@@ -1035,20 +1054,45 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
     final hintColor = fill.withValues(alpha: 0.45);
 
     if (widget.editing) {
+      final bg = widget.overlay.templateId == null &&
+              widget.overlay.packItemId == null
+          ? overlayStyleBackgroundColor(
+              style: widget.overlay.style,
+              accent: widget.overlay.color,
+            )
+          : Colors.transparent;
+      // Match [OverlayTextDisplay]: lay out at the full box width — padding
+      // here used to shrink the field and wrap one line earlier than preview.
       final field = MediaQuery.withNoTextScaling(
-        child: Center(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: bg.a > 0 ? bg : Colors.transparent,
+            borderRadius: BorderRadius.circular(
+              (widget.box.fontSize * 0.18).clamp(4.0, 12.0),
+            ),
+          ),
           child: TextField(
             controller: _controller,
             focusNode: _focusNode,
             autofocus: true,
             maxLines: null,
-            textAlign: TextAlign.center,
+            textAlign: widget.overlay.textAlign,
             style: _fillStyle,
             cursorColor: AppTheme.accent,
-            decoration: InputDecoration(
+            strutStyle: StrutStyle(
+              fontSize: _fillStyle.fontSize,
+              height: _fillStyle.height,
+              fontWeight: _fillStyle.fontWeight,
+              forceStrutHeight: true,
+            ),
+            // Toolbar shares [kBasicTextEditTapGroup]; keep IME up on those taps.
+            onTapOutside: (_) {},
+            decoration: const InputDecoration(
               isDense: true,
               border: InputBorder.none,
               contentPadding: EdgeInsets.zero,
+              isCollapsed: true,
+            ).copyWith(
               hintText: widget.textHint,
               hintStyle: _fillStyle.copyWith(color: hintColor),
             ),
@@ -1061,7 +1105,12 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
         ),
       );
       final packId = widget.overlay.packItemId;
-      if (packId == null) return field;
+      final sizedField = SizedBox(
+        width: widget.box.width,
+        height: widget.box.height,
+        child: field,
+      );
+      if (packId == null) return sizedField;
       return Stack(
         alignment: Alignment.center,
         clipBehavior: Clip.none,
@@ -1073,7 +1122,7 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
               height: widget.box.height * 1.4,
             ),
           ),
-          field,
+          sizedField,
         ],
       );
     }
@@ -1085,6 +1134,8 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
       fontSize: widget.box.fontSize,
       maxWidth: widget.box.width,
       template: template,
+      fontFamily: widget.overlay.fontFamily,
+      textAlign: widget.overlay.textAlign,
       hintColor: isHint ? hintColor : null,
     );
 
@@ -1234,7 +1285,12 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
 
     if (widget.editing) {
       chrome = TapRegion(
+        groupId: kBasicTextEditTapGroup,
         onTapOutside: (_) {
+          if (BasicTextEditDismissGuard.isArmed) {
+            _log('tapOutsideIgnored', {'source': 'toolbar_guard'});
+            return;
+          }
           _log('tapOutsideDismiss', {'source': 'tap_region'});
           widget.onEditingComplete?.call('tap_region');
         },

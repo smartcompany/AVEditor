@@ -26,6 +26,7 @@ import 'package:aveditor/utils/timeline_math.dart';
 import 'package:aveditor/services/app_settings_service.dart';
 import 'package:aveditor/services/export_service.dart';
 import 'package:aveditor/services/export_save_service.dart';
+import 'package:aveditor/widgets/basic_text_edit_toolbar.dart';
 import 'package:aveditor/widgets/export_progress_dialog.dart';
 import 'package:aveditor/widgets/text_studio_panel.dart';
 import 'package:aveditor/widgets/timeline_widget.dart';
@@ -1062,6 +1063,17 @@ class _EditorScreenState extends State<EditorScreen>
     return null;
   }
 
+  TextOverlay? get _editingOverlay {
+    final id = _editingOverlayId;
+    if (id == null) return null;
+    final project = _project;
+    if (project == null) return null;
+    for (final overlay in project.overlays) {
+      if (overlay.id == id) return overlay;
+    }
+    return null;
+  }
+
   bool get _inTextStudio => _textStudioOverlayId != null;
 
   /// Bottom sheets that already have a drag pill — hide the chrome handle.
@@ -1575,7 +1587,7 @@ class _EditorScreenState extends State<EditorScreen>
     final overlay = fitOverlayBoxToText(
       TextOverlay(text: '', start: start, end: end),
     );
-    _chrome.value = 1;
+    // Keep timeline chrome; keyboard + toolbar overlay on top (no full-bleed preview).
     _textStudioFieldFocused = false;
     _textStudioHeightOverride = null;
     _textStudioSheetBottom = 0;
@@ -1594,8 +1606,8 @@ class _EditorScreenState extends State<EditorScreen>
       _selectedSegmentId = null;
       _selectedMusicId = null;
       _selectedTransitionAfterIndex = null;
-      _editingOverlayId = null;
-      _textStudioOverlayId = placed.id;
+      _textStudioOverlayId = null;
+      _editingOverlayId = placed.id;
     });
   }
 
@@ -1822,7 +1834,7 @@ class _EditorScreenState extends State<EditorScreen>
     }
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
-      // Body tap → on-canvas edit only. Studio opens from add / corner edit.
+      // Body tap → on-canvas edit only. Studio opens from corner edit / toolbar.
       _textStudioOverlayId = null;
       _textStudioFieldFocused = false;
       _textStudioHeightOverride = null;
@@ -2040,6 +2052,7 @@ class _EditorScreenState extends State<EditorScreen>
         : controller.value.aspectRatio;
     final inTextStudio = _inTextStudio;
     final studioOverlay = _textStudioOverlay;
+    final editingOverlay = _editingOverlay;
 
     return Scaffold(
       // Text studio is a Stack overlay — preview/timeline layout never reflows.
@@ -2211,23 +2224,31 @@ class _EditorScreenState extends State<EditorScreen>
                     ),
                   ),
                   IgnorePointer(
-                    ignoring: inTextStudio,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Keep the slot so the preview does not jump when a
-                        // bottom sheet hides the grab pill.
-                        if (_hideChromeHandle)
-                          const SizedBox(height: _chromeHandleHeight)
-                        else
-                          _buildChromeHandle(l10n),
-                        _buildCollapsibleChrome(
-                          l10n: l10n,
-                          project: project,
-                          controller: controller,
-                          isInlineEditing: _editingOverlayId != null,
-                        ),
-                      ],
+                    ignoring: inTextStudio || editingOverlay != null,
+                    child: Visibility(
+                      // Keep chrome layout size so the preview does not go
+                      // full-bleed, but hide the grab pill — it otherwise shows
+                      // through the translucent iOS keyboard top as a "gap".
+                      visible: editingOverlay == null,
+                      maintainSize: true,
+                      maintainAnimation: true,
+                      maintainState: true,
+                      maintainInteractivity: false,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_hideChromeHandle)
+                            const SizedBox(height: _chromeHandleHeight)
+                          else
+                            _buildChromeHandle(l10n),
+                          _buildCollapsibleChrome(
+                            l10n: l10n,
+                            project: project,
+                            controller: controller,
+                            isInlineEditing: _editingOverlayId != null,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -2278,6 +2299,36 @@ class _EditorScreenState extends State<EditorScreen>
                         });
                       },
                     ),
+                  ),
+                ),
+              if (editingOverlay != null)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: Builder(
+                    builder: (context) {
+                      final keyboard = MediaQueryData.fromView(View.of(context))
+                          .viewInsets
+                          .bottom;
+                      // Anchor to the body bottom and fill the inset with the
+                      // toolbar color. Pinning with `bottom: keyboard` alone
+                      // left a dark strip when the inset and the visible
+                      // keyboard top disagreed.
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          BasicTextEditToolbar(
+                            overlay: editingOverlay,
+                            onChanged: _updateOverlay,
+                          ),
+                          ColoredBox(
+                            color: BasicTextEditToolbar.barBackground,
+                            child: SizedBox(height: keyboard, width: double.infinity),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                 ),
             ],

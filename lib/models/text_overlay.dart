@@ -31,6 +31,8 @@ class TextOverlay {
     this.style = TextOverlayStyle.plain,
     this.templateId,
     this.packItemId,
+    this.fontFamily,
+    this.textAlign = TextAlign.center,
     this.alignment = Alignment.center,
     this.offset = Offset.zero,
     this.boxWidth = 200,
@@ -52,6 +54,13 @@ class TextOverlay {
 
   /// Installed / bundled server-pack item id (Lottie + style).
   String? packItemId;
+
+  /// Font id from [OverlayFonts] (`null` / `overlay` = bundled default).
+  String? fontFamily;
+
+  /// Horizontal alignment inside the text box (Shorts-style left/center/right).
+  TextAlign textAlign;
+
   Alignment alignment;
 
   /// Normalized offset from center. Values beyond ±1 place text past the frame edge.
@@ -76,6 +85,8 @@ class TextOverlay {
     TextOverlayStyle? style,
     Object? templateId = _unset,
     Object? packItemId = _unset,
+    Object? fontFamily = _unset,
+    TextAlign? textAlign,
     Alignment? alignment,
     Offset? offset,
     double? boxWidth,
@@ -97,6 +108,10 @@ class TextOverlay {
       packItemId: identical(packItemId, _unset)
           ? this.packItemId
           : packItemId as String?,
+      fontFamily: identical(fontFamily, _unset)
+          ? this.fontFamily
+          : fontFamily as String?,
+      textAlign: textAlign ?? this.textAlign,
       alignment: alignment ?? this.alignment,
       offset: offset ?? this.offset,
       boxWidth: boxWidth ?? this.boxWidth,
@@ -117,6 +132,8 @@ class TextOverlay {
       style: style,
       templateId: templateId,
       packItemId: packItemId,
+      fontFamily: fontFamily,
+      textAlign: textAlign,
       alignment: alignment,
       offset: offset ?? this.offset,
       boxWidth: boxWidth,
@@ -142,6 +159,8 @@ class TextOverlay {
     'style': style.name,
     if (templateId != null) 'templateId': templateId,
     if (packItemId != null) 'packItemId': packItemId,
+    if (fontFamily != null) 'fontFamily': fontFamily,
+    'textAlign': textAlign.name,
     'alignmentX': alignment.x,
     'alignmentY': alignment.y,
     'offsetDx': offset.dx,
@@ -163,6 +182,8 @@ class TextOverlay {
       style: TextOverlayStyle.fromJson(json['style'] as String?),
       templateId: json['templateId'] as String?,
       packItemId: json['packItemId'] as String?,
+      fontFamily: json['fontFamily'] as String?,
+      textAlign: _textAlignFromJson(json['textAlign'] as String?),
       alignment: Alignment(
         (json['alignmentX'] as num?)?.toDouble() ?? 0,
         (json['alignmentY'] as num?)?.toDouble() ?? 0,
@@ -176,6 +197,24 @@ class TextOverlay {
       rotation: (json['rotation'] as num?)?.toDouble() ?? 0,
       lane: json['lane'] as int? ?? 0,
     );
+  }
+}
+
+TextAlign _textAlignFromJson(String? value) {
+  switch (value) {
+    case 'left':
+      return TextAlign.left;
+    case 'right':
+      return TextAlign.right;
+    case 'justify':
+      return TextAlign.justify;
+    case 'start':
+      return TextAlign.start;
+    case 'end':
+      return TextAlign.end;
+    case 'center':
+    default:
+      return TextAlign.center;
   }
 }
 

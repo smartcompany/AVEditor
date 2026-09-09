@@ -70,6 +70,8 @@ class EditorSnapshot {
             style: overlay.style,
             templateId: overlay.templateId,
             packItemId: overlay.packItemId,
+            fontFamily: overlay.fontFamily,
+            textAlign: overlay.textAlign,
             alignment: overlay.alignment,
             offset: overlay.offset,
             boxWidth: overlay.boxWidth,
