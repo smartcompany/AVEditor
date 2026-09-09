@@ -72,6 +72,8 @@ class EditorSnapshot {
             packItemId: overlay.packItemId,
             fontFamily: overlay.fontFamily,
             textAlign: overlay.textAlign,
+            animationId: overlay.animationId,
+            animationDurationMs: overlay.animationDurationMs,
             alignment: overlay.alignment,
             offset: overlay.offset,
             boxWidth: overlay.boxWidth,

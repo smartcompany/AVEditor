@@ -1,13 +1,15 @@
 import 'package:aveditor/l10n/app_localizations.dart';
 import 'package:aveditor/l10n/l10n_extensions.dart';
+import 'package:aveditor/models/text_entrance_animation.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/text_overlay_style.dart';
-import 'package:aveditor/models/text_style_template.dart';
 import 'package:aveditor/models/text_template_pack.dart';
 import 'package:aveditor/services/text_template_pack_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/utils/editor_sheet_metrics.dart';
+import 'package:aveditor/widgets/overlay_fonts.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
+import 'package:aveditor/widgets/text_entrance.dart';
 import 'package:aveditor/widgets/text_template_pack_browser.dart';
 import 'package:aveditor/widgets/video_preview.dart';
 import 'package:flutter/material.dart';
@@ -269,16 +271,8 @@ class _TextStudioPanelState extends State<TextStudioPanel>
         style: TextOverlayStyle.plain,
         templateId: null,
         packItemId: null,
-      ),
-    );
-  }
-
-  void _selectWordArt(TextStyleTemplate template) {
-    _emitOverlay(
-      widget.overlay.copyWith(
-        templateId: template.id,
-        packItemId: null,
-        style: TextOverlayStyle.plain,
+        animationId: '',
+        animationDurationMs: null,
       ),
     );
   }
@@ -303,14 +297,22 @@ class _TextStudioPanelState extends State<TextStudioPanel>
       _textController.text = text;
       widget.onTextChanged(text);
     }
+    final fontId = item.style.preferredFontId;
     _emitOverlay(
       widget.overlay.copyWith(
         text: text,
         packItemId: item.id,
         templateId: null,
         style: TextOverlayStyle.plain,
+        fontFamily: fontId ?? widget.overlay.fontFamily,
+        // Clear override so the pack's catalog animation applies.
+        animationId: null,
+        animationDurationMs: null,
       ),
     );
+    if (fontId != null) {
+      OverlayFonts.ensureLoaded(fontId);
+    }
   }
 
   void _cycleStyle() {
@@ -487,7 +489,7 @@ class _TextStudioPanelState extends State<TextStudioPanel>
       (TextStudioTab.fonts, l10n.textStudioTabFonts, false),
       (TextStudioTab.style, l10n.textStudioTabStyle, true),
       (TextStudioTab.effects, l10n.textStudioTabEffects, false),
-      (TextStudioTab.animation, l10n.textStudioTabAnimation, false),
+      (TextStudioTab.animation, l10n.textStudioTabAnimation, true),
       (TextStudioTab.bubbles, l10n.textStudioTabBubbles, false),
     ];
 
@@ -555,9 +557,10 @@ class _TextStudioPanelState extends State<TextStudioPanel>
         return _buildTemplatesGrid(l10n);
       case TextStudioTab.style:
         return _buildStyleTab(l10n);
+      case TextStudioTab.animation:
+        return _buildAnimationTab(l10n);
       case TextStudioTab.fonts:
       case TextStudioTab.effects:
-      case TextStudioTab.animation:
       case TextStudioTab.bubbles:
         return Center(
           child: Text(
@@ -569,11 +572,9 @@ class _TextStudioPanelState extends State<TextStudioPanel>
   }
 
   Widget _buildTemplatesGrid(AppLocalizations l10n) {
-    final wordArt = TextStyleTemplateCatalog.all;
-    final packItems = <TextTemplatePackItem>[];
-    for (final category in _packService.catalog.categories) {
-      packItems.addAll(category.items);
-    }
+    final packItems = <TextTemplatePackItem>[
+      for (final category in _packService.catalog.categories) ...category.items,
+    ];
 
     return GridView.builder(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
@@ -583,7 +584,7 @@ class _TextStudioPanelState extends State<TextStudioPanel>
         crossAxisSpacing: 8,
         childAspectRatio: 0.85,
       ),
-      itemCount: 1 + wordArt.length + packItems.length,
+      itemCount: 1 + packItems.length,
       itemBuilder: (context, index) {
         if (index == 0) {
           return _TemplateTile(
@@ -604,26 +605,7 @@ class _TextStudioPanelState extends State<TextStudioPanel>
             ),
           );
         }
-        final wordIndex = index - 1;
-        if (wordIndex < wordArt.length) {
-          final template = wordArt[wordIndex];
-          final selected =
-              widget.overlay.templateId == template.id &&
-              widget.overlay.packItemId == null;
-          return _TemplateTile(
-            selected: selected,
-            label: template.label,
-            onTap: () => _selectWordArt(template),
-            child: OverlayTextDisplay(
-              text: 'Aa',
-              color: widget.overlay.color,
-              fontSize: 18,
-              maxWidth: 64,
-              template: template,
-            ),
-          );
-        }
-        final pack = packItems[wordIndex - wordArt.length];
+        final pack = packItems[index - 1];
         final selected = widget.overlay.packItemId == pack.id;
         final downloading = _packService.isDownloading(pack.id);
         final installed = _packService.isInstalled(pack);
@@ -652,13 +634,72 @@ class _TextStudioPanelState extends State<TextStudioPanel>
                   height: 44,
                 ),
               OverlayTextDisplay(
-                text: pack.title,
+                text: 'Aa',
                 color: widget.overlay.color,
-                fontSize: 14,
-                maxWidth: 70,
+                fontSize: 18,
+                maxWidth: 64,
+                fontFamily: pack.style.preferredFontId,
                 template: pack.style,
               ),
             ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildAnimationTab(AppLocalizations l10n) {
+    final resolved = resolveOverlayAnimation(widget.overlay);
+    final options = <(String, String)>[
+      ('', 'None'),
+      (TextEntranceIds.typewriter, 'Typewriter'),
+      (TextEntranceIds.fade, 'Fade'),
+      (TextEntranceIds.slideUp, 'Slide up'),
+    ];
+
+    return GridView.builder(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 4,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
+        childAspectRatio: 0.85,
+      ),
+      itemCount: options.length,
+      itemBuilder: (context, index) {
+        final (id, label) = options[index];
+        final selected = id.isEmpty
+            ? resolved.isNone
+            : resolved.id == id && !resolved.isNone;
+        final previewEntrance = id.isEmpty
+            ? TextEntranceState.fullyVisible
+            : evaluateTextEntrance(
+                animationId: id,
+                text: 'Aa',
+                progress: 0.65,
+                fontSize: 18,
+              );
+        return _TemplateTile(
+          selected: selected,
+          label: label,
+          onTap: () {
+            _emitOverlay(
+              widget.overlay.copyWith(
+                animationId: id,
+                animationDurationMs: id.isEmpty
+                    ? null
+                    : TextEntranceAnimation.defaultDurationMs,
+              ),
+            );
+          },
+          child: OverlayTextDisplay(
+            text: 'Aa',
+            color: widget.overlay.color,
+            fontSize: 18,
+            maxWidth: 64,
+            template: resolveOverlayTemplate(widget.overlay),
+            fontFamily: widget.overlay.fontFamily,
+            entrance: previewEntrance,
           ),
         );
       },

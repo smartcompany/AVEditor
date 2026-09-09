@@ -1,11 +1,14 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:aveditor/models/text_entrance_animation.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/text_overlay_style.dart';
 import 'package:aveditor/models/text_style_template.dart';
 import 'package:aveditor/services/text_template_pack_service.dart';
 import 'package:aveditor/widgets/overlay_fonts.dart';
 import 'package:aveditor/widgets/overlay_geometry.dart';
+import 'package:aveditor/widgets/text_entrance.dart';
 import 'package:flutter/material.dart';
 
 /// Soft floor so a single glyph still has a grab target; chrome hugs text.
@@ -96,7 +99,7 @@ EdgeInsets overlayTextBackgroundPadding(double fontSize) {
   );
 }
 
-/// Paints one rounded background per line, like YouTube Shorts.
+/// Paints one background strip per line (capsule or CapCut-like brush paper).
 void paintOverlayLineBackgrounds({
   required Canvas canvas,
   required TextPainter painter,
@@ -106,23 +109,157 @@ void paintOverlayLineBackgrounds({
   double padHFactor = 0.22,
   double padVFactor = 0.14,
   double radiusFactor = 0.18,
+  TextStyleLineShape shape = TextStyleLineShape.capsule,
+  double shadowOpacity = 0,
+  double shadowBlurFactor = 0.12,
+  Set<int>? visibleLineIndexes,
 }) {
   if (background.a <= 0) return;
 
   final padH = fontSize * padHFactor;
   final padV = fontSize * padVFactor;
-  final radius = Radius.circular((fontSize * radiusFactor).clamp(4.0, 12.0));
-  final paint = Paint()..color = background;
+  var lineIndex = 0;
 
   for (final line in painter.computeLineMetrics()) {
+    final include =
+        visibleLineIndexes == null || visibleLineIndexes.contains(lineIndex);
+    lineIndex++;
+    if (!include) continue;
+
     final rect = Rect.fromLTWH(
       origin.dx + line.left - padH,
       origin.dy + line.baseline - line.ascent - padV,
       line.width + padH * 2,
       line.ascent + line.descent + padV * 2,
     );
-    canvas.drawRRect(RRect.fromRectAndRadius(rect, radius), paint);
+    if (shape == TextStyleLineShape.brush) {
+      _paintBrushLineBackground(
+        canvas: canvas,
+        rect: rect,
+        color: background,
+        fontSize: fontSize,
+        shadowOpacity: shadowOpacity,
+        shadowBlurFactor: shadowBlurFactor,
+      );
+    } else {
+      final radius = Radius.circular((fontSize * radiusFactor).clamp(4.0, 12.0));
+      if (shadowOpacity > 0) {
+        final shadowPaint = Paint()
+          ..color = const Color(0xFF000000).withValues(alpha: shadowOpacity)
+          ..maskFilter = MaskFilter.blur(
+            BlurStyle.normal,
+            (fontSize * shadowBlurFactor).clamp(1.0, 24.0),
+          );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(rect.translate(0, fontSize * 0.04), radius),
+          shadowPaint,
+        );
+      }
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, radius),
+        Paint()..color = background,
+      );
+    }
   }
+}
+
+/// CapCut journal strip: wavy torn edges + soft outer glow.
+void _paintBrushLineBackground({
+  required Canvas canvas,
+  required Rect rect,
+  required Color color,
+  required double fontSize,
+  required double shadowOpacity,
+  required double shadowBlurFactor,
+}) {
+  final path = _tornPaperPath(rect);
+  if (shadowOpacity > 0) {
+    final shadowPaint = Paint()
+      ..color = const Color(0xFF000000).withValues(alpha: shadowOpacity)
+      ..maskFilter = MaskFilter.blur(
+        BlurStyle.normal,
+        (fontSize * shadowBlurFactor).clamp(2.0, 28.0),
+      );
+    canvas.save();
+    canvas.translate(0, fontSize * 0.045);
+    canvas.drawPath(path, shadowPaint);
+    canvas.restore();
+  }
+
+  // Soft fringe so edges read as brush / torn paper, not hard vectors.
+  final fringe = Paint()
+    ..color = color.withValues(alpha: (color.a * 0.55).clamp(0.0, 1.0))
+    ..maskFilter = MaskFilter.blur(
+      BlurStyle.normal,
+      (fontSize * 0.08).clamp(1.2, 10.0),
+    );
+  canvas.drawPath(path, fringe);
+  canvas.drawPath(path, Paint()..color = color);
+}
+
+/// Deterministic irregular strip path (stable across frames / export).
+Path _tornPaperPath(Rect rect) {
+  final h = rect.height;
+  final w = rect.width;
+  final seed = (rect.left * 0.13 + rect.top * 0.07).abs();
+  double n(double t, double a, double f, double p) =>
+      math.sin((t + seed) * f * math.pi * 2 + p) * a;
+
+  final path = Path();
+  final leftInset = h * 0.08;
+  final rightInset = h * 0.1;
+  final topAmp = h * 0.16;
+  final botAmp = h * 0.14;
+
+  // Jagged left cap.
+  path.moveTo(rect.left + leftInset, rect.top + h * 0.42);
+  path.quadraticBezierTo(
+    rect.left - h * 0.04,
+    rect.top + h * 0.18 + n(0.1, topAmp * 0.4, 1.7, 0.4),
+    rect.left + leftInset * 0.6,
+    rect.top + n(0.15, topAmp, 2.1, 0.2),
+  );
+
+  // Wavy top edge left → right.
+  const steps = 10;
+  for (var i = 1; i <= steps; i++) {
+    final t = i / steps;
+    final x = rect.left + leftInset + (w - leftInset - rightInset) * t;
+    final y = rect.top + n(t, topAmp, 2.4, 0.6) + n(t, topAmp * 0.35, 5.1, 1.3);
+    path.lineTo(x, y);
+  }
+
+  // Jagged right cap.
+  path.quadraticBezierTo(
+    rect.right + h * 0.05,
+    rect.top + h * 0.35 + n(0.9, botAmp * 0.5, 1.9, 2.1),
+    rect.right - rightInset * 0.35,
+    rect.bottom - h * 0.28 + n(1.0, botAmp * 0.3, 2.2, 0.8),
+  );
+  path.quadraticBezierTo(
+    rect.right + h * 0.02,
+    rect.bottom - h * 0.08,
+    rect.right - rightInset,
+    rect.bottom + n(1.05, botAmp, 2.0, 1.7),
+  );
+
+  // Wavy bottom edge right → left.
+  for (var i = steps - 1; i >= 0; i--) {
+    final t = i / steps;
+    final x = rect.left + leftInset + (w - leftInset - rightInset) * t;
+    final y =
+        rect.bottom + n(t, botAmp, 2.2, 2.4) + n(t, botAmp * 0.4, 4.6, 0.9);
+    path.lineTo(x, y);
+  }
+
+  path.quadraticBezierTo(
+    rect.left - h * 0.03,
+    rect.bottom - h * 0.25,
+    rect.left + leftInset,
+    rect.top + h * 0.42,
+  );
+  path.close();
+  return path;
 }
 
 TextStyle _baseTextStyle({
@@ -400,7 +537,137 @@ void paintTextStyleTemplate({
   required TextStyleTemplate template,
   String? fontFamily,
   TextAlign textAlign = TextAlign.center,
+  TextEntranceState? entrance,
 }) {
+  final state = entrance ?? TextEntranceState.fullyVisible;
+  if (state.isInvisible) return;
+
+  void paintStatic({required double opacity, required Offset paintOrigin}) {
+    if (opacity <= 0.01) return;
+    final fillColor = template.resolveFill(accent).withValues(
+      alpha: (template.resolveFill(accent).a * opacity).clamp(0.0, 1.0),
+    );
+    final metricsPainter = createOverlayTextPainter(
+      text: text,
+      style: _baseTextStyle(
+        fontSize: fontSize,
+        fontFamily: fontFamily,
+        color: fillColor,
+      ),
+      maxWidth: maxWidth,
+      textAlign: textAlign,
+    );
+
+    final lineBg = template.lineBackground;
+    if (lineBg != null) {
+      paintOverlayLineBackgrounds(
+        canvas: canvas,
+        painter: metricsPainter,
+        origin: paintOrigin,
+        background: lineBg.resolveColor(accent).withValues(
+          alpha: (lineBg.resolveColor(accent).a * opacity).clamp(0.0, 1.0),
+        ),
+        fontSize: fontSize,
+        padHFactor: lineBg.padHFactor,
+        padVFactor: lineBg.padVFactor,
+        radiusFactor: lineBg.radiusFactor,
+        shape: lineBg.shape,
+        shadowOpacity: lineBg.shadowOpacity * opacity,
+        shadowBlurFactor: lineBg.shadowBlurFactor,
+      );
+    }
+
+    final glow = template.glow;
+    if (glow != null) {
+      final glowColor = glow.resolveColor(accent);
+      _paintStrokeLayer(
+        canvas: canvas,
+        text: text,
+        fontSize: fontSize,
+        maxWidth: maxWidth,
+        origin: paintOrigin,
+        color: glowColor.withValues(
+          alpha: (glowColor.a * opacity).clamp(0.0, 1.0),
+        ),
+        width: (fontSize * glow.widthFactor).clamp(1.0, 40.0),
+        fontFamily: fontFamily,
+        textAlign: textAlign,
+        blur: (fontSize * glow.blurFactor).clamp(1.0, 48.0),
+      );
+    }
+
+    final shadow = template.shadow;
+    if (shadow != null) {
+      final dx = fontSize * shadow.dxFactor;
+      final dy = fontSize * shadow.dyFactor;
+      final blur = fontSize * shadow.blurFactor;
+      final shadowColor = shadow.resolveColor(accent);
+      _paintFillLayer(
+        canvas: canvas,
+        text: text,
+        fontSize: fontSize,
+        maxWidth: maxWidth,
+        origin: paintOrigin + Offset(dx, dy),
+        color: shadowColor.withValues(
+          alpha: (shadowColor.a * opacity).clamp(0.0, 1.0),
+        ),
+        fontFamily: fontFamily,
+        textAlign: textAlign,
+        shadows: blur > 0
+            ? [
+                Shadow(
+                  blurRadius: blur,
+                  color: shadowColor.withValues(
+                    alpha: (shadowColor.a * opacity).clamp(0.0, 1.0),
+                  ),
+                ),
+              ]
+            : null,
+      );
+    }
+
+    final strokes = [...template.strokes]
+      ..sort((a, b) => b.widthFactor.compareTo(a.widthFactor));
+    for (final stroke in strokes) {
+      final strokeColor = stroke.resolveColor(accent);
+      _paintStrokeLayer(
+        canvas: canvas,
+        text: text,
+        fontSize: fontSize,
+        maxWidth: maxWidth,
+        origin: paintOrigin,
+        color: strokeColor.withValues(
+          alpha: (strokeColor.a * opacity).clamp(0.0, 1.0),
+        ),
+        width: (fontSize * stroke.widthFactor).clamp(1.0, 40.0),
+        fontFamily: fontFamily,
+        textAlign: textAlign,
+      );
+    }
+
+    _paintFillLayer(
+      canvas: canvas,
+      text: text,
+      fontSize: fontSize,
+      maxWidth: maxWidth,
+      origin: paintOrigin,
+      color: fillColor,
+      fontFamily: fontFamily,
+      textAlign: textAlign,
+    );
+
+    metricsPainter.dispose();
+  }
+
+  if (!state.perGlyph || state.glyphs.isEmpty) {
+    paintStatic(
+      opacity: state.layerOpacity,
+      paintOrigin: origin + Offset(0, state.layerDy),
+    );
+    return;
+  }
+
+  // Per-grapheme reveal: layout full string, paint visible chars in place.
   final fillColor = template.resolveFill(accent);
   final metricsPainter = createOverlayTextPainter(
     text: text,
@@ -413,8 +680,37 @@ void paintTextStyleTemplate({
     textAlign: textAlign,
   );
 
+  final graphemes = text.characters.toList(growable: false);
+  final visibleLines = <int>{};
+  var utf16 = 0;
+  for (var i = 0; i < graphemes.length; i++) {
+    final g = graphemes[i];
+    final opacity =
+        i < state.glyphs.length ? state.glyphs[i].opacity : 1.0;
+    if (opacity > 0.01) {
+      final boxes = metricsPainter.getBoxesForSelection(
+        TextSelection(
+          baseOffset: utf16,
+          extentOffset: utf16 + g.length,
+        ),
+      );
+      for (final box in boxes) {
+        var lineIdx = 0;
+        for (final line in metricsPainter.computeLineMetrics()) {
+          final lineTop = line.baseline - line.ascent;
+          final lineBottom = line.baseline + line.descent;
+          if (box.top < lineBottom && box.bottom > lineTop) {
+            visibleLines.add(lineIdx);
+          }
+          lineIdx++;
+        }
+      }
+    }
+    utf16 += g.length;
+  }
+
   final lineBg = template.lineBackground;
-  if (lineBg != null) {
+  if (lineBg != null && visibleLines.isNotEmpty) {
     paintOverlayLineBackgrounds(
       canvas: canvas,
       painter: metricsPainter,
@@ -424,74 +720,125 @@ void paintTextStyleTemplate({
       padHFactor: lineBg.padHFactor,
       padVFactor: lineBg.padVFactor,
       radiusFactor: lineBg.radiusFactor,
+      shape: lineBg.shape,
+      shadowOpacity: lineBg.shadowOpacity,
+      shadowBlurFactor: lineBg.shadowBlurFactor,
+      visibleLineIndexes: visibleLines,
     );
   }
 
+  utf16 = 0;
+  for (var i = 0; i < graphemes.length; i++) {
+    final g = graphemes[i];
+    final glyph = i < state.glyphs.length
+        ? state.glyphs[i]
+        : const TextEntranceGlyph(opacity: 1);
+    final nextUtf = utf16 + g.length;
+    if (glyph.isVisible && g.trim().isNotEmpty) {
+      final caret = metricsPainter.getOffsetForCaret(
+        TextPosition(offset: utf16),
+        Rect.zero,
+      );
+      final charOrigin = origin + caret + Offset(0, glyph.dy);
+      _paintStyledGrapheme(
+        canvas: canvas,
+        grapheme: g,
+        accent: accent,
+        fontSize: fontSize,
+        origin: charOrigin,
+        template: template,
+        fontFamily: fontFamily,
+        opacity: glyph.opacity,
+      );
+    } else if (glyph.isVisible) {
+      // Whitespace still advances layout via caret; nothing to paint.
+    }
+    utf16 = nextUtf;
+  }
+
+  metricsPainter.dispose();
+}
+
+void _paintStyledGrapheme({
+  required Canvas canvas,
+  required String grapheme,
+  required Color accent,
+  required double fontSize,
+  required Offset origin,
+  required TextStyleTemplate template,
+  String? fontFamily,
+  required double opacity,
+}) {
+  final fill = template.resolveFill(accent).withValues(
+    alpha: (template.resolveFill(accent).a * opacity).clamp(0.0, 1.0),
+  );
+
   final glow = template.glow;
   if (glow != null) {
+    final glowColor = glow.resolveColor(accent);
     _paintStrokeLayer(
       canvas: canvas,
-      text: text,
+      text: grapheme,
       fontSize: fontSize,
-      maxWidth: maxWidth,
+      maxWidth: fontSize * 4,
       origin: origin,
-      color: glow.resolveColor(accent),
+      color: glowColor.withValues(
+        alpha: (glowColor.a * opacity).clamp(0.0, 1.0),
+      ),
       width: (fontSize * glow.widthFactor).clamp(1.0, 40.0),
       fontFamily: fontFamily,
-      textAlign: textAlign,
+      textAlign: TextAlign.left,
       blur: (fontSize * glow.blurFactor).clamp(1.0, 48.0),
     );
   }
 
   final shadow = template.shadow;
   if (shadow != null) {
-    final dx = fontSize * shadow.dxFactor;
-    final dy = fontSize * shadow.dyFactor;
-    final blur = fontSize * shadow.blurFactor;
+    final shadowColor = shadow.resolveColor(accent);
     _paintFillLayer(
       canvas: canvas,
-      text: text,
+      text: grapheme,
       fontSize: fontSize,
-      maxWidth: maxWidth,
-      origin: origin + Offset(dx, dy),
-      color: shadow.resolveColor(accent),
+      maxWidth: fontSize * 4,
+      origin: origin +
+          Offset(fontSize * shadow.dxFactor, fontSize * shadow.dyFactor),
+      color: shadowColor.withValues(
+        alpha: (shadowColor.a * opacity).clamp(0.0, 1.0),
+      ),
       fontFamily: fontFamily,
-      textAlign: textAlign,
-      shadows: blur > 0
-          ? [Shadow(blurRadius: blur, color: shadow.resolveColor(accent))]
-          : null,
+      textAlign: TextAlign.left,
     );
   }
 
-  // Thick strokes first so thinner ones sit on top.
   final strokes = [...template.strokes]
     ..sort((a, b) => b.widthFactor.compareTo(a.widthFactor));
   for (final stroke in strokes) {
+    final strokeColor = stroke.resolveColor(accent);
     _paintStrokeLayer(
       canvas: canvas,
-      text: text,
+      text: grapheme,
       fontSize: fontSize,
-      maxWidth: maxWidth,
+      maxWidth: fontSize * 4,
       origin: origin,
-      color: stroke.resolveColor(accent),
+      color: strokeColor.withValues(
+        alpha: (strokeColor.a * opacity).clamp(0.0, 1.0),
+      ),
       width: (fontSize * stroke.widthFactor).clamp(1.0, 40.0),
       fontFamily: fontFamily,
-      textAlign: textAlign,
+      textAlign: TextAlign.left,
     );
   }
 
   _paintFillLayer(
     canvas: canvas,
-    text: text,
+    text: grapheme,
     fontSize: fontSize,
-    maxWidth: maxWidth,
+    maxWidth: fontSize * 4,
     origin: origin,
-    color: fillColor,
+    color: fill,
     fontFamily: fontFamily,
-    textAlign: textAlign,
+    textAlign: TextAlign.left,
   );
-
-  metricsPainter.dispose();
 }
 
 /// Paints the style background and text the same way in preview and export.
@@ -501,6 +848,7 @@ void paintOverlayTextLayer({
   required OverlayBox box,
   required double frameWidth,
   required double frameHeight,
+  TextEntranceState? entrance,
 }) {
   final template = resolveOverlayTemplate(overlay);
   final fillColor = template.resolveFill(overlay.color);
@@ -522,6 +870,22 @@ void paintOverlayTextLayer({
   );
   metricsPainter.dispose();
 
+  final anim = resolveOverlayAnimation(overlay);
+  final TextEntranceState resolvedEntrance;
+  if (entrance != null) {
+    resolvedEntrance = entrance;
+  } else if (anim.isNone) {
+    resolvedEntrance = TextEntranceState.fullyVisible;
+  } else {
+    // Export static path without an explicit progress → fully revealed.
+    resolvedEntrance = evaluateTextEntrance(
+      animationId: anim.id,
+      text: overlay.text,
+      progress: 1,
+      fontSize: box.fontSize,
+    );
+  }
+
   paintTextStyleTemplate(
     canvas: canvas,
     text: overlay.text,
@@ -532,6 +896,7 @@ void paintOverlayTextLayer({
     template: template,
     fontFamily: overlay.fontFamily,
     textAlign: overlay.textAlign,
+    entrance: resolvedEntrance,
   );
 }
 
@@ -547,6 +912,7 @@ class OverlayTextDisplay extends StatelessWidget {
     this.fontFamily,
     this.textAlign = TextAlign.center,
     this.hintColor,
+    this.entrance,
   });
 
   final String text;
@@ -557,6 +923,7 @@ class OverlayTextDisplay extends StatelessWidget {
   final String? fontFamily;
   final TextAlign textAlign;
   final Color? hintColor;
+  final TextEntranceState? entrance;
 
   @override
   Widget build(BuildContext context) {
@@ -585,6 +952,7 @@ class OverlayTextDisplay extends StatelessWidget {
         fontFamily: fontFamily,
         textAlign: textAlign,
         hintColor: hintColor,
+        entrance: entrance,
       ),
     );
   }
@@ -600,6 +968,7 @@ class _OverlayTextDisplayPainter extends CustomPainter {
     this.fontFamily,
     this.textAlign = TextAlign.center,
     this.hintColor,
+    this.entrance,
   });
 
   final String text;
@@ -610,6 +979,7 @@ class _OverlayTextDisplayPainter extends CustomPainter {
   final String? fontFamily;
   final TextAlign textAlign;
   final Color? hintColor;
+  final TextEntranceState? entrance;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -637,6 +1007,7 @@ class _OverlayTextDisplayPainter extends CustomPainter {
       template: template,
       fontFamily: fontFamily,
       textAlign: textAlign,
+      entrance: entrance,
     );
   }
 
@@ -649,6 +1020,8 @@ class _OverlayTextDisplayPainter extends CustomPainter {
         oldDelegate.template.id != template.id ||
         oldDelegate.fontFamily != fontFamily ||
         oldDelegate.textAlign != textAlign ||
-        oldDelegate.hintColor != hintColor;
+        oldDelegate.hintColor != hintColor ||
+        oldDelegate.entrance?.progress != entrance?.progress ||
+        oldDelegate.entrance?.animationId != entrance?.animationId;
   }
 }

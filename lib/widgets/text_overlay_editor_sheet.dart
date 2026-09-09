@@ -1,8 +1,10 @@
 import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/text_overlay_style.dart';
-import 'package:aveditor/models/text_style_template.dart';
+import 'package:aveditor/models/text_template_pack.dart';
+import 'package:aveditor/services/text_template_pack_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
+import 'package:aveditor/widgets/overlay_fonts.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/widgets/video_preview.dart';
 import 'package:flutter/material.dart';
@@ -52,7 +54,12 @@ class _TextOverlayEditorSheetState extends State<_TextOverlayEditorSheet> {
   late TextOverlayStyle _style;
   String? _templateId;
   String? _packItemId;
+  String? _fontFamily;
+  String? _animationId;
+  int? _animationDurationMs;
   var _closed = false;
+
+  final _packService = TextTemplatePackService.instance;
 
   static const _colors = [
     Colors.white,
@@ -71,6 +78,21 @@ class _TextOverlayEditorSheetState extends State<_TextOverlayEditorSheet> {
     _style = widget.overlay.style;
     _templateId = widget.overlay.templateId;
     _packItemId = widget.overlay.packItemId;
+    _fontFamily = widget.overlay.fontFamily;
+    _animationId = widget.overlay.animationId;
+    _animationDurationMs = widget.overlay.animationDurationMs;
+    _packService.addListener(_onPackService);
+    _packService.ensureInitialized();
+  }
+
+  @override
+  void dispose() {
+    _packService.removeListener(_onPackService);
+    super.dispose();
+  }
+
+  void _onPackService() {
+    if (mounted) setState(() {});
   }
 
   TextOverlay _draft() {
@@ -86,6 +108,9 @@ class _TextOverlayEditorSheetState extends State<_TextOverlayEditorSheet> {
       style: _style,
       templateId: _templateId,
       packItemId: _packItemId,
+      fontFamily: _fontFamily,
+      animationId: _animationId,
+      animationDurationMs: _animationDurationMs,
     );
   }
 
@@ -102,12 +127,19 @@ class _TextOverlayEditorSheetState extends State<_TextOverlayEditorSheet> {
     _emitLive();
   }
 
-  void _selectTemplate(TextStyleTemplate template) {
+  void _selectPack(TextTemplatePackItem item) {
     setState(() {
-      _templateId = template.id;
-      _packItemId = null;
+      _packItemId = item.id;
+      _templateId = null;
       _style = TextOverlayStyle.plain;
+      _fontFamily = item.style.preferredFontId ?? _fontFamily;
+      _animationId = null;
+      _animationDurationMs = null;
     });
+    final fontId = item.style.preferredFontId;
+    if (fontId != null) {
+      OverlayFonts.ensureLoaded(fontId);
+    }
     _emitLive();
   }
 
@@ -116,12 +148,6 @@ class _TextOverlayEditorSheetState extends State<_TextOverlayEditorSheet> {
     _closed = true;
     widget.onRevert?.call();
     Navigator.pop(context);
-  }
-
-  String? get _selectedTemplateId {
-    if (_packItemId != null) return _packItemId;
-    if (_templateId != null) return _templateId;
-    return templateForBasicStyle(_style).id;
   }
 
   @override
@@ -194,17 +220,16 @@ class _TextOverlayEditorSheetState extends State<_TextOverlayEditorSheet> {
               height: 72,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
-                itemCount: TextStyleTemplateCatalog.all.length,
+                itemCount: _packService.catalog.allItems.length,
                 separatorBuilder: (_, _) => const SizedBox(width: 8),
                 itemBuilder: (context, index) {
-                  final template = TextStyleTemplateCatalog.all[index];
-                  final selected = _packItemId == null &&
-                      template.id == _selectedTemplateId;
-                  return _TemplateChip(
-                    template: template,
+                  final pack = _packService.catalog.allItems[index];
+                  final selected = pack.id == _packItemId;
+                  return _PackChip(
+                    pack: pack,
                     accent: _color,
                     selected: selected,
-                    onTap: () => _selectTemplate(template),
+                    onTap: () => _selectPack(pack),
                   );
                 },
               ),
@@ -243,15 +268,15 @@ class _TextOverlayEditorSheetState extends State<_TextOverlayEditorSheet> {
   }
 }
 
-class _TemplateChip extends StatelessWidget {
-  const _TemplateChip({
-    required this.template,
+class _PackChip extends StatelessWidget {
+  const _PackChip({
+    required this.pack,
     required this.accent,
     required this.selected,
     required this.onTap,
   });
 
-  final TextStyleTemplate template;
+  final TextTemplatePackItem pack;
   final Color accent;
   final bool selected;
   final VoidCallback onTap;
@@ -284,13 +309,14 @@ class _TemplateChip extends StatelessWidget {
                     color: accent,
                     fontSize: 16,
                     maxWidth: 56,
-                    template: template,
+                    fontFamily: pack.style.preferredFontId,
+                    template: pack.style,
                   ),
                 ),
               ),
               const SizedBox(height: 4),
               Text(
-                template.label,
+                pack.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(

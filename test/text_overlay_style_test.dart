@@ -2,7 +2,6 @@ import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/text_overlay_style.dart';
 import 'package:aveditor/models/text_style_template.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -24,31 +23,41 @@ void main() {
     expect(TextOverlayStyle.fromJson(null), TextOverlayStyle.plain);
   });
 
-  test('TextStyleTemplate round-trips through JSON', () {
-    final original = TextStyleTemplateCatalog.neon;
+  test('TextStyleTemplate round-trips through JSON including brush + font', () {
+    const original = TextStyleTemplate(
+      id: 'pack_journal',
+      label: 'Journal',
+      fillArgb: 0xFF2A1810,
+      fillUseAccent: false,
+      preferredFontId: 'gaegu',
+      lineBackground: TextStyleLineBackground(
+        useAccent: false,
+        colorArgb: 0xFFF2E4CC,
+        shape: TextStyleLineShape.brush,
+        shadowOpacity: 0.55,
+        shadowBlurFactor: 0.28,
+      ),
+    );
     final restored = TextStyleTemplate.fromJson(original.toJson());
 
     expect(restored.id, original.id);
-    expect(restored.label, original.label);
-    expect(restored.strokes.length, original.strokes.length);
-    expect(restored.glow?.blurFactor, original.glow?.blurFactor);
+    expect(restored.preferredFontId, 'gaegu');
+    expect(restored.lineBackground?.shape, TextStyleLineShape.brush);
+    expect(restored.lineBackground?.shadowOpacity, 0.55);
   });
 
-  test('catalog lookup and overlay template persistence', () {
-    final overlay = TextOverlay(
+  test('built-in Word Art catalog is empty (server-driven packs)', () {
+    expect(TextStyleTemplateCatalog.all, isEmpty);
+  });
+
+  test('basic style templates still resolve for Shorts A-cycle', () {
+    expect(TextStyleTemplateCatalog.byId('classic')?.id, 'classic');
+    expect(TextStyleTemplateCatalog.byId('outline')?.id, 'outline');
+    expect(resolveOverlayTemplate(TextOverlay(
       text: 'hi',
       start: Duration.zero,
-      end: const Duration(seconds: 2),
-      templateId: 'comic',
-    );
-
-    expect(overlay.template?.id, 'comic');
-    expect(resolveOverlayTemplate(overlay).id, 'comic');
-
-    final json = overlay.toJson();
-    final loaded = TextOverlay.fromJson(json);
-    expect(loaded.templateId, 'comic');
-    expect(loaded.template?.label, 'Comic');
+      end: const Duration(seconds: 1),
+    )).id, 'classic');
   });
 
   test('copyWith can clear templateId', () {
@@ -56,7 +65,7 @@ void main() {
       text: 'hi',
       start: Duration.zero,
       end: const Duration(seconds: 2),
-      templateId: 'neon',
+      templateId: 'outline',
     );
 
     final cleared = overlay.copyWith(templateId: null);

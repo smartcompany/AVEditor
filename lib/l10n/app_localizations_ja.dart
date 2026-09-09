@@ -39,6 +39,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get addText => 'テキストを追加';
 
   @override
+  String get addTemplateText => 'テンプレートテキストを追加';
+
+  @override
   String get rotateVideo => '動画を回転';
 
   @override

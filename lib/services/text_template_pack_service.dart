@@ -215,11 +215,12 @@ class TextTemplatePackService extends ChangeNotifier {
       }
     }
 
-    // Bundled first so local style/FX upgrades win over a stale CDN catalog.
-    for (final category in bundled.categories) {
+    // Remote first so catalog updates ship without an app release.
+    // Bundled fills gaps when the network is unavailable or incomplete.
+    for (final category in remote.categories) {
       addCategory(category);
     }
-    for (final category in remote.categories) {
+    for (final category in bundled.categories) {
       addCategory(category);
     }
 

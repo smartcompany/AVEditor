@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:aveditor/l10n/app_localizations.dart';
 import 'package:aveditor/l10n/l10n_extensions.dart';
@@ -51,7 +52,7 @@ class EditorScreen extends StatefulWidget {
 }
 
 class _EditorScreenState extends State<EditorScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   /// Fallback extent before the chrome has been laid out once.
   static const _chromeExtentFallback = 260.0;
 
@@ -107,6 +108,9 @@ class _EditorScreenState extends State<EditorScreen>
 
   /// Overlay currently edited inline on the preview (keyboard open).
   String? _editingOverlayId;
+
+  /// When true, the next inline-edit focus selects all (fresh basic-text add).
+  var _inlineEditSelectAll = false;
 
   /// CapCut-style text studio is open for this overlay id.
   String? _textStudioOverlayId;
@@ -185,12 +189,20 @@ class _EditorScreenState extends State<EditorScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _chrome = AnimationController(
       vsync: this,
       value: 1,
       duration: const Duration(milliseconds: 220),
     );
     _initVideo();
+  }
+
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    // Keyboard animation — rebuild so the editing lift tracks the IME.
+    if (_editingOverlayId != null && mounted) setState(() {});
   }
 
   double get _chromeExtent {
@@ -1022,6 +1034,7 @@ class _EditorScreenState extends State<EditorScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _saveDebounce?.cancel();
     final project = _project;
     if (project != null) {
@@ -1039,6 +1052,41 @@ class _EditorScreenState extends State<EditorScreen>
     unawaited(_musicPlayer.dispose());
     _chrome.dispose();
     super.dispose();
+  }
+
+  /// How far to shift the preview up so the editing text clears the keyboard.
+  double _previewLiftForEditing({
+    required double bodyH,
+    required double previewSlotW,
+    required double previewSlotH,
+    required double keyboard,
+    required TextOverlay overlay,
+  }) {
+    if (keyboard <= 0 || previewSlotH <= 0 || previewSlotW <= 0) return 0;
+
+    const toolbarH = 52.0;
+    const margin = 16.0;
+    const previewPadTop = 4.0;
+
+    final canvasW = previewSlotW;
+    final canvasH = canvasW * 16 / 9;
+    final scale = math.min(
+      previewSlotW / canvasW,
+      previewSlotH / canvasH,
+    );
+
+    final box = overlayBoxForFrame(overlay, frameWidth: canvasW);
+    final body = OverlayGeometry.bodyRect(
+      previewW: canvasW,
+      previewH: canvasH,
+      box: box,
+    );
+    // FittedBox(alignment: topCenter) — scaled canvas sits at the slot top.
+    final overlayBottomInBody = previewPadTop + body.bottom * scale;
+    final clearBottom = bodyH - keyboard - toolbarH - margin;
+    final overflow = overlayBottomInBody - clearBottom;
+    if (overflow <= 0) return 0;
+    return overflow;
   }
 
   TextOverlay? get _selectedOverlay {
@@ -1570,6 +1618,15 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   void _addTextOverlay() {
+    _placeNewTextOverlay(openStudio: false);
+  }
+
+  /// CapCut-style template text — opens the text studio on Templates.
+  void _addTemplateTextOverlay() {
+    _placeNewTextOverlay(openStudio: true);
+  }
+
+  void _placeNewTextOverlay({required bool openStudio}) {
     final project = _project;
     final controller = _controller;
     if (project == null || controller == null) return;
@@ -1584,10 +1641,12 @@ class _EditorScreenState extends State<EditorScreen>
       end = start + minOverlayDuration;
     }
 
+    // Basic text: seed placeholder so the field opens fully selected and the
+    // first keystroke replaces it. Template text stays empty for the studio.
+    final seed = openStudio ? '' : context.l10n.addText;
     final overlay = fitOverlayBoxToText(
-      TextOverlay(text: '', start: start, end: end),
+      TextOverlay(text: seed, start: start, end: end),
     );
-    // Keep timeline chrome; keyboard + toolbar overlay on top (no full-bleed preview).
     _textStudioFieldFocused = false;
     _textStudioHeightOverride = null;
     _textStudioSheetBottom = 0;
@@ -1606,8 +1665,16 @@ class _EditorScreenState extends State<EditorScreen>
       _selectedSegmentId = null;
       _selectedMusicId = null;
       _selectedTransitionAfterIndex = null;
-      _textStudioOverlayId = null;
-      _editingOverlayId = placed.id;
+      if (openStudio) {
+        _inlineEditSelectAll = false;
+        _editingOverlayId = null;
+        _textStudioOverlayId = placed.id;
+        _chrome.value = 1;
+      } else {
+        _inlineEditSelectAll = true;
+        _textStudioOverlayId = null;
+        _editingOverlayId = placed.id;
+      }
     });
   }
 
@@ -1771,6 +1838,9 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   void _onOverlayTextChanged(TextOverlay overlay, String text) {
+    if (_inlineEditSelectAll) {
+      _inlineEditSelectAll = false;
+    }
     _updateOverlay(overlay.copyWith(text: text));
   }
 
@@ -1802,11 +1872,17 @@ class _EditorScreenState extends State<EditorScreen>
 
     FocusManager.instance.primaryFocus?.unfocus();
 
-    if (overlay != null && overlay.text.trim().isEmpty) {
+    final placeholder = context.l10n.addText;
+    final isUnusedSeed =
+        overlay != null &&
+        (overlay.text.trim().isEmpty || overlay.text == placeholder);
+
+    if (isUnusedSeed) {
       OverlayEventLog.log('Editor', 'finishInlineEditingDeleteEmpty', {
         'source': source,
         'id': id,
       });
+      _inlineEditSelectAll = false;
       _deleteOverlay(id);
       return;
     }
@@ -1817,6 +1893,7 @@ class _EditorScreenState extends State<EditorScreen>
 
     setState(() {
       _editingOverlayId = null;
+      _inlineEditSelectAll = false;
       // Tap outside the box dismisses chrome entirely; other exits keep selection.
       _selectedOverlayId = source == 'preview_outside' ? null : id;
     });
@@ -1835,6 +1912,7 @@ class _EditorScreenState extends State<EditorScreen>
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       // Body tap → on-canvas edit only. Studio opens from corner edit / toolbar.
+      _inlineEditSelectAll = false;
       _textStudioOverlayId = null;
       _textStudioFieldFocused = false;
       _textStudioHeightOverride = null;
@@ -2107,6 +2185,18 @@ class _EditorScreenState extends State<EditorScreen>
                         builder: (context, constraints) {
                           final targetWidth = constraints.maxWidth;
                           final targetHeight = targetWidth * 16 / 9;
+                          final keyboard = MediaQueryData.fromView(
+                            View.of(context),
+                          ).viewInsets.bottom;
+                          final lift = editingOverlay == null
+                              ? 0.0
+                              : _previewLiftForEditing(
+                                  bodyH: bodyH,
+                                  previewSlotW: constraints.maxWidth,
+                                  previewSlotH: constraints.maxHeight,
+                                  keyboard: keyboard,
+                                  overlay: editingOverlay,
+                                );
                           return Listener(
                             behavior: HitTestBehavior.opaque,
                             onPointerDown: (e) {
@@ -2128,92 +2218,120 @@ class _EditorScreenState extends State<EditorScreen>
                             onPointerCancel: (e) => _previewKey.currentState
                                 ?.handlePointerCancel(e.pointer),
                             child: SizedBox.expand(
-                              child: FittedBox(
-                                fit: BoxFit.contain,
-                                clipBehavior: Clip.none,
-                                alignment: Alignment.topCenter,
-                                child: OverflowSizedBox(
-                                  width: targetWidth,
-                                  height: targetHeight,
-                                  child: VideoPreviewWithOverlays(
-                                    key: _previewKey,
-                                    videoAspectRatio: aspectRatio,
-                                    videoChild: _buildPreviewVideoChild(controller),
-                                    overlays: project.overlays,
-                                    segments: project.segments,
-                                    position: _playhead,
-                                    clipRotation: project.rotation,
-                                    hostViewportSize: Size(
-                                      constraints.maxWidth,
-                                      constraints.maxHeight,
-                                    ),
-                                    selectedOverlayId: _selectedOverlayId,
-                                    editingOverlayId: _editingOverlayId,
-                                    textHint: l10n.textOverlayHint,
-                                    onOverlaySelected: (overlay) {
-                                      if (_inTextStudio &&
-                                          _textStudioOverlayId != overlay.id) {
-                                        _closeTextStudio(
-                                          'select_other_overlay',
-                                        );
-                                      }
-                                      if (_editingOverlayId != null &&
-                                          _editingOverlayId != overlay.id) {
-                                        _finishInlineEditing(
-                                          'select_other_overlay',
-                                        );
-                                      }
-                                      setState(
-                                        () => _selectedOverlayId = overlay.id,
-                                      );
-                                    },
-                                    onRequestEdit: _startInlineEditing,
-                                    onBackgroundTap: _onPreviewBackgroundTap,
-                                    onOverlayTextChanged: _onOverlayTextChanged,
-                                    onEditingComplete: _finishInlineEditing,
-                                    onOverlayOffsetChanged: (overlay, offset) {
-                                      _patchOverlay(
-                                        overlay.id,
-                                        (current) =>
-                                            current.copyWith(offset: offset),
-                                      );
-                                    },
-                                    onOverlayDeleted: _deleteOverlayByOverlay,
-                                    onOverlayDuplicated: _duplicateOverlay,
-                                    onOverlayEdit: (overlay) {
-                                      setState(
-                                        () => _selectedOverlayId = overlay.id,
-                                      );
-                                      _editSelectedOverlay();
-                                    },
-                                    onOverlayBoxChanged: (overlay, transform) {
-                                      OverlayEventLog.log(
-                                        'Editor',
-                                        'overlayBoxChanged',
-                                        {
-                                          'id': overlay.id,
-                                          'width': transform.width
-                                              .toStringAsFixed(1),
-                                          'height': transform.height
-                                              .toStringAsFixed(1),
-                                          'font': transform.fontSize
-                                              .toStringAsFixed(1),
-                                          'offset': transform.offset,
-                                          'rotation': transform.rotation
-                                              .toStringAsFixed(3),
-                                        },
-                                      );
-                                      _patchOverlay(
-                                        overlay.id,
-                                        (current) => current.copyWith(
-                                          boxWidth: transform.width,
-                                          boxHeight: transform.height,
-                                          fontSize: transform.fontSize,
-                                          offset: transform.offset,
-                                          rotation: transform.rotation,
+                              child: ClipRect(
+                                child: TweenAnimationBuilder<double>(
+                                  tween: Tween<double>(end: lift),
+                                  duration: const Duration(milliseconds: 220),
+                                  curve: Curves.easeOutCubic,
+                                  builder: (context, value, child) {
+                                    return Transform.translate(
+                                      offset: Offset(0, -value),
+                                      child: child,
+                                    );
+                                  },
+                                  child: FittedBox(
+                                    fit: BoxFit.contain,
+                                    clipBehavior: Clip.none,
+                                    alignment: Alignment.topCenter,
+                                    child: OverflowSizedBox(
+                                      width: targetWidth,
+                                      height: targetHeight,
+                                      child: VideoPreviewWithOverlays(
+                                        key: _previewKey,
+                                        videoAspectRatio: aspectRatio,
+                                        videoChild: _buildPreviewVideoChild(
+                                          controller,
                                         ),
-                                      );
-                                    },
+                                        overlays: project.overlays,
+                                        segments: project.segments,
+                                        position: _playhead,
+                                        clipRotation: project.rotation,
+                                        hostViewportSize: Size(
+                                          constraints.maxWidth,
+                                          constraints.maxHeight,
+                                        ),
+                                        selectedOverlayId: _selectedOverlayId,
+                                        editingOverlayId: _editingOverlayId,
+                                        selectAllOnEdit: _inlineEditSelectAll,
+                                        textHint: l10n.textOverlayHint,
+                                        onOverlaySelected: (overlay) {
+                                          if (_inTextStudio &&
+                                              _textStudioOverlayId !=
+                                                  overlay.id) {
+                                            _closeTextStudio(
+                                              'select_other_overlay',
+                                            );
+                                          }
+                                          if (_editingOverlayId != null &&
+                                              _editingOverlayId !=
+                                                  overlay.id) {
+                                            _finishInlineEditing(
+                                              'select_other_overlay',
+                                            );
+                                          }
+                                          setState(
+                                            () => _selectedOverlayId =
+                                                overlay.id,
+                                          );
+                                        },
+                                        onRequestEdit: _startInlineEditing,
+                                        onBackgroundTap:
+                                            _onPreviewBackgroundTap,
+                                        onOverlayTextChanged:
+                                            _onOverlayTextChanged,
+                                        onEditingComplete:
+                                            _finishInlineEditing,
+                                        onOverlayOffsetChanged:
+                                            (overlay, offset) {
+                                          _patchOverlay(
+                                            overlay.id,
+                                            (current) => current.copyWith(
+                                              offset: offset,
+                                            ),
+                                          );
+                                        },
+                                        onOverlayDeleted:
+                                            _deleteOverlayByOverlay,
+                                        onOverlayDuplicated:
+                                            _duplicateOverlay,
+                                        onOverlayEdit: (overlay) {
+                                          setState(
+                                            () => _selectedOverlayId =
+                                                overlay.id,
+                                          );
+                                          _editSelectedOverlay();
+                                        },
+                                        onOverlayBoxChanged:
+                                            (overlay, transform) {
+                                          OverlayEventLog.log(
+                                            'Editor',
+                                            'overlayBoxChanged',
+                                            {
+                                              'id': overlay.id,
+                                              'width': transform.width
+                                                  .toStringAsFixed(1),
+                                              'height': transform.height
+                                                  .toStringAsFixed(1),
+                                              'font': transform.fontSize
+                                                  .toStringAsFixed(1),
+                                              'offset': transform.offset,
+                                              'rotation': transform.rotation
+                                                  .toStringAsFixed(3),
+                                            },
+                                          );
+                                          _patchOverlay(
+                                            overlay.id,
+                                            (current) => current.copyWith(
+                                              boxWidth: transform.width,
+                                              boxHeight: transform.height,
+                                              fontSize: transform.fontSize,
+                                              offset: transform.offset,
+                                              rotation: transform.rotation,
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
@@ -2526,16 +2644,14 @@ class _EditorScreenState extends State<EditorScreen>
               children: [
                 IconButton.outlined(
                   onPressed: _exporting ? null : _addTextOverlay,
-                  icon: const Icon(Icons.text_increase),
+                  icon: _TextAddIcon(enabled: !_exporting),
                   tooltip: l10n.addText,
                 ),
                 const SizedBox(width: 8),
                 IconButton.outlined(
-                  onPressed: _selectedOverlay == null || _exporting
-                      ? null
-                      : _editSelectedOverlay,
-                  icon: const Icon(Icons.edit_note_outlined),
-                  tooltip: l10n.editText,
+                  onPressed: _exporting ? null : _addTemplateTextOverlay,
+                  icon: _TextAddIcon(enabled: !_exporting, sparkle: true),
+                  tooltip: l10n.addTemplateText,
                 ),
                 const SizedBox(width: 8),
                 IconButton.outlined(
@@ -2589,6 +2705,72 @@ class _EditorScreenState extends State<EditorScreen>
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Bottom-bar text affordance: plain **T+**, or template **T+** with ✨.
+class _TextAddIcon extends StatelessWidget {
+  const _TextAddIcon({required this.enabled, this.sparkle = false});
+
+  final bool enabled;
+  final bool sparkle;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = enabled ? Colors.white : Colors.white38;
+    final accent = enabled
+        ? const Color(0xFF4CC9F0)
+        : const Color(0xFF4CC9F0).withValues(alpha: 0.4);
+
+    return SizedBox(
+      width: 26,
+      height: 24,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Center(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: 'T',
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      height: 1,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  TextSpan(
+                    text: '+',
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      height: 1,
+                    ),
+                  ),
+                ],
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          if (sparkle) ...[
+            Positioned(
+              right: -1,
+              top: -3,
+              child: Icon(Icons.auto_awesome, size: 11, color: accent),
+            ),
+            Positioned(
+              right: 8,
+              top: -1,
+              child: Icon(Icons.auto_awesome, size: 7, color: accent),
+            ),
+          ],
         ],
       ),
     );

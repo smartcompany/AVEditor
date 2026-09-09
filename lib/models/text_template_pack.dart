@@ -1,3 +1,4 @@
+import 'package:aveditor/models/text_entrance_animation.dart';
 import 'package:aveditor/models/text_style_template.dart';
 import 'package:flutter/foundation.dart';
 
@@ -13,6 +14,7 @@ class TextTemplatePackItem {
     this.lottieUrl,
     this.previewUrl,
     this.downloadSizeBytes = 0,
+    this.animation = TextEntranceAnimation.none,
   });
 
   final String id;
@@ -28,6 +30,9 @@ class TextTemplatePackItem {
   final String? previewUrl;
   final int downloadSizeBytes;
 
+  /// Default entrance animation when this pack is applied.
+  final TextEntranceAnimation animation;
+
   bool get hasLottie =>
       (lottieAsset != null && lottieAsset!.isNotEmpty) ||
       (lottieUrl != null && lottieUrl!.isNotEmpty);
@@ -41,6 +46,7 @@ class TextTemplatePackItem {
     if (lottieUrl != null) 'lottieUrl': lottieUrl,
     if (previewUrl != null) 'previewUrl': previewUrl,
     'downloadSizeBytes': downloadSizeBytes,
+    if (!animation.isNone) 'animation': animation.toJson(),
   };
 
   factory TextTemplatePackItem.fromJson(Map<String, dynamic> json) {
@@ -59,6 +65,9 @@ class TextTemplatePackItem {
       lottieUrl: json['lottieUrl'] as String?,
       previewUrl: json['previewUrl'] as String?,
       downloadSizeBytes: json['downloadSizeBytes'] as int? ?? 0,
+      animation: TextEntranceAnimation.fromJson(
+        json['animation'] as Map<String, dynamic>?,
+      ),
     );
   }
 }

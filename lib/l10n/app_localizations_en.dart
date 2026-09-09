@@ -39,6 +39,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get addText => 'Add text';
 
   @override
+  String get addTemplateText => 'Add template text';
+
+  @override
   String get rotateVideo => 'Rotate video';
 
   @override

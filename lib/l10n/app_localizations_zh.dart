@@ -39,6 +39,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get addText => '添加文字';
 
   @override
+  String get addTemplateText => '添加模板文字';
+
+  @override
   String get rotateVideo => '旋转视频';
 
   @override

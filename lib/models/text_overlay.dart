@@ -39,6 +39,8 @@ class TextOverlay {
     this.boxHeight = 100,
     this.rotation = 0,
     this.lane = 0,
+    this.animationId,
+    this.animationDurationMs,
   }) : id = id ?? const Uuid().v4();
 
   final String id;
@@ -74,6 +76,12 @@ class TextOverlay {
   /// Vertical text-lane index (0 = top). Overlapping clips go to new lanes.
   final int lane;
 
+  /// Entrance animation override. `null` = use pack default; `''` = force none.
+  String? animationId;
+
+  /// Optional override for entrance duration (ms).
+  int? animationDurationMs;
+
   TextStyleTemplate? get template => TextStyleTemplateCatalog.byId(templateId);
 
   TextOverlay copyWith({
@@ -93,6 +101,8 @@ class TextOverlay {
     double? boxHeight,
     double? rotation,
     int? lane,
+    Object? animationId = _unset,
+    Object? animationDurationMs = _unset,
   }) {
     return TextOverlay(
       id: id,
@@ -118,6 +128,12 @@ class TextOverlay {
       boxHeight: boxHeight ?? this.boxHeight,
       rotation: rotation ?? this.rotation,
       lane: lane ?? this.lane,
+      animationId: identical(animationId, _unset)
+          ? this.animationId
+          : animationId as String?,
+      animationDurationMs: identical(animationDurationMs, _unset)
+          ? this.animationDurationMs
+          : animationDurationMs as int?,
     );
   }
 
@@ -140,6 +156,8 @@ class TextOverlay {
       boxHeight: boxHeight,
       rotation: rotation,
       lane: lane,
+      animationId: animationId,
+      animationDurationMs: animationDurationMs,
     );
   }
 
@@ -160,6 +178,8 @@ class TextOverlay {
     if (templateId != null) 'templateId': templateId,
     if (packItemId != null) 'packItemId': packItemId,
     if (fontFamily != null) 'fontFamily': fontFamily,
+    if (animationId != null) 'animationId': animationId,
+    if (animationDurationMs != null) 'animationDurationMs': animationDurationMs,
     'textAlign': textAlign.name,
     'alignmentX': alignment.x,
     'alignmentY': alignment.y,
@@ -183,6 +203,8 @@ class TextOverlay {
       templateId: json['templateId'] as String?,
       packItemId: json['packItemId'] as String?,
       fontFamily: json['fontFamily'] as String?,
+      animationId: json['animationId'] as String?,
+      animationDurationMs: json['animationDurationMs'] as int?,
       textAlign: _textAlignFromJson(json['textAlign'] as String?),
       alignment: Alignment(
         (json['alignmentX'] as num?)?.toDouble() ?? 0,

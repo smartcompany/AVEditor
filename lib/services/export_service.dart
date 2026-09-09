@@ -275,7 +275,7 @@ class ExportService {
       if (singleSegment) ...['-ss', startSec],
       '-i',
       quoteShell(project.sourcePath),
-      for (final raster in rasters) ...['-i', quoteShell(raster.file.path)],
+      for (final raster in rasters) ..._rasterInputArgs(raster),
       if (musicPath != null) ...['-i', quoteShell(musicPath)],
       if (complex.isNotEmpty) ...[
         '-filter_complex',
@@ -546,6 +546,21 @@ class ExportService {
     );
   }
 
+  static List<String> _rasterInputArgs(OverlayRaster raster) {
+    if (raster.isAnimated) {
+      final pattern = p.join(raster.sequenceDir!.path, 'frame_%04d.png');
+      return [
+        '-framerate',
+        raster.frameRate.toStringAsFixed(3),
+        '-start_number',
+        '1',
+        '-i',
+        quoteShell(pattern),
+      ];
+    }
+    return ['-i', quoteShell(raster.file!.path)];
+  }
+
   /// Builds the crop-and-composite graph.
   @visibleForTesting
   FilterGraph buildFilterGraph({
@@ -592,10 +607,31 @@ class ExportService {
       }
 
       final next = 'v$input';
-      steps.add(
-        '[$label][$input:v]overlay=0:0:format=auto:repeatlast=1:'
-        '${buildOverlayEnableExpression(spans)}[$next]',
-      );
+      final ov = 'ov$input';
+      if (raster.isAnimated) {
+        final span = spans.first;
+        final seqSec = (raster.frameCount ?? 1) / raster.frameRate;
+        final hold = (span.end - span.start - seqSec).clamp(0.0, double.infinity);
+        final prep = StringBuffer('[$input:v]format=rgba');
+        if (hold > 0.001) {
+          prep.write(
+            ',tpad=stop_mode=clone:stop_duration=${hold.toStringAsFixed(3)}',
+          );
+        }
+        prep.write(
+          ',setpts=PTS+${span.start.toStringAsFixed(3)}/TB[$ov]',
+        );
+        steps.add(prep.toString());
+        steps.add(
+          '[$label][$ov]overlay=0:0:format=auto:eof_action=pass:'
+          '${buildOverlayEnableExpression(spans)}[$next]',
+        );
+      } else {
+        steps.add(
+          '[$label][$input:v]overlay=0:0:format=auto:repeatlast=1:'
+          '${buildOverlayEnableExpression(spans)}[$next]',
+        );
+      }
       label = next;
       input++;
     }

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:aveditor/models/clip_segment.dart';
+import 'package:aveditor/models/text_entrance_animation.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/text_overlay_style.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
@@ -11,6 +12,7 @@ import 'package:aveditor/widgets/basic_text_edit_toolbar.dart';
 import 'package:aveditor/widgets/overlay_geometry.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/widgets/overflow_hit_stack.dart';
+import 'package:aveditor/widgets/text_entrance.dart';
 import 'package:aveditor/widgets/text_template_pack_browser.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -58,6 +60,7 @@ class VideoPreviewWithOverlays extends StatefulWidget {
     this.clipRotation = 0,
     this.selectedOverlayId,
     this.editingOverlayId,
+    this.selectAllOnEdit = false,
     this.textHint,
     this.onOverlayOffsetChanged,
     this.onOverlayBoxChanged,
@@ -82,6 +85,10 @@ class VideoPreviewWithOverlays extends StatefulWidget {
   final double clipRotation;
   final String? selectedOverlayId;
   final String? editingOverlayId;
+
+  /// When entering inline edit, select the whole string (fresh text add).
+  final bool selectAllOnEdit;
+
   final String? textHint;
   final void Function(TextOverlay overlay, Offset offset)?
   onOverlayOffsetChanged;
@@ -885,11 +892,14 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
                     key: ValueKey(overlay.id),
                     overlay: overlay,
                     box: _boxOf(overlay),
+                    playhead: widget.position,
                     previewWidth: _previewW,
                     previewHeight: _previewH,
                     knobClampRect: _knobClampRect,
                     selected: overlay.id == widget.selectedOverlayId,
                     editing: overlay.id == widget.editingOverlayId,
+                    selectAllOnEdit: widget.selectAllOnEdit &&
+                        overlay.id == widget.editingOverlayId,
                     textHint: widget.textHint,
                     onTextChanged: (text) =>
                         widget.onOverlayTextChanged?.call(overlay, text),
@@ -922,12 +932,14 @@ class _DraggableOverlayLabel extends StatefulWidget {
     super.key,
     required this.overlay,
     required this.box,
+    required this.playhead,
     required this.previewWidth,
     required this.previewHeight,
     required this.knobClampRect,
     required this.selected,
     required this.editing,
     required this.onTextChanged,
+    this.selectAllOnEdit = false,
     this.onEditingComplete,
     this.textHint,
   });
@@ -936,11 +948,13 @@ class _DraggableOverlayLabel extends StatefulWidget {
 
   /// Size, font and offset already resolved into canvas pixels.
   final OverlayBox box;
+  final Duration playhead;
   final double previewWidth;
   final double previewHeight;
   final Rect knobClampRect;
   final bool selected;
   final bool editing;
+  final bool selectAllOnEdit;
   final String? textHint;
   final ValueChanged<String> onTextChanged;
   final void Function(String source)? onEditingComplete;
@@ -1001,10 +1015,16 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
     if (widget.editing && !oldWidget.editing) {
       _controller.text = widget.overlay.text;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _focusNode.requestFocus();
-          final end = _controller.text.length;
-          _controller.selection = TextSelection.collapsed(offset: end);
+        if (!mounted) return;
+        _focusNode.requestFocus();
+        final text = _controller.text;
+        if (widget.selectAllOnEdit && text.isNotEmpty) {
+          _controller.selection = TextSelection(
+            baseOffset: 0,
+            extentOffset: text.length,
+          );
+        } else {
+          _controller.selection = TextSelection.collapsed(offset: text.length);
         }
       });
     } else if (widget.editing &&
@@ -1050,6 +1070,22 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
     final template = resolveOverlayTemplate(widget.overlay);
     final fill = template.resolveFill(widget.overlay.color);
     final hintColor = fill.withValues(alpha: 0.45);
+    final anim = resolveOverlayAnimation(widget.overlay);
+    // Editing shows the full look so typing isn't half-invisible.
+    final entrance = widget.editing || anim.isNone
+        ? TextEntranceState.fullyVisible
+        : evaluateTextEntrance(
+            animationId: anim.id,
+            text: widget.overlay.text.isEmpty
+                ? (widget.textHint ?? '')
+                : widget.overlay.text,
+            progress: entranceProgressAt(
+              overlay: widget.overlay,
+              position: widget.playhead,
+              animation: anim,
+            ),
+            fontSize: widget.box.fontSize,
+          );
 
     if (widget.editing) {
       final live = _controller.text;
@@ -1066,6 +1102,7 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
           fontFamily: widget.overlay.fontFamily,
           textAlign: widget.overlay.textAlign,
           hintColor: isHint ? hintColor : null,
+          entrance: TextEntranceState.fullyVisible,
         ),
       );
       final field = MediaQuery.withNoTextScaling(
@@ -1140,6 +1177,7 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
       fontFamily: widget.overlay.fontFamily,
       textAlign: widget.overlay.textAlign,
       hintColor: isHint ? hintColor : null,
+      entrance: entrance,
     );
 
     final packId = widget.overlay.packItemId;

@@ -39,6 +39,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get addText => '텍스트 추가';
 
   @override
+  String get addTemplateText => '템플릿 텍스트 추가';
+
+  @override
   String get rotateVideo => '영상 회전';
 
   @override

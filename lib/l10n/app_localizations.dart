@@ -162,6 +162,12 @@ abstract class AppLocalizations {
   /// **'Add text'**
   String get addText;
 
+  /// No description provided for @addTemplateText.
+  ///
+  /// In en, this message translates to:
+  /// **'Add template text'**
+  String get addTemplateText;
+
   /// No description provided for @rotateVideo.
   ///
   /// In en, this message translates to:

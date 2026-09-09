@@ -32,6 +32,13 @@ class OverlayFonts {
       apply: (base) => GoogleFonts.notoSansKr(textStyle: base),
     ),
     OverlayFontOption(
+      id: 'gaegu',
+      label: 'Gaegu',
+      apply: (base) => GoogleFonts.gaegu(
+        textStyle: base.copyWith(fontWeight: FontWeight.w700),
+      ),
+    ),
+    OverlayFontOption(
       id: 'blackHanSans',
       label: 'Black Han',
       apply: (base) => GoogleFonts.blackHanSans(textStyle: base),

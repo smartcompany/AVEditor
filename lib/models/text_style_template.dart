@@ -121,6 +121,14 @@ class TextStyleShadow {
 }
 
 /// Per-line rounded background behind the glyphs.
+enum TextStyleLineShape {
+  /// Soft capsule (Shorts box / banner).
+  capsule,
+
+  /// Irregular brush / torn-paper strip (CapCut journal templates).
+  brush,
+}
+
 @immutable
 class TextStyleLineBackground {
   const TextStyleLineBackground({
@@ -130,6 +138,9 @@ class TextStyleLineBackground {
     this.padHFactor = 0.22,
     this.padVFactor = 0.14,
     this.radiusFactor = 0.18,
+    this.shape = TextStyleLineShape.capsule,
+    this.shadowOpacity = 0,
+    this.shadowBlurFactor = 0.12,
   });
 
   final bool useAccent;
@@ -138,6 +149,11 @@ class TextStyleLineBackground {
   final double padHFactor;
   final double padVFactor;
   final double radiusFactor;
+  final TextStyleLineShape shape;
+
+  /// Soft drop under the strip (journal paper depth).
+  final double shadowOpacity;
+  final double shadowBlurFactor;
 
   Color resolveColor(Color accent) {
     final base = useAccent ? accent : Color(colorArgb ?? 0xFF000000);
@@ -150,10 +166,17 @@ class TextStyleLineBackground {
     'padHFactor': padHFactor,
     'padVFactor': padVFactor,
     'radiusFactor': radiusFactor,
+    'shape': shape.name,
+    'shadowOpacity': shadowOpacity,
+    'shadowBlurFactor': shadowBlurFactor,
     if (colorArgb != null) 'color': colorArgb,
   };
 
   factory TextStyleLineBackground.fromJson(Map<String, dynamic> json) {
+    final shapeName = json['shape'] as String?;
+    final shape = shapeName == TextStyleLineShape.brush.name
+        ? TextStyleLineShape.brush
+        : TextStyleLineShape.capsule;
     return TextStyleLineBackground(
       useAccent: json['useAccent'] as bool? ?? true,
       colorArgb: json['color'] as int?,
@@ -161,6 +184,9 @@ class TextStyleLineBackground {
       padHFactor: (json['padHFactor'] as num?)?.toDouble() ?? 0.22,
       padVFactor: (json['padVFactor'] as num?)?.toDouble() ?? 0.14,
       radiusFactor: (json['radiusFactor'] as num?)?.toDouble() ?? 0.18,
+      shape: shape,
+      shadowOpacity: (json['shadowOpacity'] as num?)?.toDouble() ?? 0,
+      shadowBlurFactor: (json['shadowBlurFactor'] as num?)?.toDouble() ?? 0.12,
     );
   }
 }
@@ -178,6 +204,7 @@ class TextStyleTemplate {
     this.glow,
     this.shadow,
     this.lineBackground,
+    this.preferredFontId,
   });
 
   final String id;
@@ -193,6 +220,9 @@ class TextStyleTemplate {
   final TextStyleGlow? glow;
   final TextStyleShadow? shadow;
   final TextStyleLineBackground? lineBackground;
+
+  /// Optional [OverlayFonts] id applied when the user picks this template.
+  final String? preferredFontId;
 
   Color resolveFill(Color accent) {
     if (fillContrastOnAccent) {
@@ -212,6 +242,7 @@ class TextStyleTemplate {
     if (glow != null) 'glow': glow!.toJson(),
     if (shadow != null) 'shadow': shadow!.toJson(),
     if (lineBackground != null) 'lineBackground': lineBackground!.toJson(),
+    if (preferredFontId != null) 'preferredFontId': preferredFontId,
   };
 
   factory TextStyleTemplate.fromJson(Map<String, dynamic> json) {
@@ -235,6 +266,7 @@ class TextStyleTemplate {
           : TextStyleLineBackground.fromJson(
               json['lineBackground'] as Map<String, dynamic>,
             ),
+      preferredFontId: json['preferredFontId'] as String?,
     );
   }
 }
@@ -243,6 +275,7 @@ class TextStyleTemplate {
 class TextStyleTemplateCatalog {
   TextStyleTemplateCatalog._();
 
+  /// Used by the Shorts A-button cycle — not listed in the Templates grid.
   static const classic = TextStyleTemplate(
     id: 'classic',
     label: 'Classic',
@@ -263,61 +296,6 @@ class TextStyleTemplateCatalog {
     strokes: [
       TextStyleStroke(widthFactor: 0.1, useAccent: true),
     ],
-  );
-
-  static const neon = TextStyleTemplate(
-    id: 'neon',
-    label: 'Neon',
-    fillUseAccent: true,
-    strokes: [
-      TextStyleStroke(widthFactor: 0.14, useAccent: true),
-    ],
-    glow: TextStyleGlow(
-      blurFactor: 0.45,
-      widthFactor: 0.18,
-      useAccent: true,
-      opacity: 0.9,
-    ),
-  );
-
-  static const comic = TextStyleTemplate(
-    id: 'comic',
-    label: 'Comic',
-    fillArgb: 0xFFFFFFF0,
-    fillUseAccent: false,
-    strokes: [
-      TextStyleStroke(
-        widthFactor: 0.16,
-        useAccent: false,
-        colorArgb: 0xFF1A1028,
-      ),
-    ],
-    shadow: TextStyleShadow(
-      dxFactor: 0.08,
-      dyFactor: 0.1,
-      blurFactor: 0,
-      useAccent: true,
-      opacity: 1,
-    ),
-  );
-
-  static const softGlow = TextStyleTemplate(
-    id: 'soft_glow',
-    label: 'Glow',
-    fillUseAccent: true,
-    glow: TextStyleGlow(
-      blurFactor: 0.55,
-      widthFactor: 0.2,
-      useAccent: true,
-      opacity: 0.75,
-    ),
-    shadow: TextStyleShadow(
-      dxFactor: 0,
-      dyFactor: 0.03,
-      blurFactor: 0.1,
-      colorArgb: 0xFF000000,
-      opacity: 0.35,
-    ),
   );
 
   static const banner = TextStyleTemplate(
@@ -348,38 +326,14 @@ class TextStyleTemplateCatalog {
     ),
   );
 
-  static const pop = TextStyleTemplate(
-    id: 'pop',
-    label: 'Pop',
-    fillUseAccent: true,
-    strokes: [
-      TextStyleStroke(
-        widthFactor: 0.2,
-        useAccent: false,
-        colorArgb: 0xFFFFFFFF,
-      ),
-      TextStyleStroke(
-        widthFactor: 0.1,
-        useAccent: false,
-        colorArgb: 0xFF111111,
-      ),
-    ],
-  );
-
-  static const List<TextStyleTemplate> all = [
-    classic,
-    outline,
-    neon,
-    comic,
-    softGlow,
-    banner,
-    dimBanner,
-    pop,
-  ];
+  /// Studio templates come from [TextTemplatePackService] (remote catalog).
+  /// This list stays empty so Word Art is not hard-coded into the app binary.
+  static const List<TextStyleTemplate> all = [];
 
   static TextStyleTemplate? byId(String? id) {
     if (id == null || id.isEmpty) return null;
-    for (final template in all) {
+    const extras = [classic, outline, banner, dimBanner];
+    for (final template in extras) {
       if (template.id == id) return template;
     }
     return null;
