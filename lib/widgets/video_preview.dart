@@ -1003,10 +1003,8 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _focusNode.requestFocus();
-          _controller.selection = TextSelection(
-            baseOffset: 0,
-            extentOffset: _controller.text.length,
-          );
+          final end = _controller.text.length;
+          _controller.selection = TextSelection.collapsed(offset: end);
         }
       });
     } else if (widget.editing &&
@@ -1054,63 +1052,68 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
     final hintColor = fill.withValues(alpha: 0.45);
 
     if (widget.editing) {
-      final bg = widget.overlay.templateId == null &&
-              widget.overlay.packItemId == null
-          ? overlayStyleBackgroundColor(
-              style: widget.overlay.style,
-              accent: widget.overlay.color,
-            )
-          : Colors.transparent;
-      // Match [OverlayTextDisplay]: lay out at the full box width — padding
-      // here used to shrink the field and wrap one line earlier than preview.
+      final live = _controller.text;
+      final isHint = live.isEmpty;
+      // Paint the real Shorts look (fill / outline stroke / box) underneath a
+      // transparent field so A-button outline/border color is visible while typing.
+      final painted = IgnorePointer(
+        child: OverlayTextDisplay(
+          text: isHint ? (widget.textHint ?? '') : live,
+          color: widget.overlay.color,
+          fontSize: widget.box.fontSize,
+          maxWidth: widget.box.width,
+          template: template,
+          fontFamily: widget.overlay.fontFamily,
+          textAlign: widget.overlay.textAlign,
+          hintColor: isHint ? hintColor : null,
+        ),
+      );
       final field = MediaQuery.withNoTextScaling(
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: bg.a > 0 ? bg : Colors.transparent,
-            borderRadius: BorderRadius.circular(
-              (widget.box.fontSize * 0.18).clamp(4.0, 12.0),
-            ),
+        child: TextField(
+          controller: _controller,
+          focusNode: _focusNode,
+          autofocus: true,
+          maxLines: null,
+          textAlign: widget.overlay.textAlign,
+          style: _fillStyle.copyWith(
+            color: Colors.transparent,
+            shadows: const [],
           ),
-          child: TextField(
-            controller: _controller,
-            focusNode: _focusNode,
-            autofocus: true,
-            maxLines: null,
-            textAlign: widget.overlay.textAlign,
-            style: _fillStyle,
-            cursorColor: AppTheme.accent,
-            strutStyle: StrutStyle(
-              fontSize: _fillStyle.fontSize,
-              height: _fillStyle.height,
-              fontWeight: _fillStyle.fontWeight,
-              forceStrutHeight: true,
-            ),
-            // Toolbar shares [kBasicTextEditTapGroup]; keep IME up on those taps.
-            onTapOutside: (_) {},
-            decoration: const InputDecoration(
-              isDense: true,
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.zero,
-              isCollapsed: true,
-            ).copyWith(
-              hintText: widget.textHint,
-              hintStyle: _fillStyle.copyWith(color: hintColor),
-            ),
-            onChanged: widget.onTextChanged,
-            onEditingComplete: () =>
-                widget.onEditingComplete?.call('textfield_done'),
-            onSubmitted: (_) =>
-                widget.onEditingComplete?.call('textfield_submit'),
+          cursorColor: AppTheme.accent,
+          strutStyle: StrutStyle(
+            fontSize: _fillStyle.fontSize,
+            height: _fillStyle.height,
+            fontWeight: _fillStyle.fontWeight,
+            forceStrutHeight: true,
           ),
+          onTapOutside: (_) {},
+          decoration: const InputDecoration(
+            isDense: true,
+            border: InputBorder.none,
+            contentPadding: EdgeInsets.zero,
+            isCollapsed: true,
+          ),
+          onChanged: widget.onTextChanged,
+          onEditingComplete: () =>
+              widget.onEditingComplete?.call('textfield_done'),
+          onSubmitted: (_) =>
+              widget.onEditingComplete?.call('textfield_submit'),
+        ),
+      );
+      final stack = SizedBox(
+        width: widget.box.width,
+        height: widget.box.height,
+        child: Stack(
+          alignment: Alignment.center,
+          clipBehavior: Clip.none,
+          children: [
+            painted,
+            Positioned.fill(child: field),
+          ],
         ),
       );
       final packId = widget.overlay.packItemId;
-      final sizedField = SizedBox(
-        width: widget.box.width,
-        height: widget.box.height,
-        child: field,
-      );
-      if (packId == null) return sizedField;
+      if (packId == null) return stack;
       return Stack(
         alignment: Alignment.center,
         clipBehavior: Clip.none,
@@ -1122,7 +1125,7 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
               height: widget.box.height * 1.4,
             ),
           ),
-          sizedField,
+          stack,
         ],
       );
     }
