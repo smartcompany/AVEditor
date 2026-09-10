@@ -682,7 +682,11 @@ bool isOverlayVisibleAt(
   Duration position,
 ) {
   if (!overlay.isVisibleAt(position)) return false;
-  return isInKeptRegion(segments, position);
+  if (segments.isEmpty) return true;
+  if (isInKeptRegion(segments, position)) return true;
+  // The player often parks on the closed end of the last frame (`t == end`),
+  // and music/text may continue past video EOF. Still show overlays timed there.
+  return position >= segments.last.end;
 }
 
 /// Export-time spans for FFmpeg `enable` on a single overlay layer.

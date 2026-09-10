@@ -285,6 +285,28 @@ void main() {
     );
   });
 
+  test('isOverlayVisibleAt shows text at and past the last frame', () {
+    final overlay = TextOverlay(
+      text: 'hello',
+      start: const Duration(seconds: 9),
+      end: const Duration(seconds: 14),
+    );
+    final segments = [
+      seg(Duration.zero, const Duration(seconds: 10)),
+    ];
+
+    // Player often parks on the closed end (`t == duration`).
+    expect(
+      isOverlayVisibleAt(overlay, segments, const Duration(seconds: 10)),
+      isTrue,
+    );
+    // Music/text-only scrub past video EOF.
+    expect(
+      isOverlayVisibleAt(overlay, segments, const Duration(seconds: 12)),
+      isTrue,
+    );
+  });
+
   test('overlayExportSpans emits separate export windows across deleted gaps', () {
     final overlay = TextOverlay(
       text: 'hello',

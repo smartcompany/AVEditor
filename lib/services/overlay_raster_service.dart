@@ -76,6 +76,7 @@ class OverlayRasterService {
             overlay: overlay,
             sequenceDir: seqDir,
             frameCount: count,
+            frameRate: exportEntranceFps,
           ),
         );
         continue;
@@ -89,7 +90,7 @@ class OverlayRasterService {
     return rendered;
   }
 
-  /// PNG sequence covering the entrance, last frame fully revealed.
+  /// PNG sequence covering the entrance; export holds the last frame after.
   @visibleForTesting
   Future<int> renderEntranceSequence(
     TextOverlay overlay, {
@@ -99,7 +100,11 @@ class OverlayRasterService {
     required Directory outputDir,
     double fps = exportEntranceFps,
   }) async {
-    final durationSec = animation.duration.inMilliseconds / 1000.0;
+    final duration = resolvedEntranceDuration(
+      overlay: overlay,
+      animation: animation,
+    );
+    final durationSec = duration.inMilliseconds / 1000.0;
     final frameCount = math.max(2, (durationSec * fps).ceil() + 1);
     for (var f = 0; f < frameCount; f++) {
       final progress = (f / (frameCount - 1)).clamp(0.0, 1.0);

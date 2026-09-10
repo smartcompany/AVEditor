@@ -1,14 +1,89 @@
 {
-  "version": 4,
+  "version": 6,
   "baseUrl": "",
   "categories": [
     {
-      "id": "popular",
-      "title": "Popular",
+      "id": "effects",
+      "title": "Effects",
+      "items": [
+        {
+          "id": "effect_pop_green",
+          "title": "Pop",
+          "kind": "effect",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_pop_green",
+            "label": "Pop",
+            "fillColor": 4286381930,
+            "fillUseAccent": false,
+            "preferredFontId": "blackHanSans",
+            "strokes": [
+              { "widthFactor": 0.3, "useAccent": false, "color": 4294305464 },
+              { "widthFactor": 0.14, "useAccent": false, "color": 4279917600 }
+            ],
+            "shadow": {
+              "dxFactor": 0.04,
+              "dyFactor": 0.06,
+              "blurFactor": 0,
+              "useAccent": false,
+              "color": 4278190080,
+              "opacity": 0.55
+            }
+          }
+        },
+        {
+          "id": "effect_pastel",
+          "title": "Pastel",
+          "kind": "effect",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_pastel",
+            "label": "Pastel",
+            "fillColor": 4294287552,
+            "fillUseAccent": false,
+            "preferredFontId": "gothicA1",
+            "fillGradient": {
+              "colors": [4294301550, 4294287552, 4291408117]
+            }
+          }
+        },
+        {
+          "id": "effect_torn_label",
+          "title": "Torn",
+          "kind": "effect",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_torn_label",
+            "label": "Torn",
+            "fillColor": 4279308561,
+            "fillUseAccent": false,
+            "preferredFontId": "blackHanSans",
+            "lineBackground": {
+              "useAccent": false,
+              "color": 4294967295,
+              "opacity": 1,
+              "padHFactor": 0.4,
+              "padVFactor": 0.3,
+              "radiusFactor": 0.2,
+              "shape": "brush",
+              "shadowOpacity": 0.4,
+              "shadowBlurFactor": 0.2
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "templates",
+      "title": "Templates",
       "items": [
         {
           "id": "pack_journal",
           "title": "Journal",
+          "kind": "template",
           "premium": false,
           "downloadSizeBytes": 0,
           "animation": { "id": "typewriter", "durationMs": 900 },
@@ -34,6 +109,7 @@
         {
           "id": "pack_neon_pulse",
           "title": "Neon",
+          "kind": "template",
           "premium": false,
           "downloadSizeBytes": 0,
           "animation": { "id": "fade", "durationMs": 800 },
@@ -66,6 +142,7 @@
         {
           "id": "pack_sticker",
           "title": "Sticker",
+          "kind": "template",
           "premium": false,
           "downloadSizeBytes": 0,
           "animation": { "id": "slide_up", "durationMs": 700 },

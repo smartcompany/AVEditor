@@ -7,7 +7,8 @@ const minOverlayDuration = Duration(seconds: 1);
 const handleHitWidth = 18.0;
 
 /// Minimum zoom: timeline content width = 2/3 of the viewport width
-/// when the sequence spans the full [scaleReference] (usually source duration).
+/// when the sequence spans the full [scaleReference] (source video, or the
+/// longer packed timeline when music/text extend past EOF).
 const minTimelineZoom = 2 / 3;
 
 /// At max zoom, a 1s clip body is this many logical pixels wide.

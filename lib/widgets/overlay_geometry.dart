@@ -145,7 +145,12 @@ class OverlayGeometry {
 
   static const handleHit = 64.0;
   static const knobSize = 50.0;
-  static const knobOutset = 32.0;
+
+  /// Outward offset so each knob circle is tangent to its box corner
+  /// (center lies on the corner diagonal at distance [knobSize]/2).
+  /// = (knobSize/2) * (1 + 1/√2)
+  static const knobOutset = 42.67766953;
+
   static const handlePad = knobOutset + knobSize / 2 + handleHit / 2 + 4;
 
   /// Grip sits in the padding ring below the box so it never eats text space.
@@ -225,18 +230,20 @@ class OverlayGeometry {
   }
 
   /// Preview-space centre of a corner action knob before clamping.
+  ///
+  /// Placed on the outward corner diagonal so the knob circle is tangent to
+  /// the box vertex (circle edge meets the corner).
   static Offset _idealKnobPreviewCenter({
     required Rect body,
     required bool left,
     required bool top,
   }) {
-    final x = left
-        ? body.left - knobOutset + knobSize / 2
-        : body.right + knobOutset - knobSize / 2;
-    final y = top
-        ? body.top - knobOutset + knobSize / 2
-        : body.bottom + knobOutset - knobSize / 2;
-    return Offset(x, y);
+    final r = knobSize / 2;
+    final along = r / math.sqrt2;
+    return Offset(
+      left ? body.left - along : body.right + along,
+      top ? body.top - along : body.bottom + along,
+    );
   }
 
   /// Picks on-screen knob centres (chrome-local) for the four actions.

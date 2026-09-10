@@ -74,7 +74,25 @@ TextEntranceAnimation resolveOverlayAnimation(TextOverlay overlay) {
   return TextEntranceAnimation.none;
 }
 
+/// How long the entrance plays before the finished look holds.
+///
+/// Uses pack/catalog [TextEntranceAnimation.durationMs] (or an explicit
+/// overlay override). The rest of the overlay clip stays fully revealed.
+Duration resolvedEntranceDuration({
+  required TextOverlay overlay,
+  required TextEntranceAnimation animation,
+}) {
+  if (animation.isNone) return Duration.zero;
+  final overrideMs = overlay.animationDurationMs;
+  if (overrideMs != null) {
+    return Duration(milliseconds: overrideMs.clamp(100, 30000));
+  }
+  return Duration(milliseconds: animation.durationMs.clamp(100, 30000));
+}
+
 /// Progress 0..1 from playhead relative to overlay start.
+///
+/// Clamps at 1 so the finished style holds for the remainder of the clip.
 double entranceProgressAt({
   required TextOverlay overlay,
   required Duration position,
@@ -83,7 +101,9 @@ double entranceProgressAt({
   if (animation.isNone) return 1;
   if (position < overlay.start) return 0;
   final elapsed = position - overlay.start;
-  final totalMs = animation.duration.inMilliseconds;
+  final totalMs =
+      resolvedEntranceDuration(overlay: overlay, animation: animation)
+          .inMilliseconds;
   if (totalMs <= 0) return 1;
   return (elapsed.inMilliseconds / totalMs).clamp(0.0, 1.0);
 }

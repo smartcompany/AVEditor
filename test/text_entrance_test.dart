@@ -83,9 +83,59 @@ void main() {
       final catalog = TextTemplatePackCatalog.fromJson(
         jsonDecode(raw) as Map<String, dynamic>,
       );
-      expect(catalog.itemById('pack_journal')!.animation.id, 'typewriter');
-      expect(catalog.itemById('pack_neon_pulse')!.animation.id, 'fade');
-      expect(catalog.itemById('pack_sticker')!.animation.id, 'slide_up');
+      // Static text effects ship without entrance animation.
+      expect(catalog.itemById('effect_pop_green')!.animation.isNone, isTrue);
+      expect(catalog.itemById('effect_pastel')!.animation.isNone, isTrue);
+      expect(catalog.itemById('effect_torn_label')!.animation.isNone, isTrue);
+    });
+
+    test('entrance uses fixed duration then holds for rest of clip', () {
+      final overlay = TextOverlay(
+        text: 'Hi',
+        start: Duration.zero,
+        end: const Duration(seconds: 10),
+        animationId: TextEntranceIds.typewriter,
+        animationDurationMs: 800,
+      );
+      final anim = resolveOverlayAnimation(overlay);
+      expect(
+        resolvedEntranceDuration(overlay: overlay, animation: anim),
+        const Duration(milliseconds: 800),
+      );
+      expect(
+        entranceProgressAt(
+          overlay: overlay,
+          position: const Duration(milliseconds: 400),
+          animation: anim,
+        ),
+        closeTo(0.5, 0.001),
+      );
+      // Past entrance → fully revealed for the rest of the timeline.
+      expect(
+        entranceProgressAt(
+          overlay: overlay,
+          position: const Duration(seconds: 5),
+          animation: anim,
+        ),
+        1.0,
+      );
+    });
+
+    test('pack catalog durationMs is used when overlay has no override', () async {
+      await TextTemplatePackService.instance.ensureInitialized();
+      final overlay = TextOverlay(
+        text: 'Hi',
+        start: Duration.zero,
+        end: const Duration(seconds: 10),
+        animationId: TextEntranceIds.typewriter,
+        animationDurationMs: 900,
+      );
+      final anim = resolveOverlayAnimation(overlay);
+      expect(anim.id, 'typewriter');
+      expect(
+        resolvedEntranceDuration(overlay: overlay, animation: anim),
+        const Duration(milliseconds: 900),
+      );
     });
 
     test('resolveOverlayAnimation prefers overlay override', () async {
@@ -98,7 +148,8 @@ void main() {
         text: 'hi',
         start: Duration.zero,
         end: const Duration(seconds: 2),
-        packItemId: 'pack_journal',
+        packItemId: 'effect_torn_label',
+        animationId: TextEntranceIds.typewriter,
       );
       expect(resolveOverlayAnimation(fromPack).id, 'typewriter');
 

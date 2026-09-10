@@ -134,7 +134,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get textTemplatePacks => '素材包';
 
   @override
-  String get textStudioTabTemplates => '模板';
+  String get textStudioTabTemplates => '文字';
+
+  @override
+  String get textStudioTabTextTemplates => '文字模板';
 
   @override
   String get textStudioTabFonts => '字体';

@@ -226,6 +226,7 @@ class TimelineWidget extends StatefulWidget {
     this.filmstripFrames = const [],
     this.sourceAudioWaveform = const [],
     this.hasSourceAudio = false,
+    this.expandToFill = false,
   });
 
   final Duration duration;
@@ -267,6 +268,9 @@ class TimelineWidget extends StatefulWidget {
   final List<double> sourceAudioWaveform;
   final bool hasSourceAudio;
 
+  /// Grow the lanes viewport to fill leftover parent height (dock expanded).
+  final bool expandToFill;
+
   @override
   TimelineWidgetState createState() => TimelineWidgetState();
 }
@@ -275,6 +279,9 @@ class TimelineWidgetState extends State<TimelineWidget> {
   double _zoom = 1.0;
   double _viewportWidth = 1;
   double _lanesScrollY = 0;
+
+  /// When [TimelineWidget.expandToFill] is on, lanes viewport from LayoutBuilder.
+  double? _filledLanesViewportHeight;
 
   /// Snapshot from the last frame — [oldWidget.overlays] is unsafe because the
   /// project mutates the same [List] in place before [didUpdateWidget] runs.
@@ -322,9 +329,18 @@ class TimelineWidgetState extends State<TimelineWidget> {
   double? _pinchStartDistance;
   double _pinchStartZoom = 1.0;
 
+  /// Time base for zoom: source video, or the longer packed sequence when
+  /// music/text extend past EOF. Keeps trimmed video from widening neighbors,
+  /// but min-zoom still fits an audio/text-extended timeline.
+  Duration get _scaleReference {
+    final seq = _sequenceDuration;
+    final source = widget.duration;
+    return seq > source ? seq : source;
+  }
+
   double get _contentWidth => timelineContentWidth(
         sequenceDuration: _sequenceDuration,
-        scaleReference: widget.duration,
+        scaleReference: _scaleReference,
         viewportWidth: _viewportWidth,
         zoom: _zoom,
       );
@@ -333,7 +349,7 @@ class TimelineWidgetState extends State<TimelineWidget> {
 
   /// CapCut-like max zoom: 1s clip body ≈ 40 logical px on every phone.
   double get _maxZoom => maxTimelineZoomFor(
-        widget.duration,
+        _scaleReference,
         viewportWidth: _viewportWidth,
       );
 
@@ -399,8 +415,14 @@ class TimelineWidgetState extends State<TimelineWidget> {
     return musicReserve + _maxVisibleLanes * _laneStride;
   }
 
-  double get _lanesViewportHeight =>
-      _lanesContentHeight.clamp(0.0, _maxScrollViewportHeight);
+  double get _lanesViewportHeight {
+    final filled = _filledLanesViewportHeight;
+    if (widget.expandToFill && filled != null) {
+      final minH = _lanesContentHeight.clamp(0.0, _maxScrollViewportHeight);
+      return filled < minH ? minH : filled;
+    }
+    return _lanesContentHeight.clamp(0.0, _maxScrollViewportHeight);
+  }
 
   double get _maxLanesScroll =>
       (_lanesContentHeight - _lanesViewportHeight).clamp(0.0, double.infinity);
@@ -409,21 +431,12 @@ class TimelineWidgetState extends State<TimelineWidget> {
 
   double get _bodyHeight => _videoTrackHeight + _lanesViewportHeight;
 
-  Duration get _sequenceDuration {
-    var total = totalKeptDuration(widget.segments);
-    if (total <= Duration.zero) total = widget.duration;
-
-    // Music / text may sit past the video; grow the strip so they stay visible.
-    for (final music in widget.musicTracks) {
-      final span = musicSequenceSpan(music, widget.segments);
-      if (span != null && span.end > total) total = span.end;
-    }
-    for (final overlay in widget.overlays) {
-      final span = overlayTimelineSpan(overlay, widget.segments);
-      if (span != null && span.end > total) total = span.end;
-    }
-    return total;
-  }
+  Duration get _sequenceDuration => projectSequenceDuration(
+        segments: widget.segments,
+        sourceDuration: widget.duration,
+        musicTracks: widget.musicTracks,
+        overlays: widget.overlays,
+      );
 
   Duration get _sequencePlayhead =>
       timelinePlayheadFromSource(widget.segments, widget.playhead);
@@ -1979,6 +1992,67 @@ class TimelineWidgetState extends State<TimelineWidget> {
       return const SizedBox(height: 120);
     }
 
+    final body = LayoutBuilder(
+      builder: (context, constraints) {
+        _viewportWidth = constraints.maxWidth;
+        if (widget.expandToFill && constraints.maxHeight.isFinite) {
+          _filledLanesViewportHeight =
+              (constraints.maxHeight - _videoTrackHeight).clamp(0.0, 4000.0);
+        } else {
+          _filledLanesViewportHeight = null;
+        }
+
+        return Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: _onPointerDown,
+          onPointerMove: _onPointerMove,
+          onPointerUp: _onPointerUp,
+          onPointerCancel: _onPointerUp,
+          child: SizedBox(
+            height: _bodyHeight,
+            width: double.infinity,
+            child: ClipRect(
+              child: CustomPaint(
+                painter: _TimelinePainter(
+                  sequenceDuration: _sequenceDuration,
+                  sequencePlayhead: _sequencePlayhead,
+                  // Snapshot refs so in-place segment edits (e.g. transition
+                  // duration) still trip shouldRepaint vs the previous frame.
+                  segments: List<ClipSegment>.of(widget.segments),
+                  overlays: widget.overlays,
+                  musicTracks: widget.musicTracks,
+                  musicWaveforms: widget.musicWaveforms,
+                  sourceAudioWaveform: widget.sourceAudioWaveform,
+                  hasSourceAudio: widget.hasSourceAudio,
+                  sourceDuration: widget.duration,
+                  filmstripFrames: widget.filmstripFrames,
+                  selectedOverlayId: widget.selectedOverlayId,
+                  selectedSegmentId: widget.selectedSegmentId,
+                  selectedMusicId: widget.selectedMusicId,
+                  selectedTransitionAfterIndex:
+                      widget.selectedTransitionAfterIndex,
+                  scrollPx: _scrollPx,
+                  contentWidth: _contentWidth,
+                  contentInsetX: _contentInsetX,
+                  zoom: _zoom,
+                  lanesScrollY: _lanesScrollY,
+                  lanesContentHeight: _lanesContentHeight,
+                  musicContentHeight: _musicContentHeight,
+                  laneLabelStyle: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                child: const SizedBox.expand(),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
@@ -1997,59 +2071,7 @@ class TimelineWidgetState extends State<TimelineWidget> {
             child: _buildTransportRow(),
           ),
           const SizedBox(height: 4),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              _viewportWidth = constraints.maxWidth;
-
-              return Listener(
-                behavior: HitTestBehavior.opaque,
-                onPointerDown: _onPointerDown,
-                onPointerMove: _onPointerMove,
-                onPointerUp: _onPointerUp,
-                onPointerCancel: _onPointerUp,
-                child: SizedBox(
-                  height: _bodyHeight,
-                  child: ClipRect(
-                    child: CustomPaint(
-                      painter: _TimelinePainter(
-                        sequenceDuration: _sequenceDuration,
-                        sequencePlayhead: _sequencePlayhead,
-                        // Snapshot refs so in-place segment edits (e.g. transition
-                        // duration) still trip shouldRepaint vs the previous frame.
-                        segments: List<ClipSegment>.of(widget.segments),
-                        overlays: widget.overlays,
-                        musicTracks: widget.musicTracks,
-                        musicWaveforms: widget.musicWaveforms,
-                        sourceAudioWaveform: widget.sourceAudioWaveform,
-                        hasSourceAudio: widget.hasSourceAudio,
-                        sourceDuration: widget.duration,
-                        filmstripFrames: widget.filmstripFrames,
-                        selectedOverlayId: widget.selectedOverlayId,
-                        selectedSegmentId: widget.selectedSegmentId,
-                        selectedMusicId: widget.selectedMusicId,
-                        selectedTransitionAfterIndex:
-                            widget.selectedTransitionAfterIndex,
-                        scrollPx: _scrollPx,
-                        contentWidth: _contentWidth,
-                        contentInsetX: _contentInsetX,
-                        zoom: _zoom,
-                        lanesScrollY: _lanesScrollY,
-                        lanesContentHeight: _lanesContentHeight,
-                        musicContentHeight: _musicContentHeight,
-                        laneLabelStyle: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                          letterSpacing: 0.2,
-                        ),
-                      ),
-                      child: const SizedBox.expand(),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
+          if (widget.expandToFill) Expanded(child: body) else body,
         ],
       ),
     );

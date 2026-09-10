@@ -1,5 +1,6 @@
 import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/project_music.dart';
+import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
 
 /// Maps a music clip's source range onto the packed sequence timeline.
@@ -19,4 +20,43 @@ import 'package:aveditor/utils/clip_segment_ops.dart';
     return (start: exportStart, end: exportStart + minMusicClipDuration);
   }
   return (start: exportStart, end: exportEnd);
+}
+
+/// Packed timeline length: video plus any music/text that extends past EOF.
+Duration projectSequenceDuration({
+  required List<ClipSegment> segments,
+  required Duration sourceDuration,
+  List<ProjectMusic> musicTracks = const [],
+  List<TextOverlay> overlays = const [],
+}) {
+  var total = totalKeptDuration(segments);
+  if (total <= Duration.zero) total = sourceDuration;
+
+  for (final music in musicTracks) {
+    final span = musicSequenceSpan(music, segments);
+    if (span != null && span.end > total) total = span.end;
+  }
+  for (final overlay in overlays) {
+    final span = overlayTimelineSpan(overlay, segments);
+    if (span != null && span.end > total) total = span.end;
+  }
+  return total;
+}
+
+/// Furthest scrub position in source-time coordinates (may exceed video length
+/// when music/text sit after the last frame).
+Duration projectMaxScrubSourceTime({
+  required List<ClipSegment> segments,
+  required Duration sourceDuration,
+  List<ProjectMusic> musicTracks = const [],
+  List<TextOverlay> overlays = const [],
+}) {
+  final seq = projectSequenceDuration(
+    segments: segments,
+    sourceDuration: sourceDuration,
+    musicTracks: musicTracks,
+    overlays: overlays,
+  );
+  if (segments.isEmpty) return seq;
+  return exportTimeToSourceTime(segments, seq);
 }

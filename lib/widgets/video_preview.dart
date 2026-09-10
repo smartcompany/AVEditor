@@ -56,6 +56,7 @@ class VideoPreviewWithOverlays extends StatefulWidget {
     required this.videoAspectRatio,
     required this.overlays,
     required this.position,
+    this.isPlaying = false,
     this.segments = const [],
     this.clipRotation = 0,
     this.selectedOverlayId,
@@ -79,6 +80,10 @@ class VideoPreviewWithOverlays extends StatefulWidget {
   final double videoAspectRatio;
   final List<TextOverlay> overlays;
   final Duration position;
+
+  /// When false (paused / scrubbing), entrance animations show the finished look
+  /// so template styles stay visible while editing.
+  final bool isPlaying;
   final List<ClipSegment> segments;
 
   /// Clockwise tilt of the video frame, in radians.
@@ -544,6 +549,44 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
     _clearDragState();
   }
 
+  /// True when this pointer is already driving an overlay move/resize/pinch.
+  bool isHandlingOverlayPointer(int pointer) =>
+      _activePointer == pointer &&
+      _activeDrag != null &&
+      !_activeDrag!.isTapAction;
+
+  /// Whether a press at [event] would grab an overlay (move, resize, chrome)
+  /// instead of empty-canvas play/pause — used so dock-resize yields to text.
+  bool claimsOverlayPointer(PointerDownEvent event) {
+    final local = _toPreviewLocal(event);
+    if (local == null) return false;
+
+    final editing = _editingOverlay;
+    if (editing != null) {
+      return OverlayGeometry.chromeContains(
+        local,
+        previewW: _previewW,
+        previewH: _previewH,
+        box: _boxOf(editing),
+      );
+    }
+
+    final selected = _selectedOverlay;
+    if (selected != null) {
+      final drag = OverlayGeometry.hitTestPreviewPoint(
+        local,
+        previewW: _previewW,
+        previewH: _previewH,
+        box: _boxOf(selected),
+        editing: false,
+        clampRect: _knobClampRect,
+      );
+      if (drag != null) return true;
+    }
+
+    return _topmostBodyAt(local) != null;
+  }
+
   /// Single pointer entry point — the editor shell forwards every pointer in
   /// the preview slot here, including taps beside/outside the 9:16 canvas.
   void handlePointerDown(PointerDownEvent event) {
@@ -893,6 +936,7 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
                     overlay: overlay,
                     box: _boxOf(overlay),
                     playhead: widget.position,
+                    isPlaying: widget.isPlaying,
                     previewWidth: _previewW,
                     previewHeight: _previewH,
                     knobClampRect: _knobClampRect,
@@ -933,6 +977,7 @@ class _DraggableOverlayLabel extends StatefulWidget {
     required this.overlay,
     required this.box,
     required this.playhead,
+    required this.isPlaying,
     required this.previewWidth,
     required this.previewHeight,
     required this.knobClampRect,
@@ -949,6 +994,7 @@ class _DraggableOverlayLabel extends StatefulWidget {
   /// Size, font and offset already resolved into canvas pixels.
   final OverlayBox box;
   final Duration playhead;
+  final bool isPlaying;
   final double previewWidth;
   final double previewHeight;
   final Rect knobClampRect;
@@ -1071,8 +1117,9 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
     final fill = template.resolveFill(widget.overlay.color);
     final hintColor = fill.withValues(alpha: 0.45);
     final anim = resolveOverlayAnimation(widget.overlay);
-    // Editing shows the full look so typing isn't half-invisible.
-    final entrance = widget.editing || anim.isNone
+    // Paused / scrubbing / editing: show the finished look so Journal paper etc.
+    // stay visible while picking templates. Entrance only runs during playback.
+    final entrance = widget.editing || !widget.isPlaying || anim.isNone
         ? TextEntranceState.fullyVisible
         : evaluateTextEntrance(
             animationId: anim.id,
@@ -1087,17 +1134,53 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
             fontSize: widget.box.fontSize,
           );
 
+    // Layout width = box minus pads so wrap matches fitOverlayBoxToText.
+    final padH = overlayTextPadH(fontSize: widget.box.fontSize, template: template);
+    final contentMaxWidth =
+        (widget.box.width - padH * 2).clamp(1.0, widget.box.width);
+
+    double layoutMaxWidth(String displayText) {
+      if (displayText.isEmpty) {
+        return math.max(contentMaxWidth, widget.box.fontSize);
+      }
+      // Never lay out tighter than the natural single-line width — a too-small
+      // box (or brush pads eating the inner width) used to stack Hangul
+      // vertically one glyph per line.
+      final probe = createOverlayTextPainter(
+        text: displayText,
+        style: _fillStyle,
+        maxWidth: maxOverlayBoxWidth,
+        textAlign: widget.overlay.textAlign,
+      );
+      final natural = probe.width;
+      probe.dispose();
+      return math.max(contentMaxWidth, natural);
+    }
+
+    Widget wrapPreview(Widget child) {
+      return MediaQuery.withNoTextScaling(
+        child: Center(
+          child: OverflowBox(
+            alignment: Alignment.center,
+            maxWidth: double.infinity,
+            maxHeight: double.infinity,
+            child: child,
+          ),
+        ),
+      );
+    }
+
     if (widget.editing) {
       final live = _controller.text;
       final isHint = live.isEmpty;
-      // Paint the real Shorts look (fill / outline stroke / box) underneath a
-      // transparent field so A-button outline/border color is visible while typing.
+      final displayText = isHint ? (widget.textHint ?? '') : live;
+      final maxW = layoutMaxWidth(displayText);
       final painted = IgnorePointer(
         child: OverlayTextDisplay(
-          text: isHint ? (widget.textHint ?? '') : live,
+          text: displayText,
           color: widget.overlay.color,
           fontSize: widget.box.fontSize,
-          maxWidth: widget.box.width,
+          maxWidth: maxW,
           template: template,
           fontFamily: widget.overlay.fontFamily,
           textAlign: widget.overlay.textAlign,
@@ -1137,42 +1220,49 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
               widget.onEditingComplete?.call('textfield_submit'),
         ),
       );
-      final stack = SizedBox(
-        width: widget.box.width,
-        height: widget.box.height,
-        child: Stack(
-          alignment: Alignment.center,
-          clipBehavior: Clip.none,
-          children: [
-            painted,
-            Positioned.fill(child: field),
-          ],
-        ),
-      );
-      final packId = widget.overlay.packItemId;
-      if (packId == null) return stack;
-      return Stack(
+      // Same OverflowBox centering as the idle preview — do not force the
+      // paint into SizedBox(box) or content shifts right under pad constraints.
+      final stack = Stack(
         alignment: Alignment.center,
         clipBehavior: Clip.none,
         children: [
-          IgnorePointer(
-            child: PackLottieDecoration(
-              packItemId: packId,
-              width: widget.box.width * 1.15,
-              height: widget.box.height * 1.4,
-            ),
+          painted,
+          SizedBox(
+            width: maxW,
+            height: widget.box.height,
+            child: field,
           ),
-          stack,
         ],
+      );
+      final packId = widget.overlay.packItemId;
+      if (packId == null) return wrapPreview(stack);
+      return wrapPreview(
+        Stack(
+          alignment: Alignment.center,
+          clipBehavior: Clip.none,
+          children: [
+            IgnorePointer(
+              child: PackLottieDecoration(
+                packItemId: packId,
+                width: widget.box.width * 1.15,
+                height: widget.box.height * 1.4,
+              ),
+            ),
+            stack,
+          ],
+        ),
       );
     }
 
     final isHint = widget.overlay.text.isEmpty;
+    final displayText =
+        isHint ? (widget.textHint ?? '') : widget.overlay.text;
+    final maxW = layoutMaxWidth(displayText);
     final text = OverlayTextDisplay(
-      text: isHint ? (widget.textHint ?? '') : widget.overlay.text,
+      text: displayText,
       color: widget.overlay.color,
       fontSize: widget.box.fontSize,
-      maxWidth: widget.box.width,
+      maxWidth: maxW,
       template: template,
       fontFamily: widget.overlay.fontFamily,
       textAlign: widget.overlay.textAlign,
@@ -1196,7 +1286,7 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
             ],
           );
 
-    return MediaQuery.withNoTextScaling(child: Center(child: body));
+    return wrapPreview(body);
   }
 
   Widget _buildMoveGrip() {

@@ -20,6 +20,7 @@ import 'package:aveditor/services/timeline_thumbnail_service.dart';
 import 'package:aveditor/services/video_probe_service.dart';
 import 'package:aveditor/utils/clip_rotation.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
+import 'package:aveditor/utils/music_timeline_ops.dart';
 import 'package:aveditor/utils/duration_format.dart';
 import 'package:aveditor/utils/editor_sheet_metrics.dart';
 import 'package:aveditor/utils/overlay_event_log.dart';
@@ -38,6 +39,7 @@ import 'package:aveditor/services/transition_engine.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/widgets/video_preview.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:video_player/video_player.dart';
@@ -52,12 +54,15 @@ class EditorScreen extends StatefulWidget {
 }
 
 class _EditorScreenState extends State<EditorScreen>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   /// Fallback extent before the chrome has been laid out once.
   static const _chromeExtentFallback = 260.0;
 
-  /// Drag speed past which the chrome finishes in the flung direction.
-  static const _chromeFlingVelocity = 320.0;
+  /// Gap + always-visible resize affordance between preview and dock.
+  static const _dockResizeHandleHeight = 40.0;
+
+  /// Drag speed past which the dock finishes in the flung direction.
+  static const _dockFlingVelocity = 320.0;
 
   /// Physical decoder slots. [_controller]/[_auxController] flip via [_slotsSwapped]
   /// on transition handoff so we never seek the visible stream (avoids jumps).
@@ -96,8 +101,7 @@ class _EditorScreenState extends State<EditorScreen>
   /// Bumped to cancel an in-flight [_previewTransitionAtCut] (e.g. panel close).
   int _transitionPreviewGen = 0;
 
-  /// True while the transition picker sheet is up — hide the timeline chrome
-  /// grab so it does not sit next to the sheet's own handle.
+  /// True while the transition picker sheet is up.
   var _transitionPickerOpen = false;
 
   VideoProject? _project;
@@ -131,6 +135,7 @@ class _EditorScreenState extends State<EditorScreen>
   final _probe = const VideoProbeService();
   final _previewKey = GlobalKey<VideoPreviewWithOverlaysState>();
   final _timelineKey = GlobalKey<TimelineWidgetState>();
+  final _editorBodyKey = GlobalKey();
   final _musicPlayer = AudioPlayer();
 
   /// Last music clip loaded into [_musicPlayer]; null when stopped.
@@ -144,22 +149,27 @@ class _EditorScreenState extends State<EditorScreen>
 
   Timer? _saveDebounce;
 
-  /// Measures the chrome at full height so drags map 1:1 to finger travel.
+  /// Measures the chrome at full height so entry dock height can be seeded.
   final _chromeContentKey = GlobalKey();
 
-  /// 1 = timeline and actions shown, 0 = collapsed to just the video.
-  late final AnimationController _chrome;
+  /// Bottom-dock height.
+  ///
+  /// - `null` → **entry / panel view**: intrinsic timeline + actions (no
+  ///   screen-fraction lock)
+  /// - `0` → full video (dock hidden)
+  /// - `> 0` → explicit height while dragging or expanded to ~2/3 screen
+  final ValueNotifier<double?> _dockHeight = ValueNotifier(null);
+  AnimationController? _dockSnapAnim;
+  double _dockAnimFrom = 0;
+  double _dockAnimTo = 0;
 
-  /// Text-field focus inside the studio (compose = input+tabs above keyboard).
-  var _textStudioFieldFocused = false;
+  /// Last measured intrinsic entry height (for drag/snap math).
+  double _lastEntryDockHeight = _chromeExtentFallback;
 
-  /// Override for the text-studio sheet height. `null` = entry (2/3) height.
-  double? _textStudioHeightOverride;
-
-  /// Sheet [Positioned.bottom] while composing (keyboard inset).
-  var _textStudioSheetBottom = 0.0;
-
-  static const _chromeHandleHeight = 26.0;
+  /// Bottom-of-preview drag strip: grow / shrink the dock vs the video.
+  final ValueNotifier<bool> _previewMaximizeEdgeLit = ValueNotifier(false);
+  int? _previewMaximizeEdgePointer;
+  VelocityTracker? _previewMaximizeEdgeVelocity;
 
   Duration get _playhead {
     return _scrubPlayhead ?? _controller?.value.position ?? Duration.zero;
@@ -190,11 +200,6 @@ class _EditorScreenState extends State<EditorScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _chrome = AnimationController(
-      vsync: this,
-      value: 1,
-      duration: const Duration(milliseconds: 220),
-    );
     _initVideo();
   }
 
@@ -205,32 +210,360 @@ class _EditorScreenState extends State<EditorScreen>
     if (_editingOverlayId != null && mounted) setState(() {});
   }
 
-  double get _chromeExtent {
+  /// Sheet height so its top edge aligns with the timeline's top.
+  double? _measureSheetHeightToTimelineTop() {
+    final bodyBox = _editorBodyKey.currentContext?.findRenderObject();
+    final timelineBox = _timelineKey.currentContext?.findRenderObject();
+    if (bodyBox is! RenderBox || !bodyBox.hasSize) return null;
+    if (timelineBox is! RenderBox || !timelineBox.hasSize) return null;
+    final bodyTop = bodyBox.localToGlobal(Offset.zero).dy;
+    final timelineTop = timelineBox.localToGlobal(Offset.zero).dy;
+    final topInBody = timelineTop - bodyTop;
+    return (bodyBox.size.height - topInBody).clamp(0.0, bodyBox.size.height);
+  }
+
+  double _bodyHeight() {
+    final bodyBox = _editorBodyKey.currentContext?.findRenderObject();
+    if (bodyBox is RenderBox && bodyBox.hasSize) return bodyBox.size.height;
+    if (!mounted) return _chromeExtentFallback * 3;
+    return MediaQuery.sizeOf(context).height;
+  }
+
+  /// Dock may not consume the full body — the resize handle sits above it.
+  double _availableDockHeight() {
+    return (_bodyHeight() - _dockResizeHandleHeight).clamp(0.0, double.infinity);
+  }
+
+  /// Expanded dock ceiling ≈ 2/3 of the screen (only used when widened).
+  double _maxDockHeight() {
+    if (!mounted) return _chromeExtentFallback * 2;
+    final metrics = EditorSheetMetrics.of(context);
+    return metrics.maxHeight.clamp(0.0, _availableDockHeight());
+  }
+
+  double? _measureChromeContentHeight() {
     final box = _chromeContentKey.currentContext?.findRenderObject();
-    if (box is RenderBox && box.hasSize && box.size.height > 0) {
+    if (box is RenderBox && box.hasSize && box.size.height > 40) {
       return box.size.height;
     }
-    return _chromeExtentFallback;
+    return null;
+  }
+
+  /// Intrinsic panel height for snap/drag math (not a screen fraction).
+  double _entryDockHeight() {
+    final maxH = _maxDockHeight();
+    final measured = _measureChromeContentHeight();
+    if (measured != null) {
+      final h = measured.clamp(0.0, maxH);
+      if (h < maxH - 24) {
+        _lastEntryDockHeight = h;
+        return _lastEntryDockHeight;
+      }
+    }
+    return _lastEntryDockHeight.clamp(0.0, maxH);
+  }
+
+  /// Pixel height used while dragging / snapping (resolves `null` entry).
+  double _dockHeightPx() {
+    final h = _dockHeight.value;
+    if (h != null) return h;
+    return _entryDockHeight();
+  }
+
+  bool get _dockIsHidden {
+    final h = _dockHeight.value;
+    return h != null && h <= 0.5;
+  }
+
+  void _stopDockSnapAnim() {
+    _dockSnapAnim?.dispose();
+    _dockSnapAnim = null;
+  }
+
+  /// Make height explicit before drag so we can animate in pixels.
+  void _ensureDockHeightExplicit() {
+    if (_dockHeight.value != null) return;
+    _dockHeight.value = _entryDockHeight();
+  }
+
+  /// [height] `null` restores intrinsic entry; otherwise pixels (0 = hidden).
+  void _setDockHeight(double? height, {bool animate = false}) {
+    final maxH = _maxDockHeight();
+    final double? target;
+    if (height == null) {
+      target = null;
+    } else {
+      target = height.clamp(0.0, maxH);
+    }
+
+    if (!animate) {
+      _stopDockSnapAnim();
+      _dockHeight.value = target;
+      return;
+    }
+
+    final from = _dockHeightPx();
+    final to = target ?? _entryDockHeight();
+    _dockAnimFrom = from;
+    _dockAnimTo = to;
+    final settleToEntry = height == null;
+    if ((to - from).abs() < 0.5) {
+      _dockHeight.value = settleToEntry ? null : to;
+      return;
+    }
+    _stopDockSnapAnim();
+    final expandish = to >= from;
+    final controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    );
+    _dockSnapAnim = controller;
+    final curve = CurvedAnimation(
+      parent: controller,
+      curve: expandish ? Curves.easeOutCubic : Curves.easeInCubic,
+    );
+    curve.addListener(() {
+      _dockHeight.value =
+          _dockAnimFrom + (_dockAnimTo - _dockAnimFrom) * curve.value;
+    });
+    controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed ||
+          status == AnimationStatus.dismissed) {
+        _dockHeight.value = settleToEntry ? null : _dockAnimTo;
+        _stopDockSnapAnim();
+      }
+    });
+    controller.forward();
+  }
+
+  void _snapDockToEntry({bool animate = true}) {
+    _setDockHeight(null, animate: animate);
+  }
+
+  void _seedStudioSheetHeight() {
+    // Keep entry (intrinsic) or expanded; only restore when hidden.
+    if (_dockIsHidden) {
+      _setDockHeight(null, animate: false);
+    }
+  }
+
+  void _scheduleTextStudioHeightToTimeline() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_inTextStudio) return;
+      if (_dockIsHidden) _snapDockToEntry(animate: false);
+    });
+  }
+
+  void _clearTextStudioHeightOverride() {
+    // Dock height is shared; closing studio keeps the current snap stage.
   }
 
   void _onChromeDragUpdate(DragUpdateDetails details) {
     final delta = details.primaryDelta;
     if (delta == null) return;
-    _chrome.value = (_chrome.value - delta / _chromeExtent).clamp(0.0, 1.0);
+    _stopDockSnapAnim();
+    _ensureDockHeightExplicit();
+    final maxH = _maxDockHeight();
+    _dockHeight.value = (_dockHeightPx() - delta).clamp(0.0, maxH);
   }
 
   void _onChromeDragEnd(DragEndDetails details) {
-    final velocity = details.primaryVelocity ?? 0;
-    final expand = velocity.abs() > _chromeFlingVelocity
-        ? velocity < 0
-        : _chrome.value >= 0.5;
-    _settleChrome(expand: expand);
+    _settleDockHeight(velocity: details.primaryVelocity ?? 0);
   }
 
-  void _settleChrome({required bool expand}) {
-    _chrome.animateTo(
-      expand ? 1.0 : 0.0,
-      curve: expand ? Curves.easeOutCubic : Curves.easeInCubic,
+  /// Snap dock: hidden ↔ intrinsic panel ↔ panel at 2/3 screen.
+  void _settleDockHeight({required double velocity}) {
+    final current = _dockHeightPx();
+    final entry = _entryDockHeight();
+    final maxH = _maxDockHeight();
+    final target = snapDockHeight(
+      current: current,
+      velocity: velocity,
+      stops: dockHeightStops(entryHeight: entry, maxHeight: maxH),
+      flingVelocity: _dockFlingVelocity,
+    );
+    if ((target - entry).abs() <= 8) {
+      _setDockHeight(null, animate: true);
+    } else {
+      _setDockHeight(target, animate: true);
+    }
+  }
+
+  void _onPreviewMaximizePointerDown(PointerDownEvent event) {
+    // Text overlays in the lower preview fifth share this hit zone — yield so
+    // dragging text never also resizes the dock.
+    if (_previewKey.currentState?.claimsOverlayPointer(event) == true) {
+      return;
+    }
+    _stopDockSnapAnim();
+    _ensureDockHeightExplicit();
+    _previewMaximizeEdgePointer = event.pointer;
+    _previewMaximizeEdgeVelocity = VelocityTracker.withKind(event.kind)
+      ..addPosition(event.timeStamp, event.position);
+  }
+
+  void _onPreviewMaximizePointerMove(PointerMoveEvent event) {
+    if (event.pointer != _previewMaximizeEdgePointer) return;
+    final preview = _previewKey.currentState;
+    if (preview != null && preview.isHandlingOverlayPointer(event.pointer)) {
+      _previewMaximizeEdgePointer = null;
+      _previewMaximizeEdgeVelocity = null;
+      _previewMaximizeEdgeLit.value = false;
+      return;
+    }
+    _previewMaximizeEdgeVelocity?.addPosition(
+      event.timeStamp,
+      event.position,
+    );
+    if (!_previewMaximizeEdgeLit.value && event.delta.dy.abs() > 0.5) {
+      _previewMaximizeEdgeLit.value = true;
+    }
+    final maxH = _maxDockHeight();
+    _dockHeight.value = (_dockHeightPx() - event.delta.dy).clamp(0.0, maxH);
+  }
+
+  void _onPreviewMaximizePointerEnd(PointerEvent event) {
+    if (event.pointer != _previewMaximizeEdgePointer) return;
+    final velocity =
+        _previewMaximizeEdgeVelocity?.getVelocity().pixelsPerSecond.dy ?? 0;
+    _previewMaximizeEdgePointer = null;
+    _previewMaximizeEdgeVelocity = null;
+    _previewMaximizeEdgeLit.value = false;
+    _settleDockHeight(velocity: velocity);
+  }
+
+  /// Always-visible strip between the video and the control dock.
+  ///
+  /// Arrows: up when fully collapsed, down when at 2/3 max, both in the
+  /// middle (panel) stage. Drag hit-testing also covers the preview's lower
+  /// fifth via [_buildPreviewDockDragEdge].
+  Widget _buildDockResizeHandle({required bool enabled}) {
+    final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
+    return ValueListenableBuilder<double?>(
+      valueListenable: _dockHeight,
+      builder: (context, dockH, _) {
+        final entry = _entryDockHeight();
+        final maxH = _maxDockHeight();
+        final px = dockH ?? entry;
+        final atHidden = dockH != null && dockH <= 0.5;
+        final atMax = dockH != null && dockH >= maxH - 24;
+        final t = entry <= 0 ? 0.0 : (px / entry).clamp(0.0, 1.0);
+        final bottomInset = safeBottom * (1 - t);
+
+        Widget arrows() {
+          final color = Colors.white.withValues(alpha: 0.75);
+          if (atHidden) {
+            return Icon(Icons.keyboard_arrow_up_rounded, color: color, size: 26);
+          }
+          if (atMax) {
+            return Icon(
+              Icons.keyboard_arrow_down_rounded,
+              color: color,
+              size: 26,
+            );
+          }
+          // Panel / mid stage — both directions are available.
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.keyboard_arrow_up_rounded, color: color, size: 18),
+              Icon(Icons.keyboard_arrow_down_rounded, color: color, size: 18),
+            ],
+          );
+        }
+
+        final strip = SizedBox(
+          height: _dockResizeHandleHeight + bottomInset,
+          width: double.infinity,
+          child: Padding(
+            padding: EdgeInsets.only(bottom: bottomInset),
+            child: ValueListenableBuilder<bool>(
+              valueListenable: _previewMaximizeEdgeLit,
+              builder: (context, lit, _) {
+                return DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withValues(alpha: lit ? 0.22 : 0.06),
+                        Colors.black.withValues(alpha: lit ? 0.45 : 0.14),
+                      ],
+                      stops: const [0.0, 0.45, 1.0],
+                    ),
+                  ),
+                  child: Center(child: arrows()),
+                );
+              },
+            ),
+          ),
+        );
+
+        if (!enabled) return strip;
+
+        return Semantics(
+          label: atHidden
+              ? (_inTextStudio
+                  ? context.l10n.textStudioTabTemplates
+                  : context.l10n.showTimeline)
+              : context.l10n.hideTimeline,
+          child: Listener(
+            behavior: HitTestBehavior.opaque,
+            onPointerDown: _onPreviewMaximizePointerDown,
+            onPointerMove: _onPreviewMaximizePointerMove,
+            onPointerUp: _onPreviewMaximizePointerEnd,
+            onPointerCancel: _onPreviewMaximizePointerEnd,
+            child: strip,
+          ),
+        );
+      },
+    );
+  }
+
+  /// Lower fifth of the preview — extends the dock-resize drag target and
+  /// shows the drag gradient over the video.
+  Widget _buildPreviewDockDragEdge({required double zoneHeight}) {
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      height: zoneHeight,
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: _onPreviewMaximizePointerDown,
+        onPointerMove: _onPreviewMaximizePointerMove,
+        onPointerUp: _onPreviewMaximizePointerEnd,
+        onPointerCancel: _onPreviewMaximizePointerEnd,
+        child: ValueListenableBuilder<bool>(
+          valueListenable: _previewMaximizeEdgeLit,
+          builder: (context, lit, _) {
+            return IgnorePointer(
+              child: AnimatedOpacity(
+                opacity: lit ? 1 : 0,
+                duration: const Duration(milliseconds: 140),
+                curve: Curves.easeOut,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withValues(alpha: 0.18),
+                        Colors.black.withValues(alpha: 0.55),
+                      ],
+                      stops: const [0.0, 0.45, 1.0],
+                    ),
+                  ),
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
     );
   }
 
@@ -1001,6 +1334,13 @@ class _EditorScreenState extends State<EditorScreen>
     final pos = controller.value.position;
     final scrub = _scrubPlayhead;
     if (scrub != null) {
+      // Past the last video frame (music/text tail): decoder never reaches
+      // scrub time — keep the optimistic playhead so the timeline can scroll.
+      final pastVideo = scrub > project.duration;
+      if (pastVideo) {
+        setState(() {});
+        return;
+      }
       // Drop optimistic scrub once the decoder catches up.
       if ((pos.inMilliseconds - scrub.inMilliseconds).abs() <= 100) {
         _scrubPlayhead = null;
@@ -1050,7 +1390,9 @@ class _EditorScreenState extends State<EditorScreen>
     unawaited(main?.dispose() ?? Future<void>.value());
     unawaited(aux?.dispose() ?? Future<void>.value());
     unawaited(_musicPlayer.dispose());
-    _chrome.dispose();
+    _stopDockSnapAnim();
+    _dockHeight.dispose();
+    _previewMaximizeEdgeLit.dispose();
     super.dispose();
   }
 
@@ -1124,21 +1466,27 @@ class _EditorScreenState extends State<EditorScreen>
 
   bool get _inTextStudio => _textStudioOverlayId != null;
 
-  /// Bottom sheets that already have a drag pill — hide the chrome handle.
-  bool get _hideChromeHandle => _inTextStudio || _transitionPickerOpen;
-
   void _seek(Duration position) {
     final controller = _controller;
     final project = _project;
     if (controller == null || project == null) return;
 
-    // The timeline scrolls to keep the playhead centred, so restricting the
-    // playhead to the trim range would also make the rest of the clip — and
-    // its trim handles — unreachable. Playback still stops at the trim end.
-    final clamped = clampDuration(position, Duration.zero, project.duration);
+    // Allow scrubbing through the full packed sequence (video ∪ music ∪ text).
+    // Restricting to [project.duration] parked the centre playhead at EOF and
+    // made longer audio tails unreachable even though the strip grew.
+    final maxScrub = projectMaxScrubSourceTime(
+      segments: project.segments,
+      sourceDuration: project.duration,
+      musicTracks: project.musicTracks,
+      overlays: project.overlays,
+    );
+    final clamped = clampDuration(position, Duration.zero, maxScrub);
     _scrubPlayhead = clamped;
     unawaited(_tearDownFadePreview());
-    controller.seekTo(clamped);
+    // Video decoder only has frames up to the source length — pin the last
+    // frame while the UI playhead continues into a music/text-only tail.
+    final videoSeek = clampDuration(clamped, Duration.zero, project.duration);
+    controller.seekTo(videoSeek);
     unawaited(_syncMusicPlayback());
     _syncVideoAudioVolume();
     setState(() {});
@@ -1270,16 +1618,15 @@ class _EditorScreenState extends State<EditorScreen>
 
   /// Empty canvas tap: clear overlay chrome first; only then toggle playback.
   void _onPreviewBackgroundTap() {
-    if (_inTextStudio) {
-      // Keep the text panel; only dismiss the keyboard / field focus.
-      FocusManager.instance.primaryFocus?.unfocus();
-      if (_textStudioFieldFocused) {
-        setState(() => _textStudioFieldFocused = false);
-      }
+    if (_editingOverlayId != null) {
+      // Keep the text studio open; only end on-canvas editing / dismiss IME.
+      _finishInlineEditing(
+        _inTextStudio ? 'preview_outside_studio' : 'preview_outside',
+      );
       return;
     }
-    if (_editingOverlayId != null) {
-      _finishInlineEditing('preview_outside');
+    if (_inTextStudio) {
+      FocusManager.instance.primaryFocus?.unfocus();
       return;
     }
     if (_selectedOverlayId != null) {
@@ -1617,16 +1964,12 @@ class _EditorScreenState extends State<EditorScreen>
     _syncedMusicId = null;
   }
 
+  /// CapCut-style text — opens the text studio on the Text (effects) tab.
   void _addTextOverlay() {
-    _placeNewTextOverlay(openStudio: false);
+    _placeNewTextOverlay();
   }
 
-  /// CapCut-style template text — opens the text studio on Templates.
-  void _addTemplateTextOverlay() {
-    _placeNewTextOverlay(openStudio: true);
-  }
-
-  void _placeNewTextOverlay({required bool openStudio}) {
+  void _placeNewTextOverlay() {
     final project = _project;
     final controller = _controller;
     if (project == null || controller == null) return;
@@ -1635,21 +1978,18 @@ class _EditorScreenState extends State<EditorScreen>
       controller.pause();
     }
 
-    final start = _playhead;
+    final start = _textPlacementSourceTime(project);
     var end = start + const Duration(seconds: 3);
     if (end - start < minOverlayDuration) {
       end = start + minOverlayDuration;
     }
 
-    // Basic text: seed placeholder so the field opens fully selected and the
-    // first keystroke replaces it. Template text stays empty for the studio.
-    final seed = openStudio ? '' : context.l10n.addText;
     final overlay = fitOverlayBoxToText(
-      TextOverlay(text: seed, start: start, end: end),
+      TextOverlay(text: '', start: start, end: end),
+      emptyPlaceholder: context.l10n.textOverlayHint,
     );
-    _textStudioFieldFocused = false;
-    _textStudioHeightOverride = null;
-    _textStudioSheetBottom = 0;
+    // Capture timeline-aligned height before the dock swaps to studio.
+    _seedStudioSheetHeight();
     _mutate((p) {
       final placed = assignOverlayLane(
         p.overlays,
@@ -1665,17 +2005,33 @@ class _EditorScreenState extends State<EditorScreen>
       _selectedSegmentId = null;
       _selectedMusicId = null;
       _selectedTransitionAfterIndex = null;
-      if (openStudio) {
-        _inlineEditSelectAll = false;
-        _editingOverlayId = null;
-        _textStudioOverlayId = placed.id;
-        _chrome.value = 1;
-      } else {
-        _inlineEditSelectAll = true;
-        _textStudioOverlayId = null;
-        _editingOverlayId = placed.id;
-      }
+      _inlineEditSelectAll = false;
+      _editingOverlayId = null;
+      _textStudioOverlayId = placed.id;
     });
+    // Keep the playhead on the new overlay so the selection box is visible.
+    if (start != _playhead) {
+      _seek(start);
+    }
+    _scheduleTextStudioHeightToTimeline();
+  }
+
+  /// Source time for a newly placed text clip — never a deleted video gap.
+  Duration _textPlacementSourceTime(VideoProject project) {
+    final t = _playhead;
+    final segments = project.segments;
+    if (segments.isEmpty) return t;
+    if (isInKeptRegion(segments, t)) return t;
+    // At / past the last frame (common when paused at EOF, or scrubbing music).
+    if (t >= segments.last.end) return t;
+
+    // Middle deleted gap: snap onto the previous kept frame.
+    final prev = segmentEndingAtOrBefore(segments, t);
+    if (prev != null) {
+      final snapped = prev.end - const Duration(milliseconds: 1);
+      return snapped < prev.start ? prev.start : snapped;
+    }
+    return segments.first.start;
   }
 
   void _openTextStudio(TextOverlay overlay) {
@@ -1684,18 +2040,29 @@ class _EditorScreenState extends State<EditorScreen>
       controller.pause();
     }
     FocusManager.instance.primaryFocus?.unfocus();
-    _chrome.value = 1;
+    // Seed height from the live timeline before swapping the dock to studio.
+    _seedStudioSheetHeight();
+    // Empty overlays may still be one-glyph wide from older fits — expand so
+    // the placeholder stays horizontal under effects like Torn.
+    final fitted = overlay.text.trim().isEmpty
+        ? fitOverlayBoxToText(
+            overlay,
+            emptyPlaceholder: context.l10n.textOverlayHint,
+          )
+        : overlay;
+    if (fitted.boxWidth != overlay.boxWidth ||
+        fitted.boxHeight != overlay.boxHeight) {
+      _updateOverlay(fitted);
+    }
     setState(() {
-      _textStudioFieldFocused = false;
-      _textStudioHeightOverride = null;
-      _textStudioSheetBottom = 0;
-      _selectedOverlayId = overlay.id;
+      _selectedOverlayId = fitted.id;
       _selectedSegmentId = null;
       _selectedMusicId = null;
       _selectedTransitionAfterIndex = null;
       _editingOverlayId = null;
-      _textStudioOverlayId = overlay.id;
+      _textStudioOverlayId = fitted.id;
     });
+    _scheduleTextStudioHeightToTimeline();
   }
 
   void _closeTextStudio(String source) {
@@ -1723,9 +2090,8 @@ class _EditorScreenState extends State<EditorScreen>
       _deleteOverlay(id);
       setState(() {
         _textStudioOverlayId = null;
-        _textStudioFieldFocused = false;
-        _textStudioHeightOverride = null;
-        _textStudioSheetBottom = 0;
+        _clearTextStudioHeightOverride();
+        _editingOverlayId = null;
       });
       return;
     }
@@ -1736,9 +2102,8 @@ class _EditorScreenState extends State<EditorScreen>
 
     setState(() {
       _textStudioOverlayId = null;
-      _textStudioFieldFocused = false;
-      _textStudioHeightOverride = null;
-      _textStudioSheetBottom = 0;
+      _clearTextStudioHeightOverride();
+      _editingOverlayId = null;
       _selectedOverlayId = source == 'preview_outside' ? null : id;
     });
   }
@@ -1878,6 +2243,19 @@ class _EditorScreenState extends State<EditorScreen>
         (overlay.text.trim().isEmpty || overlay.text == placeholder);
 
     if (isUnusedSeed) {
+      // Text studio owns empty overlays until the sheet is confirmed/dismissed.
+      // Deleting here would also tear down the effects panel with the IME.
+      if (_inTextStudio) {
+        OverlayEventLog.log('Editor', 'finishInlineEditingKeepStudioEmpty', {
+          'source': source,
+          'id': id,
+        });
+        setState(() {
+          _editingOverlayId = null;
+          _inlineEditSelectAll = false;
+        });
+        return;
+      }
       OverlayEventLog.log('Editor', 'finishInlineEditingDeleteEmpty', {
         'source': source,
         'id': id,
@@ -1894,8 +2272,10 @@ class _EditorScreenState extends State<EditorScreen>
     setState(() {
       _editingOverlayId = null;
       _inlineEditSelectAll = false;
-      // Tap outside the box dismisses chrome entirely; other exits keep selection.
-      _selectedOverlayId = source == 'preview_outside' ? null : id;
+      // Keep selection while the text studio stays open.
+      if (!_inTextStudio) {
+        _selectedOverlayId = source == 'preview_outside' ? null : id;
+      }
     });
     OverlayEventLog.log('Editor', 'finishInlineEditingDone', {
       'source': source,
@@ -1911,12 +2291,11 @@ class _EditorScreenState extends State<EditorScreen>
     }
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
-      // Body tap → on-canvas edit only. Studio opens from corner edit / toolbar.
+      // On-canvas edit. If the studio is already open, keep it and retarget.
       _inlineEditSelectAll = false;
-      _textStudioOverlayId = null;
-      _textStudioFieldFocused = false;
-      _textStudioHeightOverride = null;
-      _textStudioSheetBottom = 0;
+      if (_textStudioOverlayId != null) {
+        _textStudioOverlayId = overlay.id;
+      }
       _selectedOverlayId = overlay.id;
       _selectedSegmentId = null;
       _selectedMusicId = null;
@@ -1943,9 +2322,7 @@ class _EditorScreenState extends State<EditorScreen>
       }
       if (_textStudioOverlayId == id) {
         _textStudioOverlayId = null;
-        _textStudioFieldFocused = false;
-        _textStudioHeightOverride = null;
-        _textStudioSheetBottom = 0;
+        _clearTextStudioHeightOverride();
       }
     });
   }
@@ -2167,11 +2544,13 @@ class _EditorScreenState extends State<EditorScreen>
           final metrics = EditorSheetMetrics.of(context);
           final bodyH = bodyConstraints.maxHeight;
           final maxH = metrics.maxHeight.clamp(0.0, bodyH);
-          // Open at max (2/3 screen); user can snap down to entry via the handle.
-          final sheetH =
-              (_textStudioHeightOverride ?? maxH).clamp(0.0, bodyH);
+          // Prefer the live timeline top; fall back to metrics entry height.
+          final timelineH = _measureSheetHeightToTimelineTop();
+          final entryH =
+              (timelineH ?? metrics.entryHeight).clamp(0.0, maxH);
 
           return Stack(
+            key: _editorBodyKey,
             clipBehavior: Clip.none,
             children: [
               // Preview + timeline stay laid out exactly as usual — the text
@@ -2180,7 +2559,7 @@ class _EditorScreenState extends State<EditorScreen>
                 children: [
                   Expanded(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
                       child: LayoutBuilder(
                         builder: (context, constraints) {
                           final targetWidth = constraints.maxWidth;
@@ -2197,7 +2576,10 @@ class _EditorScreenState extends State<EditorScreen>
                                   keyboard: keyboard,
                                   overlay: editingOverlay,
                                 );
-                          return Listener(
+                          return Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              Listener(
                             behavior: HitTestBehavior.opaque,
                             onPointerDown: (e) {
                               OverlayEventLog.log(
@@ -2245,6 +2627,7 @@ class _EditorScreenState extends State<EditorScreen>
                                         overlays: project.overlays,
                                         segments: project.segments,
                                         position: _playhead,
+                                        isPlaying: controller.value.isPlaying,
                                         clipRotation: project.rotation,
                                         hostViewportSize: Size(
                                           constraints.maxWidth,
@@ -2255,13 +2638,6 @@ class _EditorScreenState extends State<EditorScreen>
                                         selectAllOnEdit: _inlineEditSelectAll,
                                         textHint: l10n.textOverlayHint,
                                         onOverlaySelected: (overlay) {
-                                          if (_inTextStudio &&
-                                              _textStudioOverlayId !=
-                                                  overlay.id) {
-                                            _closeTextStudio(
-                                              'select_other_overlay',
-                                            );
-                                          }
                                           if (_editingOverlayId != null &&
                                               _editingOverlayId !=
                                                   overlay.id) {
@@ -2269,10 +2645,13 @@ class _EditorScreenState extends State<EditorScreen>
                                               'select_other_overlay',
                                             );
                                           }
-                                          setState(
-                                            () => _selectedOverlayId =
-                                                overlay.id,
-                                          );
+                                          setState(() {
+                                            _selectedOverlayId = overlay.id;
+                                            // Keep the studio open; retarget it.
+                                            if (_textStudioOverlayId != null) {
+                                              _textStudioOverlayId = overlay.id;
+                                            }
+                                          });
                                         },
                                         onRequestEdit: _startInlineEditing,
                                         onBackgroundTap:
@@ -2336,89 +2715,36 @@ class _EditorScreenState extends State<EditorScreen>
                                 ),
                               ),
                             ),
+                              ),
+                              if (editingOverlay == null &&
+                                  !_transitionPickerOpen)
+                                _buildPreviewDockDragEdge(
+                                  zoneHeight: constraints.maxHeight * 0.2,
+                                ),
+                            ],
                           );
                         },
                       ),
                     ),
                   ),
-                  IgnorePointer(
-                    ignoring: inTextStudio || editingOverlay != null,
-                    child: Visibility(
-                      // Keep chrome layout size so the preview does not go
-                      // full-bleed, but hide the grab pill — it otherwise shows
-                      // through the translucent iOS keyboard top as a "gap".
-                      visible: editingOverlay == null,
-                      maintainSize: true,
-                      maintainAnimation: true,
-                      maintainState: true,
-                      maintainInteractivity: false,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (_hideChromeHandle)
-                            const SizedBox(height: _chromeHandleHeight)
-                          else
-                            _buildChromeHandle(l10n),
-                          _buildCollapsibleChrome(
-                            l10n: l10n,
-                            project: project,
-                            controller: controller,
-                            isInlineEditing: _editingOverlayId != null,
-                          ),
-                        ],
-                      ),
-                    ),
+                  _buildDockResizeHandle(
+                    enabled:
+                        editingOverlay == null && !_transitionPickerOpen,
+                  ),
+                  _buildBottomDock(
+                    l10n: l10n,
+                    project: project,
+                    controller: controller,
+                    inTextStudio: inTextStudio,
+                    studioOverlay: studioOverlay,
+                    bodyH: bodyH,
+                    maxH: maxH,
+                    entryH: entryH,
+                    editingOverlay: editingOverlay,
                   ),
                 ],
               ),
-              if (inTextStudio && studioOverlay != null)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: _textStudioSheetBottom,
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: sheetH,
-                    child: TextStudioPanel(
-                      overlay: studioOverlay,
-                      textHint: l10n.textOverlayHint,
-                      maxSheetHeight: bodyH,
-                      onChanged: _updateOverlay,
-                      onTextChanged: (text) {
-                        final current = _textStudioOverlay;
-                        if (current == null) return;
-                        _updateOverlay(current.copyWith(text: text));
-                      },
-                      onConfirm: () => _closeTextStudio('studio_confirm'),
-                      onFieldFocusChanged: (focused) {
-                        if (_textStudioFieldFocused == focused) return;
-                        setState(() => _textStudioFieldFocused = focused);
-                      },
-                      onHeightChanged: (height, {double bottom = 0}) {
-                        if (height == null) {
-                          if (_textStudioHeightOverride == null &&
-                              _textStudioSheetBottom == 0) {
-                            return;
-                          }
-                          setState(() {
-                            _textStudioHeightOverride = null;
-                            _textStudioSheetBottom = 0;
-                          });
-                          return;
-                        }
-                        final clamped = height.clamp(0.0, bodyH);
-                        if (_textStudioHeightOverride == clamped &&
-                            _textStudioSheetBottom == bottom) {
-                          return;
-                        }
-                        setState(() {
-                          _textStudioHeightOverride = clamped;
-                          _textStudioSheetBottom = bottom;
-                        });
-                      },
-                    ),
-                  ),
-                ),
+              // Keyboard tray — same strip for basic text and effect/template edit.
               if (editingOverlay != null)
                 Positioned(
                   left: 0,
@@ -2456,41 +2782,60 @@ class _EditorScreenState extends State<EditorScreen>
     );
   }
 
-  /// Always-visible grab bar — the only way back once the chrome is collapsed.
-  Widget _buildChromeHandle(AppLocalizations l10n) {
-    // Collapsed, the handle is the bottom-most widget, so it has to clear the
-    // home indicator itself; expanded, the action bar's padding already does.
-    final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
-
-    return AnimatedBuilder(
-      animation: _chrome,
-      builder: (context, _) {
-        final expanded = _chrome.value > 0.5;
-        return Semantics(
-          button: true,
-          label: expanded ? l10n.hideTimeline : l10n.showTimeline,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onVerticalDragUpdate: _onChromeDragUpdate,
-            onVerticalDragEnd: _onChromeDragEnd,
-            onTap: () => _settleChrome(expand: !expanded),
-            child: Padding(
-              padding: EdgeInsets.only(
-                bottom: safeBottom * (1 - _chrome.value),
-              ),
-              child: SizedBox(
-                height: _chromeHandleHeight,
-                child: Center(
-                  child: Container(
-                    width: 44,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.28),
-                      borderRadius: BorderRadius.circular(3),
+  /// Bottom dock: timeline chrome, or text studio when open.
+  ///
+  /// Entry (`_dockHeight == null`) sizes to content. Expanded uses an explicit
+  /// height up to ~2/3 screen. `0` hides the dock (full video).
+  Widget _buildBottomDock({
+    required AppLocalizations l10n,
+    required VideoProject project,
+    required VideoPlayerController controller,
+    required bool inTextStudio,
+    required TextOverlay? studioOverlay,
+    required double bodyH,
+    required double maxH,
+    required double entryH,
+    required TextOverlay? editingOverlay,
+  }) {
+    return ValueListenableBuilder<double?>(
+      valueListenable: _dockHeight,
+      builder: (context, dockH, _) {
+        if (inTextStudio && studioOverlay != null) {
+          final h = (dockH ?? _entryDockHeight()).clamp(0.0, bodyH);
+          return SizedBox(
+            width: double.infinity,
+            height: h,
+            child: h <= 0.5
+                ? const SizedBox.shrink()
+                : TapRegion(
+                    groupId: kBasicTextEditTapGroup,
+                    child: Listener(
+                      behavior: HitTestBehavior.opaque,
+                      onPointerDown: (_) => BasicTextEditDismissGuard.arm(),
+                      child: TextStudioPanel(
+                        overlay: studioOverlay,
+                        onChanged: _updateOverlay,
+                        onConfirm: () => _closeTextStudio('studio_confirm'),
+                      ),
                     ),
                   ),
-                ),
-              ),
+          );
+        }
+
+        return IgnorePointer(
+          ignoring: editingOverlay != null,
+          child: Visibility(
+            visible: editingOverlay == null,
+            maintainSize: true,
+            maintainAnimation: true,
+            maintainState: true,
+            maintainInteractivity: false,
+            child: _buildCollapsibleChrome(
+              l10n: l10n,
+              project: project,
+              controller: controller,
+              isInlineEditing: _editingOverlayId != null,
+              dockHeight: dockH,
             ),
           ),
         );
@@ -2503,8 +2848,18 @@ class _EditorScreenState extends State<EditorScreen>
     required VideoProject project,
     required VideoPlayerController controller,
     required bool isInlineEditing,
+    required double? dockHeight,
   }) {
-    Widget timeline = _buildTimeline(project: project, controller: controller);
+    final entry = _entryDockHeight();
+    final expandTimeline =
+        dockHeight != null && dockHeight > entry + 24;
+    final hidden = dockHeight != null && dockHeight <= 0.5;
+
+    Widget timeline = _buildTimeline(
+      project: project,
+      controller: controller,
+      expandToFill: expandTimeline,
+    );
     Widget actions = _buildBottomActions(l10n);
 
     if (isInlineEditing) {
@@ -2523,29 +2878,62 @@ class _EditorScreenState extends State<EditorScreen>
     final content = Column(
       key: _chromeContentKey,
       mainAxisSize: MainAxisSize.min,
-      children: [timeline, const SizedBox(height: 8), actions],
+      children: [
+        timeline,
+        const SizedBox(height: 8),
+        actions,
+      ],
     );
 
-    return AnimatedBuilder(
-      animation: _chrome,
-      builder: (context, child) {
-        // Shrinking the slot pushes the chrome off the bottom edge while the
-        // preview above claims the freed height.
-        return ClipRect(
-          child: Align(
-            alignment: Alignment.topCenter,
-            heightFactor: _chrome.value,
-            child: child,
-          ),
-        );
-      },
-      child: content,
+    if (hidden) {
+      return const SizedBox(width: double.infinity, height: 0);
+    }
+
+    // Entry (null): intrinsic height — never lock to a screen fraction.
+    if (dockHeight == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final measured = _measureChromeContentHeight();
+        if (measured != null && measured > 40) {
+          _lastEntryDockHeight = measured;
+        }
+      });
+      return content;
+    }
+
+    // Expanded (~2/3): timeline lanes grow; actions stay pinned at bottom.
+    if (expandTimeline) {
+      return SizedBox(
+        width: double.infinity,
+        height: dockHeight,
+        child: Column(
+          children: [
+            Expanded(child: timeline),
+            const SizedBox(height: 8),
+            actions,
+          ],
+        ),
+      );
+    }
+
+    // Collapsing toward fullscreen: clip the intrinsic chrome to [dockHeight].
+    return SizedBox(
+      width: double.infinity,
+      height: dockHeight,
+      child: ClipRect(
+        child: OverflowBox(
+          alignment: Alignment.topCenter,
+          maxHeight: double.infinity,
+          child: content,
+        ),
+      ),
     );
   }
 
   Widget _buildTimeline({
     required VideoProject project,
     required VideoPlayerController controller,
+    bool expandToFill = false,
   }) {
     return TimelineWidget(
       key: _timelineKey,
@@ -2564,6 +2952,7 @@ class _EditorScreenState extends State<EditorScreen>
       onTogglePlay: _togglePlay,
       onHandleDragUpdate: _onChromeDragUpdate,
       onHandleDragEnd: _onChromeDragEnd,
+      expandToFill: expandToFill,
       selectedOverlayId: _selectedOverlayId,
       selectedSegmentId: _selectedSegmentId,
       selectedMusicId: _selectedMusicId,
@@ -2644,14 +3033,8 @@ class _EditorScreenState extends State<EditorScreen>
               children: [
                 IconButton.outlined(
                   onPressed: _exporting ? null : _addTextOverlay,
-                  icon: _TextAddIcon(enabled: !_exporting),
-                  tooltip: l10n.addText,
-                ),
-                const SizedBox(width: 8),
-                IconButton.outlined(
-                  onPressed: _exporting ? null : _addTemplateTextOverlay,
                   icon: _TextAddIcon(enabled: !_exporting, sparkle: true),
-                  tooltip: l10n.addTemplateText,
+                  tooltip: l10n.addText,
                 ),
                 const SizedBox(width: 8),
                 IconButton.outlined(

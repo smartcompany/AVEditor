@@ -134,7 +134,10 @@ class AppLocalizationsJa extends AppLocalizations {
   String get textTemplatePacks => 'パック';
 
   @override
-  String get textStudioTabTemplates => 'テンプレート';
+  String get textStudioTabTemplates => 'テキスト';
+
+  @override
+  String get textStudioTabTextTemplates => 'テキストテンプレート';
 
   @override
   String get textStudioTabFonts => 'フォント';

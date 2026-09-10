@@ -126,6 +126,27 @@ void main() {
       expect(shortWidth, lessThan(fullWidth));
     });
 
+    test('min zoom fits music/text-extended sequence to 2/3 viewport', () {
+      const source = Duration(seconds: 10);
+      const extended = Duration(seconds: 25); // music past EOF
+      final width = timelineContentWidth(
+        sequenceDuration: extended,
+        scaleReference: extended, // not source-only
+        viewportWidth: viewport,
+        zoom: minTimelineZoom,
+      );
+      expect(width, closeTo(viewport * minTimelineZoom, 0.001));
+
+      // Source-only reference would leave the extended strip too wide to "fit".
+      final videoBased = timelineContentWidth(
+        sequenceDuration: extended,
+        scaleReference: source,
+        viewportWidth: viewport,
+        zoom: minTimelineZoom,
+      );
+      expect(videoBased, greaterThan(viewport * minTimelineZoom + 1));
+    });
+
     test('at max zoom a 1s clip is 40 logical px on any viewport', () {
       const source = Duration(seconds: 184);
       for (final vp in [320.0, 390.0, 430.0]) {

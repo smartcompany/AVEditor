@@ -351,8 +351,14 @@ abstract class AppLocalizations {
   /// No description provided for @textStudioTabTemplates.
   ///
   /// In en, this message translates to:
-  /// **'Templates'**
+  /// **'Text'**
   String get textStudioTabTemplates;
+
+  /// No description provided for @textStudioTabTextTemplates.
+  ///
+  /// In en, this message translates to:
+  /// **'Text templates'**
+  String get textStudioTabTextTemplates;
 
   /// No description provided for @textStudioTabFonts.
   ///
@@ -369,7 +375,7 @@ abstract class AppLocalizations {
   /// No description provided for @textStudioTabEffects.
   ///
   /// In en, this message translates to:
-  /// **'Effects'**
+  /// **'Edit effects'**
   String get textStudioTabEffects;
 
   /// No description provided for @textStudioTabAnimation.

@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 
 /// One outline pass around the glyphs. Width scales with font size.
@@ -191,6 +193,62 @@ class TextStyleLineBackground {
   }
 }
 
+/// Horizontal fill gradient across the glyph block (CapCut pastel effects).
+@immutable
+class TextStyleFillGradient {
+  const TextStyleFillGradient({required this.colorArgb});
+
+  final List<int> colorArgb;
+
+  List<Color> get colors => [
+    for (final c in colorArgb) Color(c),
+  ];
+
+  Shader? createShader(Rect bounds, {Color? accent}) {
+    var painted = colors;
+    if (painted.length < 2) return null;
+    if (accent != null) {
+      // Anchor the baked stops on the user color so the color tray recolors
+      // pastel-style gradients instead of leaving a fixed palette.
+      if (painted.length == 2) {
+        painted = [
+          Color.lerp(painted[0], accent, 0.35)!,
+          accent,
+        ];
+      } else {
+        painted = [
+          Color.lerp(painted.first, accent, 0.45)!,
+          accent,
+          Color.lerp(painted.last, accent, 0.45)!,
+        ];
+      }
+    }
+    // Flutter requires colorStops whenever colors.length != 2.
+    final stops = painted.length == 2
+        ? null
+        : <double>[
+            for (var i = 0; i < painted.length; i++)
+              i / (painted.length - 1),
+          ];
+    final from = bounds.centerLeft;
+    final to = bounds.width <= 0.5
+        ? from + const Offset(1, 0)
+        : bounds.centerRight;
+    return ui.Gradient.linear(from, to, painted, stops);
+  }
+
+  Map<String, dynamic> toJson() => {
+    'colors': colorArgb,
+  };
+
+  factory TextStyleFillGradient.fromJson(Map<String, dynamic> json) {
+    final raw = json['colors'] as List<dynamic>? ?? const [];
+    return TextStyleFillGradient(
+      colorArgb: [for (final c in raw) (c as num).toInt()],
+    );
+  }
+}
+
 /// Declarative Word Art look. Stored as JSON so packs can ship later.
 @immutable
 class TextStyleTemplate {
@@ -200,6 +258,7 @@ class TextStyleTemplate {
     this.fillUseAccent = true,
     this.fillArgb,
     this.fillContrastOnAccent = false,
+    this.fillGradient,
     this.strokes = const [],
     this.glow,
     this.shadow,
@@ -216,6 +275,10 @@ class TextStyleTemplate {
 
   /// When true, fill is black/white based on accent luminance.
   final bool fillContrastOnAccent;
+
+  /// Optional left→right fill gradient (overrides solid fill when present).
+  final TextStyleFillGradient? fillGradient;
+
   final List<TextStyleStroke> strokes;
   final TextStyleGlow? glow;
   final TextStyleShadow? shadow;
@@ -228,8 +291,9 @@ class TextStyleTemplate {
     if (fillContrastOnAccent) {
       return accent.computeLuminance() > 0.55 ? Colors.black : Colors.white;
     }
-    if (fillUseAccent) return accent;
-    return Color(fillArgb ?? 0xFFFFFFFF);
+    // Overlay accent is the user-facing color (style tray / basic toolbar).
+    // Pack defaults are seeded into overlay.color when the pack is applied.
+    return accent;
   }
 
   Map<String, dynamic> toJson() => {
@@ -238,6 +302,7 @@ class TextStyleTemplate {
     'fillUseAccent': fillUseAccent,
     'fillContrastOnAccent': fillContrastOnAccent,
     if (fillArgb != null) 'fillColor': fillArgb,
+    if (fillGradient != null) 'fillGradient': fillGradient!.toJson(),
     'strokes': strokes.map((s) => s.toJson()).toList(),
     if (glow != null) 'glow': glow!.toJson(),
     if (shadow != null) 'shadow': shadow!.toJson(),
@@ -252,6 +317,11 @@ class TextStyleTemplate {
       fillUseAccent: json['fillUseAccent'] as bool? ?? true,
       fillArgb: json['fillColor'] as int?,
       fillContrastOnAccent: json['fillContrastOnAccent'] as bool? ?? false,
+      fillGradient: json['fillGradient'] == null
+          ? null
+          : TextStyleFillGradient.fromJson(
+              json['fillGradient'] as Map<String, dynamic>,
+            ),
       strokes: (json['strokes'] as List<dynamic>? ?? const [])
           .map((e) => TextStyleStroke.fromJson(e as Map<String, dynamic>))
           .toList(),

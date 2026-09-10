@@ -136,7 +136,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get textTemplatePacks => 'Packs';
 
   @override
-  String get textStudioTabTemplates => 'Templates';
+  String get textStudioTabTemplates => 'Text';
+
+  @override
+  String get textStudioTabTextTemplates => 'Text templates';
 
   @override
   String get textStudioTabFonts => 'Fonts';
@@ -145,7 +148,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get textStudioTabStyle => 'Style';
 
   @override
-  String get textStudioTabEffects => 'Effects';
+  String get textStudioTabEffects => 'Edit effects';
 
   @override
   String get textStudioTabAnimation => 'Animation';

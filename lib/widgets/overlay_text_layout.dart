@@ -17,6 +17,10 @@ const double minOverlayBoxHeight = 32;
 const double maxOverlayBoxWidth = kOverlayFrameWidth * 1.3;
 const double maxOverlayBoxHeight = kOverlayFrameHeight * 1.3;
 
+/// Used when measuring an empty overlay so the box stays wide enough for a
+/// short horizontal placeholder — not one glyph that forces vertical wrap.
+const String kEmptyOverlayLayoutSample = '텍스트 입력';
+
 /// Bundled font used for overlay text.
 ///
 /// Pinned rather than inherited from the theme so the preview and the exported
@@ -375,7 +379,8 @@ TextPainter layoutOverlayText({
 
 /// Resolves [overlay] into a frame of [frameWidth] x [frameHeight] pixels.
 ///
-/// Box size hugs the glyphs so selection chrome and export layout match.
+/// Box size hugs the glyphs (including pack brush / stroke pads) so selection
+/// chrome and export layout match the on-canvas look.
 OverlayBox overlayBoxForFrame(
   TextOverlay overlay, {
   required double frameWidth,
@@ -386,6 +391,7 @@ OverlayBox overlayBoxForFrame(
     fontSize: overlay.fontSize,
     fontFamily: overlay.fontFamily,
     textAlign: overlay.textAlign,
+    template: resolveOverlayTemplate(overlay),
   );
   return OverlayBox(
     width: fitted.width * scale,
@@ -396,23 +402,60 @@ OverlayBox overlayBoxForFrame(
   );
 }
 
+/// Horizontal padding around glyphs for line backgrounds / strokes / brush.
+double overlayTextPadH({
+  required double fontSize,
+  TextStyleTemplate? template,
+}) {
+  final strokePad = overlayStrokeWidth(fontSize) * 0.55;
+  final softPad = fontSize * 0.06;
+  final lineBg = template?.lineBackground;
+  final linePadH = lineBg == null ? 0.0 : fontSize * lineBg.padHFactor;
+  final brushBleed = lineBg?.shape == TextStyleLineShape.brush
+      ? fontSize * 0.2
+      : 0.0;
+  return (strokePad + softPad + linePadH + brushBleed).clamp(2.0, 80.0);
+}
+
+/// Vertical padding around glyphs for line backgrounds / strokes / brush.
+double overlayTextPadV({
+  required double fontSize,
+  TextStyleTemplate? template,
+}) {
+  final strokePad = overlayStrokeWidth(fontSize) * 0.55;
+  final softPad = fontSize * 0.06;
+  final lineBg = template?.lineBackground;
+  final linePadV = lineBg == null ? 0.0 : fontSize * lineBg.padVFactor;
+  final brushBleed = lineBg?.shape == TextStyleLineShape.brush
+      ? fontSize * 0.2
+      : 0.0;
+  return (strokePad + softPad + linePadV + brushBleed).clamp(2.0, 80.0);
+}
+
 /// Frame-pixel size that tightly wraps the laid-out text.
 ///
-/// Empty text uses a one-glyph placeholder so the selection box stays usable
-/// while editing.
+/// Empty text uses a short horizontal placeholder so the selection box stays
+/// wide enough for the on-canvas hint (not one glyph stacked vertically).
 Size measureFittedOverlayBox({
   required String text,
   required double fontSize,
   String? fontFamily,
   TextAlign textAlign = TextAlign.center,
   double maxWidth = maxOverlayBoxWidth,
+  TextStyleTemplate? template,
+  String? emptyPlaceholder,
 }) {
-  final sample = text.trim().isEmpty ? '가' : text;
-  final strokePad = overlayStrokeWidth(fontSize) * 0.55;
-  final softPad = fontSize * 0.06;
-  final pad = (strokePad + softPad).clamp(2.0, 18.0);
-  final innerMax = (maxWidth - pad * 2).clamp(1.0, maxWidth);
+  final trimmed = text.trim();
+  final sample = trimmed.isEmpty
+      ? (emptyPlaceholder?.trim().isNotEmpty == true
+            ? emptyPlaceholder!.trim()
+            : kEmptyOverlayLayoutSample)
+      : text;
+  final padH = overlayTextPadH(fontSize: fontSize, template: template);
+  final padV = overlayTextPadV(fontSize: fontSize, template: template);
+  final innerMax = (maxWidth - padH * 2).clamp(fontSize, maxWidth);
 
+  // Prefer a single horizontal line; only wrap if we exceed the frame budget.
   final painter = createOverlayTextPainter(
     text: sample,
     style: _baseTextStyle(
@@ -420,25 +463,33 @@ Size measureFittedOverlayBox({
       fontFamily: fontFamily,
       color: const Color(0xFFFFFFFF),
     ),
-    maxWidth: innerMax,
+    maxWidth: maxOverlayBoxWidth,
     textAlign: textAlign,
   );
+  if (painter.width > innerMax) {
+    painter.layout(maxWidth: innerMax);
+  }
   final width =
-      (painter.width + pad * 2).clamp(minOverlayBoxWidth, maxOverlayBoxWidth);
+      (painter.width + padH * 2).clamp(minOverlayBoxWidth, maxOverlayBoxWidth);
   final height =
-      (painter.height + pad * 2).clamp(minOverlayBoxHeight, maxOverlayBoxHeight);
+      (painter.height + padV * 2).clamp(minOverlayBoxHeight, maxOverlayBoxHeight);
   painter.dispose();
   return Size(width.toDouble(), height.toDouble());
 }
 
 /// Returns [overlay] with [TextOverlay.boxWidth]/[TextOverlay.boxHeight] fitted
 /// to the current text and font size (center / offset unchanged).
-TextOverlay fitOverlayBoxToText(TextOverlay overlay) {
+TextOverlay fitOverlayBoxToText(
+  TextOverlay overlay, {
+  String? emptyPlaceholder,
+}) {
   final size = measureFittedOverlayBox(
     text: overlay.text,
     fontSize: overlay.fontSize,
     fontFamily: overlay.fontFamily,
     textAlign: overlay.textAlign,
+    template: resolveOverlayTemplate(overlay),
+    emptyPlaceholder: emptyPlaceholder,
   );
   if ((overlay.boxWidth - size.width).abs() < 0.5 &&
       (overlay.boxHeight - size.height).abs() < 0.5) {
@@ -510,13 +561,20 @@ void _paintFillLayer({
   String? fontFamily,
   TextAlign textAlign = TextAlign.center,
   List<Shadow>? shadows,
+  Shader? fillShader,
 }) {
+  final Paint? foreground = fillShader == null
+      ? null
+      : (Paint()
+          ..shader = fillShader
+          ..style = PaintingStyle.fill);
   final painter = createOverlayTextPainter(
     text: text,
     style: _baseTextStyle(
       fontSize: fontSize,
       fontFamily: fontFamily,
-      color: color,
+      color: foreground == null ? color : null,
+      foreground: foreground,
       shadows: shadows,
     ),
     maxWidth: maxWidth,
@@ -654,6 +712,19 @@ void paintTextStyleTemplate({
       color: fillColor,
       fontFamily: fontFamily,
       textAlign: textAlign,
+      fillShader: () {
+        final gradient = template.fillGradient;
+        if (gradient == null) return null;
+        return gradient.createShader(
+          Rect.fromLTWH(
+            paintOrigin.dx,
+            paintOrigin.dy,
+            metricsPainter.width,
+            metricsPainter.height,
+          ),
+          accent: fillColor,
+        );
+      }(),
     );
 
     metricsPainter.dispose();
@@ -681,40 +752,50 @@ void paintTextStyleTemplate({
   );
 
   final graphemes = text.characters.toList(growable: false);
-  final visibleLines = <int>{};
+  final lines = metricsPainter.computeLineMetrics();
+  // Per line: leftmost / rightmost extent of revealed glyphs (painter space).
+  final lineLeft = <int, double>{};
+  final lineRight = <int, double>{};
+
   var utf16 = 0;
   for (var i = 0; i < graphemes.length; i++) {
     final g = graphemes[i];
     final opacity =
         i < state.glyphs.length ? state.glyphs[i].opacity : 1.0;
     if (opacity > 0.01) {
+      final caret = metricsPainter.getOffsetForCaret(
+        TextPosition(offset: utf16),
+        Rect.zero,
+      );
+      var lineIdx = _lineIndexForY(lines, caret.dy);
+      var left = caret.dx;
+      var right = caret.dx + fontSize * 0.55;
       final boxes = metricsPainter.getBoxesForSelection(
         TextSelection(
           baseOffset: utf16,
           extentOffset: utf16 + g.length,
         ),
       );
-      for (final box in boxes) {
-        var lineIdx = 0;
-        for (final line in metricsPainter.computeLineMetrics()) {
-          final lineTop = line.baseline - line.ascent;
-          final lineBottom = line.baseline + line.descent;
-          if (box.top < lineBottom && box.bottom > lineTop) {
-            visibleLines.add(lineIdx);
-          }
-          lineIdx++;
-        }
+      if (boxes.isNotEmpty) {
+        left = boxes.map((b) => b.left).reduce(math.min);
+        right = boxes.map((b) => b.right).reduce(math.max);
+        final midY = (boxes.first.top + boxes.first.bottom) / 2;
+        lineIdx = _lineIndexForY(lines, midY);
       }
+      lineLeft[lineIdx] = math.min(lineLeft[lineIdx] ?? left, left);
+      lineRight[lineIdx] = math.max(lineRight[lineIdx] ?? right, right);
     }
     utf16 += g.length;
   }
 
   final lineBg = template.lineBackground;
-  if (lineBg != null && visibleLines.isNotEmpty) {
-    paintOverlayLineBackgrounds(
+  if (lineBg != null && lineRight.isNotEmpty) {
+    _paintGrowingLineBackgrounds(
       canvas: canvas,
-      painter: metricsPainter,
+      lines: lines,
       origin: origin,
+      lineLeft: lineLeft,
+      lineRight: lineRight,
       background: lineBg.resolveColor(accent),
       fontSize: fontSize,
       padHFactor: lineBg.padHFactor,
@@ -723,7 +804,6 @@ void paintTextStyleTemplate({
       shape: lineBg.shape,
       shadowOpacity: lineBg.shadowOpacity,
       shadowBlurFactor: lineBg.shadowBlurFactor,
-      visibleLineIndexes: visibleLines,
     );
   }
 
@@ -750,13 +830,95 @@ void paintTextStyleTemplate({
         fontFamily: fontFamily,
         opacity: glyph.opacity,
       );
-    } else if (glyph.isVisible) {
-      // Whitespace still advances layout via caret; nothing to paint.
     }
     utf16 = nextUtf;
   }
 
   metricsPainter.dispose();
+}
+
+int _lineIndexForY(List<ui.LineMetrics> lines, double y) {
+  for (var i = 0; i < lines.length; i++) {
+    final line = lines[i];
+    final top = line.baseline - line.ascent;
+    final bottom = line.baseline + line.descent;
+    if (y >= top && y <= bottom) return i;
+  }
+  if (lines.isEmpty) return 0;
+  // Nearest line by baseline.
+  var best = 0;
+  var bestDist = double.infinity;
+  for (var i = 0; i < lines.length; i++) {
+    final d = (y - lines[i].baseline).abs();
+    if (d < bestDist) {
+      bestDist = d;
+      best = i;
+    }
+  }
+  return best;
+}
+
+/// Brush/capsule strips that grow with revealed glyph extents (typewriter).
+void _paintGrowingLineBackgrounds({
+  required Canvas canvas,
+  required List<ui.LineMetrics> lines,
+  required Offset origin,
+  required Map<int, double> lineLeft,
+  required Map<int, double> lineRight,
+  required Color background,
+  required double fontSize,
+  required double padHFactor,
+  required double padVFactor,
+  required double radiusFactor,
+  required TextStyleLineShape shape,
+  required double shadowOpacity,
+  required double shadowBlurFactor,
+}) {
+  if (background.a <= 0) return;
+  final padH = fontSize * padHFactor;
+  final padV = fontSize * padVFactor;
+
+  for (final entry in lineRight.entries) {
+    final i = entry.key;
+    if (i < 0 || i >= lines.length) continue;
+    final line = lines[i];
+    final left = lineLeft[i] ?? line.left;
+    final right = entry.value;
+    final width = (right - left).clamp(fontSize * 0.2, double.infinity);
+    final rect = Rect.fromLTWH(
+      origin.dx + left - padH,
+      origin.dy + line.baseline - line.ascent - padV,
+      width + padH * 2,
+      line.ascent + line.descent + padV * 2,
+    );
+    if (shape == TextStyleLineShape.brush) {
+      _paintBrushLineBackground(
+        canvas: canvas,
+        rect: rect,
+        color: background,
+        fontSize: fontSize,
+        shadowOpacity: shadowOpacity,
+        shadowBlurFactor: shadowBlurFactor,
+      );
+    } else {
+      final radius = Radius.circular((fontSize * radiusFactor).clamp(4.0, 12.0));
+      if (shadowOpacity > 0) {
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(rect.translate(0, fontSize * 0.04), radius),
+          Paint()
+            ..color = const Color(0xFF000000).withValues(alpha: shadowOpacity)
+            ..maskFilter = MaskFilter.blur(
+              BlurStyle.normal,
+              (fontSize * shadowBlurFactor).clamp(1.0, 24.0),
+            ),
+        );
+      }
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, radius),
+        Paint()..color = background,
+      );
+    }
+  }
 }
 
 void _paintStyledGrapheme({
@@ -938,6 +1100,9 @@ class OverlayTextDisplay extends StatelessWidget {
       maxWidth: maxWidth,
       textAlign: textAlign,
     );
+    // Size to glyphs only. Brush / glow pads paint outside; parents must not
+    // clip (OverflowBox + Clip.none). Avoiding paintOrigin inset prevents the
+    // content from shifting right when the CustomPaint is constrained.
     final size = Size(probe.width, probe.height);
     probe.dispose();
 

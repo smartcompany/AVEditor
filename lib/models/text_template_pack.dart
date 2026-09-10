@@ -9,6 +9,7 @@ class TextTemplatePackItem {
     required this.id,
     required this.title,
     required this.style,
+    this.kind = 'effect',
     this.premium = false,
     this.lottieAsset,
     this.lottieUrl,
@@ -20,6 +21,9 @@ class TextTemplatePackItem {
   final String id;
   final String title;
   final TextStyleTemplate style;
+
+  /// `effect` (static look) or `template` (effect + motion).
+  final String kind;
   final bool premium;
 
   /// Bundled Lottie path, e.g. `assets/text_packs/lottie/hearts.json`.
@@ -40,6 +44,7 @@ class TextTemplatePackItem {
   Map<String, dynamic> toJson() => {
     'id': id,
     'title': title,
+    'kind': kind,
     'premium': premium,
     'style': style.toJson(),
     if (lottieAsset != null) 'lottieAsset': lottieAsset,
@@ -59,6 +64,7 @@ class TextTemplatePackItem {
     return TextTemplatePackItem(
       id: json['id'] as String,
       title: json['title'] as String? ?? json['id'] as String,
+      kind: json['kind'] as String? ?? 'effect',
       premium: json['premium'] as bool? ?? false,
       style: TextStyleTemplate.fromJson(styleJson),
       lottieAsset: json['lottieAsset'] as String?,
