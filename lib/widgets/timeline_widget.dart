@@ -2301,7 +2301,10 @@ class TimelineWidgetState extends State<TimelineWidget>
           onPointerUp: _onPointerUp,
           onPointerCancel: _onPointerUp,
           child: SizedBox(
-            height: _bodyHeight,
+            // Never exceed the dock-given height or the body overflows paint.
+            height: widget.expandToFill && constraints.maxHeight.isFinite
+                ? constraints.maxHeight
+                : _bodyHeight,
             width: double.infinity,
             child: ClipRect(
               child: CustomPaint(
@@ -2346,27 +2349,36 @@ class TimelineWidgetState extends State<TimelineWidget>
       },
     );
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onVerticalDragUpdate: widget.onHandleDragUpdate,
-            onVerticalDragEnd: widget.onHandleDragEnd,
-            child: _buildTransportRow(),
+    return LayoutBuilder(
+      builder: (context, outerConstraints) {
+        final tight = widget.expandToFill &&
+            outerConstraints.maxHeight.isFinite &&
+            outerConstraints.maxHeight < 88;
+        return Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          padding: EdgeInsets.fromLTRB(12, tight ? 4 : 8, 12, tight ? 4 : 8),
+          decoration: BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
           ),
-          const SizedBox(height: 4),
-          if (widget.expandToFill) Expanded(child: body) else body,
-        ],
-      ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (!tight) ...[
+                GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onVerticalDragUpdate: widget.onHandleDragUpdate,
+                  onVerticalDragEnd: widget.onHandleDragEnd,
+                  child: _buildTransportRow(),
+                ),
+                const SizedBox(height: 4),
+              ],
+              if (widget.expandToFill) Expanded(child: body) else body,
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -3225,11 +3237,14 @@ class _TimelinePainter extends CustomPainter {
   }
 
   void _paintLaneScrollbar(Canvas canvas, Size size, double viewportHeight) {
-    if (lanesContentHeight <= viewportHeight) return;
+    if (viewportHeight <= 4 || lanesContentHeight <= viewportHeight) return;
 
-    final thumbHeight = (viewportHeight * viewportHeight / lanesContentHeight)
-        .clamp(18.0, viewportHeight);
+    final rawThumb = viewportHeight * viewportHeight / lanesContentHeight;
+    // When the dock is tiny, min thumb must not exceed viewport or clamp throws.
+    final minThumb = math.min(18.0, viewportHeight);
+    final thumbHeight = rawThumb.clamp(minThumb, viewportHeight);
     final maxScroll = lanesContentHeight - viewportHeight;
+    if (maxScroll <= 0) return;
     final progress = (lanesScrollY / maxScroll).clamp(0.0, 1.0);
     final top = _scrollRegionTop + progress * (viewportHeight - thumbHeight);
 

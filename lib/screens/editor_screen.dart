@@ -2839,14 +2839,17 @@ class _EditorScreenState extends State<EditorScreen>
 
     // Dock height is authoritative (entry 1/3, max 2/3, or mid-drag).
     // Timeline fills leftover space; extra lanes scroll inside.
+    final showActions = height >= 120;
     return SizedBox(
       width: double.infinity,
       height: height,
       child: Column(
         children: [
           Expanded(child: timeline),
-          const SizedBox(height: 8),
-          actions,
+          if (showActions) ...[
+            const SizedBox(height: 8),
+            actions,
+          ],
         ],
       ),
     );
