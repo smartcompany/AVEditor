@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 ///
 /// Three stages (absolute heights):
 /// 1. [maxHeight] — panel = 2/3 screen → video area ≈ 1/3
-/// 2. [entryHeight] — normal panel / timeline view
+/// 2. [entryHeight] — mid / initial panel = 1/3 screen
 /// 3. `0` — full video (panel hidden)
 class EditorSheetMetrics {
   const EditorSheetMetrics({
@@ -23,24 +23,15 @@ class EditorSheetMetrics {
   double get maxHeight => screenHeight * maxFraction;
   double get minHeight => screenHeight * minFraction;
 
-  /// Absolute ceiling used only for clamping — interactive max is [_maxFractionValue].
-  static const _maxFractionValue = 2 / 3;
+  static const entryFractionValue = 1 / 3;
+  static const maxFractionValue = 2 / 3;
   static const minFractionValue = 0.12;
 
   static EditorSheetMetrics of(BuildContext context) {
-    final media = MediaQuery.of(context);
-    final screenH = media.size.height;
-    final contentW = media.size.width - 24;
-    final videoH = contentW * 16 / 9;
-    final reservedTop = (media.padding.top + kToolbarHeight + 8 + videoH)
-        .clamp(screenH * 0.32, screenH * 0.58);
-    final entry = ((screenH - reservedTop) / screenH).clamp(0.28, 0.48);
-    // Max is 2/3 screen; keep entry strictly below max so snaps stay distinct.
-    final maxFrac = _maxFractionValue;
-    final entryFrac = entry < maxFrac - 0.04 ? entry : maxFrac - 0.04;
+    final screenH = MediaQuery.sizeOf(context).height;
     return EditorSheetMetrics(
-      entryFraction: entryFrac,
-      maxFraction: maxFrac,
+      entryFraction: entryFractionValue,
+      maxFraction: maxFractionValue,
       minFraction: minFractionValue,
       screenHeight: screenH,
     );
@@ -78,7 +69,7 @@ class EditorSheetMetrics {
   }
 }
 
-/// Dock stops in pixels: hidden → panel (entry) → panel at 2/3 screen.
+/// Dock stops in pixels: hidden → panel (entry = 1/3) → panel at 2/3 screen.
 List<double> dockHeightStops({
   required double entryHeight,
   required double maxHeight,
@@ -95,7 +86,7 @@ List<double> dockHeightStops({
 ///
 /// [velocity] uses Flutter's vertical convention: positive = finger down
 /// (collapse / grow video), negative = finger up (expand panel). Flings move
-/// one stop at a time: max(2/3) → entry → hidden (and the reverse).
+/// one stop at a time: max(2/3) → entry(1/3) → hidden (and the reverse).
 double snapDockHeight({
   required double current,
   required double velocity,

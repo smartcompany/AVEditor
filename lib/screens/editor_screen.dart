@@ -55,9 +55,6 @@ class EditorScreen extends StatefulWidget {
 
 class _EditorScreenState extends State<EditorScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
-  /// Fallback extent before the chrome has been laid out once.
-  static const _chromeExtentFallback = 260.0;
-
   /// Gap + always-visible resize affordance between preview and dock.
   static const _dockResizeHandleHeight = 40.0;
 
@@ -149,22 +146,15 @@ class _EditorScreenState extends State<EditorScreen>
 
   Timer? _saveDebounce;
 
-  /// Measures the chrome at full height so entry dock height can be seeded.
-  final _chromeContentKey = GlobalKey();
-
   /// Bottom-dock height.
   ///
-  /// - `null` → **entry / panel view**: intrinsic timeline + actions (no
-  ///   screen-fraction lock)
+  /// - `null` → **entry / mid**: dock = 1/3 screen
   /// - `0` → full video (dock hidden)
   /// - `> 0` → explicit height while dragging or expanded to ~2/3 screen
   final ValueNotifier<double?> _dockHeight = ValueNotifier(null);
   AnimationController? _dockSnapAnim;
   double _dockAnimFrom = 0;
   double _dockAnimTo = 0;
-
-  /// Last measured intrinsic entry height (for drag/snap math).
-  double _lastEntryDockHeight = _chromeExtentFallback;
 
   /// Bottom-of-preview drag strip: grow / shrink the dock vs the video.
   final ValueNotifier<bool> _previewMaximizeEdgeLit = ValueNotifier(false);
@@ -210,22 +200,10 @@ class _EditorScreenState extends State<EditorScreen>
     if (_editingOverlayId != null && mounted) setState(() {});
   }
 
-  /// Sheet height so its top edge aligns with the timeline's top.
-  double? _measureSheetHeightToTimelineTop() {
-    final bodyBox = _editorBodyKey.currentContext?.findRenderObject();
-    final timelineBox = _timelineKey.currentContext?.findRenderObject();
-    if (bodyBox is! RenderBox || !bodyBox.hasSize) return null;
-    if (timelineBox is! RenderBox || !timelineBox.hasSize) return null;
-    final bodyTop = bodyBox.localToGlobal(Offset.zero).dy;
-    final timelineTop = timelineBox.localToGlobal(Offset.zero).dy;
-    final topInBody = timelineTop - bodyTop;
-    return (bodyBox.size.height - topInBody).clamp(0.0, bodyBox.size.height);
-  }
-
   double _bodyHeight() {
     final bodyBox = _editorBodyKey.currentContext?.findRenderObject();
     if (bodyBox is RenderBox && bodyBox.hasSize) return bodyBox.size.height;
-    if (!mounted) return _chromeExtentFallback * 3;
+    if (!mounted) return 800;
     return MediaQuery.sizeOf(context).height;
   }
 
@@ -234,33 +212,21 @@ class _EditorScreenState extends State<EditorScreen>
     return (_bodyHeight() - _dockResizeHandleHeight).clamp(0.0, double.infinity);
   }
 
-  /// Expanded dock ceiling ≈ 2/3 of the screen (only used when widened).
+  /// Expanded dock ceiling = 2/3 of the screen.
   double _maxDockHeight() {
-    if (!mounted) return _chromeExtentFallback * 2;
+    if (!mounted) return 800 * EditorSheetMetrics.maxFractionValue;
     final metrics = EditorSheetMetrics.of(context);
     return metrics.maxHeight.clamp(0.0, _availableDockHeight());
   }
 
-  double? _measureChromeContentHeight() {
-    final box = _chromeContentKey.currentContext?.findRenderObject();
-    if (box is RenderBox && box.hasSize && box.size.height > 40) {
-      return box.size.height;
-    }
-    return null;
-  }
-
-  /// Intrinsic panel height for snap/drag math (not a screen fraction).
+  /// Mid / initial dock = 1/3 of the screen.
   double _entryDockHeight() {
     final maxH = _maxDockHeight();
-    final measured = _measureChromeContentHeight();
-    if (measured != null) {
-      final h = measured.clamp(0.0, maxH);
-      if (h < maxH - 24) {
-        _lastEntryDockHeight = h;
-        return _lastEntryDockHeight;
-      }
+    if (!mounted) {
+      return (800 * EditorSheetMetrics.entryFractionValue).clamp(0.0, maxH);
     }
-    return _lastEntryDockHeight.clamp(0.0, maxH);
+    final metrics = EditorSheetMetrics.of(context);
+    return metrics.entryHeight.clamp(0.0, maxH);
   }
 
   /// Pixel height used while dragging / snapping (resolves `null` entry).
@@ -286,7 +252,7 @@ class _EditorScreenState extends State<EditorScreen>
     _dockHeight.value = _entryDockHeight();
   }
 
-  /// [height] `null` restores intrinsic entry; otherwise pixels (0 = hidden).
+  /// [height] `null` restores entry (1/3 screen); otherwise pixels (0 = hidden).
   void _setDockHeight(double? height, {bool animate = false}) {
     final maxH = _maxDockHeight();
     final double? target;
@@ -341,7 +307,7 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   void _seedStudioSheetHeight() {
-    // Keep entry (intrinsic) or expanded; only restore when hidden.
+    // Keep entry (1/3) or expanded; only restore when hidden.
     if (_dockIsHidden) {
       _setDockHeight(null, animate: false);
     }
@@ -371,7 +337,7 @@ class _EditorScreenState extends State<EditorScreen>
     _settleDockHeight(velocity: details.primaryVelocity ?? 0);
   }
 
-  /// Snap dock: hidden ↔ intrinsic panel ↔ panel at 2/3 screen.
+  /// Snap dock: hidden ↔ entry (1/3) ↔ max (2/3).
   void _settleDockHeight({required double velocity}) {
     final current = _dockHeightPx();
     final entry = _entryDockHeight();
@@ -1337,20 +1303,15 @@ class _EditorScreenState extends State<EditorScreen>
       // Past the last video frame (music/text tail): decoder never reaches
       // scrub time — keep the optimistic playhead so the timeline can scroll.
       final pastVideo = scrub > project.duration;
-      if (pastVideo) {
+      if (pastVideo || !controller.value.isPlaying) {
+        // Paused scrub must keep [_scrubPlayhead]. At EOF the decoder often
+        // reports a few ms early; clearing scrub made the video end line
+        // chatter against the centre playhead while dragging.
         setState(() {});
         return;
       }
-      // Drop optimistic scrub once the decoder catches up.
-      if ((pos.inMilliseconds - scrub.inMilliseconds).abs() <= 100) {
-        _scrubPlayhead = null;
-      } else if (!controller.value.isPlaying) {
-        // Still seeking — keep showing scrub time, refresh other UI lightly.
-        setState(() {});
-        return;
-      } else {
-        _scrubPlayhead = null;
-      }
+      // Playing: drop optimistic scrub — playhead follows the decoder.
+      _scrubPlayhead = null;
     }
 
     // Transition picker preview: play only through the applied effect window.
@@ -2544,10 +2505,7 @@ class _EditorScreenState extends State<EditorScreen>
           final metrics = EditorSheetMetrics.of(context);
           final bodyH = bodyConstraints.maxHeight;
           final maxH = metrics.maxHeight.clamp(0.0, bodyH);
-          // Prefer the live timeline top; fall back to metrics entry height.
-          final timelineH = _measureSheetHeightToTimelineTop();
-          final entryH =
-              (timelineH ?? metrics.entryHeight).clamp(0.0, maxH);
+          final entryH = metrics.entryHeight.clamp(0.0, maxH);
 
           return Stack(
             key: _editorBodyKey,
@@ -2784,8 +2742,8 @@ class _EditorScreenState extends State<EditorScreen>
 
   /// Bottom dock: timeline chrome, or text studio when open.
   ///
-  /// Entry (`_dockHeight == null`) sizes to content. Expanded uses an explicit
-  /// height up to ~2/3 screen. `0` hides the dock (full video).
+  /// Entry (`_dockHeight == null`) locks to 1/3 screen. Expanded uses an
+  /// explicit height up to ~2/3 screen. `0` hides the dock (full video).
   Widget _buildBottomDock({
     required AppLocalizations l10n,
     required VideoProject project,
@@ -2801,7 +2759,7 @@ class _EditorScreenState extends State<EditorScreen>
       valueListenable: _dockHeight,
       builder: (context, dockH, _) {
         if (inTextStudio && studioOverlay != null) {
-          final h = (dockH ?? _entryDockHeight()).clamp(0.0, bodyH);
+          final h = (dockH ?? entryH).clamp(0.0, bodyH);
           return SizedBox(
             width: double.infinity,
             height: h,
@@ -2836,6 +2794,7 @@ class _EditorScreenState extends State<EditorScreen>
               controller: controller,
               isInlineEditing: _editingOverlayId != null,
               dockHeight: dockH,
+              entryHeight: entryH,
             ),
           ),
         );
@@ -2849,16 +2808,15 @@ class _EditorScreenState extends State<EditorScreen>
     required VideoPlayerController controller,
     required bool isInlineEditing,
     required double? dockHeight,
+    required double entryHeight,
   }) {
-    final entry = _entryDockHeight();
-    final expandTimeline =
-        dockHeight != null && dockHeight > entry + 24;
     final hidden = dockHeight != null && dockHeight <= 0.5;
+    final height = dockHeight ?? entryHeight;
 
     Widget timeline = _buildTimeline(
       project: project,
       controller: controller,
-      expandToFill: expandTimeline,
+      expandToFill: !hidden,
     );
     Widget actions = _buildBottomActions(l10n);
 
@@ -2875,57 +2833,21 @@ class _EditorScreenState extends State<EditorScreen>
       );
     }
 
-    final content = Column(
-      key: _chromeContentKey,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        timeline,
-        const SizedBox(height: 8),
-        actions,
-      ],
-    );
-
     if (hidden) {
       return const SizedBox(width: double.infinity, height: 0);
     }
 
-    // Entry (null): intrinsic height — never lock to a screen fraction.
-    if (dockHeight == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        final measured = _measureChromeContentHeight();
-        if (measured != null && measured > 40) {
-          _lastEntryDockHeight = measured;
-        }
-      });
-      return content;
-    }
-
-    // Expanded (~2/3): timeline lanes grow; actions stay pinned at bottom.
-    if (expandTimeline) {
-      return SizedBox(
-        width: double.infinity,
-        height: dockHeight,
-        child: Column(
-          children: [
-            Expanded(child: timeline),
-            const SizedBox(height: 8),
-            actions,
-          ],
-        ),
-      );
-    }
-
-    // Collapsing toward fullscreen: clip the intrinsic chrome to [dockHeight].
+    // Dock height is authoritative (entry 1/3, max 2/3, or mid-drag).
+    // Timeline fills leftover space; extra lanes scroll inside.
     return SizedBox(
       width: double.infinity,
-      height: dockHeight,
-      child: ClipRect(
-        child: OverflowBox(
-          alignment: Alignment.topCenter,
-          maxHeight: double.infinity,
-          child: content,
-        ),
+      height: height,
+      child: Column(
+        children: [
+          Expanded(child: timeline),
+          const SizedBox(height: 8),
+          actions,
+        ],
       ),
     );
   }

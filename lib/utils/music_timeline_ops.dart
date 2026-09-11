@@ -2,6 +2,7 @@ import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/project_music.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
+import 'package:aveditor/utils/timeline_math.dart';
 
 /// Maps a music clip's source range onto the packed sequence timeline.
 ({Duration start, Duration end})? musicSequenceSpan(
@@ -43,8 +44,25 @@ Duration projectSequenceDuration({
   return total;
 }
 
+/// Sequence length plus trailing empty runway for free trim / scrub past content.
+Duration projectEditableSequenceDuration({
+  required List<ClipSegment> segments,
+  required Duration sourceDuration,
+  List<ProjectMusic> musicTracks = const [],
+  List<TextOverlay> overlays = const [],
+}) {
+  final content = projectSequenceDuration(
+    segments: segments,
+    sourceDuration: sourceDuration,
+    musicTracks: musicTracks,
+    overlays: overlays,
+  );
+  return content + timelineTrailingEditPad(content);
+}
+
 /// Furthest scrub position in source-time coordinates (may exceed video length
-/// when music/text sit after the last frame).
+/// when music/text sit after the last frame). Trailing edit pad is not
+/// scrubbable — that runway is for trim handles only.
 Duration projectMaxScrubSourceTime({
   required List<ClipSegment> segments,
   required Duration sourceDuration,

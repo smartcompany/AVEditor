@@ -18,6 +18,14 @@ const maxZoomOneSecondLogicalWidth = 40.0;
 /// Hard ceiling so multi-hour sources cannot demand absurd zoom factors.
 const maxTimelineZoomCeiling = 200.0;
 
+/// Empty runway past the last video/music/text so the playhead and trim
+/// handles can move past current content. There is no hard project duration.
+Duration timelineTrailingEditPad(Duration contentDuration) {
+  final ms = contentDuration.inMilliseconds.clamp(0, 1 << 31);
+  // At least 8s, or ~30% of content — always room to drag text longer.
+  return Duration(milliseconds: math.max(8000, (ms * 0.3).round()));
+}
+
 /// Zoom multiplier where 1s of timeline ≈ [maxZoomOneSecondLogicalWidth] px
 /// on every phone (CapCut-style absolute time scale at max zoom).
 double maxTimelineZoomFor(

@@ -44,13 +44,12 @@ void main() {
       fileDuration: const Duration(seconds: 30),
     );
 
-    expect(
-      projectMaxScrubSourceTime(
-        segments: segments,
-        sourceDuration: const Duration(seconds: 10),
-        musicTracks: [music],
-      ),
-      const Duration(seconds: 20),
+    final maxScrub = projectMaxScrubSourceTime(
+      segments: segments,
+      sourceDuration: const Duration(seconds: 10),
+      musicTracks: [music],
     );
+    // Content ends at 20s (music past video). Edit pad is not scrubbable.
+    expect(maxScrub, const Duration(seconds: 20));
   });
 }

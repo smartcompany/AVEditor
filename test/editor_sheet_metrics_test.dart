@@ -1,9 +1,31 @@
 import 'package:aveditor/utils/editor_sheet_metrics.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  group('EditorSheetMetrics', () {
+    testWidgets('entry is 1/3 screen, max is 2/3', (tester) async {
+      late EditorSheetMetrics metrics;
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(size: Size(390, 844)),
+          child: Builder(
+            builder: (context) {
+              metrics = EditorSheetMetrics.of(context);
+              return const SizedBox();
+            },
+          ),
+        ),
+      );
+      expect(metrics.entryFraction, EditorSheetMetrics.entryFractionValue);
+      expect(metrics.maxFraction, EditorSheetMetrics.maxFractionValue);
+      expect(metrics.entryHeight, closeTo(844 / 3, 0.001));
+      expect(metrics.maxHeight, closeTo(844 * 2 / 3, 0.001));
+    });
+  });
+
   group('dockHeightStops', () {
-    test('three stages: hidden, panel entry, panel at 2/3 screen', () {
+    test('three stages: hidden, entry 1/3, max 2/3', () {
       final stops = dockHeightStops(entryHeight: 320, maxHeight: 600);
       expect(stops, [0.0, 320.0, 600.0]);
     });
