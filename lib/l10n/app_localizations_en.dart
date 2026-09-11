@@ -88,7 +88,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get trimEnd => 'Trim end';
 
   @override
-  String get textOverlayHint => 'Enter text';
+  String get textOverlayHint => 'Tap to enter text';
 
   @override
   String get uploadTitleHint => 'Short title';

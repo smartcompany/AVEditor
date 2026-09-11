@@ -31,6 +31,10 @@ class BasicTextEditDismissGuard {
 
 enum _TrayMode { fonts, colors }
 
+/// Matches [minOverlayFontSize] / [maxOverlayFontSize] in video_preview.
+const _toolbarMinFontSize = 24.0;
+const _toolbarMaxFontSize = 240.0;
+
 /// YouTube Shorts–style strip above the keyboard for basic text editing.
 class BasicTextEditToolbar extends StatefulWidget {
   const BasicTextEditToolbar({
@@ -56,6 +60,7 @@ class BasicTextEditToolbar extends StatefulWidget {
   ];
 
   static const barBackground = _barBg;
+  static const barHeight = 52.0;
   static const _barBg = Color(0xFF12141A);
   static const _controlsBg = Color(0xFF1A1C22);
   static const _trayBg = Color(0xFF2A2F3A);
@@ -129,8 +134,9 @@ class _BasicTextEditToolbarState extends State<BasicTextEditToolbar> {
         ? Border.all(color: color, width: 2)
         : null;
 
+    // Match the font-select "Aa" chip footprint (18px type + chip padding).
     return Container(
-      width: 28,
+      width: 36,
       height: 28,
       alignment: Alignment.center,
       decoration: BoxDecoration(
@@ -142,7 +148,7 @@ class _BasicTextEditToolbarState extends State<BasicTextEditToolbar> {
         'A',
         style: TextStyle(
           color: fill,
-          fontSize: 16,
+          fontSize: 18,
           fontWeight: FontWeight.w800,
           height: 1,
           shadows: style == TextOverlayStyle.plain
@@ -225,75 +231,110 @@ class _BasicTextEditToolbarState extends State<BasicTextEditToolbar> {
     final fontsOpen = _tray == _TrayMode.fonts;
     final colorsOpen = _tray == _TrayMode.colors;
 
-    return TapRegion(
-      groupId: kBasicTextEditTapGroup,
-      child: ExcludeFocus(
-        child: Listener(
-          behavior: HitTestBehavior.opaque,
-          onPointerDown: (_) => BasicTextEditDismissGuard.arm(),
-          child: Material(
-            color: BasicTextEditToolbar._barBg,
-            child: SizedBox(
-              height: 52,
-              child: Row(
-                children: [
-                  // Selected / primary controls — separate strip from the tray.
-                  ColoredBox(
-                    color: BasicTextEditToolbar._controlsBg,
+    // Size scrubber sits above the opaque color bar so it never covers it.
+    // Stack empty space is transparent — preview shows through.
+    return SizedBox(
+      height: BasicTextEditToolbar.barHeight +
+          _FontSizeVerticalScrubber.height,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: BasicTextEditToolbar.barHeight,
+            child: TapRegion(
+              groupId: kBasicTextEditTapGroup,
+              child: ExcludeFocus(
+                child: Listener(
+                  behavior: HitTestBehavior.opaque,
+                  onPointerDown: (_) => BasicTextEditDismissGuard.arm(),
+                  child: Material(
+                    color: BasicTextEditToolbar._barBg,
                     child: Row(
-                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        const SizedBox(width: 4),
-                        _ToolbarChip(
-                          selected: fontsOpen,
-                          onTap: () =>
-                              setState(() => _tray = _TrayMode.fonts),
-                          child: _buildAaSample(
-                            font: font,
-                            color: fontsOpen
-                                ? const Color(0xFF4CC9F0)
-                                : Colors.white,
+                        ColoredBox(
+                          color: BasicTextEditToolbar._controlsBg,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const SizedBox(width: 4),
+                              _ToolbarChip(
+                                onTap: _cycleStyle,
+                                child: _buildStyleGlyph(),
+                              ),
+                              _buildToolButton(
+                                onTap: _cycleAlign,
+                                child: Icon(
+                                  _alignIcon,
+                                  color: Colors.white,
+                                  size: 22,
+                                ),
+                              ),
+                              _ToolbarChip(
+                                selected: fontsOpen,
+                                onTap: () =>
+                                    setState(() => _tray = _TrayMode.fonts),
+                                child: _buildAaSample(
+                                  font: font,
+                                  color: fontsOpen
+                                      ? const Color(0xFF4CC9F0)
+                                      : Colors.white,
+                                ),
+                              ),
+                              Padding(
+                                padding:
+                                    const EdgeInsets.only(left: 2, right: 10),
+                                child: _buildColorSwatch(
+                                  color: _overlay.color,
+                                  selected: colorsOpen,
+                                  onTap: () => setState(
+                                    () => _tray = _TrayMode.colors,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        _buildToolButton(
-                          onTap: _cycleAlign,
-                          child: Icon(
-                            _alignIcon,
-                            color: Colors.white,
-                            size: 22,
-                          ),
-                        ),
-                        _buildToolButton(
-                          onTap: _cycleStyle,
-                          child: _buildStyleGlyph(),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.only(left: 2, right: 10),
-                          child: _buildColorSwatch(
-                            color: _overlay.color,
-                            selected: colorsOpen,
-                            onTap: () =>
-                                setState(() => _tray = _TrayMode.colors),
+                        Container(width: 1, color: Colors.white12),
+                        Expanded(
+                          child: ColoredBox(
+                            color: BasicTextEditToolbar._trayBg,
+                            child: fontsOpen
+                                ? _buildFontScroller()
+                                : _buildColorScroller(),
                           ),
                         ),
                       ],
                     ),
                   ),
-                  Container(width: 1, color: Colors.white12),
-                  // Options tray — lighter panel so it reads as a sub-list.
-                  Expanded(
-                    child: ColoredBox(
-                      color: BasicTextEditToolbar._trayBg,
-                      child: fontsOpen
-                          ? _buildFontScroller()
-                          : _buildColorScroller(),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
-        ),
+          Positioned(
+            right: 4,
+            bottom: BasicTextEditToolbar.barHeight + 4,
+            child: TapRegion(
+              groupId: kBasicTextEditTapGroup,
+              child: ExcludeFocus(
+                child: Listener(
+                  behavior: HitTestBehavior.opaque,
+                  onPointerDown: (_) => BasicTextEditDismissGuard.arm(),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: _FontSizeVerticalScrubber(
+                      value: _overlay.fontSize,
+                      onChanged: (size) =>
+                          _emit(_overlay.copyWith(fontSize: size)),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -378,5 +419,187 @@ class _ToolbarChip extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Volume-style vertical scrubber — top = larger type, bottom = smaller.
+class _FontSizeVerticalScrubber extends StatefulWidget {
+  const _FontSizeVerticalScrubber({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final double value;
+  final ValueChanged<double> onChanged;
+
+  static const height = 148.0;
+  static const width = 44.0;
+
+  @override
+  State<_FontSizeVerticalScrubber> createState() =>
+      _FontSizeVerticalScrubberState();
+}
+
+class _FontSizeVerticalScrubberState extends State<_FontSizeVerticalScrubber> {
+  static const _trackW = 4.0;
+  static const _thumb = 18.0;
+
+  double get _t {
+    final span = _toolbarMaxFontSize - _toolbarMinFontSize;
+    if (span <= 0) return 0;
+    return ((widget.value - _toolbarMinFontSize) / span).clamp(0.0, 1.0);
+  }
+
+  void _setFromLocalDy(double dy, double height) {
+    BasicTextEditDismissGuard.arm();
+    final usable = (height - _thumb).clamp(1.0, double.infinity);
+    final t = (1.0 - ((dy - _thumb / 2) / usable)).clamp(0.0, 1.0);
+    final next = _toolbarMinFontSize +
+        t * (_toolbarMaxFontSize - _toolbarMinFontSize);
+    widget.onChanged(next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final label = '${widget.value.round()}';
+    return SizedBox(
+      width: _FontSizeVerticalScrubber.width,
+      height: _FontSizeVerticalScrubber.height,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
+        child: Column(
+          children: [
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    height: 1,
+                    foreground: Paint()
+                      ..style = PaintingStyle.stroke
+                      ..strokeWidth = 3
+                      ..color = Colors.black,
+                  ),
+                ),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    height: 1,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final h = constraints.maxHeight;
+                  final thumbCenterY =
+                      (1.0 - _t) * (h - _thumb) + _thumb / 2;
+                  return GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onVerticalDragDown: (d) =>
+                        _setFromLocalDy(d.localPosition.dy, h),
+                    onVerticalDragUpdate: (d) =>
+                        _setFromLocalDy(d.localPosition.dy, h),
+                    child: CustomPaint(
+                      size: Size(constraints.maxWidth, h),
+                      painter: _FontSizeTrackPainter(
+                        thumbCenterY: thumbCenterY,
+                        trackWidth: _trackW,
+                        thumbSize: _thumb,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 4),
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                Text(
+                  'A',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    height: 1,
+                    foreground: Paint()
+                      ..style = PaintingStyle.stroke
+                      ..strokeWidth = 2.5
+                      ..color = Colors.black,
+                  ),
+                ),
+                const Text(
+                  'A',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    height: 1,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FontSizeTrackPainter extends CustomPainter {
+  _FontSizeTrackPainter({
+    required this.thumbCenterY,
+    required this.trackWidth,
+    required this.thumbSize,
+  });
+
+  final double thumbCenterY;
+  final double trackWidth;
+  final double thumbSize;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final track = RRect.fromRectAndRadius(
+      Rect.fromCenter(
+        center: Offset(cx, size.height / 2),
+        width: trackWidth,
+        height: size.height,
+      ),
+      const Radius.circular(2),
+    );
+    canvas.drawRRect(track, Paint()..color = const Color(0xFF3A3F4A));
+
+    final fillTop = thumbCenterY;
+    final fill = RRect.fromRectAndRadius(
+      Rect.fromLTRB(
+        cx - trackWidth / 2,
+        fillTop,
+        cx + trackWidth / 2,
+        size.height,
+      ),
+      const Radius.circular(2),
+    );
+    // Active segment from thumb down reads as "volume fill".
+    canvas.drawRRect(fill, Paint()..color = const Color(0xFF4CC9F0));
+
+    canvas.drawCircle(
+      Offset(cx, thumbCenterY),
+      thumbSize / 2,
+      Paint()..color = Colors.white,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _FontSizeTrackPainter oldDelegate) {
+    return oldDelegate.thumbCenterY != thumbCenterY;
   }
 }

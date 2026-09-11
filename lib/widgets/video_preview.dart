@@ -670,7 +670,6 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
     });
     if (tapped != null) {
       if (tapped.id != widget.selectedOverlayId) {
-        _suppressEditOnRelease = true;
         widget.onOverlaySelected?.call(tapped);
       }
       _activePointer = event.pointer;
@@ -679,12 +678,12 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
       _pointerTravel = 0;
       _moveLogCounter = 0;
       _gestureOverlay = tapped;
+      // Body tap (no travel) opens inline text input on release.
       _tapTarget = tapped;
       OverlayEventLog.log('PreviewCanvas', 'dragStart', {
         'local': local,
         'drag': 'move',
         'id': tapped.id,
-        'freshSelect': _suppressEditOnRelease,
       });
       _beginDrag(tapped, OverlayDrag.move, local);
       return;
@@ -794,9 +793,8 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
       return;
     }
 
-    // Text hit: never toggle playback. Fresh select stays selected; a second
-    // tap on an already-selected overlay opens inline edit.
-    if (!suppressEdit && target.id == widget.selectedOverlayId) {
+    // Text body tap → inline edit (selection was applied on pointer-down).
+    if (!suppressEdit) {
       OverlayEventLog.log('PreviewCanvas', 'tapRequestEdit', {'id': target.id});
       widget.onRequestEdit?.call(target);
     } else {
@@ -1077,6 +1075,7 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
         (oldWidget.overlay.style != widget.overlay.style ||
             oldWidget.overlay.color != widget.overlay.color ||
             oldWidget.overlay.fontFamily != widget.overlay.fontFamily ||
+            oldWidget.overlay.fontSize != widget.overlay.fontSize ||
             oldWidget.overlay.textAlign != widget.overlay.textAlign)) {
       // Style chrome can briefly drop focus on iOS — restore only if lost.
       // Do not call TextInput.show while the keyboard is already up (toggles off).
@@ -1380,7 +1379,7 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
               child: SizedBox(width: boxW, height: boxH, child: _buildBody()),
             ),
           ),
-          if (showChrome) ...[
+          if (showChrome && !widget.editing) ...[
             Positioned(
               left: pad + boxW / 2 - 14,
               top: pad + boxH + OverlayGeometry.gripOutset - 3,

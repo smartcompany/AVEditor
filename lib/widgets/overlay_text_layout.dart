@@ -19,7 +19,7 @@ const double maxOverlayBoxHeight = kOverlayFrameHeight * 1.3;
 
 /// Used when measuring an empty overlay so the box stays wide enough for a
 /// short horizontal placeholder — not one glyph that forces vertical wrap.
-const String kEmptyOverlayLayoutSample = '텍스트 입력';
+const String kEmptyOverlayLayoutSample = '탭 해서 텍스트 입력';
 
 /// Bundled font used for overlay text.
 ///

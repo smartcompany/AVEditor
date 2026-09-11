@@ -86,7 +86,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get trimEnd => '끝 지점';
 
   @override
-  String get textOverlayHint => '텍스트 입력';
+  String get textOverlayHint => '탭 해서 텍스트 입력';
 
   @override
   String get uploadTitleHint => 'Shorts 제목';

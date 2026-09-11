@@ -25,7 +25,7 @@
   "comingSoon": "준비 중",
   "trimStart": "시작 지점",
   "trimEnd": "끝 지점",
-  "textOverlayHint": "텍스트 입력",
+  "textOverlayHint": "탭 해서 텍스트 입력",
   "uploadTitleHint": "Shorts 제목",
   "uploadDescriptionHint": "설명 (#Shorts 권장)",
   "privacyPublic": "공개",

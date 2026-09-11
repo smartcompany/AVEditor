@@ -86,7 +86,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get trimEnd => '終了位置';
 
   @override
-  String get textOverlayHint => 'テキストを入力';
+  String get textOverlayHint => 'タップして入力';
 
   @override
   String get uploadTitleHint => 'Shortsタイトル';

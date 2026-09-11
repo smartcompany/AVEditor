@@ -86,7 +86,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get trimEnd => '修剪终点';
 
   @override
-  String get textOverlayHint => '输入文字';
+  String get textOverlayHint => '点按输入文字';
 
   @override
   String get uploadTitleHint => 'Shorts 标题';

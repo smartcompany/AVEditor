@@ -255,7 +255,7 @@ abstract class AppLocalizations {
   /// No description provided for @textOverlayHint.
   ///
   /// In en, this message translates to:
-  /// **'Enter text'**
+  /// **'Tap to enter text'**
   String get textOverlayHint;
 
   /// No description provided for @uploadTitleHint.
