@@ -89,19 +89,36 @@ void main() {
     expect(merged.first.end, const Duration(seconds: 144, milliseconds: 550));
   });
 
-  test('normalizeSegments repairs invalid project data', () {
+  test('normalizeSegments preserves multi-segment cuts', () {
     final segments = [
-      seg(const Duration(seconds: 167, milliseconds: 450), const Duration(seconds: 113)),
-      seg(const Duration(seconds: 113), const Duration(seconds: 144, milliseconds: 550)),
+      seg(Duration.zero, const Duration(seconds: 10), id: 'a'),
+      seg(const Duration(seconds: 10), const Duration(seconds: 25), id: 'b'),
     ];
 
     final normalized = normalizeSegments(
-      segments,
-      sourceDuration: const Duration(seconds: 180),
+      List<ClipSegment>.from(segments),
+      sourceDuration: const Duration(seconds: 30),
     );
 
-    expect(normalized.every((segment) => segment.duration > Duration.zero), isTrue);
-    expect(normalized.first.start, const Duration(seconds: 113));
+    expect(normalized.length, 2);
+    expect(normalized[0].end, const Duration(seconds: 10));
+    expect(normalized[1].start, const Duration(seconds: 10));
+  });
+
+  test('clearing segments before normalize wipes cuts (load footgun)', () {
+    // Documents why editor load must normalize a copy, not clear-then-read.
+    final segments = [
+      seg(Duration.zero, const Duration(seconds: 10), id: 'a'),
+      seg(const Duration(seconds: 10), const Duration(seconds: 25), id: 'b'),
+    ];
+    segments.clear();
+    final wiped = normalizeSegments(
+      segments,
+      sourceDuration: const Duration(seconds: 30),
+    );
+    expect(wiped.length, 1);
+    expect(wiped.first.start, Duration.zero);
+    expect(wiped.first.end, const Duration(seconds: 30));
   });
 
   test('splitSegmentsAt works on a fresh single-segment project', () {

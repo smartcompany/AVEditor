@@ -224,14 +224,35 @@ void main() {
         jsonDecode(raw) as Map<String, dynamic>,
       );
 
-      expect(catalog.version, 3);
+      expect(catalog.version, 8);
       expect(catalog.displayCategories, isNotEmpty);
       expect(catalog.byId('fade')?.renderer, TransitionRendererKind.xfade);
-      expect(catalog.byId('none')?.renderer, TransitionRendererKind.cut);
+      expect(catalog.byId('none'), isNull);
       expect(catalog.byId('flash')?.renderer, TransitionRendererKind.primitive);
-      expect(catalog.byId('zoomin')?.controls, isNotEmpty);
+      expect(catalog.byId('cursorzoom')?.title, 'Cursor Zoom');
+      expect(
+        catalog.byId('cursorzoom')?.renderer,
+        TransitionRendererKind.primitive,
+      );
+      expect(catalog.byId('cursorzoom')?.defaultDurationMs, 2000);
+      expect(catalog.byId('cursorzoom')?.layers, isNotEmpty);
+      expect(catalog.byId('zoomin')?.title, 'Zoom In');
+      expect(catalog.byId('circleclose')?.title, 'Circle Close');
       expect(catalog.byId('fade')?.ffmpegName, 'fade');
       expect(catalog.byId('pushleft')?.ffmpegName, 'coverleft');
+      expect(
+        catalog.items.map((e) => e.id).toSet(),
+        containsAll([
+          'cursorzoom',
+          'swap',
+          'doorway',
+          'spinin',
+          'pagecurl',
+          'mosaic',
+          'ripple',
+          'crossblur',
+        ]),
+      );
     });
 
     test('engine plans export + preview from the same definition', () async {

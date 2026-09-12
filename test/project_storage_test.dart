@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/clip_trim.dart';
 import 'package:aveditor/models/export_preset.dart';
 import 'package:aveditor/models/text_overlay.dart';
@@ -51,6 +52,36 @@ void main() {
       expect(restored.overlays.first.text, 'hello');
       expect(restored.overlays.first.rotation, 0.5);
       expect(restored.overlays.first.offset, const Offset(0.2, -0.1));
+    });
+
+    test('round-trips multi-segment cuts', () {
+      final project = VideoProject(
+        id: 'project-cuts',
+        sourcePath: '/tmp/projects/project-cuts/source.mp4',
+        duration: const Duration(seconds: 20),
+        segments: [
+          ClipSegment(
+            id: 'a',
+            start: Duration.zero,
+            end: const Duration(seconds: 8),
+          ),
+          ClipSegment(
+            id: 'b',
+            start: const Duration(seconds: 8),
+            end: const Duration(seconds: 20),
+          ),
+        ],
+        updatedAt: DateTime.utc(2026, 3, 1, 12),
+      );
+
+      final restored = VideoProject.fromJson(
+        project.toJson(),
+        sourcePath: project.sourcePath,
+      );
+
+      expect(restored.segments.length, 2);
+      expect(restored.segments[0].end, const Duration(seconds: 8));
+      expect(restored.segments[1].start, const Duration(seconds: 8));
     });
 
     test('empty segments fall back to full duration trim', () {

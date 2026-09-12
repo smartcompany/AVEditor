@@ -115,6 +115,9 @@ class TransitionLayer {
     this.easing = TransitionEasing.linear,
     this.target = TransitionLayerTarget.outgoing,
     this.bezier,
+    this.start = 0,
+    this.end = 1,
+    this.param,
   });
 
   final TransitionProperty property;
@@ -127,12 +130,22 @@ class TransitionLayer {
   /// [TransitionEasing.cubicBezier].
   final List<double>? bezier;
 
+  /// Normalized progress window where this layer is active (`0…1`).
+  final double start;
+  final double end;
+
+  /// When set, [from]/[to] are authored at param=1 and scaled toward the
+  /// property identity by `AppliedTransition.parameters[param]`.
+  final String? param;
+
   factory TransitionLayer.fromJson(Map<String, dynamic> json) {
     final property = TransitionProperty.fromJson(json['property'] as String?);
     if (property == null) {
       throw FormatException('Unknown transition layer property: ${json['property']}');
     }
     final bezierRaw = json['bezier'] as List<dynamic>?;
+    final start = (json['start'] as num?)?.toDouble() ?? 0;
+    final end = (json['end'] as num?)?.toDouble() ?? 1;
     return TransitionLayer(
       property: property,
       from: (json['from'] as num?)?.toDouble() ?? 0,
@@ -142,6 +155,9 @@ class TransitionLayer {
       bezier: bezierRaw
           ?.map((e) => (e as num).toDouble())
           .toList(growable: false),
+      start: start.clamp(0.0, 1.0),
+      end: end < start ? start : end.clamp(0.0, 1.0),
+      param: json['param'] as String?,
     );
   }
 
@@ -152,6 +168,9 @@ class TransitionLayer {
         'easing': easing.toJson(),
         'target': target.toJson(),
         if (bezier != null) 'bezier': bezier,
+        if (start != 0) 'start': start,
+        if (end != 1) 'end': end,
+        if (param != null) 'param': param,
       };
 }
 
@@ -253,6 +272,18 @@ class TransitionItem {
     this.parameters = const {},
     this.controls = const [],
   });
+
+  /// Synthetic picker entry — not shipped in the server catalog.
+  static const none = TransitionItem(
+    id: 'none',
+    title: 'None',
+    ffmpegName: '',
+    defaultDurationMs: 0,
+    minDurationMs: 0,
+    maxDurationMs: 0,
+    accent: '#6B7280',
+    renderer: TransitionRendererKind.cut,
+  );
 
   final String id;
   final String title;

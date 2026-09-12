@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 8,
   "baseUrl": "",
   "categories": [
     {
@@ -9,7 +9,9 @@
         {
           "id": "fade",
           "version": 1,
+          "itemVersion": 1,
           "title": "Fade",
+          "name": "Fade",
           "category": "trending",
           "renderer": "xfade",
           "effectType": "xfade",
@@ -17,33 +19,139 @@
           "defaultDurationMs": 500,
           "minDurationMs": 100,
           "maxDurationMs": 3000,
-          "accent": "#60A5FA"
+          "accent": "#60A5FA",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/fade.webp",
+          "layers": [
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "easing": "easeInOut",
+              "target": "outgoing"
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "easing": "easeInOut",
+              "target": "incoming"
+            }
+          ]
         },
         {
-          "id": "zoomin",
+          "id": "cursorzoom",
           "version": 1,
-          "title": "Zoom In",
-          "category": "trending",
-          "renderer": "xfade",
-          "ffmpegName": "zoomin",
-          "defaultDurationMs": 500,
-          "minDurationMs": 100,
-          "maxDurationMs": 3000,
-          "accent": "#F472B6"
-        },
-        {
-          "id": "flash",
-          "version": 1,
-          "title": "Flash",
+          "itemVersion": 1,
+          "title": "Cursor Zoom",
+          "name": "Cursor Zoom",
           "category": "trending",
           "renderer": "primitive",
-          "ffmpegName": "fadewhite",
-          "defaultDurationMs": 250,
-          "minDurationMs": 80,
-          "maxDurationMs": 800,
-          "accent": "#FDE68A",
+          "effectType": "xfade",
+          "ffmpegName": "zoomin",
+          "defaultDurationMs": 2000,
+          "minDurationMs": 100,
+          "maxDurationMs": 3300,
+          "accent": "#DB2777",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/cursorzoom.webp",
+          "layers": [
+            {
+              "property": "scale",
+              "from": 1,
+              "to": 1,
+              "target": "outgoing",
+              "start": 0,
+              "end": 0.08
+            },
+            {
+              "property": "scale",
+              "from": 1,
+              "to": 2.1,
+              "easing": "easeIn",
+              "target": "outgoing",
+              "start": 0.08,
+              "end": 0.42,
+              "param": "intensity"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 1,
+              "target": "outgoing",
+              "start": 0,
+              "end": 0.42
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 0,
+              "target": "incoming",
+              "start": 0,
+              "end": 0.42
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "easing": "easeOut",
+              "target": "outgoing",
+              "start": 0.42,
+              "end": 0.55
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "easing": "easeIn",
+              "target": "incoming",
+              "start": 0.42,
+              "end": 0.55
+            },
+            {
+              "property": "scale",
+              "from": 2.1,
+              "to": 2.1,
+              "target": "outgoing",
+              "start": 0.42,
+              "end": 0.55,
+              "param": "intensity"
+            },
+            {
+              "property": "scale",
+              "from": 2.1,
+              "to": 2.1,
+              "target": "incoming",
+              "start": 0.42,
+              "end": 0.55,
+              "param": "intensity"
+            },
+            {
+              "property": "scale",
+              "from": 2.1,
+              "to": 1,
+              "easing": "easeOut",
+              "target": "incoming",
+              "start": 0.55,
+              "end": 1,
+              "param": "intensity"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 1,
+              "target": "incoming",
+              "start": 0.55,
+              "end": 1
+            }
+          ],
           "parameters": {
-            "intensity": { "type": "double", "default": 0.7, "min": 0, "max": 1 }
+            "intensity": {
+              "type": "double",
+              "default": 0.7,
+              "min": 0,
+              "max": 1
+            }
           },
           "controls": [
             {
@@ -54,28 +162,225 @@
               "max": 1,
               "default": 0.7
             }
-          ],
+          ]
+        },
+        {
+          "id": "flash",
+          "version": 2,
+          "itemVersion": 2,
+          "title": "Flash",
+          "name": "Flash",
+          "category": "trending",
+          "renderer": "primitive",
+          "effectType": "xfade",
+          "ffmpegName": "fadewhite",
+          "defaultDurationMs": 250,
+          "minDurationMs": 80,
+          "maxDurationMs": 800,
+          "accent": "#FDE68A",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/flash.webp",
           "layers": [
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "easing": "easeInOut",
+              "target": "outgoing"
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "easing": "easeInOut",
+              "target": "incoming"
+            },
             {
               "property": "brightness",
               "from": 0,
               "to": 1,
               "easing": "easeOut",
-              "target": "both"
+              "target": "both",
+              "start": 0,
+              "end": 0.5,
+              "param": "intensity"
+            },
+            {
+              "property": "brightness",
+              "from": 1,
+              "to": 0,
+              "easing": "easeIn",
+              "target": "both",
+              "start": 0.5,
+              "end": 1,
+              "param": "intensity"
+            }
+          ],
+          "parameters": {
+            "intensity": {
+              "type": "double",
+              "default": 0.7,
+              "min": 0,
+              "max": 1
+            }
+          },
+          "controls": [
+            {
+              "type": "slider",
+              "key": "intensity",
+              "label": "Intensity",
+              "min": 0,
+              "max": 1,
+              "default": 0.7
             }
           ]
         },
         {
           "id": "pushleft",
           "version": 1,
+          "itemVersion": 1,
           "title": "Push Left",
+          "name": "Push Left",
           "category": "trending",
-          "renderer": "xfade",
+          "renderer": "primitive",
+          "effectType": "xfade",
           "ffmpegName": "coverleft",
           "defaultDurationMs": 500,
           "minDurationMs": 100,
           "maxDurationMs": 3000,
-          "accent": "#34D399"
+          "accent": "#34D399",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/pushleft.webp",
+          "layers": [
+            {
+              "property": "translateX",
+              "from": 0,
+              "to": -1,
+              "easing": "easeInOut",
+              "target": "outgoing"
+            },
+            {
+              "property": "translateX",
+              "from": 1,
+              "to": 0,
+              "easing": "easeInOut",
+              "target": "incoming"
+            }
+          ]
+        },
+        {
+          "id": "crosszoom",
+          "version": 2,
+          "itemVersion": 2,
+          "title": "Cross Zoom",
+          "name": "Cross Zoom",
+          "category": "trending",
+          "renderer": "primitive",
+          "effectType": "xfade",
+          "ffmpegName": "zoomin",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#E879F9",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/crosszoom.webp",
+          "layers": [
+            {
+              "property": "scale",
+              "from": 1,
+              "to": 1.3,
+              "easing": "easeIn",
+              "target": "outgoing",
+              "param": "intensity"
+            },
+            {
+              "property": "scale",
+              "from": 1.3,
+              "to": 1,
+              "easing": "easeOut",
+              "target": "incoming",
+              "param": "intensity"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "easing": "easeInOut",
+              "target": "outgoing"
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "easing": "easeInOut",
+              "target": "incoming"
+            }
+          ],
+          "parameters": {
+            "intensity": {
+              "type": "double",
+              "default": 0.7,
+              "min": 0,
+              "max": 1
+            }
+          },
+          "controls": [
+            {
+              "type": "slider",
+              "key": "intensity",
+              "label": "Intensity",
+              "min": 0,
+              "max": 1,
+              "default": 0.7
+            }
+          ]
+        },
+        {
+          "id": "slideleft",
+          "version": 1,
+          "itemVersion": 1,
+          "title": "Slide Left",
+          "name": "Slide Left",
+          "category": "trending",
+          "renderer": "primitive",
+          "effectType": "xfade",
+          "ffmpegName": "slideleft",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#FBBF24",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/slideleft.webp",
+          "layers": [
+            {
+              "property": "translateX",
+              "from": 0,
+              "to": -1,
+              "easing": "easeInOut",
+              "target": "outgoing"
+            },
+            {
+              "property": "translateX",
+              "from": 1,
+              "to": 0,
+              "easing": "easeInOut",
+              "target": "incoming"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "easing": "linear",
+              "target": "outgoing"
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "easing": "linear",
+              "target": "incoming"
+            }
+          ]
         }
       ]
     },
@@ -84,29 +389,21 @@
       "title": "Basic",
       "items": [
         {
-          "id": "none",
-          "version": 1,
-          "title": "None",
-          "category": "basic",
-          "renderer": "cut",
-          "effectType": "cut",
-          "ffmpegName": "",
-          "defaultDurationMs": 0,
-          "minDurationMs": 0,
-          "maxDurationMs": 0,
-          "accent": "#6B7280"
-        },
-        {
           "id": "fade",
           "version": 1,
+          "itemVersion": 1,
           "title": "Fade",
+          "name": "Fade",
           "category": "basic",
           "renderer": "xfade",
+          "effectType": "xfade",
           "ffmpegName": "fade",
           "defaultDurationMs": 500,
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#60A5FA",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/fade.webp",
           "layers": [
             {
               "property": "opacity",
@@ -114,44 +411,154 @@
               "to": 0,
               "easing": "easeInOut",
               "target": "outgoing"
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "easing": "easeInOut",
+              "target": "incoming"
             }
           ]
         },
         {
           "id": "dissolve",
           "version": 1,
+          "itemVersion": 1,
           "title": "Cross Dissolve",
-          "category": "dissolve",
+          "name": "Cross Dissolve",
+          "category": "basic",
           "renderer": "xfade",
+          "effectType": "xfade",
           "ffmpegName": "dissolve",
           "defaultDurationMs": 500,
           "minDurationMs": 100,
           "maxDurationMs": 3000,
-          "accent": "#A78BFA"
+          "accent": "#A78BFA",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/dissolve.webp",
+          "layers": [
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "easing": "linear",
+              "target": "outgoing"
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "easing": "linear",
+              "target": "incoming"
+            }
+          ]
         },
         {
           "id": "fadeblack",
           "version": 1,
+          "itemVersion": 1,
           "title": "Dip To Black",
-          "category": "dissolve",
-          "renderer": "xfade",
+          "name": "Dip To Black",
+          "category": "basic",
+          "renderer": "primitive",
+          "effectType": "xfade",
           "ffmpegName": "fadeblack",
           "defaultDurationMs": 500,
           "minDurationMs": 100,
           "maxDurationMs": 3000,
-          "accent": "#1F2937"
+          "accent": "#1F2937",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/fadeblack.webp",
+          "layers": [
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "easing": "easeIn",
+              "target": "outgoing",
+              "start": 0,
+              "end": 0.5
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "easing": "easeOut",
+              "target": "incoming",
+              "start": 0.5,
+              "end": 1
+            },
+            {
+              "property": "brightness",
+              "from": 0,
+              "to": -1,
+              "target": "both",
+              "start": 0,
+              "end": 0.5
+            },
+            {
+              "property": "brightness",
+              "from": -1,
+              "to": 0,
+              "target": "both",
+              "start": 0.5,
+              "end": 1
+            }
+          ]
         },
         {
           "id": "fadewhite",
           "version": 1,
+          "itemVersion": 1,
           "title": "Dip To White",
-          "category": "dissolve",
-          "renderer": "xfade",
+          "name": "Dip To White",
+          "category": "basic",
+          "renderer": "primitive",
+          "effectType": "xfade",
           "ffmpegName": "fadewhite",
           "defaultDurationMs": 500,
           "minDurationMs": 100,
           "maxDurationMs": 3000,
-          "accent": "#E5E7EB"
+          "accent": "#E5E7EB",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/fadewhite.webp",
+          "layers": [
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "easing": "easeIn",
+              "target": "outgoing",
+              "start": 0,
+              "end": 0.5
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "easing": "easeOut",
+              "target": "incoming",
+              "start": 0.5,
+              "end": 1
+            },
+            {
+              "property": "brightness",
+              "from": 0,
+              "to": 1,
+              "target": "both",
+              "start": 0,
+              "end": 0.5
+            },
+            {
+              "property": "brightness",
+              "from": 1,
+              "to": 0,
+              "target": "both",
+              "start": 0.5,
+              "end": 1
+            }
+          ]
         }
       ]
     },
@@ -162,98 +569,717 @@
         {
           "id": "slideleft",
           "version": 1,
+          "itemVersion": 1,
           "title": "Slide Left",
+          "name": "Slide Left",
           "category": "motion",
-          "renderer": "xfade",
+          "renderer": "primitive",
+          "effectType": "xfade",
           "ffmpegName": "slideleft",
           "defaultDurationMs": 500,
           "minDurationMs": 100,
           "maxDurationMs": 3000,
-          "accent": "#FBBF24"
+          "accent": "#FBBF24",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/slideleft.webp",
+          "layers": [
+            {
+              "property": "translateX",
+              "from": 0,
+              "to": -1,
+              "easing": "easeInOut",
+              "target": "outgoing"
+            },
+            {
+              "property": "translateX",
+              "from": 1,
+              "to": 0,
+              "easing": "easeInOut",
+              "target": "incoming"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "easing": "linear",
+              "target": "outgoing"
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "easing": "linear",
+              "target": "incoming"
+            }
+          ]
         },
         {
           "id": "slideright",
           "version": 1,
+          "itemVersion": 1,
           "title": "Slide Right",
+          "name": "Slide Right",
           "category": "motion",
-          "renderer": "xfade",
+          "renderer": "primitive",
+          "effectType": "xfade",
           "ffmpegName": "slideright",
           "defaultDurationMs": 500,
           "minDurationMs": 100,
           "maxDurationMs": 3000,
-          "accent": "#F59E0B"
+          "accent": "#F59E0B",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/slideright.webp",
+          "layers": [
+            {
+              "property": "translateX",
+              "from": 0,
+              "to": 1,
+              "easing": "easeInOut",
+              "target": "outgoing"
+            },
+            {
+              "property": "translateX",
+              "from": -1,
+              "to": 0,
+              "easing": "easeInOut",
+              "target": "incoming"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "easing": "linear",
+              "target": "outgoing"
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "easing": "linear",
+              "target": "incoming"
+            }
+          ]
         },
         {
           "id": "slideup",
           "version": 1,
+          "itemVersion": 1,
           "title": "Slide Up",
+          "name": "Slide Up",
           "category": "motion",
-          "renderer": "xfade",
+          "renderer": "primitive",
+          "effectType": "xfade",
           "ffmpegName": "slideup",
           "defaultDurationMs": 500,
           "minDurationMs": 100,
           "maxDurationMs": 3000,
-          "accent": "#FCD34D"
+          "accent": "#FCD34D",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/slideup.webp",
+          "layers": [
+            {
+              "property": "translateY",
+              "from": 0,
+              "to": -1,
+              "easing": "easeInOut",
+              "target": "outgoing"
+            },
+            {
+              "property": "translateY",
+              "from": 1,
+              "to": 0,
+              "easing": "easeInOut",
+              "target": "incoming"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "easing": "linear",
+              "target": "outgoing"
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "easing": "linear",
+              "target": "incoming"
+            }
+          ]
         },
         {
           "id": "slidedown",
           "version": 1,
+          "itemVersion": 1,
           "title": "Slide Down",
+          "name": "Slide Down",
           "category": "motion",
-          "renderer": "xfade",
+          "renderer": "primitive",
+          "effectType": "xfade",
           "ffmpegName": "slidedown",
           "defaultDurationMs": 500,
           "minDurationMs": 100,
           "maxDurationMs": 3000,
-          "accent": "#D97706"
+          "accent": "#D97706",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/slidedown.webp",
+          "layers": [
+            {
+              "property": "translateY",
+              "from": 0,
+              "to": 1,
+              "easing": "easeInOut",
+              "target": "outgoing"
+            },
+            {
+              "property": "translateY",
+              "from": -1,
+              "to": 0,
+              "easing": "easeInOut",
+              "target": "incoming"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "easing": "linear",
+              "target": "outgoing"
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "easing": "linear",
+              "target": "incoming"
+            }
+          ]
         },
         {
           "id": "pushleft",
           "version": 1,
+          "itemVersion": 1,
           "title": "Push Left",
+          "name": "Push Left",
           "category": "motion",
-          "renderer": "xfade",
+          "renderer": "primitive",
+          "effectType": "xfade",
           "ffmpegName": "coverleft",
           "defaultDurationMs": 500,
           "minDurationMs": 100,
           "maxDurationMs": 3000,
-          "accent": "#34D399"
+          "accent": "#34D399",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/pushleft.webp",
+          "layers": [
+            {
+              "property": "translateX",
+              "from": 0,
+              "to": -1,
+              "easing": "easeInOut",
+              "target": "outgoing"
+            },
+            {
+              "property": "translateX",
+              "from": 1,
+              "to": 0,
+              "easing": "easeInOut",
+              "target": "incoming"
+            }
+          ]
         },
         {
           "id": "pushright",
           "version": 1,
+          "itemVersion": 1,
           "title": "Push Right",
+          "name": "Push Right",
           "category": "motion",
-          "renderer": "xfade",
+          "renderer": "primitive",
+          "effectType": "xfade",
           "ffmpegName": "coverright",
           "defaultDurationMs": 500,
           "minDurationMs": 100,
           "maxDurationMs": 3000,
-          "accent": "#10B981"
+          "accent": "#10B981",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/pushright.webp",
+          "layers": [
+            {
+              "property": "translateX",
+              "from": 0,
+              "to": 1,
+              "easing": "easeInOut",
+              "target": "outgoing"
+            },
+            {
+              "property": "translateX",
+              "from": -1,
+              "to": 0,
+              "easing": "easeInOut",
+              "target": "incoming"
+            }
+          ]
         },
         {
           "id": "pushup",
           "version": 1,
+          "itemVersion": 1,
           "title": "Push Up",
+          "name": "Push Up",
           "category": "motion",
-          "renderer": "xfade",
+          "renderer": "primitive",
+          "effectType": "xfade",
           "ffmpegName": "coverup",
           "defaultDurationMs": 500,
           "minDurationMs": 100,
           "maxDurationMs": 3000,
-          "accent": "#6EE7B7"
+          "accent": "#6EE7B7",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/pushup.webp",
+          "layers": [
+            {
+              "property": "translateY",
+              "from": 0,
+              "to": -1,
+              "easing": "easeInOut",
+              "target": "outgoing"
+            },
+            {
+              "property": "translateY",
+              "from": 1,
+              "to": 0,
+              "easing": "easeInOut",
+              "target": "incoming"
+            }
+          ]
         },
         {
           "id": "pushdown",
           "version": 1,
+          "itemVersion": 1,
           "title": "Push Down",
+          "name": "Push Down",
           "category": "motion",
-          "renderer": "xfade",
+          "renderer": "primitive",
+          "effectType": "xfade",
           "ffmpegName": "coverdown",
           "defaultDurationMs": 500,
           "minDurationMs": 100,
           "maxDurationMs": 3000,
-          "accent": "#059669"
+          "accent": "#059669",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/pushdown.webp",
+          "layers": [
+            {
+              "property": "translateY",
+              "from": 0,
+              "to": 1,
+              "easing": "easeInOut",
+              "target": "outgoing"
+            },
+            {
+              "property": "translateY",
+              "from": -1,
+              "to": 0,
+              "easing": "easeInOut",
+              "target": "incoming"
+            }
+          ]
+        },
+        {
+          "id": "swap",
+          "version": 1,
+          "itemVersion": 1,
+          "title": "Swap",
+          "name": "Swap",
+          "category": "motion",
+          "renderer": "primitive",
+          "effectType": "xfade",
+          "ffmpegName": "slideleft",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#A3E635",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/swap.webp",
+          "layers": [
+            {
+              "property": "translateX",
+              "from": 0,
+              "to": -1,
+              "easing": "easeInOut",
+              "target": "outgoing"
+            },
+            {
+              "property": "translateX",
+              "from": 1,
+              "to": 0,
+              "easing": "easeInOut",
+              "target": "incoming"
+            },
+            {
+              "property": "scale",
+              "from": 1,
+              "to": 0.92,
+              "target": "outgoing",
+              "start": 0,
+              "end": 0.5
+            },
+            {
+              "property": "scale",
+              "from": 0.92,
+              "to": 1,
+              "target": "incoming",
+              "start": 0.5,
+              "end": 1
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "easing": "easeInOut",
+              "target": "outgoing"
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "easing": "easeInOut",
+              "target": "incoming"
+            }
+          ]
+        },
+        {
+          "id": "doorway",
+          "version": 1,
+          "itemVersion": 1,
+          "title": "Doorway",
+          "name": "Doorway",
+          "category": "motion",
+          "renderer": "primitive",
+          "effectType": "xfade",
+          "ffmpegName": "horzopen",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#84CC16",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/doorway.webp",
+          "layers": [
+            {
+              "property": "scale",
+              "from": 1,
+              "to": 1.35,
+              "easing": "easeIn",
+              "target": "outgoing"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "easing": "easeIn",
+              "target": "outgoing",
+              "start": 0.35,
+              "end": 0.75
+            },
+            {
+              "property": "scale",
+              "from": 0.85,
+              "to": 1,
+              "easing": "easeOut",
+              "target": "incoming"
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "easing": "easeOut",
+              "target": "incoming",
+              "start": 0.25,
+              "end": 0.7
+            }
+          ]
+        },
+        {
+          "id": "spinin",
+          "version": 1,
+          "itemVersion": 1,
+          "title": "Spin In",
+          "name": "Spin In",
+          "category": "motion",
+          "renderer": "primitive",
+          "effectType": "xfade",
+          "ffmpegName": "circleopen",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#65A30D",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/spinin.webp",
+          "layers": [
+            {
+              "property": "rotation",
+              "from": -0.35,
+              "to": 0,
+              "easing": "easeOut",
+              "target": "incoming"
+            },
+            {
+              "property": "scale",
+              "from": 0.4,
+              "to": 1,
+              "easing": "easeOut",
+              "target": "incoming"
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "easing": "easeOut",
+              "target": "incoming",
+              "start": 0,
+              "end": 0.55
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "target": "outgoing",
+              "start": 0.35,
+              "end": 0.75
+            }
+          ]
+        },
+        {
+          "id": "spinout",
+          "version": 1,
+          "itemVersion": 1,
+          "title": "Spin Out",
+          "name": "Spin Out",
+          "category": "motion",
+          "renderer": "primitive",
+          "effectType": "xfade",
+          "ffmpegName": "circleclose",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#4D7C0F",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/spinout.webp",
+          "layers": [
+            {
+              "property": "rotation",
+              "from": 0,
+              "to": 0.35,
+              "easing": "easeIn",
+              "target": "outgoing"
+            },
+            {
+              "property": "scale",
+              "from": 1,
+              "to": 0.4,
+              "easing": "easeIn",
+              "target": "outgoing"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "easing": "easeIn",
+              "target": "outgoing",
+              "start": 0.25,
+              "end": 0.7
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "target": "incoming",
+              "start": 0.3,
+              "end": 0.8
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wipe",
+      "title": "Wipe",
+      "items": [
+        {
+          "id": "wipeleft",
+          "version": 1,
+          "itemVersion": 1,
+          "title": "Wipe Left",
+          "name": "Wipe Left",
+          "category": "wipe",
+          "renderer": "xfade",
+          "effectType": "xfade",
+          "ffmpegName": "wipeleft",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#34D399",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/wipeleft.webp"
+        },
+        {
+          "id": "wiperight",
+          "version": 1,
+          "itemVersion": 1,
+          "title": "Wipe Right",
+          "name": "Wipe Right",
+          "category": "wipe",
+          "renderer": "xfade",
+          "effectType": "xfade",
+          "ffmpegName": "wiperight",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#2DD4BF",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/wiperight.webp"
+        },
+        {
+          "id": "wipeup",
+          "version": 1,
+          "itemVersion": 1,
+          "title": "Wipe Up",
+          "name": "Wipe Up",
+          "category": "wipe",
+          "renderer": "xfade",
+          "effectType": "xfade",
+          "ffmpegName": "wipeup",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#5EEAD4",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/wipeup.webp"
+        },
+        {
+          "id": "wipedown",
+          "version": 1,
+          "itemVersion": 1,
+          "title": "Wipe Down",
+          "name": "Wipe Down",
+          "category": "wipe",
+          "renderer": "xfade",
+          "effectType": "xfade",
+          "ffmpegName": "wipedown",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#14B8A6",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/wipedown.webp"
+        },
+        {
+          "id": "circleopen",
+          "version": 1,
+          "itemVersion": 1,
+          "title": "Circle Open",
+          "name": "Circle Open",
+          "category": "wipe",
+          "renderer": "xfade",
+          "effectType": "xfade",
+          "ffmpegName": "circleopen",
+          "defaultDurationMs": 600,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#F472B6",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/circleopen.webp"
+        },
+        {
+          "id": "circleclose",
+          "version": 1,
+          "itemVersion": 1,
+          "title": "Circle Close",
+          "name": "Circle Close",
+          "category": "wipe",
+          "renderer": "xfade",
+          "effectType": "xfade",
+          "ffmpegName": "circleclose",
+          "defaultDurationMs": 600,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#EC4899",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/circleclose.webp"
+        },
+        {
+          "id": "radial",
+          "version": 1,
+          "itemVersion": 1,
+          "title": "Radial Wipe",
+          "name": "Radial Wipe",
+          "category": "wipe",
+          "renderer": "xfade",
+          "effectType": "xfade",
+          "ffmpegName": "radial",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#FB7185",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/radial.webp"
+        },
+        {
+          "id": "pagecurl",
+          "version": 1,
+          "itemVersion": 1,
+          "title": "Page Curl",
+          "name": "Page Curl",
+          "category": "wipe",
+          "renderer": "primitive",
+          "effectType": "xfade",
+          "ffmpegName": "diagtr",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#F9A8D4",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/pagecurl.webp",
+          "layers": [
+            {
+              "property": "translateX",
+              "from": 0,
+              "to": 0.35,
+              "easing": "easeIn",
+              "target": "outgoing"
+            },
+            {
+              "property": "translateY",
+              "from": 0,
+              "to": -0.2,
+              "easing": "easeIn",
+              "target": "outgoing"
+            },
+            {
+              "property": "rotation",
+              "from": 0,
+              "to": -0.08,
+              "target": "outgoing"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "easing": "easeIn",
+              "target": "outgoing",
+              "start": 0.35,
+              "end": 0.9
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "target": "incoming",
+              "start": 0.2,
+              "end": 0.65
+            }
+          ]
         }
       ]
     },
@@ -263,17 +1289,63 @@
       "items": [
         {
           "id": "zoomin",
-          "version": 1,
+          "version": 4,
+          "itemVersion": 4,
           "title": "Zoom In",
+          "name": "Zoom In",
           "category": "zoom",
-          "renderer": "xfade",
+          "renderer": "primitive",
+          "effectType": "xfade",
           "ffmpegName": "zoomin",
           "defaultDurationMs": 500,
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#F472B6",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/zoomin.webp",
+          "layers": [
+            {
+              "property": "scale",
+              "from": 1,
+              "to": 1.45,
+              "easing": "easeIn",
+              "target": "outgoing",
+              "param": "intensity"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "easing": "easeIn",
+              "target": "outgoing",
+              "start": 0.35,
+              "end": 0.85
+            },
+            {
+              "property": "scale",
+              "from": 1.45,
+              "to": 1,
+              "easing": "easeOut",
+              "target": "incoming",
+              "param": "intensity"
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "easing": "easeOut",
+              "target": "incoming",
+              "start": 0.15,
+              "end": 0.65
+            }
+          ],
           "parameters": {
-            "intensity": { "type": "double", "default": 0.7, "min": 0, "max": 1 }
+            "intensity": {
+              "type": "double",
+              "default": 0.7,
+              "min": 0,
+              "max": 1
+            }
           },
           "controls": [
             {
@@ -288,146 +1360,62 @@
         },
         {
           "id": "zoomout",
-          "version": 1,
+          "version": 2,
+          "itemVersion": 2,
           "title": "Zoom Out",
+          "name": "Zoom Out",
           "category": "zoom",
           "renderer": "primitive",
+          "effectType": "xfade",
           "ffmpegName": "squeezev",
           "defaultDurationMs": 500,
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#FB7185",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/zoomout.webp",
           "layers": [
             {
               "property": "scale",
-              "from": 1.35,
+              "from": 1,
+              "to": 0.65,
+              "easing": "easeIn",
+              "target": "outgoing",
+              "param": "intensity"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "easing": "easeIn",
+              "target": "outgoing",
+              "start": 0.3,
+              "end": 0.8
+            },
+            {
+              "property": "scale",
+              "from": 0.65,
               "to": 1,
-              "easing": "easeInOut",
-              "target": "outgoing"
+              "easing": "easeOut",
+              "target": "incoming",
+              "param": "intensity"
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "target": "incoming",
+              "start": 0.2,
+              "end": 0.7
             }
-          ]
-        },
-        {
-          "id": "crosszoom",
-          "version": 1,
-          "title": "Cross Zoom",
-          "category": "zoom",
-          "renderer": "primitive",
-          "ffmpegName": "zoomin",
-          "defaultDurationMs": 500,
-          "minDurationMs": 100,
-          "maxDurationMs": 3000,
-          "accent": "#E879F9"
-        },
-        {
-          "id": "zoomblur",
-          "version": 1,
-          "title": "Zoom Blur",
-          "category": "zoom",
-          "renderer": "primitive",
-          "ffmpegName": "hblur",
-          "defaultDurationMs": 500,
-          "minDurationMs": 100,
-          "maxDurationMs": 3000,
-          "accent": "#C084FC"
-        }
-      ]
-    },
-    {
-      "id": "wipe",
-      "title": "Wipe",
-      "items": [
-        {
-          "id": "wipeleft",
-          "version": 1,
-          "title": "Wipe Left",
-          "category": "wipe",
-          "renderer": "xfade",
-          "ffmpegName": "wipeleft",
-          "defaultDurationMs": 500,
-          "minDurationMs": 100,
-          "maxDurationMs": 3000,
-          "accent": "#34D399"
-        },
-        {
-          "id": "wiperight",
-          "version": 1,
-          "title": "Wipe Right",
-          "category": "wipe",
-          "renderer": "xfade",
-          "ffmpegName": "wiperight",
-          "defaultDurationMs": 500,
-          "minDurationMs": 100,
-          "maxDurationMs": 3000,
-          "accent": "#2DD4BF"
-        },
-        {
-          "id": "wipeup",
-          "version": 1,
-          "title": "Wipe Up",
-          "category": "wipe",
-          "renderer": "xfade",
-          "ffmpegName": "wipeup",
-          "defaultDurationMs": 500,
-          "minDurationMs": 100,
-          "maxDurationMs": 3000,
-          "accent": "#5EEAD4"
-        },
-        {
-          "id": "wipedown",
-          "version": 1,
-          "title": "Wipe Down",
-          "category": "wipe",
-          "renderer": "xfade",
-          "ffmpegName": "wipedown",
-          "defaultDurationMs": 500,
-          "minDurationMs": 100,
-          "maxDurationMs": 3000,
-          "accent": "#14B8A6"
-        },
-        {
-          "id": "circleopen",
-          "version": 1,
-          "title": "Circle / Iris",
-          "category": "wipe",
-          "renderer": "xfade",
-          "ffmpegName": "circleopen",
-          "defaultDurationMs": 600,
-          "minDurationMs": 100,
-          "maxDurationMs": 3000,
-          "accent": "#F472B6"
-        },
-        {
-          "id": "radial",
-          "version": 1,
-          "title": "Radial Wipe",
-          "category": "wipe",
-          "renderer": "xfade",
-          "ffmpegName": "radial",
-          "defaultDurationMs": 500,
-          "minDurationMs": 100,
-          "maxDurationMs": 3000,
-          "accent": "#FB7185"
-        }
-      ]
-    },
-    {
-      "id": "effect",
-      "title": "Effect",
-      "items": [
-        {
-          "id": "flash",
-          "version": 1,
-          "title": "Flash",
-          "category": "effect",
-          "renderer": "primitive",
-          "ffmpegName": "fadewhite",
-          "defaultDurationMs": 250,
-          "minDurationMs": 80,
-          "maxDurationMs": 800,
-          "accent": "#FDE68A",
+          ],
           "parameters": {
-            "intensity": { "type": "double", "default": 0.7, "min": 0, "max": 1 }
+            "intensity": {
+              "type": "double",
+              "default": 0.7,
+              "min": 0,
+              "max": 1
+            }
           },
           "controls": [
             {
@@ -439,6 +1427,2138 @@
               "default": 0.7
             }
           ]
+        },
+        {
+          "id": "crosszoom",
+          "version": 2,
+          "itemVersion": 2,
+          "title": "Cross Zoom",
+          "name": "Cross Zoom",
+          "category": "zoom",
+          "renderer": "primitive",
+          "effectType": "xfade",
+          "ffmpegName": "zoomin",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#E879F9",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/crosszoom.webp",
+          "layers": [
+            {
+              "property": "scale",
+              "from": 1,
+              "to": 1.3,
+              "easing": "easeIn",
+              "target": "outgoing",
+              "param": "intensity"
+            },
+            {
+              "property": "scale",
+              "from": 1.3,
+              "to": 1,
+              "easing": "easeOut",
+              "target": "incoming",
+              "param": "intensity"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "easing": "easeInOut",
+              "target": "outgoing"
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "easing": "easeInOut",
+              "target": "incoming"
+            }
+          ],
+          "parameters": {
+            "intensity": {
+              "type": "double",
+              "default": 0.7,
+              "min": 0,
+              "max": 1
+            }
+          },
+          "controls": [
+            {
+              "type": "slider",
+              "key": "intensity",
+              "label": "Intensity",
+              "min": 0,
+              "max": 1,
+              "default": 0.7
+            }
+          ]
+        },
+        {
+          "id": "cursorzoom",
+          "version": 1,
+          "itemVersion": 1,
+          "title": "Cursor Zoom",
+          "name": "Cursor Zoom",
+          "category": "zoom",
+          "renderer": "primitive",
+          "effectType": "xfade",
+          "ffmpegName": "zoomin",
+          "defaultDurationMs": 2000,
+          "minDurationMs": 100,
+          "maxDurationMs": 3300,
+          "accent": "#DB2777",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/cursorzoom.webp",
+          "layers": [
+            {
+              "property": "scale",
+              "from": 1,
+              "to": 1,
+              "target": "outgoing",
+              "start": 0,
+              "end": 0.08
+            },
+            {
+              "property": "scale",
+              "from": 1,
+              "to": 2.1,
+              "easing": "easeIn",
+              "target": "outgoing",
+              "start": 0.08,
+              "end": 0.42,
+              "param": "intensity"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 1,
+              "target": "outgoing",
+              "start": 0,
+              "end": 0.42
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 0,
+              "target": "incoming",
+              "start": 0,
+              "end": 0.42
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "easing": "easeOut",
+              "target": "outgoing",
+              "start": 0.42,
+              "end": 0.55
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "easing": "easeIn",
+              "target": "incoming",
+              "start": 0.42,
+              "end": 0.55
+            },
+            {
+              "property": "scale",
+              "from": 2.1,
+              "to": 2.1,
+              "target": "outgoing",
+              "start": 0.42,
+              "end": 0.55,
+              "param": "intensity"
+            },
+            {
+              "property": "scale",
+              "from": 2.1,
+              "to": 2.1,
+              "target": "incoming",
+              "start": 0.42,
+              "end": 0.55,
+              "param": "intensity"
+            },
+            {
+              "property": "scale",
+              "from": 2.1,
+              "to": 1,
+              "easing": "easeOut",
+              "target": "incoming",
+              "start": 0.55,
+              "end": 1,
+              "param": "intensity"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 1,
+              "target": "incoming",
+              "start": 0.55,
+              "end": 1
+            }
+          ],
+          "parameters": {
+            "intensity": {
+              "type": "double",
+              "default": 0.7,
+              "min": 0,
+              "max": 1
+            }
+          },
+          "controls": [
+            {
+              "type": "slider",
+              "key": "intensity",
+              "label": "Intensity",
+              "min": 0,
+              "max": 1,
+              "default": 0.7
+            }
+          ]
+        },
+        {
+          "id": "zoomblur",
+          "version": 2,
+          "itemVersion": 2,
+          "title": "Zoom Blur",
+          "name": "Zoom Blur",
+          "category": "zoom",
+          "renderer": "primitive",
+          "effectType": "xfade",
+          "ffmpegName": "hblur",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#C084FC",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/zoomblur.webp",
+          "layers": [
+            {
+              "property": "scale",
+              "from": 1,
+              "to": 1.35,
+              "target": "outgoing",
+              "param": "intensity"
+            },
+            {
+              "property": "scale",
+              "from": 1.35,
+              "to": 1,
+              "target": "incoming",
+              "param": "intensity"
+            },
+            {
+              "property": "blur",
+              "from": 0,
+              "to": 12,
+              "target": "both",
+              "start": 0,
+              "end": 0.5,
+              "param": "intensity"
+            },
+            {
+              "property": "blur",
+              "from": 12,
+              "to": 0,
+              "target": "both",
+              "start": 0.5,
+              "end": 1,
+              "param": "intensity"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "easing": "easeInOut",
+              "target": "outgoing"
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "easing": "easeInOut",
+              "target": "incoming"
+            }
+          ],
+          "parameters": {
+            "intensity": {
+              "type": "double",
+              "default": 0.7,
+              "min": 0,
+              "max": 1
+            }
+          },
+          "controls": [
+            {
+              "type": "slider",
+              "key": "intensity",
+              "label": "Intensity",
+              "min": 0,
+              "max": 1,
+              "default": 0.7
+            }
+          ]
+        },
+        {
+          "id": "crossblur",
+          "version": 1,
+          "itemVersion": 1,
+          "title": "Cross Blur",
+          "name": "Cross Blur",
+          "category": "zoom",
+          "renderer": "primitive",
+          "effectType": "xfade",
+          "ffmpegName": "hblur",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#A855F7",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/crossblur.webp",
+          "layers": [
+            {
+              "property": "blur",
+              "from": 0,
+              "to": 14,
+              "target": "outgoing",
+              "start": 0,
+              "end": 0.55,
+              "param": "intensity"
+            },
+            {
+              "property": "blur",
+              "from": 14,
+              "to": 0,
+              "target": "incoming",
+              "start": 0.45,
+              "end": 1,
+              "param": "intensity"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "easing": "easeInOut",
+              "target": "outgoing"
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "easing": "easeInOut",
+              "target": "incoming"
+            }
+          ],
+          "parameters": {
+            "intensity": {
+              "type": "double",
+              "default": 0.7,
+              "min": 0,
+              "max": 1
+            }
+          },
+          "controls": [
+            {
+              "type": "slider",
+              "key": "intensity",
+              "label": "Intensity",
+              "min": 0,
+              "max": 1,
+              "default": 0.7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "effect",
+      "title": "Effect",
+      "items": [
+        {
+          "id": "flash",
+          "version": 2,
+          "itemVersion": 2,
+          "title": "Flash",
+          "name": "Flash",
+          "category": "effect",
+          "renderer": "primitive",
+          "effectType": "xfade",
+          "ffmpegName": "fadewhite",
+          "defaultDurationMs": 250,
+          "minDurationMs": 80,
+          "maxDurationMs": 800,
+          "accent": "#FDE68A",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/flash.webp",
+          "layers": [
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "easing": "easeInOut",
+              "target": "outgoing"
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "easing": "easeInOut",
+              "target": "incoming"
+            },
+            {
+              "property": "brightness",
+              "from": 0,
+              "to": 1,
+              "easing": "easeOut",
+              "target": "both",
+              "start": 0,
+              "end": 0.5,
+              "param": "intensity"
+            },
+            {
+              "property": "brightness",
+              "from": 1,
+              "to": 0,
+              "easing": "easeIn",
+              "target": "both",
+              "start": 0.5,
+              "end": 1,
+              "param": "intensity"
+            }
+          ],
+          "parameters": {
+            "intensity": {
+              "type": "double",
+              "default": 0.7,
+              "min": 0,
+              "max": 1
+            }
+          },
+          "controls": [
+            {
+              "type": "slider",
+              "key": "intensity",
+              "label": "Intensity",
+              "min": 0,
+              "max": 1,
+              "default": 0.7
+            }
+          ]
+        },
+        {
+          "id": "mosaic",
+          "version": 1,
+          "itemVersion": 1,
+          "title": "Mosaic",
+          "name": "Mosaic",
+          "category": "effect",
+          "renderer": "primitive",
+          "effectType": "xfade",
+          "ffmpegName": "pixelize",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#FACC15",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/mosaic.webp",
+          "layers": [
+            {
+              "property": "scale",
+              "from": 1,
+              "to": 0.2,
+              "easing": "easeIn",
+              "target": "outgoing",
+              "start": 0,
+              "end": 0.5
+            },
+            {
+              "property": "blur",
+              "from": 0,
+              "to": 8,
+              "target": "outgoing",
+              "start": 0,
+              "end": 0.5
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "target": "outgoing",
+              "start": 0.35,
+              "end": 0.6
+            },
+            {
+              "property": "scale",
+              "from": 0.2,
+              "to": 1,
+              "easing": "easeOut",
+              "target": "incoming",
+              "start": 0.5,
+              "end": 1
+            },
+            {
+              "property": "blur",
+              "from": 8,
+              "to": 0,
+              "target": "incoming",
+              "start": 0.5,
+              "end": 1
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "target": "incoming",
+              "start": 0.4,
+              "end": 0.65
+            }
+          ]
+        },
+        {
+          "id": "ripple",
+          "version": 1,
+          "itemVersion": 1,
+          "title": "Ripple",
+          "name": "Ripple",
+          "category": "effect",
+          "renderer": "primitive",
+          "effectType": "xfade",
+          "ffmpegName": "dissolve",
+          "defaultDurationMs": 500,
+          "minDurationMs": 100,
+          "maxDurationMs": 3000,
+          "accent": "#38BDF8",
+          "premium": false,
+          "thumbnailUrl": "transitions/thumbs/ripple.webp",
+          "layers": [
+            {
+              "property": "scale",
+              "from": 1,
+              "to": 1.12,
+              "easing": "easeOut",
+              "target": "outgoing",
+              "start": 0,
+              "end": 0.5
+            },
+            {
+              "property": "scale",
+              "from": 1.12,
+              "to": 1,
+              "easing": "easeIn",
+              "target": "outgoing",
+              "start": 0.5,
+              "end": 1
+            },
+            {
+              "property": "blur",
+              "from": 0,
+              "to": 6,
+              "target": "both",
+              "start": 0,
+              "end": 0.5
+            },
+            {
+              "property": "blur",
+              "from": 6,
+              "to": 0,
+              "target": "both",
+              "start": 0.5,
+              "end": 1
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 0,
+              "easing": "easeInOut",
+              "target": "outgoing"
+            },
+            {
+              "property": "opacity",
+              "from": 0,
+              "to": 1,
+              "easing": "easeInOut",
+              "target": "incoming"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "items": [
+    {
+      "id": "fade",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Fade",
+      "name": "Fade",
+      "category": "basic",
+      "renderer": "xfade",
+      "effectType": "xfade",
+      "ffmpegName": "fade",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#60A5FA",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/fade.webp",
+      "layers": [
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 0,
+          "easing": "easeInOut",
+          "target": "outgoing"
+        },
+        {
+          "property": "opacity",
+          "from": 0,
+          "to": 1,
+          "easing": "easeInOut",
+          "target": "incoming"
+        }
+      ]
+    },
+    {
+      "id": "dissolve",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Cross Dissolve",
+      "name": "Cross Dissolve",
+      "category": "basic",
+      "renderer": "xfade",
+      "effectType": "xfade",
+      "ffmpegName": "dissolve",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#A78BFA",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/dissolve.webp",
+      "layers": [
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 0,
+          "easing": "linear",
+          "target": "outgoing"
+        },
+        {
+          "property": "opacity",
+          "from": 0,
+          "to": 1,
+          "easing": "linear",
+          "target": "incoming"
+        }
+      ]
+    },
+    {
+      "id": "fadeblack",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Dip To Black",
+      "name": "Dip To Black",
+      "category": "basic",
+      "renderer": "primitive",
+      "effectType": "xfade",
+      "ffmpegName": "fadeblack",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#1F2937",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/fadeblack.webp",
+      "layers": [
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 0,
+          "easing": "easeIn",
+          "target": "outgoing",
+          "start": 0,
+          "end": 0.5
+        },
+        {
+          "property": "opacity",
+          "from": 0,
+          "to": 1,
+          "easing": "easeOut",
+          "target": "incoming",
+          "start": 0.5,
+          "end": 1
+        },
+        {
+          "property": "brightness",
+          "from": 0,
+          "to": -1,
+          "target": "both",
+          "start": 0,
+          "end": 0.5
+        },
+        {
+          "property": "brightness",
+          "from": -1,
+          "to": 0,
+          "target": "both",
+          "start": 0.5,
+          "end": 1
+        }
+      ]
+    },
+    {
+      "id": "fadewhite",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Dip To White",
+      "name": "Dip To White",
+      "category": "basic",
+      "renderer": "primitive",
+      "effectType": "xfade",
+      "ffmpegName": "fadewhite",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#E5E7EB",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/fadewhite.webp",
+      "layers": [
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 0,
+          "easing": "easeIn",
+          "target": "outgoing",
+          "start": 0,
+          "end": 0.5
+        },
+        {
+          "property": "opacity",
+          "from": 0,
+          "to": 1,
+          "easing": "easeOut",
+          "target": "incoming",
+          "start": 0.5,
+          "end": 1
+        },
+        {
+          "property": "brightness",
+          "from": 0,
+          "to": 1,
+          "target": "both",
+          "start": 0,
+          "end": 0.5
+        },
+        {
+          "property": "brightness",
+          "from": 1,
+          "to": 0,
+          "target": "both",
+          "start": 0.5,
+          "end": 1
+        }
+      ]
+    },
+    {
+      "id": "slideleft",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Slide Left",
+      "name": "Slide Left",
+      "category": "motion",
+      "renderer": "primitive",
+      "effectType": "xfade",
+      "ffmpegName": "slideleft",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#FBBF24",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/slideleft.webp",
+      "layers": [
+        {
+          "property": "translateX",
+          "from": 0,
+          "to": -1,
+          "easing": "easeInOut",
+          "target": "outgoing"
+        },
+        {
+          "property": "translateX",
+          "from": 1,
+          "to": 0,
+          "easing": "easeInOut",
+          "target": "incoming"
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 0,
+          "easing": "linear",
+          "target": "outgoing"
+        },
+        {
+          "property": "opacity",
+          "from": 0,
+          "to": 1,
+          "easing": "linear",
+          "target": "incoming"
+        }
+      ]
+    },
+    {
+      "id": "slideright",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Slide Right",
+      "name": "Slide Right",
+      "category": "motion",
+      "renderer": "primitive",
+      "effectType": "xfade",
+      "ffmpegName": "slideright",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#F59E0B",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/slideright.webp",
+      "layers": [
+        {
+          "property": "translateX",
+          "from": 0,
+          "to": 1,
+          "easing": "easeInOut",
+          "target": "outgoing"
+        },
+        {
+          "property": "translateX",
+          "from": -1,
+          "to": 0,
+          "easing": "easeInOut",
+          "target": "incoming"
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 0,
+          "easing": "linear",
+          "target": "outgoing"
+        },
+        {
+          "property": "opacity",
+          "from": 0,
+          "to": 1,
+          "easing": "linear",
+          "target": "incoming"
+        }
+      ]
+    },
+    {
+      "id": "slideup",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Slide Up",
+      "name": "Slide Up",
+      "category": "motion",
+      "renderer": "primitive",
+      "effectType": "xfade",
+      "ffmpegName": "slideup",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#FCD34D",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/slideup.webp",
+      "layers": [
+        {
+          "property": "translateY",
+          "from": 0,
+          "to": -1,
+          "easing": "easeInOut",
+          "target": "outgoing"
+        },
+        {
+          "property": "translateY",
+          "from": 1,
+          "to": 0,
+          "easing": "easeInOut",
+          "target": "incoming"
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 0,
+          "easing": "linear",
+          "target": "outgoing"
+        },
+        {
+          "property": "opacity",
+          "from": 0,
+          "to": 1,
+          "easing": "linear",
+          "target": "incoming"
+        }
+      ]
+    },
+    {
+      "id": "slidedown",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Slide Down",
+      "name": "Slide Down",
+      "category": "motion",
+      "renderer": "primitive",
+      "effectType": "xfade",
+      "ffmpegName": "slidedown",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#D97706",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/slidedown.webp",
+      "layers": [
+        {
+          "property": "translateY",
+          "from": 0,
+          "to": 1,
+          "easing": "easeInOut",
+          "target": "outgoing"
+        },
+        {
+          "property": "translateY",
+          "from": -1,
+          "to": 0,
+          "easing": "easeInOut",
+          "target": "incoming"
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 0,
+          "easing": "linear",
+          "target": "outgoing"
+        },
+        {
+          "property": "opacity",
+          "from": 0,
+          "to": 1,
+          "easing": "linear",
+          "target": "incoming"
+        }
+      ]
+    },
+    {
+      "id": "pushleft",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Push Left",
+      "name": "Push Left",
+      "category": "motion",
+      "renderer": "primitive",
+      "effectType": "xfade",
+      "ffmpegName": "coverleft",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#34D399",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/pushleft.webp",
+      "layers": [
+        {
+          "property": "translateX",
+          "from": 0,
+          "to": -1,
+          "easing": "easeInOut",
+          "target": "outgoing"
+        },
+        {
+          "property": "translateX",
+          "from": 1,
+          "to": 0,
+          "easing": "easeInOut",
+          "target": "incoming"
+        }
+      ]
+    },
+    {
+      "id": "pushright",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Push Right",
+      "name": "Push Right",
+      "category": "motion",
+      "renderer": "primitive",
+      "effectType": "xfade",
+      "ffmpegName": "coverright",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#10B981",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/pushright.webp",
+      "layers": [
+        {
+          "property": "translateX",
+          "from": 0,
+          "to": 1,
+          "easing": "easeInOut",
+          "target": "outgoing"
+        },
+        {
+          "property": "translateX",
+          "from": -1,
+          "to": 0,
+          "easing": "easeInOut",
+          "target": "incoming"
+        }
+      ]
+    },
+    {
+      "id": "pushup",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Push Up",
+      "name": "Push Up",
+      "category": "motion",
+      "renderer": "primitive",
+      "effectType": "xfade",
+      "ffmpegName": "coverup",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#6EE7B7",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/pushup.webp",
+      "layers": [
+        {
+          "property": "translateY",
+          "from": 0,
+          "to": -1,
+          "easing": "easeInOut",
+          "target": "outgoing"
+        },
+        {
+          "property": "translateY",
+          "from": 1,
+          "to": 0,
+          "easing": "easeInOut",
+          "target": "incoming"
+        }
+      ]
+    },
+    {
+      "id": "pushdown",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Push Down",
+      "name": "Push Down",
+      "category": "motion",
+      "renderer": "primitive",
+      "effectType": "xfade",
+      "ffmpegName": "coverdown",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#059669",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/pushdown.webp",
+      "layers": [
+        {
+          "property": "translateY",
+          "from": 0,
+          "to": 1,
+          "easing": "easeInOut",
+          "target": "outgoing"
+        },
+        {
+          "property": "translateY",
+          "from": -1,
+          "to": 0,
+          "easing": "easeInOut",
+          "target": "incoming"
+        }
+      ]
+    },
+    {
+      "id": "swap",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Swap",
+      "name": "Swap",
+      "category": "motion",
+      "renderer": "primitive",
+      "effectType": "xfade",
+      "ffmpegName": "slideleft",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#A3E635",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/swap.webp",
+      "layers": [
+        {
+          "property": "translateX",
+          "from": 0,
+          "to": -1,
+          "easing": "easeInOut",
+          "target": "outgoing"
+        },
+        {
+          "property": "translateX",
+          "from": 1,
+          "to": 0,
+          "easing": "easeInOut",
+          "target": "incoming"
+        },
+        {
+          "property": "scale",
+          "from": 1,
+          "to": 0.92,
+          "target": "outgoing",
+          "start": 0,
+          "end": 0.5
+        },
+        {
+          "property": "scale",
+          "from": 0.92,
+          "to": 1,
+          "target": "incoming",
+          "start": 0.5,
+          "end": 1
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 0,
+          "easing": "easeInOut",
+          "target": "outgoing"
+        },
+        {
+          "property": "opacity",
+          "from": 0,
+          "to": 1,
+          "easing": "easeInOut",
+          "target": "incoming"
+        }
+      ]
+    },
+    {
+      "id": "doorway",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Doorway",
+      "name": "Doorway",
+      "category": "motion",
+      "renderer": "primitive",
+      "effectType": "xfade",
+      "ffmpegName": "horzopen",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#84CC16",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/doorway.webp",
+      "layers": [
+        {
+          "property": "scale",
+          "from": 1,
+          "to": 1.35,
+          "easing": "easeIn",
+          "target": "outgoing"
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 0,
+          "easing": "easeIn",
+          "target": "outgoing",
+          "start": 0.35,
+          "end": 0.75
+        },
+        {
+          "property": "scale",
+          "from": 0.85,
+          "to": 1,
+          "easing": "easeOut",
+          "target": "incoming"
+        },
+        {
+          "property": "opacity",
+          "from": 0,
+          "to": 1,
+          "easing": "easeOut",
+          "target": "incoming",
+          "start": 0.25,
+          "end": 0.7
+        }
+      ]
+    },
+    {
+      "id": "spinin",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Spin In",
+      "name": "Spin In",
+      "category": "motion",
+      "renderer": "primitive",
+      "effectType": "xfade",
+      "ffmpegName": "circleopen",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#65A30D",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/spinin.webp",
+      "layers": [
+        {
+          "property": "rotation",
+          "from": -0.35,
+          "to": 0,
+          "easing": "easeOut",
+          "target": "incoming"
+        },
+        {
+          "property": "scale",
+          "from": 0.4,
+          "to": 1,
+          "easing": "easeOut",
+          "target": "incoming"
+        },
+        {
+          "property": "opacity",
+          "from": 0,
+          "to": 1,
+          "easing": "easeOut",
+          "target": "incoming",
+          "start": 0,
+          "end": 0.55
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 0,
+          "target": "outgoing",
+          "start": 0.35,
+          "end": 0.75
+        }
+      ]
+    },
+    {
+      "id": "spinout",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Spin Out",
+      "name": "Spin Out",
+      "category": "motion",
+      "renderer": "primitive",
+      "effectType": "xfade",
+      "ffmpegName": "circleclose",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#4D7C0F",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/spinout.webp",
+      "layers": [
+        {
+          "property": "rotation",
+          "from": 0,
+          "to": 0.35,
+          "easing": "easeIn",
+          "target": "outgoing"
+        },
+        {
+          "property": "scale",
+          "from": 1,
+          "to": 0.4,
+          "easing": "easeIn",
+          "target": "outgoing"
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 0,
+          "easing": "easeIn",
+          "target": "outgoing",
+          "start": 0.25,
+          "end": 0.7
+        },
+        {
+          "property": "opacity",
+          "from": 0,
+          "to": 1,
+          "target": "incoming",
+          "start": 0.3,
+          "end": 0.8
+        }
+      ]
+    },
+    {
+      "id": "wipeleft",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Wipe Left",
+      "name": "Wipe Left",
+      "category": "wipe",
+      "renderer": "xfade",
+      "effectType": "xfade",
+      "ffmpegName": "wipeleft",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#34D399",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/wipeleft.webp"
+    },
+    {
+      "id": "wiperight",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Wipe Right",
+      "name": "Wipe Right",
+      "category": "wipe",
+      "renderer": "xfade",
+      "effectType": "xfade",
+      "ffmpegName": "wiperight",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#2DD4BF",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/wiperight.webp"
+    },
+    {
+      "id": "wipeup",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Wipe Up",
+      "name": "Wipe Up",
+      "category": "wipe",
+      "renderer": "xfade",
+      "effectType": "xfade",
+      "ffmpegName": "wipeup",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#5EEAD4",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/wipeup.webp"
+    },
+    {
+      "id": "wipedown",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Wipe Down",
+      "name": "Wipe Down",
+      "category": "wipe",
+      "renderer": "xfade",
+      "effectType": "xfade",
+      "ffmpegName": "wipedown",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#14B8A6",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/wipedown.webp"
+    },
+    {
+      "id": "circleopen",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Circle Open",
+      "name": "Circle Open",
+      "category": "wipe",
+      "renderer": "xfade",
+      "effectType": "xfade",
+      "ffmpegName": "circleopen",
+      "defaultDurationMs": 600,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#F472B6",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/circleopen.webp"
+    },
+    {
+      "id": "circleclose",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Circle Close",
+      "name": "Circle Close",
+      "category": "wipe",
+      "renderer": "xfade",
+      "effectType": "xfade",
+      "ffmpegName": "circleclose",
+      "defaultDurationMs": 600,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#EC4899",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/circleclose.webp"
+    },
+    {
+      "id": "radial",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Radial Wipe",
+      "name": "Radial Wipe",
+      "category": "wipe",
+      "renderer": "xfade",
+      "effectType": "xfade",
+      "ffmpegName": "radial",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#FB7185",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/radial.webp"
+    },
+    {
+      "id": "pagecurl",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Page Curl",
+      "name": "Page Curl",
+      "category": "wipe",
+      "renderer": "primitive",
+      "effectType": "xfade",
+      "ffmpegName": "diagtr",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#F9A8D4",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/pagecurl.webp",
+      "layers": [
+        {
+          "property": "translateX",
+          "from": 0,
+          "to": 0.35,
+          "easing": "easeIn",
+          "target": "outgoing"
+        },
+        {
+          "property": "translateY",
+          "from": 0,
+          "to": -0.2,
+          "easing": "easeIn",
+          "target": "outgoing"
+        },
+        {
+          "property": "rotation",
+          "from": 0,
+          "to": -0.08,
+          "target": "outgoing"
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 0,
+          "easing": "easeIn",
+          "target": "outgoing",
+          "start": 0.35,
+          "end": 0.9
+        },
+        {
+          "property": "opacity",
+          "from": 0,
+          "to": 1,
+          "target": "incoming",
+          "start": 0.2,
+          "end": 0.65
+        }
+      ]
+    },
+    {
+      "id": "zoomin",
+      "version": 4,
+      "itemVersion": 4,
+      "title": "Zoom In",
+      "name": "Zoom In",
+      "category": "zoom",
+      "renderer": "primitive",
+      "effectType": "xfade",
+      "ffmpegName": "zoomin",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#F472B6",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/zoomin.webp",
+      "layers": [
+        {
+          "property": "scale",
+          "from": 1,
+          "to": 1.45,
+          "easing": "easeIn",
+          "target": "outgoing",
+          "param": "intensity"
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 0,
+          "easing": "easeIn",
+          "target": "outgoing",
+          "start": 0.35,
+          "end": 0.85
+        },
+        {
+          "property": "scale",
+          "from": 1.45,
+          "to": 1,
+          "easing": "easeOut",
+          "target": "incoming",
+          "param": "intensity"
+        },
+        {
+          "property": "opacity",
+          "from": 0,
+          "to": 1,
+          "easing": "easeOut",
+          "target": "incoming",
+          "start": 0.15,
+          "end": 0.65
+        }
+      ],
+      "parameters": {
+        "intensity": {
+          "type": "double",
+          "default": 0.7,
+          "min": 0,
+          "max": 1
+        }
+      },
+      "controls": [
+        {
+          "type": "slider",
+          "key": "intensity",
+          "label": "Intensity",
+          "min": 0,
+          "max": 1,
+          "default": 0.7
+        }
+      ]
+    },
+    {
+      "id": "zoomout",
+      "version": 2,
+      "itemVersion": 2,
+      "title": "Zoom Out",
+      "name": "Zoom Out",
+      "category": "zoom",
+      "renderer": "primitive",
+      "effectType": "xfade",
+      "ffmpegName": "squeezev",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#FB7185",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/zoomout.webp",
+      "layers": [
+        {
+          "property": "scale",
+          "from": 1,
+          "to": 0.65,
+          "easing": "easeIn",
+          "target": "outgoing",
+          "param": "intensity"
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 0,
+          "easing": "easeIn",
+          "target": "outgoing",
+          "start": 0.3,
+          "end": 0.8
+        },
+        {
+          "property": "scale",
+          "from": 0.65,
+          "to": 1,
+          "easing": "easeOut",
+          "target": "incoming",
+          "param": "intensity"
+        },
+        {
+          "property": "opacity",
+          "from": 0,
+          "to": 1,
+          "target": "incoming",
+          "start": 0.2,
+          "end": 0.7
+        }
+      ],
+      "parameters": {
+        "intensity": {
+          "type": "double",
+          "default": 0.7,
+          "min": 0,
+          "max": 1
+        }
+      },
+      "controls": [
+        {
+          "type": "slider",
+          "key": "intensity",
+          "label": "Intensity",
+          "min": 0,
+          "max": 1,
+          "default": 0.7
+        }
+      ]
+    },
+    {
+      "id": "crosszoom",
+      "version": 2,
+      "itemVersion": 2,
+      "title": "Cross Zoom",
+      "name": "Cross Zoom",
+      "category": "zoom",
+      "renderer": "primitive",
+      "effectType": "xfade",
+      "ffmpegName": "zoomin",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#E879F9",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/crosszoom.webp",
+      "layers": [
+        {
+          "property": "scale",
+          "from": 1,
+          "to": 1.3,
+          "easing": "easeIn",
+          "target": "outgoing",
+          "param": "intensity"
+        },
+        {
+          "property": "scale",
+          "from": 1.3,
+          "to": 1,
+          "easing": "easeOut",
+          "target": "incoming",
+          "param": "intensity"
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 0,
+          "easing": "easeInOut",
+          "target": "outgoing"
+        },
+        {
+          "property": "opacity",
+          "from": 0,
+          "to": 1,
+          "easing": "easeInOut",
+          "target": "incoming"
+        }
+      ],
+      "parameters": {
+        "intensity": {
+          "type": "double",
+          "default": 0.7,
+          "min": 0,
+          "max": 1
+        }
+      },
+      "controls": [
+        {
+          "type": "slider",
+          "key": "intensity",
+          "label": "Intensity",
+          "min": 0,
+          "max": 1,
+          "default": 0.7
+        }
+      ]
+    },
+    {
+      "id": "cursorzoom",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Cursor Zoom",
+      "name": "Cursor Zoom",
+      "category": "zoom",
+      "renderer": "primitive",
+      "effectType": "xfade",
+      "ffmpegName": "zoomin",
+      "defaultDurationMs": 2000,
+      "minDurationMs": 100,
+      "maxDurationMs": 3300,
+      "accent": "#DB2777",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/cursorzoom.webp",
+      "layers": [
+        {
+          "property": "scale",
+          "from": 1,
+          "to": 1,
+          "target": "outgoing",
+          "start": 0,
+          "end": 0.08
+        },
+        {
+          "property": "scale",
+          "from": 1,
+          "to": 2.1,
+          "easing": "easeIn",
+          "target": "outgoing",
+          "start": 0.08,
+          "end": 0.42,
+          "param": "intensity"
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 1,
+          "target": "outgoing",
+          "start": 0,
+          "end": 0.42
+        },
+        {
+          "property": "opacity",
+          "from": 0,
+          "to": 0,
+          "target": "incoming",
+          "start": 0,
+          "end": 0.42
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 0,
+          "easing": "easeOut",
+          "target": "outgoing",
+          "start": 0.42,
+          "end": 0.55
+        },
+        {
+          "property": "opacity",
+          "from": 0,
+          "to": 1,
+          "easing": "easeIn",
+          "target": "incoming",
+          "start": 0.42,
+          "end": 0.55
+        },
+        {
+          "property": "scale",
+          "from": 2.1,
+          "to": 2.1,
+          "target": "outgoing",
+          "start": 0.42,
+          "end": 0.55,
+          "param": "intensity"
+        },
+        {
+          "property": "scale",
+          "from": 2.1,
+          "to": 2.1,
+          "target": "incoming",
+          "start": 0.42,
+          "end": 0.55,
+          "param": "intensity"
+        },
+        {
+          "property": "scale",
+          "from": 2.1,
+          "to": 1,
+          "easing": "easeOut",
+          "target": "incoming",
+          "start": 0.55,
+          "end": 1,
+          "param": "intensity"
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 1,
+          "target": "incoming",
+          "start": 0.55,
+          "end": 1
+        }
+      ],
+      "parameters": {
+        "intensity": {
+          "type": "double",
+          "default": 0.7,
+          "min": 0,
+          "max": 1
+        }
+      },
+      "controls": [
+        {
+          "type": "slider",
+          "key": "intensity",
+          "label": "Intensity",
+          "min": 0,
+          "max": 1,
+          "default": 0.7
+        }
+      ]
+    },
+    {
+      "id": "zoomblur",
+      "version": 2,
+      "itemVersion": 2,
+      "title": "Zoom Blur",
+      "name": "Zoom Blur",
+      "category": "zoom",
+      "renderer": "primitive",
+      "effectType": "xfade",
+      "ffmpegName": "hblur",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#C084FC",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/zoomblur.webp",
+      "layers": [
+        {
+          "property": "scale",
+          "from": 1,
+          "to": 1.35,
+          "target": "outgoing",
+          "param": "intensity"
+        },
+        {
+          "property": "scale",
+          "from": 1.35,
+          "to": 1,
+          "target": "incoming",
+          "param": "intensity"
+        },
+        {
+          "property": "blur",
+          "from": 0,
+          "to": 12,
+          "target": "both",
+          "start": 0,
+          "end": 0.5,
+          "param": "intensity"
+        },
+        {
+          "property": "blur",
+          "from": 12,
+          "to": 0,
+          "target": "both",
+          "start": 0.5,
+          "end": 1,
+          "param": "intensity"
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 0,
+          "easing": "easeInOut",
+          "target": "outgoing"
+        },
+        {
+          "property": "opacity",
+          "from": 0,
+          "to": 1,
+          "easing": "easeInOut",
+          "target": "incoming"
+        }
+      ],
+      "parameters": {
+        "intensity": {
+          "type": "double",
+          "default": 0.7,
+          "min": 0,
+          "max": 1
+        }
+      },
+      "controls": [
+        {
+          "type": "slider",
+          "key": "intensity",
+          "label": "Intensity",
+          "min": 0,
+          "max": 1,
+          "default": 0.7
+        }
+      ]
+    },
+    {
+      "id": "crossblur",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Cross Blur",
+      "name": "Cross Blur",
+      "category": "zoom",
+      "renderer": "primitive",
+      "effectType": "xfade",
+      "ffmpegName": "hblur",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#A855F7",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/crossblur.webp",
+      "layers": [
+        {
+          "property": "blur",
+          "from": 0,
+          "to": 14,
+          "target": "outgoing",
+          "start": 0,
+          "end": 0.55,
+          "param": "intensity"
+        },
+        {
+          "property": "blur",
+          "from": 14,
+          "to": 0,
+          "target": "incoming",
+          "start": 0.45,
+          "end": 1,
+          "param": "intensity"
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 0,
+          "easing": "easeInOut",
+          "target": "outgoing"
+        },
+        {
+          "property": "opacity",
+          "from": 0,
+          "to": 1,
+          "easing": "easeInOut",
+          "target": "incoming"
+        }
+      ],
+      "parameters": {
+        "intensity": {
+          "type": "double",
+          "default": 0.7,
+          "min": 0,
+          "max": 1
+        }
+      },
+      "controls": [
+        {
+          "type": "slider",
+          "key": "intensity",
+          "label": "Intensity",
+          "min": 0,
+          "max": 1,
+          "default": 0.7
+        }
+      ]
+    },
+    {
+      "id": "flash",
+      "version": 2,
+      "itemVersion": 2,
+      "title": "Flash",
+      "name": "Flash",
+      "category": "effect",
+      "renderer": "primitive",
+      "effectType": "xfade",
+      "ffmpegName": "fadewhite",
+      "defaultDurationMs": 250,
+      "minDurationMs": 80,
+      "maxDurationMs": 800,
+      "accent": "#FDE68A",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/flash.webp",
+      "layers": [
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 0,
+          "easing": "easeInOut",
+          "target": "outgoing"
+        },
+        {
+          "property": "opacity",
+          "from": 0,
+          "to": 1,
+          "easing": "easeInOut",
+          "target": "incoming"
+        },
+        {
+          "property": "brightness",
+          "from": 0,
+          "to": 1,
+          "easing": "easeOut",
+          "target": "both",
+          "start": 0,
+          "end": 0.5,
+          "param": "intensity"
+        },
+        {
+          "property": "brightness",
+          "from": 1,
+          "to": 0,
+          "easing": "easeIn",
+          "target": "both",
+          "start": 0.5,
+          "end": 1,
+          "param": "intensity"
+        }
+      ],
+      "parameters": {
+        "intensity": {
+          "type": "double",
+          "default": 0.7,
+          "min": 0,
+          "max": 1
+        }
+      },
+      "controls": [
+        {
+          "type": "slider",
+          "key": "intensity",
+          "label": "Intensity",
+          "min": 0,
+          "max": 1,
+          "default": 0.7
+        }
+      ]
+    },
+    {
+      "id": "mosaic",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Mosaic",
+      "name": "Mosaic",
+      "category": "effect",
+      "renderer": "primitive",
+      "effectType": "xfade",
+      "ffmpegName": "pixelize",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#FACC15",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/mosaic.webp",
+      "layers": [
+        {
+          "property": "scale",
+          "from": 1,
+          "to": 0.2,
+          "easing": "easeIn",
+          "target": "outgoing",
+          "start": 0,
+          "end": 0.5
+        },
+        {
+          "property": "blur",
+          "from": 0,
+          "to": 8,
+          "target": "outgoing",
+          "start": 0,
+          "end": 0.5
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 0,
+          "target": "outgoing",
+          "start": 0.35,
+          "end": 0.6
+        },
+        {
+          "property": "scale",
+          "from": 0.2,
+          "to": 1,
+          "easing": "easeOut",
+          "target": "incoming",
+          "start": 0.5,
+          "end": 1
+        },
+        {
+          "property": "blur",
+          "from": 8,
+          "to": 0,
+          "target": "incoming",
+          "start": 0.5,
+          "end": 1
+        },
+        {
+          "property": "opacity",
+          "from": 0,
+          "to": 1,
+          "target": "incoming",
+          "start": 0.4,
+          "end": 0.65
+        }
+      ]
+    },
+    {
+      "id": "ripple",
+      "version": 1,
+      "itemVersion": 1,
+      "title": "Ripple",
+      "name": "Ripple",
+      "category": "effect",
+      "renderer": "primitive",
+      "effectType": "xfade",
+      "ffmpegName": "dissolve",
+      "defaultDurationMs": 500,
+      "minDurationMs": 100,
+      "maxDurationMs": 3000,
+      "accent": "#38BDF8",
+      "premium": false,
+      "thumbnailUrl": "transitions/thumbs/ripple.webp",
+      "layers": [
+        {
+          "property": "scale",
+          "from": 1,
+          "to": 1.12,
+          "easing": "easeOut",
+          "target": "outgoing",
+          "start": 0,
+          "end": 0.5
+        },
+        {
+          "property": "scale",
+          "from": 1.12,
+          "to": 1,
+          "easing": "easeIn",
+          "target": "outgoing",
+          "start": 0.5,
+          "end": 1
+        },
+        {
+          "property": "blur",
+          "from": 0,
+          "to": 6,
+          "target": "both",
+          "start": 0,
+          "end": 0.5
+        },
+        {
+          "property": "blur",
+          "from": 6,
+          "to": 0,
+          "target": "both",
+          "start": 0.5,
+          "end": 1
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 0,
+          "easing": "easeInOut",
+          "target": "outgoing"
+        },
+        {
+          "property": "opacity",
+          "from": 0,
+          "to": 1,
+          "easing": "easeInOut",
+          "target": "incoming"
         }
       ]
     }

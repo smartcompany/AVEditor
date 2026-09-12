@@ -1,71 +1,19 @@
+import 'dart:math' as math;
+
 import 'package:aveditor/l10n/app_localizations.dart';
 import 'package:aveditor/models/applied_transition.dart';
 import 'package:aveditor/models/transition_item.dart';
 import 'package:aveditor/services/transition_asset_store.dart';
 import 'package:aveditor/services/transition_catalog_service.dart';
-import 'package:aveditor/utils/editor_sheet_metrics.dart';
+import 'package:aveditor/services/transition_engine.dart';
+import 'package:aveditor/widgets/transition_preview_compositor.dart';
 import 'package:flutter/material.dart';
 
-/// Live cut-transition editor sheet. Applies as the user taps; dismiss with
-/// the check button, or by dragging the top handle fully down.
-/// Item grid scrolls independently; only the handle resizes the sheet.
-///
-/// Height stages match [EditorSheetMetrics]: entry (preview visible) → max →
-/// dismiss.
-Future<void> showTransitionPickerSheet(
-  BuildContext context, {
-  required String initialSelectedId,
-  required Duration initialDuration,
-  required Duration minDuration,
-  required Duration maxDuration,
-  Map<String, double> initialParameters = const {},
-  required ValueChanged<AppliedTransition> onApplied,
-  required ValueChanged<Duration> onDurationChanged,
-  ValueChanged<Map<String, double>>? onParametersChanged,
-}) {
-  final metrics = EditorSheetMetrics.of(context);
-  final entrySize = metrics.entryFraction;
-  final minSize = metrics.minFraction;
-  final maxSize = metrics.maxFraction;
-
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    // Sheet owns vertical drag (resize / dismiss).
-    enableDrag: false,
-    barrierColor: Colors.transparent,
-    backgroundColor: Colors.transparent,
-    builder: (context) {
-      return DraggableScrollableSheet(
-        initialChildSize: entrySize,
-        minChildSize: minSize,
-        maxChildSize: maxSize,
-        expand: false,
-        snap: true,
-        snapSizes: [entrySize],
-        shouldCloseOnMinExtent: true,
-        builder: (context, scrollController) {
-          return TransitionPickerSheet(
-            scrollController: scrollController,
-            initialSelectedId: initialSelectedId,
-            initialDuration: initialDuration,
-            minDuration: minDuration,
-            maxDuration: maxDuration,
-            initialParameters: initialParameters,
-            onApplied: onApplied,
-            onDurationChanged: onDurationChanged,
-            onParametersChanged: onParametersChanged,
-          );
-        },
-      );
-    },
-  );
-}
-
-class TransitionPickerSheet extends StatefulWidget {
-  const TransitionPickerSheet({
+/// Docked cut-transition editor (same shell as [TextStudioPanel]).
+/// Height is owned by the editor dock; close with the header X ([onConfirm]).
+class TransitionPickerPanel extends StatefulWidget {
+  const TransitionPickerPanel({
     super.key,
-    required this.scrollController,
     required this.initialSelectedId,
     required this.initialDuration,
     required this.minDuration,
@@ -74,9 +22,11 @@ class TransitionPickerSheet extends StatefulWidget {
     required this.onApplied,
     required this.onDurationChanged,
     this.onParametersChanged,
+    required this.onConfirm,
   });
 
-  final ScrollController scrollController;
+  static const headerHeight = 48.0;
+
   final String initialSelectedId;
   final Duration initialDuration;
   final Duration minDuration;
@@ -85,12 +35,13 @@ class TransitionPickerSheet extends StatefulWidget {
   final ValueChanged<AppliedTransition> onApplied;
   final ValueChanged<Duration> onDurationChanged;
   final ValueChanged<Map<String, double>>? onParametersChanged;
+  final VoidCallback onConfirm;
 
   @override
-  State<TransitionPickerSheet> createState() => _TransitionPickerSheetState();
+  State<TransitionPickerPanel> createState() => _TransitionPickerPanelState();
 }
 
-class _TransitionPickerSheetState extends State<TransitionPickerSheet> {
+class _TransitionPickerPanelState extends State<TransitionPickerPanel> {
   final _service = TransitionCatalogService.instance;
   final _assets = TransitionAssetStore.instance;
   var _loading = true;
@@ -98,6 +49,8 @@ class _TransitionPickerSheetState extends State<TransitionPickerSheet> {
   late Duration _duration;
   late Map<String, double> _parameters;
   String? _categoryId;
+  /// Bumps on every tap so the selected tile can replay A→B.
+  var _previewToken = 0;
 
   @override
   void initState() {
@@ -139,7 +92,12 @@ class _TransitionPickerSheetState extends State<TransitionPickerSheet> {
     setState(() => _loading = false);
   }
 
-  TransitionItem? get _selectedItem => _service.itemById(_selectedId);
+  TransitionItem? get _selectedItem {
+    if (_selectedId.isEmpty || _selectedId == 'none') {
+      return TransitionItem.none;
+    }
+    return _service.itemById(_selectedId);
+  }
 
   AppliedTransition _buildApplied(TransitionItem item, Duration duration) {
     if (item.isNone) return AppliedTransition.none;
@@ -165,12 +123,6 @@ class _TransitionPickerSheetState extends State<TransitionPickerSheet> {
   Duration _clampDuration(Duration value, TransitionItem? item) {
     final (minMs, maxMs) = _boundsFor(item);
     return Duration(milliseconds: value.inMilliseconds.clamp(minMs, maxMs));
-  }
-
-  Color _parseAccent(String hex) {
-    final cleaned = hex.replaceFirst('#', '');
-    if (cleaned.length != 6) return const Color(0xFF6B7280);
-    return Color(int.parse('FF$cleaned', radix: 16));
   }
 
   bool get _hasEffect {
@@ -207,6 +159,7 @@ class _TransitionPickerSheetState extends State<TransitionPickerSheet> {
       final sameItem = item.id == _selectedId;
       _selectedId = item.id;
       _parameters = nextParams;
+      _previewToken++;
       if (!item.isNone) {
         // Re-tapping the selected effect must NOT wipe a user-adjusted length.
         if (sameItem) {
@@ -243,9 +196,9 @@ class _TransitionPickerSheetState extends State<TransitionPickerSheet> {
     widget.onApplied(_buildApplied(item, _duration));
   }
 
-  void _closeSheet() {
+  void _close() {
     _commitDuration();
-    Navigator.of(context).pop();
+    widget.onConfirm();
   }
 
   @override
@@ -260,256 +213,252 @@ class _TransitionPickerSheetState extends State<TransitionPickerSheet> {
         orElse: () => categories.first,
       );
     }
-    final items = category?.items ?? const <TransitionItem>[];
+    final rawItems = category?.items ?? const <TransitionItem>[];
+    // "None" on every tab so users can A/B compare against a hard cut.
+    final items = [
+      TransitionItem.none,
+      ...rawItems.where((item) => !item.isNone),
+    ];
     final (minMsInt, maxMsInt) = _boundsFor(_selectedItem);
     final minMs = minMsInt.toDouble();
     final maxMs = maxMsInt.toDouble();
-    final bottomInset = MediaQuery.viewInsetsOf(context).bottom +
-        MediaQuery.paddingOf(context).bottom;
     final showDuration = _hasEffect && !_loading && items.isNotEmpty;
 
     return Material(
-      color: theme.colorScheme.surface,
+      color: const Color(0xFF12141A),
       elevation: 8,
       shadowColor: Colors.black54,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: EdgeInsets.only(bottom: bottomInset),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            // Handle always stays; remaining chrome collapses inside Expanded
-            // so min-extent dismiss never overflows the outer Column.
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Sheet resize / dismiss: ONLY this handle strip uses the
-                // DraggableScrollableSheet scrollController.
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxH = constraints.maxHeight;
+          if (!maxH.isFinite || maxH < 1) {
+            return const SizedBox.shrink();
+          }
+
+          final header = _buildHeader(l10n, theme);
+
+          if (maxH < TransitionPickerPanel.headerHeight) {
+            return ClipRect(
+              child: Align(
+                alignment: Alignment.topCenter,
+                heightFactor: maxH / TransitionPickerPanel.headerHeight,
+                child: SizedBox(
+                  height: TransitionPickerPanel.headerHeight,
+                  width: constraints.maxWidth,
+                  child: header,
+                ),
+              ),
+            );
+          }
+
+          final bodyH = maxH - TransitionPickerPanel.headerHeight;
+          final showChips = categories.length > 1 && bodyH >= 100;
+          final showGrid = bodyH >= 88;
+          final showDurationBar = showDuration && bodyH >= 140;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                height: TransitionPickerPanel.headerHeight,
+                child: header,
+              ),
+              if (showChips)
                 SizedBox(
-                  height: 36,
-                  child: ListView(
-                    controller: widget.scrollController,
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: EdgeInsets.zero,
-                    children: [
-                      SizedBox(
-                        height: 36,
-                        child: Center(
-                          child: Container(
-                            width: 36,
-                            height: 4,
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.onSurfaceVariant
-                                  .withValues(alpha: 0.35),
-                              borderRadius: BorderRadius.circular(2),
-                            ),
+                  height: 40,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.only(left: 12, right: 8),
+                    itemCount: categories.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 4),
+                    itemBuilder: (context, index) {
+                      final cat = categories[index];
+                      final selected = cat.id == (category?.id);
+                      return InkWell(
+                        onTap: () => setState(() => _categoryId = cat.id),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                cat.title,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  height: 1.2,
+                                  fontWeight: selected
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
+                                  color: selected
+                                      ? Colors.white
+                                      : Colors.white60,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Container(
+                                height: 2,
+                                width: 22,
+                                decoration: BoxDecoration(
+                                  color: selected
+                                      ? const Color(0xFF4CC9F0)
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(1),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, inner) {
-                      if (inner.maxHeight < 48) {
-                        return const SizedBox.shrink();
-                      }
-                      final showChips =
-                          categories.length > 1 && inner.maxHeight >= 140;
-                      final showGrid = inner.maxHeight >= 100;
-                      final showDurationBar =
-                          showDuration && inner.maxHeight >= 160;
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    l10n.transitionSheetTitle,
-                                    style:
-                                        theme.textTheme.titleMedium?.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                                IconButton(
-                                  tooltip: l10n.transitionApplied,
-                                  onPressed: _closeSheet,
-                                  icon: const Icon(Icons.check),
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (showChips) ...[
-                            const SizedBox(height: 12),
-                            SizedBox(
-                              height: 36,
-                              child: ListView.separated(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                ),
-                                scrollDirection: Axis.horizontal,
-                                itemCount: categories.length,
-                                separatorBuilder: (_, _) =>
-                                    const SizedBox(width: 8),
-                                itemBuilder: (context, index) {
-                                  final cat = categories[index];
-                                  final selected = cat.id == (category?.id);
-                                  return ChoiceChip(
-                                    label: Text(cat.title),
-                                    selected: selected,
-                                    onSelected: (_) => setState(
-                                      () => _categoryId = cat.id,
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                          ] else
-                            const SizedBox(height: 4),
-                          if (showGrid)
-                            Expanded(
-                              child: _loading
-                                  ? const Center(
-                                      child: CircularProgressIndicator(),
-                                    )
-                                  : categories.isEmpty
-                                      ? Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 16,
-                                            vertical: 24,
-                                          ),
-                                          child: Text(
-                                            l10n.transitionCatalogUnavailable,
-                                          ),
-                                        )
-                                      : GridView.builder(
-                                          physics:
-                                              const BouncingScrollPhysics(
-                                            parent:
-                                                AlwaysScrollableScrollPhysics(),
-                                          ),
-                                          padding: const EdgeInsets.fromLTRB(
-                                            16,
-                                            0,
-                                            16,
-                                            8,
-                                          ),
-                                          gridDelegate:
-                                              const SliverGridDelegateWithFixedCrossAxisCount(
-                                            crossAxisCount: 3,
-                                            mainAxisSpacing: 10,
-                                            crossAxisSpacing: 10,
-                                            childAspectRatio: 0.86,
-                                          ),
-                                          itemCount: items.length,
-                                          itemBuilder: (context, index) {
-                                            final item = items[index];
-                                            final isSelected =
-                                                item.id == _selectedId ||
-                                                    (item.isNone &&
-                                                        (_selectedId
-                                                                .isEmpty ||
-                                                            _selectedId ==
-                                                                'none'));
-                                            return _TransitionTile(
-                                              item: item,
-                                              label: item.isNone
-                                                  ? l10n.transitionNone
-                                                  : item.title,
-                                              accent:
-                                                  _parseAccent(item.accent),
-                                              thumbUrl: _service
-                                                  .resolvedThumbnailUrl(item),
-                                              selected: isSelected,
-                                              installed: _assets
-                                                  .isInstalled(item),
-                                              downloading: _assets
-                                                  .isDownloading(item.id),
-                                              onTap: () => _selectItem(item),
-                                            );
-                                          },
-                                        ),
-                            )
-                          else
-                            const Spacer(),
-                          if (showDurationBar)
-                            Material(
-                              color: theme.colorScheme.surface,
-                              child: Padding(
-                                padding:
-                                    const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                                child: Row(
-                                  children: [
-                                    Text(
-                                      l10n.transitionDuration,
-                                      style: theme.textTheme.labelMedium,
-                                    ),
-                                    Expanded(
-                                      child: SliderTheme(
-                                        data: SliderTheme.of(context)
-                                            .copyWith(
-                                          trackHeight: 2,
-                                          thumbShape:
-                                              const RoundSliderThumbShape(
-                                            enabledThumbRadius: 7,
-                                          ),
-                                          overlayShape:
-                                              const RoundSliderOverlayShape(
-                                            overlayRadius: 14,
-                                          ),
-                                        ),
-                                        child: Slider(
-                                          value: _duration.inMilliseconds
-                                              .toDouble()
-                                              .clamp(minMs, maxMs),
-                                          min: minMs,
-                                          max: maxMs,
-                                          onChanged: _onDurationSlider,
-                                          onChangeEnd: (_) =>
-                                              _commitDuration(),
-                                        ),
-                                      ),
-                                    ),
-                                    Text(
-                                      '${(_duration.inMilliseconds / 1000).toStringAsFixed(1)}s',
-                                      style: theme.textTheme.labelMedium
-                                          ?.copyWith(
-                                        fontFeatures: const [
-                                          FontFeature.tabularFigures(),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                        ],
                       );
                     },
                   ),
                 ),
-              ],
-            );
-          },
-        ),
+              if (showGrid)
+                Expanded(
+                  child: _loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : categories.isEmpty
+                          ? Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 24,
+                              ),
+                              child: Text(
+                                l10n.transitionCatalogUnavailable,
+                                style: const TextStyle(color: Colors.white70),
+                              ),
+                            )
+                          : GridView.builder(
+                              // Same grid metrics as TextStudioPanel._buildPackGrid.
+                              padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 4,
+                                mainAxisSpacing: 8,
+                                crossAxisSpacing: 8,
+                                childAspectRatio: 0.85,
+                              ),
+                              itemCount: items.length,
+                              itemBuilder: (context, index) {
+                                final item = items[index];
+                                final isSelected = item.id == _selectedId ||
+                                    (item.isNone &&
+                                        (_selectedId.isEmpty ||
+                                            _selectedId == 'none'));
+                                return _TransitionTile(
+                                  item: item,
+                                  label: item.isNone
+                                      ? l10n.transitionNone
+                                      : item.title,
+                                  selected: isSelected,
+                                  previewToken:
+                                      isSelected ? _previewToken : 0,
+                                  duration: _duration,
+                                  parameters: Map<String, double>.from(
+                                    isSelected
+                                        ? _parameters
+                                        : item.defaultParameters(),
+                                  ),
+                                  installed: _assets.isInstalled(item),
+                                  downloading:
+                                      _assets.isDownloading(item.id),
+                                  onTap: () => _selectItem(item),
+                                );
+                              },
+                            ),
+                )
+              else
+                const Spacer(),
+              if (showDurationBar)
+                Material(
+                  color: const Color(0xFF12141A),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                    child: Row(
+                      children: [
+                        Text(
+                          l10n.transitionDuration,
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: Colors.white70,
+                          ),
+                        ),
+                        Expanded(
+                          child: SliderTheme(
+                            data: SliderTheme.of(context).copyWith(
+                              trackHeight: 2,
+                              thumbShape: const RoundSliderThumbShape(
+                                enabledThumbRadius: 7,
+                              ),
+                              overlayShape: const RoundSliderOverlayShape(
+                                overlayRadius: 14,
+                              ),
+                            ),
+                            child: Slider(
+                              value: _duration.inMilliseconds
+                                  .toDouble()
+                                  .clamp(minMs, maxMs),
+                              min: minMs,
+                              max: maxMs,
+                              onChanged: _onDurationSlider,
+                              onChangeEnd: (_) => _commitDuration(),
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '${(_duration.inMilliseconds / 1000).toStringAsFixed(1)}s',
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: Colors.white70,
+                            fontFeatures: const [
+                              FontFeature.tabularFigures(),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
       ),
+    );
+  }
+
+  Widget _buildHeader(AppLocalizations l10n, ThemeData theme) {
+    return Row(
+      children: [
+        const SizedBox(width: 16),
+        Expanded(
+          child: Text(
+            l10n.transitionSheetTitle,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
+        ),
+        IconButton(
+          onPressed: _close,
+          tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
+          icon: const Icon(Icons.close, color: Colors.white70),
+        ),
+        const SizedBox(width: 4),
+      ],
     );
   }
 }
 
-class _TransitionTile extends StatelessWidget {
+class _TransitionTile extends StatefulWidget {
   const _TransitionTile({
     required this.item,
     required this.label,
-    required this.accent,
-    required this.thumbUrl,
     required this.selected,
+    required this.previewToken,
+    required this.duration,
+    required this.parameters,
     required this.installed,
     required this.downloading,
     required this.onTap,
@@ -517,105 +466,190 @@ class _TransitionTile extends StatelessWidget {
 
   final TransitionItem item;
   final String label;
-  final Color accent;
-  final String? thumbUrl;
   final bool selected;
+  final int previewToken;
+  final Duration duration;
+  final Map<String, double> parameters;
   final bool installed;
   final bool downloading;
   final VoidCallback onTap;
 
   @override
+  State<_TransitionTile> createState() => _TransitionTileState();
+}
+
+class _TransitionTileState extends State<_TransitionTile>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _play;
+
+  @override
+  void initState() {
+    super.initState();
+    _play = AnimationController(vsync: this);
+    if (widget.selected && !widget.item.isNone) {
+      _runPreview();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _TransitionTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.selected) {
+      _play.stop();
+      _play.value = 0;
+      return;
+    }
+    if (widget.item.isNone) {
+      _play.value = 0;
+      return;
+    }
+    if (widget.previewToken != oldWidget.previewToken ||
+        (!oldWidget.selected && widget.selected) ||
+        oldWidget.item.id != widget.item.id) {
+      _runPreview();
+    } else if (oldWidget.duration != widget.duration) {
+      _play.duration = _previewDuration;
+    }
+  }
+
+  @override
+  void dispose() {
+    _play.dispose();
+    super.dispose();
+  }
+
+  Duration get _previewDuration {
+    // Long enough to show both zoom-in and zoom-out phases in the tile.
+    final ms = widget.duration.inMilliseconds.clamp(400, 1600);
+    return Duration(milliseconds: ms);
+  }
+
+  void _runPreview() {
+    _play.duration = _previewDuration;
+    _play.forward(from: 0);
+  }
+
+  TransitionRenderPlan get _plan {
+    if (widget.item.isNone) {
+      return TransitionEngine.instance.plan(null);
+    }
+    return TransitionEngine.instance.plan(
+      AppliedTransition.fromDefinition(
+        widget.item,
+        duration: widget.duration,
+        parameters: widget.parameters,
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final showDownload =
+        widget.item.needsDownload && !widget.installed && !widget.item.isNone;
+    final radius = BorderRadius.circular(12);
 
     return InkWell(
-      borderRadius: BorderRadius.circular(12),
-      onTap: downloading ? null : onTap,
+      onTap: widget.downloading ? null : widget.onTap,
+      borderRadius: radius,
       child: Column(
         children: [
           Expanded(
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 160),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                color: accent.withValues(alpha: 0.22),
-                border: Border.all(
-                  color: selected
-                      ? theme.colorScheme.primary
-                      : accent.withValues(alpha: 0.55),
-                  width: selected ? 2.5 : 1,
-                ),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  if (thumbUrl != null && thumbUrl!.isNotEmpty)
-                    Image.network(
-                      thumbUrl!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) =>
-                          _FallbackIcon(item: item, accent: accent),
-                    )
-                  else
-                    _FallbackIcon(item: item, accent: accent),
-                  if (item.premium)
-                    Positioned(
-                      top: 4,
-                      left: 4,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 5,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black54,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Icon(
-                          Icons.workspace_premium,
-                          size: 12,
-                          color: Color(0xFFFBBF24),
+            child: Center(
+              child: AspectRatio(
+                aspectRatio: 1,
+                child: AnimatedBuilder(
+                  animation: _play,
+                  builder: (context, _) {
+                    return DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: radius,
+                        border: Border.all(
+                          color: widget.selected
+                              ? Colors.white
+                              : Colors.transparent,
+                          width: 2,
                         ),
                       ),
-                    ),
-                  if (item.needsDownload && !installed)
-                    Positioned(
-                      top: 4,
-                      right: 4,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.black54,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: downloading
-                            ? const SizedBox(
-                                width: 12,
-                                height: 12,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 1.5,
+                      child: Padding(
+                        padding: const EdgeInsets.all(1.5),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              if (widget.item.isNone)
+                                const _TransitionSampleFrame(variant: 0)
+                              else
+                                TransitionAbCompositor(
+                                  outgoing: const _TransitionSampleFrame(
+                                    variant: 0,
+                                  ),
+                                  incoming: const _TransitionSampleFrame(
+                                    variant: 1,
+                                  ),
+                                  t: widget.selected ? _play.value : 0,
+                                  plan: _plan,
                                 ),
-                              )
-                            : const Icon(
-                                Icons.download_rounded,
-                                size: 14,
-                                color: Colors.white,
-                              ),
+                              if (widget.item.isNone)
+                                const ColoredBox(
+                                  color: Color(0x66000000),
+                                  child: Center(
+                                    child: Icon(
+                                      Icons.block,
+                                      color: Colors.white70,
+                                      size: 22,
+                                    ),
+                                  ),
+                                ),
+                              if (widget.item.premium)
+                                const Positioned(
+                                  left: 4,
+                                  top: 4,
+                                  child: _PremiumBadge(),
+                                ),
+                              if (widget.downloading)
+                                const Positioned(
+                                  right: 4,
+                                  top: 4,
+                                  child: SizedBox(
+                                    width: 12,
+                                    height: 12,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 1.5,
+                                    ),
+                                  ),
+                                )
+                              else if (showDownload)
+                                const Positioned(
+                                  right: 4,
+                                  top: 4,
+                                  child: Icon(
+                                    Icons.download,
+                                    size: 12,
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
-                ],
+                    );
+                  },
+                ),
               ),
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           Text(
-            label,
-            maxLines: 2,
+            widget.label,
+            maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
-            style: theme.textTheme.labelMedium?.copyWith(
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            style: TextStyle(
+              color: widget.selected ? Colors.white : Colors.white70,
+              fontSize: 10,
+              fontWeight:
+                  widget.selected ? FontWeight.w600 : FontWeight.w400,
             ),
           ),
         ],
@@ -624,20 +658,114 @@ class _TransitionTile extends StatelessWidget {
   }
 }
 
-class _FallbackIcon extends StatelessWidget {
-  const _FallbackIcon({required this.item, required this.accent});
-
-  final TransitionItem item;
-  final Color accent;
+class _PremiumBadge extends StatelessWidget {
+  const _PremiumBadge();
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Icon(
-        item.isNone ? Icons.block : Icons.animation_outlined,
-        color: accent,
-        size: 28,
+    return Container(
+      width: 16,
+      height: 16,
+      decoration: BoxDecoration(
+        color: const Color(0xFF7C3AED),
+        borderRadius: BorderRadius.circular(4),
       ),
+      child: const Icon(Icons.diamond, size: 10, color: Colors.white),
     );
   }
+}
+
+/// Shared A / B sample stills for transition thumbnails (no network assets).
+class _TransitionSampleFrame extends StatelessWidget {
+  const _TransitionSampleFrame({required this.variant});
+
+  /// 0 = image A (outgoing), 1 = image B (incoming).
+  final int variant;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _SampleFramePainter(variant: variant),
+      child: const SizedBox.expand(),
+    );
+  }
+}
+
+class _SampleFramePainter extends CustomPainter {
+  _SampleFramePainter({required this.variant});
+
+  final int variant;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final sky = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: variant == 0
+            ? const [Color(0xFF7EB6E8), Color(0xFFB8D4F0), Color(0xFFE8D5A3)]
+            : const [Color(0xFF4A7AB5), Color(0xFF6FA0C8), Color(0xFFC4A574)],
+      ).createShader(rect);
+    canvas.drawRect(rect, sky);
+
+    // Ground strip.
+    final groundY = size.height * 0.62;
+    final ground = Paint()
+      ..color = variant == 0
+          ? const Color(0xFF6B8F3C)
+          : const Color(0xFF8B6B3C);
+    canvas.drawRect(
+      Rect.fromLTRB(0, groundY, size.width, size.height),
+      ground,
+    );
+
+    if (variant == 0) {
+      // Windmill-ish silhouette for A.
+      final cx = size.width * 0.52;
+      final cy = size.height * 0.48;
+      final mast = Paint()
+        ..color = Colors.white
+        ..strokeWidth = size.width * 0.04
+        ..strokeCap = StrokeCap.round;
+      canvas.drawLine(Offset(cx, groundY), Offset(cx, cy - size.height * 0.02), mast);
+      final blade = Paint()
+        ..color = Colors.white
+        ..strokeWidth = size.width * 0.035
+        ..strokeCap = StrokeCap.round;
+      for (var i = 0; i < 4; i++) {
+        final a = (i * math.pi / 2) - 0.4;
+        final len = size.width * 0.22;
+        canvas.drawLine(
+          Offset(cx, cy),
+          Offset(cx + math.cos(a) * len, cy + math.sin(a) * len),
+          blade,
+        );
+      }
+    } else {
+      // Hills + sun for B.
+      final hill = Path()
+        ..moveTo(0, size.height)
+        ..lineTo(0, groundY + size.height * 0.05)
+        ..quadraticBezierTo(
+          size.width * 0.35,
+          groundY - size.height * 0.12,
+          size.width * 0.7,
+          groundY + size.height * 0.02,
+        )
+        ..lineTo(size.width, groundY + size.height * 0.08)
+        ..lineTo(size.width, size.height)
+        ..close();
+      canvas.drawPath(hill, Paint()..color = const Color(0xFF5A7A3A));
+      canvas.drawCircle(
+        Offset(size.width * 0.78, size.height * 0.22),
+        size.width * 0.12,
+        Paint()..color = const Color(0xFFFFE08A),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SampleFramePainter oldDelegate) =>
+      oldDelegate.variant != variant;
 }

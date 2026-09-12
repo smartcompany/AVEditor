@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:aveditor/l10n/app_localizations.dart';
 import 'package:aveditor/l10n/l10n_extensions.dart';
+import 'package:aveditor/models/applied_transition.dart';
 import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/clip_trim.dart';
 import 'package:aveditor/models/project_music.dart';
@@ -74,9 +75,6 @@ class _EditorScreenState extends State<EditorScreen>
   VideoPlayerController? get _auxController =>
       _slotsSwapped ? _slotMain : _slotAux;
 
-  Key get _primarySlotKey => _slotsSwapped ? _slotAuxKey : _slotMainKey;
-  Key get _secondarySlotKey => _slotsSwapped ? _slotMainKey : _slotAuxKey;
-
   /// Aux opacity while a fade is active; null when not fading.
   double? _fadeProgress;
 
@@ -98,8 +96,8 @@ class _EditorScreenState extends State<EditorScreen>
   /// Bumped to cancel an in-flight [_previewTransitionAtCut] (e.g. panel close).
   int _transitionPreviewGen = 0;
 
-  /// True while the transition picker sheet is up.
-  var _transitionPickerOpen = false;
+  /// Cut index while the docked transition studio is open; null when closed.
+  int? _transitionStudioCutIndex;
 
   VideoProject? _project;
   String? _selectedOverlayId;
@@ -122,6 +120,11 @@ class _EditorScreenState extends State<EditorScreen>
 
   /// Optimistic playhead while `seekTo` is in flight (avoids timeline jitter).
   Duration? _scrubPlayhead;
+
+  /// True while a trim/resize edge drag is previewing frames without moving
+  /// the centre playhead.
+  bool _edgeFramePreviewActive = false;
+  Duration? _lastEdgePreviewSeek;
 
   final _export = ExportService();
   final _exportSave = ExportSaveService();
@@ -153,6 +156,7 @@ class _EditorScreenState extends State<EditorScreen>
   /// - `> 0` → explicit height while dragging or expanded to ~2/3 screen
   final ValueNotifier<double?> _dockHeight = ValueNotifier(null);
   AnimationController? _dockSnapAnim;
+  Completer<void>? _dockAnimCompleter;
   double _dockAnimFrom = 0;
   double _dockAnimTo = 0;
 
@@ -236,14 +240,14 @@ class _EditorScreenState extends State<EditorScreen>
     return _entryDockHeight();
   }
 
-  bool get _dockIsHidden {
-    final h = _dockHeight.value;
-    return h != null && h <= 0.5;
-  }
-
   void _stopDockSnapAnim() {
     _dockSnapAnim?.dispose();
     _dockSnapAnim = null;
+    final pending = _dockAnimCompleter;
+    _dockAnimCompleter = null;
+    if (pending != null && !pending.isCompleted) {
+      pending.complete();
+    }
   }
 
   /// Make height explicit before drag so we can animate in pixels.
@@ -253,7 +257,12 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   /// [height] `null` restores entry (1/3 screen); otherwise pixels (0 = hidden).
-  void _setDockHeight(double? height, {bool animate = false}) {
+  Future<void> _setDockHeight(
+    double? height, {
+    bool animate = false,
+    Duration duration = const Duration(milliseconds: 220),
+    Curve? curve,
+  }) async {
     final maxH = _maxDockHeight();
     final double? target;
     if (height == null) {
@@ -279,45 +288,47 @@ class _EditorScreenState extends State<EditorScreen>
     }
     _stopDockSnapAnim();
     final expandish = to >= from;
-    final controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 220),
-    );
+    final controller = AnimationController(vsync: this, duration: duration);
     _dockSnapAnim = controller;
-    final curve = CurvedAnimation(
+    final anim = CurvedAnimation(
       parent: controller,
-      curve: expandish ? Curves.easeOutCubic : Curves.easeInCubic,
+      curve: curve ??
+          (expandish ? Curves.easeOutCubic : Curves.easeInCubic),
     );
-    curve.addListener(() {
+    final done = Completer<void>();
+    _dockAnimCompleter = done;
+    anim.addListener(() {
       _dockHeight.value =
-          _dockAnimFrom + (_dockAnimTo - _dockAnimFrom) * curve.value;
+          _dockAnimFrom + (_dockAnimTo - _dockAnimFrom) * anim.value;
     });
     controller.addStatusListener((status) {
       if (status == AnimationStatus.completed ||
           status == AnimationStatus.dismissed) {
         _dockHeight.value = settleToEntry ? null : _dockAnimTo;
-        _stopDockSnapAnim();
+        final pending = _dockAnimCompleter;
+        _dockAnimCompleter = null;
+        _dockSnapAnim?.dispose();
+        _dockSnapAnim = null;
+        if (pending != null && !pending.isCompleted) {
+          pending.complete();
+        }
       }
     });
-    controller.forward();
+    await controller.forward();
+    await done.future;
   }
 
-  void _snapDockToEntry({bool animate = true}) {
-    _setDockHeight(null, animate: animate);
+  /// Show text / transition studio without touching dock height or timeline state.
+  void _presentStudioDock(VoidCallback applyStudioState) {
+    FocusManager.instance.primaryFocus?.unfocus();
+    applyStudioState();
   }
 
-  void _seedStudioSheetHeight() {
-    // Keep entry (1/3) or expanded; only restore when hidden.
-    if (_dockIsHidden) {
-      _setDockHeight(null, animate: false);
-    }
-  }
-
-  void _scheduleTextStudioHeightToTimeline() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_inTextStudio) return;
-      if (_dockIsHidden) _snapDockToEntry(animate: false);
-    });
+  /// Hide studio and return to the existing timeline chrome as-is.
+  Future<void> _dismissStudioDock(VoidCallback clearStudioState) async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (!mounted) return;
+    clearStudioState();
   }
 
   void _clearTextStudioHeightOverride() {
@@ -349,9 +360,9 @@ class _EditorScreenState extends State<EditorScreen>
       flingVelocity: _dockFlingVelocity,
     );
     if ((target - entry).abs() <= 8) {
-      _setDockHeight(null, animate: true);
+      unawaited(_setDockHeight(null, animate: true));
     } else {
-      _setDockHeight(target, animate: true);
+      unawaited(_setDockHeight(target, animate: true));
     }
   }
 
@@ -471,9 +482,7 @@ class _EditorScreenState extends State<EditorScreen>
 
         return Semantics(
           label: atHidden
-              ? (_inTextStudio
-                  ? context.l10n.textStudioTabTemplates
-                  : context.l10n.showTimeline)
+              ? context.l10n.showTimeline
               : context.l10n.hideTimeline,
           child: Listener(
             behavior: HitTestBehavior.opaque,
@@ -562,22 +571,29 @@ class _EditorScreenState extends State<EditorScreen>
               sourcePath: stored.sourcePath,
               duration: duration,
               trim: ClipTrim(start: Duration.zero, end: duration),
+              // Keep any cuts already saved before duration was known.
+              segments: List<ClipSegment>.from(stored.segments),
               overlays: stored.overlays,
+              musicTracks: List<ProjectMusic>.from(stored.musicTracks),
               preset: stored.preset,
               rotation: stored.rotation,
               updatedAt: stored.updatedAt,
             )
           : stored;
 
+      // Normalize a copy first — clearing in place then reading the same list
+      // would wipe cuts (empty → single full-length segment).
+      final normalized = normalizeSegments(
+        List<ClipSegment>.from(project.segments),
+        sourceDuration: duration,
+      );
       project.segments
         ..clear()
-        ..addAll(normalizeSegments(project.segments, sourceDuration: duration));
-      if (project.segments.isEmpty ||
-          totalKeptDuration(project.segments) <= Duration.zero) {
-        project.segments
-          ..clear()
-          ..addAll(segmentsFromTrim(start: Duration.zero, end: duration));
-      }
+        ..addAll(
+          normalized.isEmpty || totalKeptDuration(normalized) <= Duration.zero
+              ? segmentsFromTrim(start: Duration.zero, end: duration)
+              : normalized,
+        );
 
       setState(() {
         _slotMain = controller;
@@ -1107,7 +1123,9 @@ class _EditorScreenState extends State<EditorScreen>
   ///
   /// Seeking the main player to match aux lands on keyframes and causes the
   /// visible "frame jump". Instead we promote the already-correct aux player
-  /// to be the primary controller.
+  /// to be the primary controller. Physical VideoPlayer slots stay mounted in
+  /// a fixed Stack order ([StableDualSlotPreview]) so handoff only flips roles
+  /// and opacities — no remount of the visible surface.
   Future<void> _completeFadeHandoff(PreviewFadeWindow done) async {
     if (_fadeHandoffInFlight) return;
     _fadeHandoffInFlight = true;
@@ -1133,33 +1151,23 @@ class _EditorScreenState extends State<EditorScreen>
 
       final wasPlaying = main.value.isPlaying || aux.value.isPlaying;
 
-      // Hold the last blend frame on incoming only, then swap controllers so
-      // the already-decoded incoming stream continues without a seek hitch.
-      if (mounted) {
-        setState(() => _fadeProgress = 1.0);
-      }
-      try {
-        await main.pause();
-      } catch (_) {}
-      if (!mounted || gen != _fadeSyncGen) return;
-
-      // One frame so the compositor can paint full-incoming before the swap.
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-      if (!mounted || gen != _fadeSyncGen) return;
-
+      // Promote aux in the same frame we leave the blend. At t=1 the incoming
+      // slot is already fully visible; after the flip that same physical slot
+      // becomes the idle primary (opacity 1) — no seek, no tree teardown.
       main.removeListener(_onVideoTick);
-      // Flip which physical slot is the live timeline player — no seek.
       _slotsSwapped = !_slotsSwapped;
       _controller!.addListener(_onVideoTick);
 
       _activeFade = null;
       _fadeProgress = null;
       _fadeAnchoredAfterIndex = null;
+      if (mounted) setState(() {});
 
       try {
         await _auxController?.setVolume(0);
         await _auxController?.pause();
       } catch (_) {}
+      if (!mounted || gen != _fadeSyncGen) return;
 
       if (wasPlaying) {
         if (!_controller!.value.isPlaying) {
@@ -1169,7 +1177,6 @@ class _EditorScreenState extends State<EditorScreen>
         await _controller!.pause();
       }
 
-      if (mounted) setState(() {});
       _syncVideoAudioVolume();
       unawaited(_syncMusicPlayback());
     } finally {
@@ -1193,10 +1200,7 @@ class _EditorScreenState extends State<EditorScreen>
     if (mounted) setState(() {});
   }
 
-  Widget _buildPreviewVideoChild(VideoPlayerController main) {
-    final progress = _fadeProgress;
-    final aux = _auxController;
-    final active = _activeFade;
+  Widget _buildPreviewVideoChild(VideoPlayerController _) {
     final slotMain = _slotMain;
     final slotAux = _slotAux;
 
@@ -1209,26 +1213,20 @@ class _EditorScreenState extends State<EditorScreen>
       return VideoPlayer(slotMain, key: _slotMainKey);
     }
 
-    if (progress == null || active == null || aux == null) {
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          VideoPlayer(_controller!, key: _primarySlotKey),
-          Offstage(
-            offstage: true,
-            child: VideoPlayer(_auxController!, key: _secondarySlotKey),
-          ),
-        ],
-      );
-    }
+    final progress = _fadeProgress;
+    final active = _activeFade;
+    final plan = active == null
+        ? null
+        : TransitionEngine.instance.plan(active.outgoing.transition);
 
-    final plan = TransitionEngine.instance.plan(active.outgoing.transition);
-    return TransitionPreviewCompositor(
-      key: const ValueKey('preview_transition'),
-      outgoing: main,
-      incoming: aux,
-      outgoingPlayerKey: _primarySlotKey,
-      incomingPlayerKey: _secondarySlotKey,
+    return StableDualSlotPreview(
+      slotMain: SizedBox.expand(
+        child: VideoPlayer(slotMain, key: _slotMainKey),
+      ),
+      slotAux: SizedBox.expand(
+        child: VideoPlayer(slotAux, key: _slotAuxKey),
+      ),
+      slotsSwapped: _slotsSwapped,
       t: progress,
       plan: plan,
     );
@@ -1427,7 +1425,7 @@ class _EditorScreenState extends State<EditorScreen>
 
   bool get _inTextStudio => _textStudioOverlayId != null;
 
-  void _seek(Duration position) {
+  void _seek(Duration position, {bool seekVideo = true}) {
     final controller = _controller;
     final project = _project;
     if (controller == null || project == null) return;
@@ -1443,6 +1441,10 @@ class _EditorScreenState extends State<EditorScreen>
     );
     final clamped = clampDuration(position, Duration.zero, maxScrub);
     _scrubPlayhead = clamped;
+    if (!seekVideo) {
+      setState(() {});
+      return;
+    }
     unawaited(_tearDownFadePreview());
     // Video decoder only has frames up to the source length — pin the last
     // frame while the UI playhead continues into a music/text-only tail.
@@ -1451,6 +1453,39 @@ class _EditorScreenState extends State<EditorScreen>
     unawaited(_syncMusicPlayback());
     _syncVideoAudioVolume();
     setState(() {});
+  }
+
+  /// While dragging a clip edge, show that edge's frame without moving the
+  /// centre playhead (so the handle stays under the finger).
+  void _onEdgeFramePreview(Duration? sourceTime) {
+    final controller = _controller;
+    final project = _project;
+    if (controller == null || project == null) return;
+
+    if (sourceTime == null) {
+      _edgeFramePreviewActive = false;
+      _lastEdgePreviewSeek = null;
+      return;
+    }
+
+    if (!_edgeFramePreviewActive) {
+      _edgeFramePreviewActive = true;
+      // Freeze the timeline on the current centre; only the decoder moves.
+      _scrubPlayhead = _playhead;
+      if (controller.value.isPlaying) {
+        unawaited(controller.pause());
+        unawaited(_syncMusicPlayback());
+      }
+      unawaited(_tearDownFadePreview());
+    }
+
+    final videoSeek = clampDuration(sourceTime, Duration.zero, project.duration);
+    if (_lastEdgePreviewSeek != null &&
+        (videoSeek - _lastEdgePreviewSeek!).inMilliseconds.abs() < 16) {
+      return;
+    }
+    _lastEdgePreviewSeek = videoSeek;
+    unawaited(controller.seekTo(videoSeek));
   }
 
   /// audioplayers: [AudioPlayer.seek] never completes while stopped (30s TimeoutException).
@@ -1667,107 +1702,41 @@ class _EditorScreenState extends State<EditorScreen>
       return;
     }
 
-    final current = project.segments[index];
-    final next = project.segments[index + 1];
-    final maxTd = () {
-      final maxMs = [
-        current.duration.inMilliseconds,
-        next.duration.inMilliseconds,
-      ].reduce((a, b) => a < b ? a : b);
-      final limit = maxMs > 100 ? maxMs - 50 : maxMs;
-      return Duration(milliseconds: limit.clamp(50, 1 << 30));
-    }();
-    const minTd = Duration(milliseconds: 50);
-
-    setState(() {
-      _selectedTransitionAfterIndex = index;
-      _selectedSegmentId = null;
-      _selectedOverlayId = null;
-      _selectedMusicId = null;
-      _transitionPickerOpen = true;
+    // Open the studio immediately — don't block the first tap on pause/IME.
+    _presentStudioDock(() {
+      setState(() {
+        _selectedTransitionAfterIndex = index;
+        _selectedSegmentId = null;
+        _selectedOverlayId = null;
+        _selectedMusicId = null;
+        _editingOverlayId = null;
+        _textStudioOverlayId = null;
+        _transitionStudioCutIndex = index;
+      });
     });
 
-    await showTransitionPickerSheet(
-      context,
-      initialSelectedId: current.transitionId ?? 'none',
-      initialDuration: current.hasTransition
-          ? clampedTransitionDuration(current, next: next)
-          : const Duration(milliseconds: 500),
-      minDuration: minTd,
-      maxDuration: maxTd < minTd ? minTd : maxTd,
-      initialParameters: current.transition?.parameters ?? const {},
-      onApplied: (applied) {
-        if (!mounted) return;
-        _mutate((p) {
-          if (index >= p.segments.length - 1) return;
-          final segment = p.segments[index];
-          if (applied.isNone) {
-            p.segments[index] = segment.copyWith(clearTransition: true);
-          } else {
-            final clamped = clampedTransitionDuration(
-              segment.copyWith(transition: applied),
-              next: p.segments[index + 1],
-            );
-            p.segments[index] = segment.copyWith(
-              transition: applied.copyWith(
-                duration: clamped <= Duration.zero
-                    ? applied.duration
-                    : clamped,
-              ),
-            );
-          }
-        });
-        setState(() {
-          _selectedTransitionAfterIndex = applied.isNone ? null : index;
-        });
-        if (applied.isNone) {
-          _transitionPreviewUntil = null;
-          unawaited(_tearDownFadePreview());
-          unawaited(_controller?.pause() ?? Future<void>.value());
-          return;
-        }
-        // Re-tap / apply: play exactly the transition window on the main timeline.
-        unawaited(_previewTransitionAtCut(index));
-      },
-      onDurationChanged: (duration) {
-        if (!mounted) return;
-        final project = _project;
-        if (project == null || index >= project.segments.length - 1) return;
-        final segment = project.segments[index];
-        if (!segment.hasTransition) return;
-        final nextSeg = project.segments[index + 1];
-        final tentative = segment.copyWith(
-          transition: segment.transition!.copyWith(duration: duration),
-        );
-        final clamped = clampedTransitionDuration(tentative, next: nextSeg);
-        project.segments[index] = segment.copyWith(
-          transition: segment.transition!.copyWith(
-            duration: clamped <= Duration.zero ? duration : clamped,
-          ),
-        );
-        // Rebuild timeline so the transition chip width tracks the slider.
-        // Avoid _mutate here — slider ticks must not flood undo history.
-        setState(() {});
-        _scheduleSave();
-      },
-      onParametersChanged: (parameters) {
-        if (!mounted) return;
-        final project = _project;
-        if (project == null || index >= project.segments.length - 1) return;
-        final segment = project.segments[index];
-        if (!segment.hasTransition) return;
-        project.segments[index] = segment.copyWith(
-          transition: segment.transition!.copyWith(parameters: parameters),
-        );
-        _scheduleSave();
-      },
-    );
-    if (!mounted) return;
-    // Cancel any in-flight preview before pausing — otherwise a late play()
-    // from [_previewTransitionAtCut] / fade handoff can resume after this close.
+    final controller = _controller;
+    if (controller != null && controller.value.isPlaying) {
+      unawaited(controller.pause());
+    }
+  }
+
+  Future<void> _closeTransitionStudio(String source) async {
+    final index = _transitionStudioCutIndex;
+    OverlayEventLog.log('Editor', 'closeTransitionStudio', {
+      'source': source,
+      'cutIndex': index,
+    });
+    if (index == null) return;
+
     _transitionPreviewGen++;
     _transitionPreviewUntil = null;
-    _transitionPickerOpen = false;
+    await _dismissStudioDock(() {
+      if (!mounted) return;
+      setState(() {
+        _transitionStudioCutIndex = null;
+      });
+    });
     await _tearDownFadePreview();
     await _controller?.pause();
     await _auxController?.pause();
@@ -1775,7 +1744,76 @@ class _EditorScreenState extends State<EditorScreen>
     if (mounted) setState(() {});
   }
 
+  void _applyTransitionAtCut(int index, AppliedTransition applied) {
+    if (!mounted) return;
+    _mutate((p) {
+      if (index >= p.segments.length - 1) return;
+      final segment = p.segments[index];
+      if (applied.isNone) {
+        p.segments[index] = segment.copyWith(clearTransition: true);
+      } else {
+        final clamped = clampedTransitionDuration(
+          segment.copyWith(transition: applied),
+          next: p.segments[index + 1],
+        );
+        p.segments[index] = segment.copyWith(
+          transition: applied.copyWith(
+            duration: clamped <= Duration.zero ? applied.duration : clamped,
+          ),
+        );
+      }
+    });
+    setState(() {
+      _selectedTransitionAfterIndex = applied.isNone ? null : index;
+    });
+    if (applied.isNone) {
+      // Clear the effect, then play the hard cut so the user can compare.
+      unawaited(_tearDownFadePreview());
+      unawaited(_previewTransitionAtCut(index));
+      return;
+    }
+    unawaited(_previewTransitionAtCut(index));
+  }
+
+  void _onTransitionDurationChanged(int index, Duration duration) {
+    if (!mounted) return;
+    final project = _project;
+    if (project == null || index >= project.segments.length - 1) return;
+    final segment = project.segments[index];
+    if (!segment.hasTransition) return;
+    final nextSeg = project.segments[index + 1];
+    final tentative = segment.copyWith(
+      transition: segment.transition!.copyWith(duration: duration),
+    );
+    final clamped = clampedTransitionDuration(tentative, next: nextSeg);
+    project.segments[index] = segment.copyWith(
+      transition: segment.transition!.copyWith(
+        duration: clamped <= Duration.zero ? duration : clamped,
+      ),
+    );
+    setState(() {});
+    _scheduleSave();
+  }
+
+  void _onTransitionParametersChanged(
+    int index,
+    Map<String, double> parameters,
+  ) {
+    if (!mounted) return;
+    final project = _project;
+    if (project == null || index >= project.segments.length - 1) return;
+    final segment = project.segments[index];
+    if (!segment.hasTransition) return;
+    project.segments[index] = segment.copyWith(
+      transition: segment.transition!.copyWith(parameters: parameters),
+    );
+    _scheduleSave();
+  }
+
   /// Seek to the cut and play only for the transition duration on the main timeline.
+  ///
+  /// Hard cuts (no effect / "None") still play a short window across the cut so
+  /// the picker can A/B compare against an effect.
   Future<void> _previewTransitionAtCut(int cutIndex) async {
     final controller = _controller;
     final project = _project;
@@ -1786,21 +1824,27 @@ class _EditorScreenState extends State<EditorScreen>
     final outgoing = project.segments[cutIndex];
     final incoming = project.segments[cutIndex + 1];
     final td = clampedTransitionDuration(outgoing, next: incoming);
-    final previewStart = td > Duration.zero
-        ? outgoing.end - td
-        : outgoing.end - const Duration(milliseconds: 400);
+    final hardCut = !outgoing.hasTransition || td <= Duration.zero;
+    const hardCutPad = Duration(milliseconds: 500);
+    final windowBefore = hardCut ? hardCutPad : td;
+    final previewStart = outgoing.end - windowBefore;
     final clampedStart = previewStart < outgoing.start
         ? outgoing.start
         : previewStart;
+    final previewUntil = hardCut
+        ? (() {
+            final end = incoming.start + hardCutPad;
+            return end > incoming.end ? incoming.end : end;
+          })()
+        : clampedStart + td;
 
     _scrubPlayhead = clampedStart;
-    _transitionPreviewUntil =
-        td > Duration.zero ? clampedStart + td : null;
+    _transitionPreviewUntil = previewUntil;
 
     await _tearDownFadePreview();
     if (!mounted || gen != _transitionPreviewGen) return;
 
-    if (outgoing.hasTransition && td > Duration.zero) {
+    if (!hardCut) {
       await _ensureAuxController();
       if (!mounted || gen != _transitionPreviewGen) return;
       final aux = _auxController;
@@ -1814,12 +1858,7 @@ class _EditorScreenState extends State<EditorScreen>
     if (!mounted || gen != _transitionPreviewGen) return;
     await controller.seekTo(clampedStart);
     if (!mounted || gen != _transitionPreviewGen) return;
-    if (td <= Duration.zero) {
-      await controller.pause();
-      _transitionPreviewUntil = null;
-    } else {
-      await controller.play();
-    }
+    await controller.play();
     if (!mounted || gen != _transitionPreviewGen) {
       // Panel closed (or a newer preview started) while play() was in flight.
       await controller.pause();
@@ -1936,7 +1975,7 @@ class _EditorScreenState extends State<EditorScreen>
     if (project == null || controller == null) return;
 
     if (controller.value.isPlaying) {
-      controller.pause();
+      unawaited(controller.pause());
     }
 
     final start = _textPlacementSourceTime(project);
@@ -1949,10 +1988,9 @@ class _EditorScreenState extends State<EditorScreen>
       TextOverlay(text: '', start: start, end: end),
       emptyPlaceholder: context.l10n.textOverlayHint,
     );
-    // Capture timeline-aligned height before the dock swaps to studio.
-    _seedStudioSheetHeight();
+    late TextOverlay placed;
     _mutate((p) {
-      final placed = assignOverlayLane(
+      placed = assignOverlayLane(
         p.overlays,
         overlay,
         preferLowestLane: true,
@@ -1968,13 +2006,19 @@ class _EditorScreenState extends State<EditorScreen>
       _selectedTransitionAfterIndex = null;
       _inlineEditSelectAll = false;
       _editingOverlayId = null;
-      _textStudioOverlayId = placed.id;
+      _transitionStudioCutIndex = null;
+      // Studio id is set in [_presentStudioDock] so the sheet can rise.
     });
     // Keep the playhead on the new overlay so the selection box is visible.
     if (start != _playhead) {
       _seek(start);
     }
-    _scheduleTextStudioHeightToTimeline();
+    _presentStudioDock(() {
+      setState(() {
+        _textStudioOverlayId = placed.id;
+        _selectedOverlayId = placed.id;
+      });
+    });
   }
 
   /// Source time for a newly placed text clip — never a deleted video gap.
@@ -1998,11 +2042,8 @@ class _EditorScreenState extends State<EditorScreen>
   void _openTextStudio(TextOverlay overlay) {
     final controller = _controller;
     if (controller != null && controller.value.isPlaying) {
-      controller.pause();
+      unawaited(controller.pause());
     }
-    FocusManager.instance.primaryFocus?.unfocus();
-    // Seed height from the live timeline before swapping the dock to studio.
-    _seedStudioSheetHeight();
     // Empty overlays may still be one-glyph wide from older fits — expand so
     // the placeholder stays horizontal under effects like Torn.
     final fitted = overlay.text.trim().isEmpty
@@ -2015,15 +2056,17 @@ class _EditorScreenState extends State<EditorScreen>
         fitted.boxHeight != overlay.boxHeight) {
       _updateOverlay(fitted);
     }
-    setState(() {
-      _selectedOverlayId = fitted.id;
-      _selectedSegmentId = null;
-      _selectedMusicId = null;
-      _selectedTransitionAfterIndex = null;
-      _editingOverlayId = null;
-      _textStudioOverlayId = fitted.id;
+    _presentStudioDock(() {
+      setState(() {
+        _selectedOverlayId = fitted.id;
+        _selectedSegmentId = null;
+        _selectedMusicId = null;
+        _selectedTransitionAfterIndex = null;
+        _editingOverlayId = null;
+        _transitionStudioCutIndex = null;
+        _textStudioOverlayId = fitted.id;
+      });
     });
-    _scheduleTextStudioHeightToTimeline();
   }
 
   void _closeTextStudio(String source) {
@@ -2048,12 +2091,17 @@ class _EditorScreenState extends State<EditorScreen>
     FocusManager.instance.primaryFocus?.unfocus();
 
     if (overlay != null && overlay.text.trim().isEmpty) {
-      _deleteOverlay(id);
-      setState(() {
-        _textStudioOverlayId = null;
-        _clearTextStudioHeightOverride();
-        _editingOverlayId = null;
-      });
+      unawaited(
+        _dismissStudioDock(() {
+          if (!mounted) return;
+          _deleteOverlay(id);
+          setState(() {
+            _textStudioOverlayId = null;
+            _clearTextStudioHeightOverride();
+            _editingOverlayId = null;
+          });
+        }),
+      );
       return;
     }
 
@@ -2061,12 +2109,17 @@ class _EditorScreenState extends State<EditorScreen>
       _updateOverlay(overlay.copyWith(text: overlay.text.trim()));
     }
 
-    setState(() {
-      _textStudioOverlayId = null;
-      _clearTextStudioHeightOverride();
-      _editingOverlayId = null;
-      _selectedOverlayId = source == 'preview_outside' ? null : id;
-    });
+    unawaited(
+      _dismissStudioDock(() {
+        if (!mounted) return;
+        setState(() {
+          _textStudioOverlayId = null;
+          _clearTextStudioHeightOverride();
+          _editingOverlayId = null;
+          _selectedOverlayId = source == 'preview_outside' ? null : id;
+        });
+      }),
+    );
   }
 
   void _setClipRotation(double radians) {
@@ -2674,8 +2727,7 @@ class _EditorScreenState extends State<EditorScreen>
                               ),
                             ),
                               ),
-                              if (editingOverlay == null &&
-                                  !_transitionPickerOpen)
+                              if (editingOverlay == null)
                                 _buildPreviewDockDragEdge(
                                   zoneHeight: constraints.maxHeight * 0.2,
                                 ),
@@ -2686,8 +2738,7 @@ class _EditorScreenState extends State<EditorScreen>
                     ),
                   ),
                   _buildDockResizeHandle(
-                    enabled:
-                        editingOverlay == null && !_transitionPickerOpen,
+                    enabled: editingOverlay == null,
                   ),
                   _buildBottomDock(
                     l10n: l10n,
@@ -2740,7 +2791,7 @@ class _EditorScreenState extends State<EditorScreen>
     );
   }
 
-  /// Bottom dock: timeline chrome, or text studio when open.
+  /// Bottom dock: timeline chrome, text studio, or transition studio.
   ///
   /// Entry (`_dockHeight == null`) locks to 1/3 screen. Expanded uses an
   /// explicit height up to ~2/3 screen. `0` hides the dock (full video).
@@ -2755,47 +2806,129 @@ class _EditorScreenState extends State<EditorScreen>
     required double entryH,
     required TextOverlay? editingOverlay,
   }) {
+    final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
     return ValueListenableBuilder<double?>(
       valueListenable: _dockHeight,
       builder: (context, dockH, _) {
-        if (inTextStudio && studioOverlay != null) {
-          final h = (dockH ?? entryH).clamp(0.0, bodyH);
+        final h = (dockH ?? entryH).clamp(0.0, bodyH);
+        if (h <= 0.5) {
+          return const SizedBox(width: double.infinity, height: 0);
+        }
+
+        Widget wrapDock(Widget child) {
           return SizedBox(
             width: double.infinity,
             height: h,
-            child: h <= 0.5
-                ? const SizedBox.shrink()
-                : TapRegion(
-                    groupId: kBasicTextEditTapGroup,
-                    child: Listener(
-                      behavior: HitTestBehavior.opaque,
-                      onPointerDown: (_) => BasicTextEditDismissGuard.arm(),
-                      child: TextStudioPanel(
-                        overlay: studioOverlay,
-                        onChanged: _updateOverlay,
-                        onConfirm: () => _closeTextStudio('studio_confirm'),
-                      ),
-                    ),
-                  ),
+            child: Padding(
+              // Keep duration slider / action chips above the home indicator.
+              padding: EdgeInsets.only(bottom: safeBottom),
+              child: child,
+            ),
           );
         }
 
-        return IgnorePointer(
-          ignoring: editingOverlay != null,
-          child: Visibility(
-            visible: editingOverlay == null,
-            maintainSize: true,
-            maintainAnimation: true,
-            maintainState: true,
-            maintainInteractivity: false,
-            child: _buildCollapsibleChrome(
-              l10n: l10n,
-              project: project,
-              controller: controller,
-              isInlineEditing: _editingOverlayId != null,
-              dockHeight: dockH,
-              entryHeight: entryH,
+        Widget slideInStudio(Key key, Widget child) {
+          return TweenAnimationBuilder<double>(
+            key: key,
+            tween: Tween(begin: 1, end: 0),
+            duration: const Duration(milliseconds: 320),
+            curve: Curves.easeOutCubic,
+            builder: (context, t, painted) {
+              return ClipRect(
+                child: FractionalTranslation(
+                  translation: Offset(0, t),
+                  child: painted,
+                ),
+              );
+            },
+            child: child,
+          );
+        }
+
+        final cutIndex = _transitionStudioCutIndex;
+        final showTransition = cutIndex != null &&
+            cutIndex >= 0 &&
+            cutIndex < project.segments.length - 1;
+        final showText = inTextStudio && studioOverlay != null;
+        final showStudio = showText || showTransition;
+
+        Widget? studio;
+        if (showText) {
+          studio = slideInStudio(
+            ValueKey('text-studio-${studioOverlay.id}'),
+            TapRegion(
+              groupId: kBasicTextEditTapGroup,
+              child: Listener(
+                behavior: HitTestBehavior.opaque,
+                onPointerDown: (_) => BasicTextEditDismissGuard.arm(),
+                child: TextStudioPanel(
+                  overlay: studioOverlay,
+                  onChanged: _updateOverlay,
+                  onConfirm: () => _closeTextStudio('studio_confirm'),
+                ),
+              ),
             ),
+          );
+        } else if (showTransition) {
+          final current = project.segments[cutIndex];
+          final next = project.segments[cutIndex + 1];
+          final maxTd = () {
+            final maxMs = [
+              current.duration.inMilliseconds,
+              next.duration.inMilliseconds,
+            ].reduce((a, b) => a < b ? a : b);
+            final limit = maxMs > 100 ? maxMs - 50 : maxMs;
+            return Duration(milliseconds: limit.clamp(50, 1 << 30));
+          }();
+          const minTd = Duration(milliseconds: 50);
+          studio = slideInStudio(
+            ValueKey('transition-studio-$cutIndex'),
+            TransitionPickerPanel(
+              key: ValueKey('transition-panel-$cutIndex'),
+              initialSelectedId: current.transitionId ?? '',
+              initialDuration: current.hasTransition
+                  ? clampedTransitionDuration(current, next: next)
+                  : const Duration(milliseconds: 500),
+              minDuration: minTd,
+              maxDuration: maxTd < minTd ? minTd : maxTd,
+              initialParameters: current.transition?.parameters ?? const {},
+              onApplied: (applied) => _applyTransitionAtCut(cutIndex, applied),
+              onDurationChanged: (duration) =>
+                  _onTransitionDurationChanged(cutIndex, duration),
+              onParametersChanged: (parameters) =>
+                  _onTransitionParametersChanged(cutIndex, parameters),
+              onConfirm: () => unawaited(
+                _closeTransitionStudio('studio_confirm'),
+              ),
+            ),
+          );
+        }
+
+        // Keep the timeline Element alive under studios so zoom/scroll survive.
+        return wrapDock(
+          Stack(
+            fit: StackFit.expand,
+            children: [
+              Visibility(
+                visible: !showStudio && editingOverlay == null,
+                maintainState: true,
+                maintainAnimation: true,
+                maintainSize: false,
+                maintainInteractivity: false,
+                child: IgnorePointer(
+                  ignoring: showStudio || editingOverlay != null,
+                  child: _buildCollapsibleChrome(
+                    l10n: l10n,
+                    project: project,
+                    controller: controller,
+                    isInlineEditing: _editingOverlayId != null,
+                    dockHeight: dockH,
+                    entryHeight: entryH,
+                  ),
+                ),
+              ),
+              if (studio != null) Positioned.fill(child: studio),
+            ],
           ),
         );
       },
@@ -2837,12 +2970,10 @@ class _EditorScreenState extends State<EditorScreen>
       return const SizedBox(width: double.infinity, height: 0);
     }
 
-    // Dock height is authoritative (entry 1/3, max 2/3, or mid-drag).
+    // Fill the padded dock (bottom safe inset is applied by the parent).
     // Timeline fills leftover space; extra lanes scroll inside.
     final showActions = height >= 120;
-    return SizedBox(
-      width: double.infinity,
-      height: height,
+    return SizedBox.expand(
       child: Column(
         children: [
           Expanded(child: timeline),
@@ -2883,6 +3014,8 @@ class _EditorScreenState extends State<EditorScreen>
       selectedMusicId: _selectedMusicId,
       selectedTransitionAfterIndex: _selectedTransitionAfterIndex,
       onPlayheadChanged: _seek,
+      onPlayheadTimelineOnly: (position) => _seek(position, seekVideo: false),
+      onEdgeFramePreview: _onEdgeFramePreview,
       onTrimStartChanged: (start) {
         setState(() {
           project.setTrimStart(start);
@@ -2948,7 +3081,8 @@ class _EditorScreenState extends State<EditorScreen>
 
   Widget _buildBottomActions(AppLocalizations l10n) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+      // Dock already clears the home indicator; keep a small gap only.
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       child: Column(
         children: [
           SingleChildScrollView(
