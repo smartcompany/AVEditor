@@ -141,41 +141,29 @@ class TransitionAbCompositor extends StatelessWidget {
   }
 
   Widget _slide(double t, Size size, Offset dir) {
-    final dx = dir.dx * size.width;
-    final dy = dir.dy * size.height;
-    return Stack(
-      fit: StackFit.expand,
-      clipBehavior: Clip.hardEdge,
-      children: [
-        Transform.translate(
-          offset: Offset(dx * t, dy * t),
-          child: outgoing,
-        ),
-        Transform.translate(
-          offset: Offset(dx * (t - 1), dy * (t - 1)),
-          child: incoming,
-        ),
-      ],
+    // Match catalog slide: ease both clips as a solid conveyor (no fade).
+    final u = Curves.easeInOutCubic.transform(t.clamp(0.0, 1.0));
+    final outgoing = TransitionLayerPose(
+      opacity: 1,
+      translateX: dir.dx * u,
+      translateY: dir.dy * u,
+    );
+    final incoming = TransitionLayerPose(
+      opacity: 1,
+      translateX: dir.dx * (u - 1),
+      translateY: dir.dy * (u - 1),
+    );
+    return conveyorSlideLayer(
+      size: size,
+      outgoing: outgoing,
+      incoming: incoming,
+      outgoingChild: this.outgoing,
+      incomingChild: this.incoming,
     );
   }
 
   Widget _push(double t, Size size, Offset dir) {
-    final dx = dir.dx * size.width;
-    final dy = dir.dy * size.height;
-    return Stack(
-      fit: StackFit.expand,
-      clipBehavior: Clip.hardEdge,
-      children: [
-        Transform.translate(
-          offset: Offset(dx * t, dy * t),
-          child: outgoing,
-        ),
-        Transform.translate(
-          offset: Offset(dx * (t - 1), dy * (t - 1)),
-          child: incoming,
-        ),
-      ],
-    );
+    return _slide(t, size, dir);
   }
 
   Widget _wipe(double t, Alignment growFrom, Axis axis) {
@@ -524,6 +512,17 @@ class StableDualSlotPreview extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
+        final logicalOut = slotsSwapped ? auxPose : mainPose;
+        final logicalIn = slotsSwapped ? mainPose : auxPose;
+        if (progress != null && isConveyorSlidePose(logicalOut, logicalIn)) {
+          return conveyorSlideLayer(
+            size: size,
+            outgoing: logicalOut,
+            incoming: logicalIn,
+            outgoingChild: slotsSwapped ? slotAux : slotMain,
+            incomingChild: slotsSwapped ? slotMain : slotAux,
+          );
+        }
         return Stack(
           fit: StackFit.expand,
           clipBehavior: Clip.hardEdge,
@@ -643,14 +642,17 @@ class StableDualSlotPreview extends StatelessWidget {
   }
 
   static TransitionLayerEvaluation _slidePoses(double t, Offset dir) {
+    final u = Curves.easeInOutCubic.transform(t.clamp(0.0, 1.0));
     return TransitionLayerEvaluation(
       outgoing: TransitionLayerPose(
-        translateX: dir.dx * t,
-        translateY: dir.dy * t,
+        opacity: 1,
+        translateX: dir.dx * u,
+        translateY: dir.dy * u,
       ),
       incoming: TransitionLayerPose(
-        translateX: dir.dx * (t - 1),
-        translateY: dir.dy * (t - 1),
+        opacity: 1,
+        translateX: dir.dx * (u - 1),
+        translateY: dir.dy * (u - 1),
       ),
     );
   }

@@ -99,8 +99,21 @@ TransitionLayerEvaluation evaluateTransitionLayers({
   }
 
   if (!hasOpacity) {
-    outgoing = outgoing.copyWith(opacity: 1 - progress);
-    incoming = incoming.copyWith(opacity: progress);
+    // Spatial motion (slide/push) should stay solid — auto crossfade makes
+    // the two clips ghost through each other and looks unnatural.
+    final spatial = layers.any(
+      (l) =>
+          l.property == TransitionProperty.translateX ||
+          l.property == TransitionProperty.translateY ||
+          l.property == TransitionProperty.rotation,
+    );
+    if (spatial) {
+      outgoing = outgoing.copyWith(opacity: 1);
+      incoming = incoming.copyWith(opacity: 1);
+    } else {
+      outgoing = outgoing.copyWith(opacity: 1 - progress);
+      incoming = incoming.copyWith(opacity: progress);
+    }
   } else if (outgoingOpacitySet && !incomingOpacitySet) {
     incoming = incoming.copyWith(opacity: (1 - outgoing.opacity).clamp(0.0, 1.0));
   } else if (incomingOpacitySet && !outgoingOpacitySet) {
@@ -238,6 +251,15 @@ class TransitionLayerCompositor extends StatelessWidget {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
         // Always keep both layers mounted. Dropping a VideoPlayer when opacity
         // hits 0 forces a remount/reparent at handoff and flashes the last frame.
+        if (isConveyorSlidePose(eval.outgoing, eval.incoming)) {
+          return conveyorSlideLayer(
+            size: size,
+            outgoing: eval.outgoing,
+            incoming: eval.incoming,
+            outgoingChild: outgoing,
+            incomingChild: incoming,
+          );
+        }
         return Stack(
           fit: StackFit.expand,
           clipBehavior: Clip.hardEdge,
@@ -263,19 +285,23 @@ Widget posedTransitionLayer(TransitionLayerPose pose, Size size, Widget child) {
       child: built,
     );
   }
-  built = Transform(
-    alignment: Alignment.center,
-    transform: Matrix4.identity()
-      ..translateByDouble(
-        pose.translateX * size.width,
-        pose.translateY * size.height,
-        0,
-        1,
-      )
-      ..rotateZ(pose.rotation * math.pi * 2)
-      ..scaleByDouble(pose.scale, pose.scale, 1, 1),
-    child: built,
-  );
+  // Pixel-snap translation. Sub-pixel Flutter transforms on platform
+  // [VideoPlayer] views shimmer left/right every frame (esp. long slides).
+  final dx = (pose.translateX * size.width).roundToDouble();
+  final dy = (pose.translateY * size.height).roundToDouble();
+  final needsTransform =
+      dx != 0 || dy != 0 || pose.rotation != 0 || (pose.scale - 1).abs() > 0.0001;
+  if (needsTransform) {
+    built = Transform(
+      alignment: Alignment.center,
+      filterQuality: FilterQuality.none,
+      transform: Matrix4.identity()
+        ..translateByDouble(dx, dy, 0, 1)
+        ..rotateZ(pose.rotation * math.pi * 2)
+        ..scaleByDouble(pose.scale, pose.scale, 1, 1),
+      child: built,
+    );
+  }
   if (pose.brightness.abs() > 0.001) {
     final overlay = pose.brightness >= 0 ? Colors.white : Colors.black;
     built = Stack(
@@ -292,9 +318,100 @@ Widget posedTransitionLayer(TransitionLayerPose pose, Size size, Widget child) {
       ],
     );
   }
-  return Opacity(
-    opacity: pose.opacity.clamp(0.0, 1.0),
-    child: built,
+  // Opacity on a platform video view also jitters — skip when fully opaque.
+  if (pose.opacity < 0.999) {
+    built = Opacity(
+      opacity: pose.opacity.clamp(0.0, 1.0),
+      child: built,
+    );
+  }
+  return built;
+}
+
+/// True when A/B are adjacent conveyor frames (slide/push), not a free transform.
+bool isConveyorSlidePose(TransitionLayerPose outgoing, TransitionLayerPose incoming) {
+  final dx = incoming.translateX - outgoing.translateX;
+  final dy = incoming.translateY - outgoing.translateY;
+  final horizontal = (dx.abs() - 1).abs() < 0.03 && dy.abs() < 0.03;
+  final vertical = (dy.abs() - 1).abs() < 0.03 && dx.abs() < 0.03;
+  if (!horizontal && !vertical) return false;
+  // Both should stay fully opaque for a solid slide.
+  return outgoing.opacity > 0.98 && incoming.opacity > 0.98;
+}
+
+/// One shared translate for both clips — avoids dual platform-view transforms
+/// fighting each other (the left/right tremble on long Slide Left previews).
+Widget conveyorSlideLayer({
+  required Size size,
+  required TransitionLayerPose outgoing,
+  required TransitionLayerPose incoming,
+  required Widget outgoingChild,
+  required Widget incomingChild,
+}) {
+  final w = size.width;
+  final h = size.height;
+  final horizontal =
+      (incoming.translateX - outgoing.translateX).abs() >
+      (incoming.translateY - outgoing.translateY).abs();
+
+  // Stack + Positioned only — never Row/Column (those report RenderFlex
+  // overflow even when the strip is intentionally wider than the viewport).
+  if (horizontal) {
+    final outIsLeft = outgoing.translateX <= incoming.translateX;
+    final leftChild = outIsLeft ? outgoingChild : incomingChild;
+    final rightChild = outIsLeft ? incomingChild : outgoingChild;
+    final leftPose = outIsLeft ? outgoing : incoming;
+    final shiftX = (leftPose.translateX * w).roundToDouble();
+    return ClipRect(
+      child: Stack(
+        fit: StackFit.expand,
+        clipBehavior: Clip.hardEdge,
+        children: [
+          Positioned(
+            left: shiftX,
+            top: 0,
+            width: w,
+            height: h,
+            child: leftChild,
+          ),
+          Positioned(
+            left: shiftX + w,
+            top: 0,
+            width: w,
+            height: h,
+            child: rightChild,
+          ),
+        ],
+      ),
+    );
+  }
+
+  final outIsTop = outgoing.translateY <= incoming.translateY;
+  final topChild = outIsTop ? outgoingChild : incomingChild;
+  final bottomChild = outIsTop ? incomingChild : outgoingChild;
+  final topPose = outIsTop ? outgoing : incoming;
+  final shiftY = (topPose.translateY * h).roundToDouble();
+  return ClipRect(
+    child: Stack(
+      fit: StackFit.expand,
+      clipBehavior: Clip.hardEdge,
+      children: [
+        Positioned(
+          left: 0,
+          top: shiftY,
+          width: w,
+          height: h,
+          child: topChild,
+        ),
+        Positioned(
+          left: 0,
+          top: shiftY + h,
+          width: w,
+          height: h,
+          child: bottomChild,
+        ),
+      ],
+    ),
   );
 }
 

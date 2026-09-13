@@ -238,7 +238,7 @@
         {
           "id": "pushleft",
           "version": 1,
-          "itemVersion": 1,
+          "itemVersion": 2,
           "title": "Push Left",
           "name": "Push Left",
           "category": "trending",
@@ -264,6 +264,18 @@
               "from": 1,
               "to": 0,
               "easing": "easeInOut",
+              "target": "incoming"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 1,
+              "target": "outgoing"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 1,
               "target": "incoming"
             }
           ]
@@ -338,7 +350,7 @@
         {
           "id": "slideleft",
           "version": 1,
-          "itemVersion": 1,
+          "itemVersion": 2,
           "title": "Slide Left",
           "name": "Slide Left",
           "category": "trending",
@@ -369,15 +381,13 @@
             {
               "property": "opacity",
               "from": 1,
-              "to": 0,
-              "easing": "linear",
+              "to": 1,
               "target": "outgoing"
             },
             {
               "property": "opacity",
-              "from": 0,
+              "from": 1,
               "to": 1,
-              "easing": "linear",
               "target": "incoming"
             }
           ]
@@ -569,7 +579,7 @@
         {
           "id": "slideleft",
           "version": 1,
-          "itemVersion": 1,
+          "itemVersion": 2,
           "title": "Slide Left",
           "name": "Slide Left",
           "category": "motion",
@@ -600,15 +610,13 @@
             {
               "property": "opacity",
               "from": 1,
-              "to": 0,
-              "easing": "linear",
+              "to": 1,
               "target": "outgoing"
             },
             {
               "property": "opacity",
-              "from": 0,
+              "from": 1,
               "to": 1,
-              "easing": "linear",
               "target": "incoming"
             }
           ]
@@ -616,7 +624,7 @@
         {
           "id": "slideright",
           "version": 1,
-          "itemVersion": 1,
+          "itemVersion": 2,
           "title": "Slide Right",
           "name": "Slide Right",
           "category": "motion",
@@ -647,15 +655,13 @@
             {
               "property": "opacity",
               "from": 1,
-              "to": 0,
-              "easing": "linear",
+              "to": 1,
               "target": "outgoing"
             },
             {
               "property": "opacity",
-              "from": 0,
+              "from": 1,
               "to": 1,
-              "easing": "linear",
               "target": "incoming"
             }
           ]
@@ -663,7 +669,7 @@
         {
           "id": "slideup",
           "version": 1,
-          "itemVersion": 1,
+          "itemVersion": 2,
           "title": "Slide Up",
           "name": "Slide Up",
           "category": "motion",
@@ -694,15 +700,13 @@
             {
               "property": "opacity",
               "from": 1,
-              "to": 0,
-              "easing": "linear",
+              "to": 1,
               "target": "outgoing"
             },
             {
               "property": "opacity",
-              "from": 0,
+              "from": 1,
               "to": 1,
-              "easing": "linear",
               "target": "incoming"
             }
           ]
@@ -710,7 +714,7 @@
         {
           "id": "slidedown",
           "version": 1,
-          "itemVersion": 1,
+          "itemVersion": 2,
           "title": "Slide Down",
           "name": "Slide Down",
           "category": "motion",
@@ -741,15 +745,13 @@
             {
               "property": "opacity",
               "from": 1,
-              "to": 0,
-              "easing": "linear",
+              "to": 1,
               "target": "outgoing"
             },
             {
               "property": "opacity",
-              "from": 0,
+              "from": 1,
               "to": 1,
-              "easing": "linear",
               "target": "incoming"
             }
           ]
@@ -757,7 +759,7 @@
         {
           "id": "pushleft",
           "version": 1,
-          "itemVersion": 1,
+          "itemVersion": 2,
           "title": "Push Left",
           "name": "Push Left",
           "category": "motion",
@@ -784,13 +786,25 @@
               "to": 0,
               "easing": "easeInOut",
               "target": "incoming"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 1,
+              "target": "outgoing"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 1,
+              "target": "incoming"
             }
           ]
         },
         {
           "id": "pushright",
           "version": 1,
-          "itemVersion": 1,
+          "itemVersion": 2,
           "title": "Push Right",
           "name": "Push Right",
           "category": "motion",
@@ -817,13 +831,25 @@
               "to": 0,
               "easing": "easeInOut",
               "target": "incoming"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 1,
+              "target": "outgoing"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 1,
+              "target": "incoming"
             }
           ]
         },
         {
           "id": "pushup",
           "version": 1,
-          "itemVersion": 1,
+          "itemVersion": 2,
           "title": "Push Up",
           "name": "Push Up",
           "category": "motion",
@@ -850,13 +876,25 @@
               "to": 0,
               "easing": "easeInOut",
               "target": "incoming"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 1,
+              "target": "outgoing"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 1,
+              "target": "incoming"
             }
           ]
         },
         {
           "id": "pushdown",
           "version": 1,
-          "itemVersion": 1,
+          "itemVersion": 2,
           "title": "Push Down",
           "name": "Push Down",
           "category": "motion",
@@ -882,6 +920,18 @@
               "from": -1,
               "to": 0,
               "easing": "easeInOut",
+              "target": "incoming"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 1,
+              "target": "outgoing"
+            },
+            {
+              "property": "opacity",
+              "from": 1,
+              "to": 1,
               "target": "incoming"
             }
           ]
@@ -2164,7 +2214,7 @@
     {
       "id": "slideleft",
       "version": 1,
-      "itemVersion": 1,
+      "itemVersion": 2,
       "title": "Slide Left",
       "name": "Slide Left",
       "category": "motion",
@@ -2195,15 +2245,13 @@
         {
           "property": "opacity",
           "from": 1,
-          "to": 0,
-          "easing": "linear",
+          "to": 1,
           "target": "outgoing"
         },
         {
           "property": "opacity",
-          "from": 0,
+          "from": 1,
           "to": 1,
-          "easing": "linear",
           "target": "incoming"
         }
       ]
@@ -2211,7 +2259,7 @@
     {
       "id": "slideright",
       "version": 1,
-      "itemVersion": 1,
+      "itemVersion": 2,
       "title": "Slide Right",
       "name": "Slide Right",
       "category": "motion",
@@ -2242,15 +2290,13 @@
         {
           "property": "opacity",
           "from": 1,
-          "to": 0,
-          "easing": "linear",
+          "to": 1,
           "target": "outgoing"
         },
         {
           "property": "opacity",
-          "from": 0,
+          "from": 1,
           "to": 1,
-          "easing": "linear",
           "target": "incoming"
         }
       ]
@@ -2258,7 +2304,7 @@
     {
       "id": "slideup",
       "version": 1,
-      "itemVersion": 1,
+      "itemVersion": 2,
       "title": "Slide Up",
       "name": "Slide Up",
       "category": "motion",
@@ -2289,15 +2335,13 @@
         {
           "property": "opacity",
           "from": 1,
-          "to": 0,
-          "easing": "linear",
+          "to": 1,
           "target": "outgoing"
         },
         {
           "property": "opacity",
-          "from": 0,
+          "from": 1,
           "to": 1,
-          "easing": "linear",
           "target": "incoming"
         }
       ]
@@ -2305,7 +2349,7 @@
     {
       "id": "slidedown",
       "version": 1,
-      "itemVersion": 1,
+      "itemVersion": 2,
       "title": "Slide Down",
       "name": "Slide Down",
       "category": "motion",
@@ -2336,15 +2380,13 @@
         {
           "property": "opacity",
           "from": 1,
-          "to": 0,
-          "easing": "linear",
+          "to": 1,
           "target": "outgoing"
         },
         {
           "property": "opacity",
-          "from": 0,
+          "from": 1,
           "to": 1,
-          "easing": "linear",
           "target": "incoming"
         }
       ]
@@ -2352,7 +2394,7 @@
     {
       "id": "pushleft",
       "version": 1,
-      "itemVersion": 1,
+      "itemVersion": 2,
       "title": "Push Left",
       "name": "Push Left",
       "category": "motion",
@@ -2379,13 +2421,25 @@
           "to": 0,
           "easing": "easeInOut",
           "target": "incoming"
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 1,
+          "target": "outgoing"
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 1,
+          "target": "incoming"
         }
       ]
     },
     {
       "id": "pushright",
       "version": 1,
-      "itemVersion": 1,
+      "itemVersion": 2,
       "title": "Push Right",
       "name": "Push Right",
       "category": "motion",
@@ -2412,13 +2466,25 @@
           "to": 0,
           "easing": "easeInOut",
           "target": "incoming"
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 1,
+          "target": "outgoing"
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 1,
+          "target": "incoming"
         }
       ]
     },
     {
       "id": "pushup",
       "version": 1,
-      "itemVersion": 1,
+      "itemVersion": 2,
       "title": "Push Up",
       "name": "Push Up",
       "category": "motion",
@@ -2445,13 +2511,25 @@
           "to": 0,
           "easing": "easeInOut",
           "target": "incoming"
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 1,
+          "target": "outgoing"
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 1,
+          "target": "incoming"
         }
       ]
     },
     {
       "id": "pushdown",
       "version": 1,
-      "itemVersion": 1,
+      "itemVersion": 2,
       "title": "Push Down",
       "name": "Push Down",
       "category": "motion",
@@ -2477,6 +2555,18 @@
           "from": -1,
           "to": 0,
           "easing": "easeInOut",
+          "target": "incoming"
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 1,
+          "target": "outgoing"
+        },
+        {
+          "property": "opacity",
+          "from": 1,
+          "to": 1,
           "target": "incoming"
         }
       ]

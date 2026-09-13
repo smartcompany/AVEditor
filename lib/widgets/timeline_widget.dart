@@ -178,15 +178,15 @@ const _axisSlop = 3.0;
 /// Finger travel still treated as a tap for item selection (pointer-up only).
 const _segmentTapSlop = 12.0;
 
-/// Horizontal pan fling — tweak while testing coast feel.
-/// Velocity below this (px/s) skips inertia and snaps.
-const _panFlingMinVelocityPxPerSec = 120.0;
+/// Horizontal pan fling — only intentional flicks coast; careful scrubs stop.
+/// Release slower than this (px/s) snaps with no inertia.
+const _panFlingMinVelocityPxPerSec = 480.0;
 
 /// Multiplier on release velocity — higher = stronger / farther coast.
 const _panFlingVelocityScale = 0.5;
 
 /// [FrictionSimulation] drag — higher = stops sooner, lower = slides longer.
-const _panFlingFriction = 0.1;
+const _panFlingFriction = 0.12;
 
 /// Once the content end is under the playhead, require this much finger travel
 /// (px) back before unpinning — stops end-line chatter at the stop.
@@ -772,11 +772,9 @@ class TimelineWidgetState extends State<TimelineWidget>
     }
   }
 
-  /// Coast the timeline after a horizontal pan — same “slow stop” feel as a
-  /// normal scroll view. Was never wired before (release only snapped).
+  /// Coast after a deliberate flick. Slow / precise releases stay put.
   void _startPanFling(double velocityPxPerSec) {
     _stopPanFling();
-    // Ignore tiny flicks — just snap like a settled drag.
     if (velocityPxPerSec.abs() < _panFlingMinVelocityPxPerSec) {
       widget.onPlayheadChanged(snapDuration(widget.playhead));
       return;
@@ -3228,8 +3226,7 @@ class _TimelinePainter extends CustomPainter {
       final selected = selectedTransitionAfterIndex == i;
       final cutX = _x(cutExportTimeAfter(segments, i));
 
-      // Applied transition: faint duration band under the chip (selected gets
-      // CapCut-style edge grips for drag-resize).
+      // Applied transition: translucent yellow duration band (start→end).
       if (hasFx) {
         final span = transitionSequenceSpan(segments, i);
         if (span != null) {
@@ -3240,15 +3237,14 @@ class _TimelinePainter extends CustomPainter {
             left = mid - _transitionMinPixelWidth / 2;
             right = mid + _transitionMinPixelWidth / 2;
           }
-          final band = Rect.fromLTRB(left, filmTop, right, filmBottom);
+          final band = Rect.fromLTRB(left, filmTop, right, audioBottom);
           canvas.drawRRect(
             RRect.fromRectAndRadius(band, const Radius.circular(3)),
             Paint()
-              ..color = Colors.white.withValues(alpha: selected ? 0.20 : 0.10),
+              ..color = const Color(0xFFE6B422).withValues(
+                alpha: selected ? 0.38 : 0.28,
+              ),
           );
-          if (selected) {
-            _paintTransitionEdgeGrips(canvas, band);
-          }
         }
       }
 
@@ -3270,58 +3266,15 @@ class _TimelinePainter extends CustomPainter {
       // Translucent chip — filmstrip / audio peek through underneath.
       canvas.drawRRect(
         rounded,
-        Paint()..color = Colors.white.withValues(alpha: selected ? 0.82 : 0.72),
+        Paint()..color = Colors.white.withValues(alpha: 0.72),
       );
-      if (selected) {
-        canvas.drawRRect(
-          rounded,
-          Paint()
-            ..color = const Color(0xFF111827).withValues(alpha: 0.75)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.5,
-        );
-      }
 
-      _paintCutMarkerIcon(canvas, chip, hasTransition: hasFx);
-    }
-  }
-
-  void _paintTransitionEdgeGrips(Canvas canvas, Rect band) {
-    final border = Paint()..color = Colors.white;
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          band.left,
-          band.top,
-          _transitionFocusBorderWidth,
-          band.height,
-        ),
-        const Radius.circular(2),
-      ),
-      border,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          band.right - _transitionFocusBorderWidth,
-          band.top,
-          _transitionFocusBorderWidth,
-          band.height,
-        ),
-        const Radius.circular(2),
-      ),
-      border,
-    );
-
-    final dotPaint = Paint()..color = const Color(0xFF9CA3AF);
-    for (final edgeX in [
-      band.left + _transitionFocusBorderWidth / 2,
-      band.right - _transitionFocusBorderWidth / 2,
-    ]) {
-      final midY = band.center.dy;
-      for (final dy in [-6.0, 0.0, 6.0]) {
-        canvas.drawCircle(Offset(edgeX, midY + dy), 1.4, dotPaint);
-      }
+      _paintCutMarkerIcon(
+        canvas,
+        chip,
+        hasTransition: hasFx,
+        selected: selected,
+      );
     }
   }
 
@@ -3329,9 +3282,13 @@ class _TimelinePainter extends CustomPainter {
     Canvas canvas,
     Rect chip, {
     required bool hasTransition,
+    bool selected = false,
   }) {
+    // Selected: warm amber so the cut chip alone reads as focused.
     final paint = Paint()
-      ..color = const Color(0xFF1F1F1F).withValues(alpha: 0.88)
+      ..color = selected
+          ? const Color(0xFFE6B422)
+          : const Color(0xFF1F1F1F).withValues(alpha: 0.88)
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke

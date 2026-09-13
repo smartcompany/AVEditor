@@ -9,6 +9,7 @@ import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/video_project.dart';
 import 'package:aveditor/models/applied_transition.dart';
 import 'package:aveditor/services/export_save_service.dart';
+import 'package:aveditor/services/native_video_engine.dart';
 import 'package:aveditor/services/overlay_raster_service.dart';
 import 'package:aveditor/services/transition_engine.dart';
 import 'package:aveditor/services/video_probe_service.dart';
@@ -16,14 +17,12 @@ import 'package:aveditor/utils/clip_rotation.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
 import 'package:aveditor/utils/export_dimensions.dart';
 import 'package:aveditor/utils/ffmpeg_text.dart';
-import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit_config.dart';
-import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-/// Exports trimmed video with 9:16 crop and burned-in text overlays via FFmpeg.
+/// Exports trimmed video with 9:16 crop and burned-in text overlays via the
+/// native OS encoder (VideoToolbox / MediaCodec).
 ///
 /// When the edit is trim-only, [ExportQualityProfile.allowsStreamCopy] profiles
 /// copy the source streams without re-encoding — the same trick CapCut uses to
@@ -88,11 +87,6 @@ class ExportService {
     onProgress?.call(0.15);
 
     final outputPath = p.join(outputDir.path, 'aveditor_export_$stamp.mp4');
-    final singleSegment = project.segments.length == 1;
-    final startSec = singleSegment
-        ? formatFfmpegSeconds(project.segments.first.start)
-        : '0';
-    final durationSec = formatFfmpegSeconds(project.trimmedDuration);
     final musicPath = _musicPathForProject(project);
     final hasVideoAudio = musicPath == null
         ? true
@@ -105,60 +99,127 @@ class ExportService {
       musicPath: musicPath,
     );
 
-    final command = streamCopy
-        ? buildStreamCopyCommand(
-            sourcePath: project.sourcePath,
-            outputPath: outputPath,
-            startSec: startSec,
-            durationSec: durationSec,
-          )
-        : _buildEncodeCommand(
-            project: project,
-            rasters: rasters,
-            quality: quality,
-            frame: frame,
-            outputPath: outputPath,
-            startSec: startSec,
-            durationSec: durationSec,
-            musicPath: musicPath,
-            hasVideoAudio: hasVideoAudio,
-            singleSegment: singleSegment,
-          );
+    final request = _buildNativeExportRequest(
+      project: project,
+      rasters: rasters,
+      quality: quality,
+      frame: frame,
+      outputPath: outputPath,
+      musicPath: musicPath,
+      hasVideoAudio: hasVideoAudio,
+      streamCopy: streamCopy,
+    );
 
     onProgress?.call(0.25);
 
-    if (onProgress != null && !streamCopy) {
-      FFmpegKitConfig.enableStatisticsCallback((statistics) {
-        final time = statistics.getTime();
-        if (time <= 0) return;
-        final totalMs = project.trimmedDuration.inMilliseconds;
-        if (totalMs <= 0) return;
-        final ratio = (time / totalMs).clamp(0.0, 1.0);
-        onProgress(0.25 + ratio * 0.65);
+    try {
+      final exportedPath = await NativeVideoEngine.instance.export(
+        request: request,
+        onProgress: (p) => onProgress?.call(0.25 + p.clamp(0.0, 1.0) * 0.7),
+      );
+
+      final exported = File(exportedPath);
+      if (!await exported.exists()) {
+        throw StateError('Export file was not created');
+      }
+      if (await exported.length() < ExportSaveService.minExportBytes) {
+        throw StateError('Export file is empty');
+      }
+
+      onProgress?.call(1.0);
+      return exportedPath;
+    } finally {
+      await workDir.delete(recursive: true).catchError((_) => workDir);
+    }
+  }
+
+  Map<String, dynamic> _buildNativeExportRequest({
+    required VideoProject project,
+    required List<OverlayRaster> rasters,
+    required ExportQualityProfile quality,
+    required ExportFrameSize frame,
+    required String outputPath,
+    required String? musicPath,
+    required bool hasVideoAudio,
+    required bool streamCopy,
+  }) {
+    final segments = <Map<String, dynamic>>[];
+    for (var i = 0; i < project.segments.length; i++) {
+      final segment = project.segments[i];
+      final next = i < project.segments.length - 1
+          ? project.segments[i + 1]
+          : null;
+      final td = next == null
+          ? Duration.zero
+          : clampedTransitionDuration(segment, next: next);
+      final effect = segment.hasTransition && td > Duration.zero
+          ? ffmpegTransitionNameFor(segment.transition)
+          : null;
+      segments.add({
+        'startMs': segment.start.inMilliseconds,
+        'endMs': segment.end.inMilliseconds,
+        'volume': segment.volume,
+        'fadeInMs': segment.fadeIn.inMilliseconds,
+        'fadeOutMs': segment.fadeOut.inMilliseconds,
+        if (effect != null) ...{
+          'transitionEffect': effect,
+          'transitionDurationMs': td.inMilliseconds,
+        },
       });
     }
 
-    final session = await FFmpegKit.execute(command);
-    FFmpegKitConfig.enableStatisticsCallback(null);
-
-    final returnCode = await session.getReturnCode();
-    await workDir.delete(recursive: true).catchError((_) => workDir);
-
-    if (!ReturnCode.isSuccess(returnCode)) {
-      final logs = await session.getAllLogsAsString();
-      throw StateError(logs ?? 'FFmpeg export failed');
+    final overlays = <Map<String, dynamic>>[];
+    for (final raster in rasters) {
+      final spans = visibleSpans(raster.overlay, segments: project.segments);
+      if (spans.isEmpty) continue;
+      overlays.add({
+        if (raster.isAnimated) ...{
+          'sequenceDir': raster.sequenceDir!.path,
+          'frameCount': raster.frameCount,
+          'frameRate': raster.frameRate,
+        } else
+          'path': raster.file!.path,
+        'spans': [
+          for (final span in spans)
+            {
+              'startMs': (span.start * 1000).round(),
+              'endMs': (span.end * 1000).round(),
+            },
+        ],
+      });
     }
 
-    final exported = File(outputPath);
-    if (!await exported.exists()) {
-      throw StateError('Export file was not created');
-    }
-    if (await exported.length() < ExportSaveService.minExportBytes) {
-      throw StateError('Export file is empty');
+    final music = <Map<String, dynamic>>[];
+    if (musicPath != null) {
+      for (final clip in project.musicTracks) {
+        music.add({
+          'path': musicPath,
+          'timelineStartMs': clip.timelineStart.inMilliseconds,
+          'sourceOffsetMs': clip.sourceOffset.inMilliseconds,
+          'durationMs': clip.clipDuration.inMilliseconds,
+          'volume': clip.volume,
+          'fadeInMs': clip.effectiveFadeIn.inMilliseconds,
+          'fadeOutMs': clip.effectiveFadeOut.inMilliseconds,
+        });
+      }
     }
 
-    onProgress?.call(1.0);
-    return outputPath;
+    return {
+      'sourcePath': project.sourcePath,
+      'outputPath': outputPath,
+      'width': frame.width,
+      'height': frame.height,
+      'scaleWidth': frame.scaleWidth,
+      'scaleHeight': frame.scaleHeight,
+      'rotationDegrees': normalizeClipRotation(project.rotation),
+      'durationMs': project.trimmedDuration.inMilliseconds,
+      'streamCopy': streamCopy,
+      'hasVideoAudio': hasVideoAudio,
+      'quality': quality.name,
+      'segments': segments,
+      'overlays': overlays,
+      'music': music,
+    };
   }
 
   static String? _musicPathForProject(VideoProject project) {
@@ -190,6 +251,7 @@ class ExportService {
     required String startSec,
     required String durationSec,
   }) {
+    // Kept for unit tests that assert legacy CLI shape; runtime uses native.
     return [
       '-y',
       '-ss',
@@ -200,118 +262,6 @@ class ExportService {
       durationSec,
       '-c',
       'copy',
-      '-movflags',
-      '+faststart',
-      quoteShell(outputPath),
-    ].join(' ');
-  }
-
-  String _buildEncodeCommand({
-    required VideoProject project,
-    required List<OverlayRaster> rasters,
-    required ExportQualityProfile quality,
-    required ExportFrameSize frame,
-    required String outputPath,
-    required String startSec,
-    required String durationSec,
-    String? musicPath,
-    bool hasVideoAudio = true,
-    bool singleSegment = true,
-  }) {
-    final graph = buildFilterGraph(
-      project: project,
-      rasters: rasters,
-      frame: frame,
-    );
-    final crf = quality.crf ?? quality.fallbackCrf;
-    final tracks = project.musicTracks;
-    final hasConcat = project.segments.length > 1;
-    final exportDurationSec =
-        project.trimmedDuration.inMilliseconds / 1000.0;
-
-    final sourceAudioPrep = hasConcat || !hasVideoAudio
-        ? null
-        : buildSingleSegmentAudioEnvelope(
-            project.segments.first,
-            hasVideoAudio: hasVideoAudio,
-          );
-    final videoAudioStream = hasConcat
-        ? '[acat]'
-        : (sourceAudioPrep != null ? '[aenv]' : '[0:a]');
-
-    final audioGraph = tracks.isNotEmpty && musicPath != null
-        ? buildAudioMixGraph(
-            tracks: tracks,
-            trimStart: project.trim.start,
-            exportDurationSec: exportDurationSec,
-            videoAudioStream: videoAudioStream,
-            musicInput: 1 + rasters.length,
-            hasVideoAudio: hasVideoAudio,
-          )
-        : null;
-
-    // Source audio envelope without BGM.
-    final sourceOnlyAudio = audioGraph == null && sourceAudioPrep != null
-        ? sourceAudioPrep
-        : (audioGraph == null && hasConcat
-            ? null // [acat] already enveloped in concat
-            : null);
-
-    final audioMap = hasConcat
-        ? '[acat]'
-        : (sourceAudioPrep != null ? '[aenv]' : '0:a?');
-
-    final complexParts = <String>[
-      if (graph.description.isNotEmpty) graph.description,
-      if (sourceAudioPrep != null &&
-          (audioGraph != null || sourceOnlyAudio != null))
-        sourceAudioPrep.description,
-      if (audioGraph != null) audioGraph.description,
-    ];
-    final complex = complexParts.join(';');
-
-    return [
-      '-y',
-      if (singleSegment) ...['-ss', startSec],
-      '-i',
-      quoteShell(project.sourcePath),
-      for (final raster in rasters) ..._rasterInputArgs(raster),
-      if (musicPath != null) ...['-i', quoteShell(musicPath)],
-      if (complex.isNotEmpty) ...[
-        '-filter_complex',
-        quoteShell(complex),
-        '-map',
-        quoteShell(
-          graph.description.isNotEmpty ? '[${graph.outputLabel}]' : '0:v:0',
-        ),
-        '-map',
-        quoteShell(
-          audioGraph != null
-              ? '[${audioGraph.outputLabel}]'
-              : (sourceAudioPrep != null
-                  ? '[${sourceAudioPrep.outputLabel}]'
-                  : audioMap),
-        ),
-      ] else ...[
-        '-map',
-        '0:v:0',
-        '-map',
-        quoteShell(audioMap),
-      ],
-      '-t',
-      durationSec,
-      '-c:v',
-      'libx264',
-      '-preset',
-      quality.encodePreset,
-      '-crf',
-      crf,
-      '-pix_fmt',
-      'yuv420p',
-      '-c:a',
-      'aac',
-      '-b:a',
-      '128k',
       '-movflags',
       '+faststart',
       quoteShell(outputPath),
@@ -544,21 +494,6 @@ class ExportService {
               duration: const Duration(milliseconds: 500),
             ),
     );
-  }
-
-  static List<String> _rasterInputArgs(OverlayRaster raster) {
-    if (raster.isAnimated) {
-      final pattern = p.join(raster.sequenceDir!.path, 'frame_%04d.png');
-      return [
-        '-framerate',
-        raster.frameRate.toStringAsFixed(3),
-        '-start_number',
-        '1',
-        '-i',
-        quoteShell(pattern),
-      ];
-    }
-    return ['-i', quoteShell(raster.file!.path)];
   }
 
   /// Builds the crop-and-composite graph.

@@ -43,3 +43,11 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // Android Native Video Engine: Media3 + GPU renderer + Transformer export
+    implementation("androidx.media3:media3-common:1.5.1")
+    implementation("androidx.media3:media3-exoplayer:1.5.1")
+    implementation("androidx.media3:media3-effect:1.5.1")
+    implementation("androidx.media3:media3-transformer:1.5.1")
+}

@@ -1,24 +1,20 @@
-import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
+import 'package:aveditor/services/native_video_engine.dart';
 
-/// Reads basic metadata from a media file via FFprobe.
+/// Reads basic metadata from a media file via the native video engine
+/// (AVFoundation on iOS, MediaMetadataRetriever / Media3 on Android).
 class VideoProbeService {
   const VideoProbeService();
 
   Future<bool> hasAudioStream(String path) async {
-    final session = await FFprobeKit.getMediaInformation(path);
-    final streams = session.getMediaInformation()?.getStreams() ?? const [];
-    return streams.any((stream) => stream.getType() == 'audio');
+    final info = await NativeVideoEngine.instance.probe(path);
+    return info.hasAudio;
   }
 
   /// Media duration (video or audio). Null when probing fails.
   Future<Duration?> readDuration(String path) async {
     try {
-      final session = await FFprobeKit.getMediaInformation(path);
-      final raw = session.getMediaInformation()?.getDuration();
-      if (raw == null || raw.isEmpty) return null;
-      final seconds = double.tryParse(raw);
-      if (seconds == null || seconds <= 0) return null;
-      return Duration(milliseconds: (seconds * 1000).round());
+      final info = await NativeVideoEngine.instance.probe(path);
+      return info.duration;
     } catch (_) {
       return null;
     }
@@ -29,17 +25,12 @@ class VideoProbeService {
     int fallbackWidth = 1080,
     int fallbackHeight = 1920,
   }) async {
-    final session = await FFprobeKit.getMediaInformation(path);
-    final info = session.getMediaInformation();
-    final streams = info?.getStreams() ?? const [];
-    for (final stream in streams) {
-      if (stream.getType() != 'video') continue;
-      final width = stream.getWidth();
-      final height = stream.getHeight();
-      if (width != null && height != null && width > 0 && height > 0) {
-        return (width: width, height: height);
+    try {
+      final info = await NativeVideoEngine.instance.probe(path);
+      if (info.width > 0 && info.height > 0) {
+        return (width: info.width, height: info.height);
       }
-    }
+    } catch (_) {}
     return (width: fallbackWidth, height: fallbackHeight);
   }
 }

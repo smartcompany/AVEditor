@@ -48,5 +48,5 @@ extension ExportQualityProfileX on ExportQualityProfile {
   String get fallbackCrf => '18';
 }
 
-/// FFmpeg `scale` filter flags — Lanczos keeps edges sharp without ringing.
+/// Scale filter quality hint for legacy graph builders / docs.
 const kExportScaleFlags = 'lanczos';

@@ -88,6 +88,30 @@ void main() {
       expect(eval.incoming.opacity, closeTo(0.25, 0.001));
     });
 
+    test('translate-only slide keeps both clips fully opaque', () {
+      const layers = [
+        TransitionLayer(
+          property: TransitionProperty.translateX,
+          from: 0,
+          to: -1,
+          target: TransitionLayerTarget.outgoing,
+          easing: TransitionEasing.easeInOut,
+        ),
+        TransitionLayer(
+          property: TransitionProperty.translateX,
+          from: 1,
+          to: 0,
+          target: TransitionLayerTarget.incoming,
+          easing: TransitionEasing.easeInOut,
+        ),
+      ];
+      final mid = evaluateTransitionLayers(layers: layers, t: 0.5);
+      expect(mid.outgoing.opacity, 1);
+      expect(mid.incoming.opacity, 1);
+      expect(mid.outgoing.translateX, closeTo(-0.5, 0.05));
+      expect(mid.incoming.translateX, closeTo(0.5, 0.05));
+    });
+
     test('parses start/end/param from json', () {
       final layer = TransitionLayer.fromJson({
         'property': 'scale',

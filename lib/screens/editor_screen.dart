@@ -37,6 +37,7 @@ import 'package:aveditor/widgets/transition_picker_sheet.dart';
 import 'package:aveditor/widgets/transition_preview_compositor.dart';
 import 'package:aveditor/widgets/overflow_hit_stack.dart';
 import 'package:aveditor/services/transition_engine.dart';
+import 'package:aveditor/services/native_video_engine.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/widgets/video_preview.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -78,6 +79,15 @@ class _EditorScreenState extends State<EditorScreen>
   /// Aux opacity while a fade is active; null when not fading.
   double? _fadeProgress;
 
+  /// Highest blend progress seen for the current cut — decoder position can
+  /// jitter backward a few ms and that made slide transforms tremble.
+  double _fadeProgressPeak = 0;
+
+  /// Wall-clock anchor so slide/push progress advances smoothly while playing
+  /// instead of tracking noisy decoder timestamps.
+  DateTime? _fadeWallClockStart;
+  double _fadeWallClockStartT = 0;
+
   /// Last fade window driven this playthrough (for handoff past [outgoing.end]).
   PreviewFadeWindow? _activeFade;
 
@@ -89,6 +99,13 @@ class _EditorScreenState extends State<EditorScreen>
 
   /// Serializes aux seeks so overlapping fade ticks don't race.
   int _fadeSyncGen = 0;
+
+  /// Native Video Engine spatial preview (AVFoundation/Metal · Media3/GPU).
+  var _spatialPreviewActive = false;
+  int _spatialPreviewGen = 0;
+  int? _spatialTextureId;
+  StreamSubscription<Duration>? _spatialPositionSub;
+  StreamSubscription<bool>? _spatialPlayingSub;
 
   /// Pause once the main playhead reaches this time (transition-length preview).
   Duration? _transitionPreviewUntil;
@@ -183,9 +200,11 @@ class _EditorScreenState extends State<EditorScreen>
       return _playhead;
     }
     final cut = cutExportTimeAfter(project.segments, fade.afterIndex);
-    final t = _fadeHandoffInFlight ? 1.0 : fade.t;
-    final traveledMs =
-        (t * 2 * fade.td.inMilliseconds).round().clamp(0, 1 << 30);
+    final t = _fadeHandoffInFlight ? 1.0 : (_fadeProgress ?? fade.t);
+    final traveledMs = (t * 2 * fade.td.inMilliseconds).round().clamp(
+      0,
+      1 << 30,
+    );
     final sequenceTime = cut - fade.td + Duration(milliseconds: traveledMs);
     return exportTimeToSourceTime(project.segments, sequenceTime);
   }
@@ -213,7 +232,10 @@ class _EditorScreenState extends State<EditorScreen>
 
   /// Dock may not consume the full body — the resize handle sits above it.
   double _availableDockHeight() {
-    return (_bodyHeight() - _dockResizeHandleHeight).clamp(0.0, double.infinity);
+    return (_bodyHeight() - _dockResizeHandleHeight).clamp(
+      0.0,
+      double.infinity,
+    );
   }
 
   /// Expanded dock ceiling = 2/3 of the screen.
@@ -292,8 +314,7 @@ class _EditorScreenState extends State<EditorScreen>
     _dockSnapAnim = controller;
     final anim = CurvedAnimation(
       parent: controller,
-      curve: curve ??
-          (expandish ? Curves.easeOutCubic : Curves.easeInCubic),
+      curve: curve ?? (expandish ? Curves.easeOutCubic : Curves.easeInCubic),
     );
     final done = Completer<void>();
     _dockAnimCompleter = done;
@@ -388,10 +409,7 @@ class _EditorScreenState extends State<EditorScreen>
       _previewMaximizeEdgeLit.value = false;
       return;
     }
-    _previewMaximizeEdgeVelocity?.addPosition(
-      event.timeStamp,
-      event.position,
-    );
+    _previewMaximizeEdgeVelocity?.addPosition(event.timeStamp, event.position);
     if (!_previewMaximizeEdgeLit.value && event.delta.dy.abs() > 0.5) {
       _previewMaximizeEdgeLit.value = true;
     }
@@ -430,7 +448,11 @@ class _EditorScreenState extends State<EditorScreen>
         Widget arrows() {
           final color = Colors.white.withValues(alpha: 0.75);
           if (atHidden) {
-            return Icon(Icons.keyboard_arrow_up_rounded, color: color, size: 26);
+            return Icon(
+              Icons.keyboard_arrow_up_rounded,
+              color: color,
+              size: 26,
+            );
           }
           if (atMax) {
             return Icon(
@@ -963,14 +985,51 @@ class _EditorScreenState extends State<EditorScreen>
     if (fade != null) {
       final entering = _fadeAnchoredAfterIndex != fade.afterIndex;
       _activeFade = fade;
+      if (NativeVideoEngine.isSpatialPreview(fade.outgoing.transition)) {
+        if (NativeVideoEngine.supports(fade.outgoing.transition)) {
+          if (entering) {
+            _fadeProgressPeak = fade.t;
+            if (controller.value.isPlaying) {
+              _beginFadeWallClock(fade.t);
+            } else {
+              _fadeWallClockStart = null;
+            }
+          }
+          if (entering || !_spatialPreviewActive) {
+            unawaited(
+              _showSpatialPreviewAt(
+                fade,
+                playing: controller.value.isPlaying,
+              ),
+            );
+          } else {
+            if (controller.value.isPlaying && _fadeWallClockStart == null) {
+              _beginFadeWallClock(_fadeProgress ?? fade.t);
+            }
+            _setFadeProgress(fade.t, playing: controller.value.isPlaying);
+          }
+          return;
+        }
+        // Unsupported spatial effect — Flutter dual-layer fallback.
+      }
+      if (entering) {
+        unawaited(_tearDownSpatialPreview());
+        _fadeProgressPeak = fade.t;
+        if (controller.value.isPlaying) {
+          _beginFadeWallClock(fade.t);
+        } else {
+          _fadeWallClockStart = null;
+        }
+      }
       if (entering || _auxController == null) {
         // Only the first entry into a cut does async seek/play setup.
         unawaited(_driveFadePreview(fade));
       } else {
         // Already anchored — update blend progress without reseeking.
-        if (_fadeProgress != fade.t) {
-          setState(() => _fadeProgress = fade.t);
+        if (controller.value.isPlaying && _fadeWallClockStart == null) {
+          _beginFadeWallClock(_fadeProgress ?? fade.t);
         }
+        _setFadeProgress(fade.t, playing: controller.value.isPlaying);
         final aux = _auxController;
         if (aux != null &&
             aux.value.isInitialized &&
@@ -987,7 +1046,11 @@ class _EditorScreenState extends State<EditorScreen>
       // Past the outgoing end → hand off to the incoming side once.
       if (pos >= active.outgoing.end) {
         if (!_fadeHandoffInFlight) {
-          unawaited(_completeFadeHandoff(active));
+          if (_spatialPreviewActive) {
+            unawaited(_completeSpatialHandoff(active));
+          } else {
+            unawaited(_completeFadeHandoff(active));
+          }
         }
         return;
       }
@@ -997,8 +1060,10 @@ class _EditorScreenState extends State<EditorScreen>
         final span = active.td.inMilliseconds;
         final t = span <= 0
             ? 1.0
-            : ((pos.inMilliseconds - windowStart.inMilliseconds) / span)
-                .clamp(0.0, 1.0);
+            : ((pos.inMilliseconds - windowStart.inMilliseconds) / span).clamp(
+                0.0,
+                1.0,
+              );
         final continued = PreviewFadeWindow(
           afterIndex: active.afterIndex,
           t: t,
@@ -1007,9 +1072,7 @@ class _EditorScreenState extends State<EditorScreen>
           td: active.td,
         );
         _activeFade = continued;
-        if (_fadeProgress != t) {
-          setState(() => _fadeProgress = t);
-        }
+        _setFadeProgress(t, playing: controller.value.isPlaying);
         return;
       }
       unawaited(_tearDownFadePreview());
@@ -1052,6 +1115,200 @@ class _EditorScreenState extends State<EditorScreen>
       controller.seekTo(last.end);
       unawaited(_syncMusicPlayback());
     }
+  }
+
+  /// Commit dual-layer blend progress. While playing, drive [t] from wall
+  /// clock only — mixing decoder timestamps caused forward spikes.
+  void _setFadeProgress(double t, {required bool playing}) {
+    var clamped = t.clamp(0.0, 1.0);
+    if (playing) {
+      final wallStart = _fadeWallClockStart;
+      final active = _activeFade;
+      if (wallStart != null && active != null && active.td > Duration.zero) {
+        final elapsedUs = DateTime.now().difference(wallStart).inMicroseconds;
+        final tdUs = active.td.inMicroseconds;
+        clamped = (_fadeWallClockStartT + elapsedUs / tdUs).clamp(0.0, 1.0);
+      }
+      final next = clamped < _fadeProgressPeak ? _fadeProgressPeak : clamped;
+      _fadeProgressPeak = next;
+      _syncNativeSpatialSeek(next);
+      if (_fadeProgress == next) return;
+      setState(() => _fadeProgress = next);
+      return;
+    }
+    _fadeWallClockStart = null;
+    _fadeProgressPeak = clamped;
+    _syncNativeSpatialSeek(clamped);
+    if (_fadeProgress == clamped) return;
+    setState(() => _fadeProgress = clamped);
+  }
+
+  void _syncNativeSpatialSeek(double t) {
+    if (!_spatialPreviewActive || !NativeVideoEngine.instance.isActive) return;
+    final active = _activeFade;
+    if (active == null) return;
+    final ms = (t.clamp(0.0, 1.0) * active.td.inMilliseconds).round();
+    final target = Duration(milliseconds: ms);
+    if ((NativeVideoEngine.instance.position - target).inMilliseconds.abs() > 40) {
+      unawaited(NativeVideoEngine.instance.seek(target));
+    }
+  }
+
+  Future<void> _showSpatialPreviewAt(
+    PreviewFadeWindow fade, {
+    required bool playing,
+  }) async {
+    final project = _project;
+    final main = _controller;
+    final transition = fade.outgoing.transition;
+    if (project == null || main == null || transition == null) return;
+    if (!NativeVideoEngine.supports(transition)) {
+      unawaited(_driveFadePreview(fade));
+      _setFadeProgress(fade.t, playing: playing);
+      return;
+    }
+
+    final gen = ++_spatialPreviewGen;
+    _fadeAnchoredAfterIndex = fade.afterIndex;
+    _activeFade = fade;
+
+    final textureId = await NativeVideoEngine.instance.prepareTransition(
+      sourcePath: project.sourcePath,
+      outgoing: fade.outgoing,
+      incoming: fade.incoming,
+      transition: transition,
+    );
+    if (!mounted || gen != _spatialPreviewGen) return;
+
+    if (textureId == null) {
+      await _tearDownSpatialPreview();
+      unawaited(_driveFadePreview(fade));
+      _setFadeProgress(fade.t, playing: playing);
+      return;
+    }
+
+    _spatialTextureId = textureId;
+    _spatialPreviewActive = true;
+    _spatialPositionSub?.cancel();
+    _spatialPlayingSub?.cancel();
+    _spatialPositionSub =
+        NativeVideoEngine.instance.positionStream.listen(_onNativeSpatialPosition);
+    _spatialPlayingSub =
+        NativeVideoEngine.instance.playingStream.listen((_) {
+      if (mounted) setState(() {});
+    });
+
+    try {
+      await main.pause();
+      await main.setVolume(0);
+      await _auxController?.pause();
+      await _auxController?.setVolume(0);
+    } catch (_) {}
+
+    final pos = Duration(
+      milliseconds: (fade.t * fade.td.inMilliseconds).round(),
+    );
+    await NativeVideoEngine.instance.seek(pos);
+    if (!mounted || gen != _spatialPreviewGen) return;
+
+    if (playing) {
+      await NativeVideoEngine.instance.play();
+      if (_fadeWallClockStart == null) {
+        _beginFadeWallClock(fade.t);
+      }
+    }
+    _setFadeProgress(fade.t, playing: playing);
+    if (mounted) setState(() {});
+  }
+
+  void _onNativeSpatialPosition(Duration position) {
+    final active = _activeFade;
+    if (!_spatialPreviewActive || active == null || !mounted) return;
+    final td = active.td;
+    if (td <= Duration.zero) return;
+
+    final t = (position.inMilliseconds / td.inMilliseconds).clamp(0.0, 1.0);
+    _activeFade = PreviewFadeWindow(
+      afterIndex: active.afterIndex,
+      t: t,
+      outgoing: active.outgoing,
+      incoming: active.incoming,
+      td: active.td,
+    );
+    _setFadeProgress(t, playing: NativeVideoEngine.instance.isPlaying);
+
+    final previewUntil = _transitionPreviewUntil;
+    if (previewUntil != null &&
+        position >= td - const Duration(milliseconds: 50)) {
+      _transitionPreviewUntil = null;
+      unawaited(NativeVideoEngine.instance.pause());
+      unawaited(_syncMusicPlayback());
+    }
+
+    if (position >= td - const Duration(milliseconds: 50)) {
+      if (!_fadeHandoffInFlight) {
+        unawaited(_completeSpatialHandoff(active));
+      }
+    }
+    setState(() {});
+  }
+
+  Future<void> _completeSpatialHandoff(PreviewFadeWindow done) async {
+    if (_fadeHandoffInFlight) return;
+    _fadeHandoffInFlight = true;
+    try {
+      final main = _controller;
+      if (main == null) return;
+
+      final wasPlaying =
+          NativeVideoEngine.instance.isPlaying || main.value.isPlaying;
+
+      await _tearDownSpatialPreview();
+
+      final handoff = done.incoming.start + done.td;
+      final target =
+          handoff > done.incoming.end ? done.incoming.end : handoff;
+      await main.seekTo(target);
+
+      _activeFade = null;
+      _clearFadeProgress();
+      _fadeAnchoredAfterIndex = null;
+      if (mounted) setState(() {});
+
+      if (wasPlaying) {
+        await main.play();
+      }
+      _syncVideoAudioVolume();
+      unawaited(_syncMusicPlayback());
+    } finally {
+      _fadeHandoffInFlight = false;
+    }
+  }
+
+  Future<void> _tearDownSpatialPreview({bool keepGen = false}) async {
+    if (!keepGen) {
+      _spatialPreviewGen++;
+    }
+    _spatialPreviewActive = false;
+    _spatialTextureId = null;
+    await _spatialPositionSub?.cancel();
+    await _spatialPlayingSub?.cancel();
+    _spatialPositionSub = null;
+    _spatialPlayingSub = null;
+    await NativeVideoEngine.instance.dispose();
+  }
+
+  void _clearFadeProgress() {
+    _fadeProgress = null;
+    _fadeProgressPeak = 0;
+    _fadeWallClockStart = null;
+    _fadeWallClockStartT = 0;
+  }
+
+  void _beginFadeWallClock(double t) {
+    _fadeWallClockStart = DateTime.now();
+    _fadeWallClockStartT = t.clamp(0.0, 1.0);
+    _fadeProgressPeak = _fadeWallClockStartT;
   }
 
   Future<void> _ensureAuxController() async {
@@ -1098,8 +1355,8 @@ class _EditorScreenState extends State<EditorScreen>
       final deadline = DateTime.now().add(const Duration(milliseconds: 200));
       while (DateTime.now().isBefore(deadline)) {
         if (!mounted || gen != _fadeSyncGen) return;
-        final drift =
-            (aux.value.position - fade.incoming.start).inMilliseconds.abs();
+        final drift = (aux.value.position - fade.incoming.start).inMilliseconds
+            .abs();
         if (drift <= 50 && !aux.value.isBuffering) break;
         await Future<void>.delayed(const Duration(milliseconds: 16));
       }
@@ -1114,9 +1371,7 @@ class _EditorScreenState extends State<EditorScreen>
     }
     if (!mounted || gen != _fadeSyncGen) return;
 
-    if (_fadeProgress != fade.t) {
-      setState(() => _fadeProgress = fade.t);
-    }
+    _setFadeProgress(fade.t, playing: main.value.isPlaying);
   }
 
   /// Finish a dual-layer preview without seeking the visible stream.
@@ -1143,13 +1398,17 @@ class _EditorScreenState extends State<EditorScreen>
           handoff > done.incoming.end ? done.incoming.end : handoff,
         );
         _activeFade = null;
-        _fadeProgress = null;
+        _clearFadeProgress();
         _fadeAnchoredAfterIndex = null;
         if (mounted) setState(() {});
         return;
       }
 
-      final wasPlaying = main.value.isPlaying || aux.value.isPlaying;
+      final wasPlaying = main.value.isPlaying ||
+          aux.value.isPlaying ||
+          NativeVideoEngine.instance.isPlaying;
+
+      await _tearDownSpatialPreview();
 
       // Promote aux in the same frame we leave the blend. At t=1 the incoming
       // slot is already fully visible; after the flip that same physical slot
@@ -1159,7 +1418,7 @@ class _EditorScreenState extends State<EditorScreen>
       _controller!.addListener(_onVideoTick);
 
       _activeFade = null;
-      _fadeProgress = null;
+      _clearFadeProgress();
       _fadeAnchoredAfterIndex = null;
       if (mounted) setState(() {});
 
@@ -1188,8 +1447,9 @@ class _EditorScreenState extends State<EditorScreen>
     _fadeSyncGen++;
     _fadeHandoffInFlight = false;
     _activeFade = null;
-    _fadeProgress = null;
+    _clearFadeProgress();
     _fadeAnchoredAfterIndex = null;
+    await _tearDownSpatialPreview();
     final aux = _auxController;
     if (aux != null && aux.value.isInitialized) {
       try {
@@ -1201,6 +1461,10 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   Widget _buildPreviewVideoChild(VideoPlayerController _) {
+    if (_spatialPreviewActive && _spatialTextureId != null) {
+      return NativeVideoEngine.instance.buildPreview();
+    }
+
     final slotMain = _slotMain;
     final slotAux = _slotAux;
 
@@ -1223,9 +1487,7 @@ class _EditorScreenState extends State<EditorScreen>
       slotMain: SizedBox.expand(
         child: VideoPlayer(slotMain, key: _slotMainKey),
       ),
-      slotAux: SizedBox.expand(
-        child: VideoPlayer(slotAux, key: _slotAuxKey),
-      ),
+      slotAux: SizedBox.expand(child: VideoPlayer(slotAux, key: _slotAuxKey)),
       slotsSwapped: _slotsSwapped,
       t: progress,
       plan: plan,
@@ -1257,6 +1519,11 @@ class _EditorScreenState extends State<EditorScreen>
     final controller = _controller;
     final project = _project;
     if (controller == null || project == null) return;
+    if (_spatialPreviewActive) {
+      controller.setVolume(0);
+      _auxController?.setVolume(0);
+      return;
+    }
     if (!_hasSourceAudio) {
       controller.setVolume(0);
       _auxController?.setVolume(0);
@@ -1298,18 +1565,19 @@ class _EditorScreenState extends State<EditorScreen>
     final pos = controller.value.position;
     final scrub = _scrubPlayhead;
     if (scrub != null) {
-      // Past the last video frame (music/text tail): decoder never reaches
-      // scrub time — keep the optimistic playhead so the timeline can scroll.
-      final pastVideo = scrub > project.duration;
-      if (pastVideo || !controller.value.isPlaying) {
-        // Paused scrub must keep [_scrubPlayhead]. At EOF the decoder often
-        // reports a few ms early; clearing scrub made the video end line
-        // chatter against the centre playhead while dragging.
+      // User scrub owns the playhead until play is pressed. Transition preview
+      // clears scrub before play(); do not pause-loop here during that window.
+      if (_transitionPreviewUntil != null) {
+        _scrubPlayhead = null;
+      } else {
+        if (controller.value.isPlaying) {
+          unawaited(controller.pause());
+          unawaited(_auxController?.pause() ?? Future<void>.value());
+          unawaited(_syncMusicPlayback());
+        }
         setState(() {});
         return;
       }
-      // Playing: drop optimistic scrub — playhead follows the decoder.
-      _scrubPlayhead = null;
     }
 
     // Transition picker preview: play only through the applied effect window.
@@ -1348,6 +1616,7 @@ class _EditorScreenState extends State<EditorScreen>
     _slotAux = null;
     unawaited(main?.dispose() ?? Future<void>.value());
     unawaited(aux?.dispose() ?? Future<void>.value());
+    unawaited(_tearDownSpatialPreview());
     unawaited(_musicPlayer.dispose());
     _stopDockSnapAnim();
     _dockHeight.dispose();
@@ -1371,10 +1640,7 @@ class _EditorScreenState extends State<EditorScreen>
 
     final canvasW = previewSlotW;
     final canvasH = canvasW * 16 / 9;
-    final scale = math.min(
-      previewSlotW / canvasW,
-      previewSlotH / canvasH,
-    );
+    final scale = math.min(previewSlotW / canvasW, previewSlotH / canvasH);
 
     final box = overlayBoxForFrame(overlay, frameWidth: canvasW);
     final body = OverlayGeometry.bodyRect(
@@ -1445,6 +1711,27 @@ class _EditorScreenState extends State<EditorScreen>
       setState(() {});
       return;
     }
+    // Scrubbing while playing used to fight the decoder every tick (clear scrub
+    // → play continues → seek again) and the play/pause icon thrashed.
+    if (controller.value.isPlaying) {
+      unawaited(controller.pause());
+      unawaited(_auxController?.pause() ?? Future<void>.value());
+    }
+    final fade = previewFadeAt(project.segments, clamped);
+    if (fade != null &&
+        NativeVideoEngine.supports(fade.outgoing.transition)) {
+      _scrubPlayhead = clamped;
+      unawaited(
+        _showSpatialPreviewAt(fade, playing: false).then((_) {
+          controller.seekTo(clampDuration(clamped, Duration.zero, project.duration));
+          unawaited(_syncMusicPlayback());
+          _syncVideoAudioVolume();
+        }),
+      );
+      setState(() {});
+      return;
+    }
+
     unawaited(_tearDownFadePreview());
     // Video decoder only has frames up to the source length — pin the last
     // frame while the UI playhead continues into a music/text-only tail.
@@ -1479,7 +1766,11 @@ class _EditorScreenState extends State<EditorScreen>
       unawaited(_tearDownFadePreview());
     }
 
-    final videoSeek = clampDuration(sourceTime, Duration.zero, project.duration);
+    final videoSeek = clampDuration(
+      sourceTime,
+      Duration.zero,
+      project.duration,
+    );
     if (_lastEdgePreviewSeek != null &&
         (videoSeek - _lastEdgePreviewSeek!).inMilliseconds.abs() < 16) {
       return;
@@ -1695,7 +1986,8 @@ class _EditorScreenState extends State<EditorScreen>
     }
 
     final sequenceTime = _sequenceTimeForSplit(project.segments, _playhead);
-    final index = cutIndex ??
+    final index =
+        cutIndex ??
         _selectedTransitionAfterIndex ??
         nearestCutIndex(project.segments, sequenceTime);
     if (index < 0 || index >= project.segments.length - 1) {
@@ -1838,11 +2130,35 @@ class _EditorScreenState extends State<EditorScreen>
           })()
         : clampedStart + td;
 
-    _scrubPlayhead = clampedStart;
     _transitionPreviewUntil = previewUntil;
+    // Seek with an optimistic playhead, then clear scrub so playback + dual-
+    // layer fade can run. Leaving scrub set made _onVideoTick pause every tick.
+    _scrubPlayhead = clampedStart;
 
     await _tearDownFadePreview();
     if (!mounted || gen != _transitionPreviewGen) return;
+
+    if (!hardCut && NativeVideoEngine.supports(outgoing.transition)) {
+      await controller.seekTo(clampedStart);
+      if (!mounted || gen != _transitionPreviewGen) return;
+      _scrubPlayhead = null;
+      final fade = PreviewFadeWindow(
+        afterIndex: cutIndex,
+        t: 0,
+        outgoing: outgoing,
+        incoming: incoming,
+        td: td,
+      );
+      await _showSpatialPreviewAt(fade, playing: true);
+      if (!mounted || gen != _transitionPreviewGen) {
+        await NativeVideoEngine.instance.pause();
+        return;
+      }
+      unawaited(_syncMusicPlayback());
+      _syncVideoAudioVolume();
+      if (mounted) setState(() {});
+      return;
+    }
 
     if (!hardCut) {
       await _ensureAuxController();
@@ -1858,6 +2174,7 @@ class _EditorScreenState extends State<EditorScreen>
     if (!mounted || gen != _transitionPreviewGen) return;
     await controller.seekTo(clampedStart);
     if (!mounted || gen != _transitionPreviewGen) return;
+    _scrubPlayhead = null;
     await controller.play();
     if (!mounted || gen != _transitionPreviewGen) {
       // Panel closed (or a newer preview started) while play() was in flight.
@@ -1990,11 +2307,7 @@ class _EditorScreenState extends State<EditorScreen>
     );
     late TextOverlay placed;
     _mutate((p) {
-      placed = assignOverlayLane(
-        p.overlays,
-        overlay,
-        preferLowestLane: true,
-      );
+      placed = assignOverlayLane(p.overlays, overlay, preferLowestLane: true);
       p.overlays.add(placed);
       final compacted = compactOverlayLanes(p.overlays);
       p.overlays
@@ -2591,141 +2904,158 @@ class _EditorScreenState extends State<EditorScreen>
                             fit: StackFit.expand,
                             children: [
                               Listener(
-                            behavior: HitTestBehavior.opaque,
-                            onPointerDown: (e) {
-                              OverlayEventLog.log(
-                                'EditorShell',
-                                'pointerDown',
-                                {
-                                  'global': e.position,
-                                  'hasPreviewState':
-                                      _previewKey.currentState != null,
+                                behavior: HitTestBehavior.opaque,
+                                onPointerDown: (e) {
+                                  OverlayEventLog.log(
+                                    'EditorShell',
+                                    'pointerDown',
+                                    {
+                                      'global': e.position,
+                                      'hasPreviewState':
+                                          _previewKey.currentState != null,
+                                    },
+                                  );
+                                  _previewKey.currentState?.handlePointerDown(
+                                    e,
+                                  );
                                 },
-                              );
-                              _previewKey.currentState?.handlePointerDown(e);
-                            },
-                            onPointerMove: (e) =>
-                                _previewKey.currentState?.handlePointerMove(e),
-                            onPointerUp: (e) => _previewKey.currentState
-                                ?.handlePointerUp(e.pointer),
-                            onPointerCancel: (e) => _previewKey.currentState
-                                ?.handlePointerCancel(e.pointer),
-                            child: SizedBox.expand(
-                              child: ClipRect(
-                                child: TweenAnimationBuilder<double>(
-                                  tween: Tween<double>(end: lift),
-                                  duration: const Duration(milliseconds: 220),
-                                  curve: Curves.easeOutCubic,
-                                  builder: (context, value, child) {
-                                    return Transform.translate(
-                                      offset: Offset(0, -value),
-                                      child: child,
-                                    );
-                                  },
-                                  child: FittedBox(
-                                    fit: BoxFit.contain,
-                                    clipBehavior: Clip.none,
-                                    alignment: Alignment.topCenter,
-                                    child: OverflowSizedBox(
-                                      width: targetWidth,
-                                      height: targetHeight,
-                                      child: VideoPreviewWithOverlays(
-                                        key: _previewKey,
-                                        videoAspectRatio: aspectRatio,
-                                        videoChild: _buildPreviewVideoChild(
-                                          controller,
-                                        ),
-                                        overlays: project.overlays,
-                                        segments: project.segments,
-                                        position: _playhead,
-                                        isPlaying: controller.value.isPlaying,
-                                        clipRotation: project.rotation,
-                                        hostViewportSize: Size(
-                                          constraints.maxWidth,
-                                          constraints.maxHeight,
-                                        ),
-                                        selectedOverlayId: _selectedOverlayId,
-                                        editingOverlayId: _editingOverlayId,
-                                        selectAllOnEdit: _inlineEditSelectAll,
-                                        textHint: l10n.textOverlayHint,
-                                        onOverlaySelected: (overlay) {
-                                          if (_editingOverlayId != null &&
-                                              _editingOverlayId !=
-                                                  overlay.id) {
-                                            _finishInlineEditing(
-                                              'select_other_overlay',
-                                            );
-                                          }
-                                          setState(() {
-                                            _selectedOverlayId = overlay.id;
-                                            // Keep the studio open; retarget it.
-                                            if (_textStudioOverlayId != null) {
-                                              _textStudioOverlayId = overlay.id;
-                                            }
-                                          });
-                                        },
-                                        onRequestEdit: _startInlineEditing,
-                                        onBackgroundTap:
-                                            _onPreviewBackgroundTap,
-                                        onOverlayTextChanged:
-                                            _onOverlayTextChanged,
-                                        onEditingComplete:
-                                            _finishInlineEditing,
-                                        onOverlayOffsetChanged:
-                                            (overlay, offset) {
-                                          _patchOverlay(
-                                            overlay.id,
-                                            (current) => current.copyWith(
-                                              offset: offset,
+                                onPointerMove: (e) => _previewKey.currentState
+                                    ?.handlePointerMove(e),
+                                onPointerUp: (e) => _previewKey.currentState
+                                    ?.handlePointerUp(e.pointer),
+                                onPointerCancel: (e) => _previewKey.currentState
+                                    ?.handlePointerCancel(e.pointer),
+                                child: SizedBox.expand(
+                                  child: ClipRect(
+                                    child: TweenAnimationBuilder<double>(
+                                      tween: Tween<double>(end: lift),
+                                      duration: const Duration(
+                                        milliseconds: 220,
+                                      ),
+                                      curve: Curves.easeOutCubic,
+                                      builder: (context, value, child) {
+                                        return Transform.translate(
+                                          offset: Offset(0, -value),
+                                          child: child,
+                                        );
+                                      },
+                                      child: FittedBox(
+                                        fit: BoxFit.contain,
+                                        clipBehavior: Clip.none,
+                                        alignment: Alignment.topCenter,
+                                        child: OverflowSizedBox(
+                                          width: targetWidth,
+                                          height: targetHeight,
+                                          child: VideoPreviewWithOverlays(
+                                            key: _previewKey,
+                                            videoAspectRatio: aspectRatio,
+                                            videoChild: _buildPreviewVideoChild(
+                                              controller,
                                             ),
-                                          );
-                                        },
-                                        onOverlayDeleted:
-                                            _deleteOverlayByOverlay,
-                                        onOverlayDuplicated:
-                                            _duplicateOverlay,
-                                        onOverlayEdit: (overlay) {
-                                          setState(
-                                            () => _selectedOverlayId =
-                                                overlay.id,
-                                          );
-                                          _editSelectedOverlay();
-                                        },
-                                        onOverlayBoxChanged:
-                                            (overlay, transform) {
-                                          OverlayEventLog.log(
-                                            'Editor',
-                                            'overlayBoxChanged',
-                                            {
-                                              'id': overlay.id,
-                                              'width': transform.width
-                                                  .toStringAsFixed(1),
-                                              'height': transform.height
-                                                  .toStringAsFixed(1),
-                                              'font': transform.fontSize
-                                                  .toStringAsFixed(1),
-                                              'offset': transform.offset,
-                                              'rotation': transform.rotation
-                                                  .toStringAsFixed(3),
+                                            overlays: project.overlays,
+                                            segments: project.segments,
+                                            position: _playhead,
+                                            isPlaying:
+                                                controller.value.isPlaying,
+                                            clipRotation: project.rotation,
+                                            hostViewportSize: Size(
+                                              constraints.maxWidth,
+                                              constraints.maxHeight,
+                                            ),
+                                            selectedOverlayId:
+                                                _selectedOverlayId,
+                                            editingOverlayId: _editingOverlayId,
+                                            selectAllOnEdit:
+                                                _inlineEditSelectAll,
+                                            textHint: l10n.textOverlayHint,
+                                            onOverlaySelected: (overlay) {
+                                              if (_editingOverlayId != null &&
+                                                  _editingOverlayId !=
+                                                      overlay.id) {
+                                                _finishInlineEditing(
+                                                  'select_other_overlay',
+                                                );
+                                              }
+                                              setState(() {
+                                                _selectedOverlayId = overlay.id;
+                                                // Keep the studio open; retarget it.
+                                                if (_textStudioOverlayId !=
+                                                    null) {
+                                                  _textStudioOverlayId =
+                                                      overlay.id;
+                                                }
+                                              });
                                             },
-                                          );
-                                          _patchOverlay(
-                                            overlay.id,
-                                            (current) => current.copyWith(
-                                              boxWidth: transform.width,
-                                              boxHeight: transform.height,
-                                              fontSize: transform.fontSize,
-                                              offset: transform.offset,
-                                              rotation: transform.rotation,
-                                            ),
-                                          );
-                                        },
+                                            onRequestEdit: _startInlineEditing,
+                                            onBackgroundTap:
+                                                _onPreviewBackgroundTap,
+                                            onOverlayTextChanged:
+                                                _onOverlayTextChanged,
+                                            onEditingComplete:
+                                                _finishInlineEditing,
+                                            onOverlayOffsetChanged:
+                                                (overlay, offset) {
+                                                  _patchOverlay(
+                                                    overlay.id,
+                                                    (current) =>
+                                                        current.copyWith(
+                                                          offset: offset,
+                                                        ),
+                                                  );
+                                                },
+                                            onOverlayDeleted:
+                                                _deleteOverlayByOverlay,
+                                            onOverlayDuplicated:
+                                                _duplicateOverlay,
+                                            onOverlayEdit: (overlay) {
+                                              setState(
+                                                () => _selectedOverlayId =
+                                                    overlay.id,
+                                              );
+                                              _editSelectedOverlay();
+                                            },
+                                            onOverlayBoxChanged:
+                                                (overlay, transform) {
+                                                  OverlayEventLog.log(
+                                                    'Editor',
+                                                    'overlayBoxChanged',
+                                                    {
+                                                      'id': overlay.id,
+                                                      'width': transform.width
+                                                          .toStringAsFixed(1),
+                                                      'height': transform.height
+                                                          .toStringAsFixed(1),
+                                                      'font': transform.fontSize
+                                                          .toStringAsFixed(1),
+                                                      'offset':
+                                                          transform.offset,
+                                                      'rotation': transform
+                                                          .rotation
+                                                          .toStringAsFixed(3),
+                                                    },
+                                                  );
+                                                  _patchOverlay(
+                                                    overlay.id,
+                                                    (
+                                                      current,
+                                                    ) => current.copyWith(
+                                                      boxWidth: transform.width,
+                                                      boxHeight:
+                                                          transform.height,
+                                                      fontSize:
+                                                          transform.fontSize,
+                                                      offset: transform.offset,
+                                                      rotation:
+                                                          transform.rotation,
+                                                    ),
+                                                  );
+                                                },
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
-                              ),
-                            ),
                               ),
                               if (editingOverlay == null)
                                 _buildPreviewDockDragEdge(
@@ -2737,9 +3067,7 @@ class _EditorScreenState extends State<EditorScreen>
                       ),
                     ),
                   ),
-                  _buildDockResizeHandle(
-                    enabled: editingOverlay == null,
-                  ),
+                  _buildDockResizeHandle(enabled: editingOverlay == null),
                   _buildBottomDock(
                     l10n: l10n,
                     project: project,
@@ -2761,9 +3089,9 @@ class _EditorScreenState extends State<EditorScreen>
                   bottom: 0,
                   child: Builder(
                     builder: (context) {
-                      final keyboard = MediaQueryData.fromView(View.of(context))
-                          .viewInsets
-                          .bottom;
+                      final keyboard = MediaQueryData.fromView(
+                        View.of(context),
+                      ).viewInsets.bottom;
                       // Anchor to the body bottom and fill the inset with the
                       // toolbar color. Pinning with `bottom: keyboard` alone
                       // left a dark strip when the inset and the visible
@@ -2777,7 +3105,10 @@ class _EditorScreenState extends State<EditorScreen>
                           ),
                           ColoredBox(
                             color: BasicTextEditToolbar.barBackground,
-                            child: SizedBox(height: keyboard, width: double.infinity),
+                            child: SizedBox(
+                              height: keyboard,
+                              width: double.infinity,
+                            ),
                           ),
                         ],
                       );
@@ -2846,7 +3177,8 @@ class _EditorScreenState extends State<EditorScreen>
         }
 
         final cutIndex = _transitionStudioCutIndex;
-        final showTransition = cutIndex != null &&
+        final showTransition =
+            cutIndex != null &&
             cutIndex >= 0 &&
             cutIndex < project.segments.length - 1;
         final showText = inTextStudio && studioOverlay != null;
@@ -2897,9 +3229,8 @@ class _EditorScreenState extends State<EditorScreen>
                   _onTransitionDurationChanged(cutIndex, duration),
               onParametersChanged: (parameters) =>
                   _onTransitionParametersChanged(cutIndex, parameters),
-              onConfirm: () => unawaited(
-                _closeTransitionStudio('studio_confirm'),
-              ),
+              onConfirm: () =>
+                  unawaited(_closeTransitionStudio('studio_confirm')),
             ),
           );
         }
@@ -2977,10 +3308,7 @@ class _EditorScreenState extends State<EditorScreen>
       child: Column(
         children: [
           Expanded(child: timeline),
-          if (showActions) ...[
-            const SizedBox(height: 8),
-            actions,
-          ],
+          if (showActions) ...[const SizedBox(height: 8), actions],
         ],
       ),
     );

@@ -40,11 +40,8 @@ class OverlayRaster {
 
 const double exportEntranceFps = 24;
 
-/// Renders text overlays with Flutter's own text engine.
-///
-/// FFmpeg's `drawtext` cannot reproduce the preview: it breaks lines with its
-/// own metrics and has no blurred shadow. Painting the overlays here and
-/// compositing the result guarantees the export matches what the user saw.
+/// Paints text overlays with Flutter's own text engine, then composites via
+/// the native OS exporter (AVFoundation / Media3).
 class OverlayRasterService {
   const OverlayRasterService();
 

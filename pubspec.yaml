@@ -25,7 +25,6 @@ dependencies:
   share_lib:
     path: ../../flutter_share_lib
   gal: ^2.3.3
-  ffmpeg_kit_flutter_new: ^4.6.2
   shared_preferences: ^2.5.3
   http: ^1.4.0
   audioplayers: ^6.4.0

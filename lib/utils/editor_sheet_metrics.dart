@@ -23,7 +23,7 @@ class EditorSheetMetrics {
   double get maxHeight => screenHeight * maxFraction;
   double get minHeight => screenHeight * minFraction;
 
-  static const entryFractionValue = 1 / 3;
+  static const entryFractionValue = 0.45;
   static const maxFractionValue = 2 / 3;
   static const minFractionValue = 0.12;
 
@@ -102,10 +102,7 @@ double snapDockHeight({
         orElse: () => sorted.last,
       );
     }
-    return sorted.lastWhere(
-      (s) => s < current - 8,
-      orElse: () => sorted.first,
-    );
+    return sorted.lastWhere((s) => s < current - 8, orElse: () => sorted.first);
   }
   return sorted.reduce(
     (a, b) => (current - a).abs() <= (current - b).abs() ? a : b,
