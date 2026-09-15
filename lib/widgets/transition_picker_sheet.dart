@@ -204,6 +204,7 @@ class _TransitionPickerPanelState extends State<TransitionPickerPanel> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final locale = Localizations.localeOf(context).languageCode;
     final theme = Theme.of(context);
     final categories = _service.catalog.displayCategories;
     TransitionCategory? category;
@@ -286,7 +287,7 @@ class _TransitionPickerPanelState extends State<TransitionPickerPanel> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                cat.title,
+                                cat.localizedTitle(locale),
                                 style: TextStyle(
                                   fontSize: 13,
                                   height: 1.2,
@@ -352,7 +353,7 @@ class _TransitionPickerPanelState extends State<TransitionPickerPanel> {
                                   item: item,
                                   label: item.isNone
                                       ? l10n.transitionNone
-                                      : item.title,
+                                      : item.localizedTitle(locale),
                                   selected: isSelected,
                                   previewToken:
                                       isSelected ? _previewToken : 0,
@@ -675,7 +676,6 @@ class _PremiumBadge extends StatelessWidget {
   }
 }
 
-/// Shared A / B sample stills for transition thumbnails (no network assets).
 class _TransitionSampleFrame extends StatelessWidget {
   const _TransitionSampleFrame({required this.variant});
 

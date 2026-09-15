@@ -42,7 +42,7 @@ void main() {
         ClipSegment(
           start: Duration.zero,
           end: const Duration(seconds: 3),
-          transitionId: 'fade',
+          transitionId: 'dissolve',
           transitionDuration: const Duration(milliseconds: 500),
         ),
         ClipSegment(
@@ -84,7 +84,7 @@ void main() {
         ClipSegment(
           start: Duration.zero,
           end: const Duration(seconds: 3),
-          transitionId: 'fade',
+          transitionId: 'dissolve',
           transitionDuration: const Duration(milliseconds: 500),
         ),
         ClipSegment(
@@ -120,7 +120,7 @@ void main() {
         ClipSegment(
           start: Duration.zero,
           end: const Duration(seconds: 3),
-          transitionId: 'fade',
+          transitionId: 'dissolve',
           transitionDuration: const Duration(milliseconds: 500),
         ),
         ClipSegment(
@@ -171,7 +171,7 @@ void main() {
             ClipSegment(
               start: Duration.zero,
               end: const Duration(seconds: 3),
-              transitionId: 'fade',
+              transitionId: 'dissolve',
             ),
           ],
           const Duration(milliseconds: 2800),
@@ -185,7 +185,7 @@ void main() {
         start: Duration.zero,
         end: const Duration(seconds: 2),
         transition: const AppliedTransition(
-          id: 'zoomin',
+          id: 'crosszoom',
           version: 1,
           duration: Duration(milliseconds: 400),
           parameters: {'intensity': 0.8},
@@ -193,11 +193,11 @@ void main() {
       );
       final json = segment.toJson();
       expect(json['transition'], isA<Map>());
-      expect(json['transitionId'], 'zoomin');
+      expect(json['transitionId'], 'crosszoom');
       expect(json['transitionMs'], 400);
 
       final restored = ClipSegment.fromJson(json);
-      expect(restored.transition?.id, 'zoomin');
+      expect(restored.transition?.id, 'crosszoom');
       expect(restored.transition?.version, 1);
       expect(restored.transition?.parameters['intensity'], 0.8);
     });
@@ -224,81 +224,95 @@ void main() {
         jsonDecode(raw) as Map<String, dynamic>,
       );
 
-      expect(catalog.version, 8);
-      expect(catalog.displayCategories, isNotEmpty);
-      expect(catalog.byId('fade')?.renderer, TransitionRendererKind.xfade);
-      expect(catalog.byId('none'), isNull);
-      expect(catalog.byId('flash')?.renderer, TransitionRendererKind.primitive);
-      expect(catalog.byId('cursorzoom')?.title, 'Cursor Zoom');
+      expect(catalog.version, 25);
+      expect(catalog.displayCategories, hasLength(1));
+      final basic = catalog.displayCategories.single;
+      expect(basic.id, 'basic');
+      expect(basic.title, 'Basic');
+      expect(basic.localizedTitle('ko'), '기본형');
+      expect(basic.items, hasLength(22));
       expect(
-        catalog.byId('cursorzoom')?.renderer,
-        TransitionRendererKind.primitive,
-      );
-      expect(catalog.byId('cursorzoom')?.defaultDurationMs, 2000);
-      expect(catalog.byId('cursorzoom')?.layers, isNotEmpty);
-      expect(catalog.byId('zoomin')?.title, 'Zoom In');
-      expect(catalog.byId('circleclose')?.title, 'Circle Close');
-      expect(catalog.byId('fade')?.ffmpegName, 'fade');
-      expect(catalog.byId('pushleft')?.ffmpegName, 'coverleft');
-      expect(
-        catalog.items.map((e) => e.id).toSet(),
+        basic.items.map((e) => e.id).toSet(),
         containsAll([
-          'cursorzoom',
-          'swap',
-          'doorway',
-          'spinin',
-          'pagecurl',
-          'mosaic',
-          'ripple',
+          'dissolve',
           'crossblur',
+          'fadeblack',
+          'fadewhite',
+          'spinin',
+          'spinout',
+          'circleopen',
+          'circleclose',
+          'doorway',
+          'swap',
+          'cube',
+          'mosaic',
+          'wipeleft',
+          'wiperight',
+          'wipeup',
+          'wipedown',
+          'slideleft',
+          'slideright',
+          'puzzleleft',
+          'puzzleright',
+          'crosszoom',
+          'ripple',
         ]),
       );
+      expect(catalog.byId('pagecurlleft'), isNull);
+      expect(catalog.byId('pagecurlright'), isNull);
+      expect(catalog.byId('none'), isNull);
+      expect(catalog.byId('fade'), isNull);
+      expect(catalog.byId('dissolve')?.title, 'Cross Dissolve');
+      expect(catalog.byId('dissolve')?.localizedTitle('ko'), '교차 디졸브');
+      expect(catalog.byId('slideleft')?.localizedTitle('ko'), '왼쪽으로 슬라이드');
+      expect(catalog.byId('circleclose')?.localizedTitle('ja'), 'サークルクローズ');
+      expect(catalog.byId('dissolve')?.ffmpegName, 'dissolve');
     });
 
     test('engine plans export + preview from the same definition', () async {
       await TransitionCatalogService.instance.ensureInitialized();
       final engine = TransitionEngine(catalog: TransitionCatalogService.instance);
 
-      final fade = engine.plan(
+      final dissolve = engine.plan(
         const AppliedTransition(
-          id: 'fade',
+          id: 'dissolve',
           version: 1,
           duration: Duration(milliseconds: 500),
         ),
       );
-      expect(fade.xfadeName, 'fade');
-      expect(fade.previewKind, TransitionPreviewKind.dualLayer);
-      expect(fade.supportedInExport, isTrue);
+      expect(dissolve.xfadeName, 'dissolve');
+      expect(dissolve.previewKind, TransitionPreviewKind.dualLayer);
+      expect(dissolve.supportedInExport, isTrue);
 
-      final push = engine.plan(
+      final slide = engine.plan(
         const AppliedTransition(
-          id: 'pushleft',
+          id: 'slideleft',
           version: 1,
           duration: Duration(milliseconds: 500),
         ),
       );
-      expect(push.xfadeName, 'coverleft');
-      expect(push.previewKind, TransitionPreviewKind.dualLayer);
+      expect(slide.xfadeName, 'slideleft');
+      expect(slide.previewKind, TransitionPreviewKind.dualLayer);
 
-      final flash = engine.plan(
+      final white = engine.plan(
         const AppliedTransition(
-          id: 'flash',
+          id: 'fadewhite',
           version: 1,
-          duration: Duration(milliseconds: 250),
+          duration: Duration(milliseconds: 500),
         ),
       );
-      expect(flash.xfadeName, 'fadewhite');
-      expect(flash.renderer, TransitionRendererKind.primitive);
+      expect(white.xfadeName, 'fadewhite');
+      expect(white.renderer, TransitionRendererKind.primitive);
     });
 
-    test('export graph uses engine ffmpeg bridge for push', () async {
+    test('export graph uses engine ffmpeg bridge for slide', () async {
       await TransitionCatalogService.instance.ensureInitialized();
       final segments = [
         ClipSegment(
           start: Duration.zero,
           end: const Duration(seconds: 2),
           transition: const AppliedTransition(
-            id: 'pushleft',
+            id: 'slideleft',
             version: 1,
             duration: Duration(milliseconds: 400),
           ),
@@ -309,7 +323,7 @@ void main() {
         ),
       ];
       final graph = ExportService.buildSegmentConcatGraph(segments)!;
-      expect(graph, contains('xfade=transition=coverleft'));
+      expect(graph, contains('xfade=transition=slideleft'));
     });
 
     test('remote xfade id wins merge', () async {
@@ -366,7 +380,7 @@ void main() {
 
       expect(service.itemById('glitch')?.renderer, TransitionRendererKind.shader);
       expect(service.itemById('glitch')?.shader, 'glitch_v1');
-      expect(service.itemById('fade')?.ffmpegName, 'fade');
+      expect(service.itemById('dissolve')?.ffmpegName, 'dissolve');
 
       final plan = TransitionEngine(catalog: service).plan(
         const AppliedTransition(
@@ -384,16 +398,16 @@ void main() {
         'version': 1,
         'items': [
           {
-            'id': 'fade',
-            'title': 'Fade',
-            'ffmpegName': 'fade',
+            'id': 'dissolve',
+            'title': '교차 디졸브',
+            'ffmpegName': 'dissolve',
             'defaultDurationMs': 500,
-            'accent': '#60A5FA',
+            'accent': '#A78BFA',
           },
         ],
       });
       expect(catalog.displayCategories.single.id, 'all');
-      expect(catalog.byId('fade')?.renderer, TransitionRendererKind.xfade);
+      expect(catalog.byId('dissolve')?.renderer, TransitionRendererKind.xfade);
     });
   });
 }

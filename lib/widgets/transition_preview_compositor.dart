@@ -1,5 +1,5 @@
 import 'dart:math' as math;
-import 'dart:ui' show ImageFilter;
+import 'dart:ui' as ui show ImageFilter;
 
 import 'package:aveditor/models/applied_transition.dart';
 import 'package:aveditor/models/transition_item.dart';
@@ -32,6 +32,32 @@ class TransitionAbCompositor extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final progress = t.clamp(0.0, 1.0);
+    final effectId = plan.applied.id;
+    final customId = plan.definition?.customId;
+    if (isDoorwayEffect(id: effectId, customId: customId) ||
+        isPuzzleEffect(id: effectId, customId: customId)) {
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final size = Size(constraints.maxWidth, constraints.maxHeight);
+          if (isPuzzleEffect(id: effectId, customId: customId)) {
+            return puzzleTransitionLayer(
+              size: size,
+              t: progress,
+              outgoing: outgoing,
+              incoming: incoming,
+              reverse: isPuzzleRightEffect(id: effectId, customId: customId),
+            );
+          }
+          return doorwayTransitionLayer(
+            size: size,
+            t: progress,
+            outgoing: outgoing,
+            incoming: incoming,
+          );
+        },
+      );
+    }
+
     final layers = plan.definition?.layers ?? const [];
     // Primitive effects are fully server-authored via layers. Classic xfade
     // names keep the built-in style map (wipes/iris/etc.).
@@ -82,12 +108,16 @@ class TransitionAbCompositor extends StatelessWidget {
           TransitionPreviewStyle.pushDown =>
             _push(progress, size, const Offset(0, 1)),
           TransitionPreviewStyle.wipeLeft =>
-            _wipe(progress, Alignment.centerLeft, Axis.horizontal),
-          TransitionPreviewStyle.wipeRight =>
+            // Wipe left: edge moves leftward → reveal B from the right.
             _wipe(progress, Alignment.centerRight, Axis.horizontal),
+          TransitionPreviewStyle.wipeRight =>
+            // Wipe right: edge moves rightward → reveal B from the left.
+            _wipe(progress, Alignment.centerLeft, Axis.horizontal),
           TransitionPreviewStyle.wipeUp =>
+            // Wipe up: edge moves upward → reveal B from the top.
             _wipe(progress, Alignment.topCenter, Axis.vertical),
           TransitionPreviewStyle.wipeDown =>
+            // Wipe down: edge moves downward → reveal B from the bottom.
             _wipe(progress, Alignment.bottomCenter, Axis.vertical),
           TransitionPreviewStyle.zoomIn => _zoomIn(progress, intensity),
           TransitionPreviewStyle.zoomOut => _zoomOut(progress, intensity),
@@ -234,7 +264,7 @@ class TransitionAbCompositor extends StatelessWidget {
     Widget blurLayer(Widget child) {
       if (blur < 0.3) return child;
       return ImageFiltered(
-        imageFilter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+        imageFilter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
         child: child,
       );
     }
@@ -389,8 +419,7 @@ enum TransitionPreviewStyle {
 }
 
 /// Live dual-player approximation of a catalog transition for the editor
-/// preview. Export still uses FFmpeg; this keeps the top video looking like
-/// the selected effect while scrubbing / playing through a cut.
+/// preview while scrubbing / playing through a cut.
 class TransitionPreviewCompositor extends StatelessWidget {
   const TransitionPreviewCompositor({
     super.key,
@@ -468,6 +497,14 @@ class StableDualSlotPreview extends StatelessWidget {
       mainPose = slotsSwapped ? _hidden : _identity;
       auxPose = slotsSwapped ? _identity : _hidden;
     } else {
+      if (isRoleSpecialEffect(
+        id: activePlan.applied.id,
+        customId: activePlan.definition?.customId,
+      )) {
+        useRoleCompositor = true;
+        mainPose = _identity;
+        auxPose = _identity;
+      } else {
       final layers = activePlan.definition?.layers ?? const [];
       if (layers.isNotEmpty) {
         final eval = evaluateTransitionLayers(
@@ -496,6 +533,7 @@ class StableDualSlotPreview extends StatelessWidget {
           auxPose = slotsSwapped ? eval.outgoing : eval.incoming;
         }
       }
+      }
     }
 
     if (useRoleCompositor && progress != null && activePlan != null) {
@@ -523,12 +561,26 @@ class StableDualSlotPreview extends StatelessWidget {
             incomingChild: slotsSwapped ? slotMain : slotAux,
           );
         }
+
+        // Spin-out needs A on top of static B; spin-in needs B on top of A.
+        final eval = TransitionLayerEvaluation(
+          outgoing: logicalOut,
+          incoming: logicalIn,
+        );
+        final outgoingOnTop = outgoingShouldPaintOnTop(eval);
+        final bottomPose = outgoingOnTop ? logicalIn : logicalOut;
+        final topPose = outgoingOnTop ? logicalOut : logicalIn;
+        final outgoingChild = slotsSwapped ? slotAux : slotMain;
+        final incomingChild = slotsSwapped ? slotMain : slotAux;
+        final bottomChild = outgoingOnTop ? incomingChild : outgoingChild;
+        final topChild = outgoingOnTop ? outgoingChild : incomingChild;
+
         return Stack(
           fit: StackFit.expand,
           clipBehavior: Clip.hardEdge,
           children: [
-            posedTransitionLayer(mainPose, size, slotMain),
-            posedTransitionLayer(auxPose, size, slotAux),
+            posedTransitionLayer(bottomPose, size, bottomChild),
+            posedTransitionLayer(topPose, size, topChild),
           ],
         );
       },

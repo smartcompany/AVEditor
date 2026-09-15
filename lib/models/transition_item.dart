@@ -256,6 +256,7 @@ class TransitionItem {
     required this.ffmpegName,
     required this.defaultDurationMs,
     required this.accent,
+    this.titles = const {},
     this.renderer = TransitionRendererKind.xfade,
     this.category = 'basic',
     this.minDurationMs = 50,
@@ -268,6 +269,7 @@ class TransitionItem {
     this.itemVersion = 1,
     this.shader,
     this.customId,
+    this.effect,
     this.layers = const [],
     this.parameters = const {},
     this.controls = const [],
@@ -277,6 +279,12 @@ class TransitionItem {
   static const none = TransitionItem(
     id: 'none',
     title: 'None',
+    titles: {
+      'en': 'None',
+      'ko': '없음',
+      'ja': 'なし',
+      'zh': '无',
+    },
     ffmpegName: '',
     defaultDurationMs: 0,
     minDurationMs: 0,
@@ -286,7 +294,10 @@ class TransitionItem {
   );
 
   final String id;
+  /// Default (usually English) title from the catalog.
   final String title;
+  /// Server-owned locale → label map (`en` / `ko` / `ja` / `zh`).
+  final Map<String, String> titles;
   final String category;
 
   /// Pins definition revisions; projects store this on apply.
@@ -301,6 +312,12 @@ class TransitionItem {
   /// Named shader / custom plugin id when using hybrid renderers.
   final String? shader;
   final String? customId;
+
+  /// Optional server-driven effect DSL for specialized compositors.
+  ///
+  /// Consumed by the client Transition Engine primitives — not one-off UI code
+  /// per catalog title.
+  final Map<String, dynamic>? effect;
 
   final int defaultDurationMs;
   final int minDurationMs;
@@ -337,6 +354,17 @@ class TransitionItem {
   Map<String, double> defaultParameters() => {
         for (final entry in parameters.entries) entry.key: entry.value.defaultValue,
       };
+
+  /// Picks `titles[languageCode]`, then `en`, then [title].
+  String localizedTitle([String? languageCode]) {
+    if (languageCode != null) {
+      final hit = titles[languageCode];
+      if (hit != null && hit.isNotEmpty) return hit;
+    }
+    final en = titles['en'];
+    if (en != null && en.isNotEmpty) return en;
+    return title;
+  }
 
   factory TransitionItem.fromJson(Map<String, dynamic> json) {
     final ffmpeg = json['ffmpegName'] as String? ?? '';
@@ -404,11 +432,15 @@ class TransitionItem {
         .map((e) => TransitionControl.fromJson(Map<String, dynamic>.from(e)))
         .toList(growable: false);
 
+    final title = json['title'] as String? ??
+        json['name'] as String? ??
+        json['id'] as String;
+    final titles = _parseTitles(json['titles'], fallbackTitle: title);
+
     return TransitionItem(
       id: json['id'] as String,
-      title: json['title'] as String? ??
-          json['name'] as String? ??
-          json['id'] as String,
+      title: title,
+      titles: titles,
       category: json['category'] as String? ?? 'basic',
       ffmpegName: ffmpeg,
       defaultDurationMs: defaultMs,
@@ -426,16 +458,23 @@ class TransitionItem {
           1,
       shader: json['shader'] as String?,
       customId: json['customId'] as String? ?? json['custom'] as String?,
+      effect: _parseEffect(json['effect']),
       layers: layers,
       parameters: parameters,
       controls: controls,
     );
   }
 
+  static Map<String, dynamic>? _parseEffect(Object? raw) {
+    if (raw is! Map) return null;
+    return Map<String, dynamic>.from(raw);
+  }
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'title': title,
         'name': title,
+        if (titles.isNotEmpty) 'titles': titles,
         'category': category,
         'version': itemVersion,
         'itemVersion': itemVersion,
@@ -459,6 +498,7 @@ class TransitionItem {
         if (assetUrl != null) 'assetUrl': assetUrl,
         if (shader != null) 'shader': shader,
         if (customId != null) 'customId': customId,
+        if (effect != null) 'effect': effect,
         'downloadSizeBytes': downloadSizeBytes,
         if (layers.isNotEmpty)
           'layers': layers.map((e) => e.toJson()).toList(growable: false),
@@ -486,6 +526,24 @@ class TransitionItem {
     }
     return fallback;
   }
+
+  static Map<String, String> _parseTitles(
+    Object? raw, {
+    required String fallbackTitle,
+  }) {
+    if (raw is Map) {
+      final out = <String, String>{};
+      for (final entry in raw.entries) {
+        final value = entry.value;
+        if (value is String && value.isNotEmpty) {
+          out['${entry.key}'] = value;
+        }
+      }
+      if (out.isNotEmpty) return Map.unmodifiable(out);
+    }
+    if (fallbackTitle.isEmpty) return const {};
+    return Map.unmodifiable({'en': fallbackTitle});
+  }
 }
 
 class TransitionCategory {
@@ -493,17 +551,31 @@ class TransitionCategory {
     required this.id,
     required this.title,
     required this.items,
+    this.titles = const {},
   });
 
   final String id;
   final String title;
+  final Map<String, String> titles;
   final List<TransitionItem> items;
+
+  String localizedTitle([String? languageCode]) {
+    if (languageCode != null) {
+      final hit = titles[languageCode];
+      if (hit != null && hit.isNotEmpty) return hit;
+    }
+    final en = titles['en'];
+    if (en != null && en.isNotEmpty) return en;
+    return title;
+  }
 
   factory TransitionCategory.fromJson(Map<String, dynamic> json) {
     final raw = json['items'] as List<dynamic>? ?? const [];
+    final title = json['title'] as String? ?? json['id'] as String;
     return TransitionCategory(
       id: json['id'] as String,
-      title: json['title'] as String? ?? json['id'] as String,
+      title: title,
+      titles: TransitionItem._parseTitles(json['titles'], fallbackTitle: title),
       items: [
         for (final e in raw)
           if (e is Map) TransitionItem.fromJson(Map<String, dynamic>.from(e)),
@@ -530,7 +602,12 @@ class TransitionCatalog {
     if (categories.isNotEmpty) return categories;
     if (items.isEmpty) return const [];
     return [
-      TransitionCategory(id: 'all', title: 'All', items: items),
+      TransitionCategory(id: 'all', title: 'All', titles: const {
+        'en': 'All',
+        'ko': '전체',
+        'ja': 'すべて',
+        'zh': '全部',
+      }, items: items),
     ];
   }
 

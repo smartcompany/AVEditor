@@ -143,6 +143,9 @@ class TransitionCatalogService extends ChangeNotifier {
         categories[index] = TransitionCategory(
           id: existing.id,
           title: remoteFirst ? existing.title : category.title,
+          titles: remoteFirst
+              ? (existing.titles.isNotEmpty ? existing.titles : category.titles)
+              : (category.titles.isNotEmpty ? category.titles : existing.titles),
           items: [
             for (final item in merged) byId[item.id] ?? item,
           ],
@@ -154,6 +157,7 @@ class TransitionCatalogService extends ChangeNotifier {
         TransitionCategory(
           id: category.id,
           title: category.title,
+          titles: category.titles,
           items: [
             for (final item in category.items) byId[item.id] ?? item,
           ],

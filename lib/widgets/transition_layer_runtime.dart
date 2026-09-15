@@ -1,9 +1,10 @@
 import 'dart:math' as math;
-import 'dart:ui' show ImageFilter;
+import 'dart:ui' as ui show ImageFilter;
 
 import 'package:aveditor/models/applied_transition.dart';
 import 'package:aveditor/models/transition_item.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 /// Evaluates catalog [TransitionLayer]s at progress `t` into per-clip poses.
 ///
@@ -77,6 +78,12 @@ TransitionLayerEvaluation evaluateTransitionLayers({
   var incomingOpacitySet = false;
 
   for (final layer in layers) {
+    // Windowed layers must not apply their `from` before [start] — that would
+    // stomp earlier writers (e.g. fade-to-black's second brightness track
+    // holding -1 for the whole first half).
+    final windowStart = layer.start.clamp(0.0, 1.0);
+    if (progress < windowStart) continue;
+
     final value = evaluateTransitionLayer(
       layer,
       progress,
@@ -260,12 +267,28 @@ class TransitionLayerCompositor extends StatelessWidget {
             incomingChild: incoming,
           );
         }
+        final veil = _sharedBrightnessVeil(eval);
+        final outgoingOnTop = outgoingShouldPaintOnTop(eval);
+        final bottomPose = outgoingOnTop ? eval.incoming : eval.outgoing;
+        final topPose = outgoingOnTop ? eval.outgoing : eval.incoming;
+        final bottomChild = outgoingOnTop ? incoming : outgoing;
+        final topChild = outgoingOnTop ? outgoing : incoming;
         return Stack(
           fit: StackFit.expand,
           clipBehavior: Clip.hardEdge,
           children: [
-            posedTransitionLayer(eval.outgoing, size, outgoing),
-            posedTransitionLayer(eval.incoming, size, incoming),
+            posedTransitionLayer(
+              veil != null ? _poseWithoutBrightness(bottomPose) : bottomPose,
+              size,
+              bottomChild,
+            ),
+            posedTransitionLayer(
+              veil != null ? _poseWithoutBrightness(topPose) : topPose,
+              size,
+              topChild,
+            ),
+            // Shared veil so dip-to-black/white isn't diluted by per-clip opacity.
+            if (veil != null) IgnorePointer(child: ColoredBox(color: veil)),
           ],
         );
       },
@@ -273,12 +296,44 @@ class TransitionLayerCompositor extends StatelessWidget {
   }
 }
 
+TransitionLayerPose _poseWithoutBrightness(TransitionLayerPose pose) {
+  if (pose.brightness.abs() < 0.001) return pose;
+  return pose.copyWith(brightness: 0);
+}
+
+bool _isActivelyTransformed(TransitionLayerPose pose) {
+  return pose.rotation.abs() > 0.001 ||
+      (pose.scale - 1).abs() > 0.01 ||
+      pose.translateX.abs() > 0.01 ||
+      pose.translateY.abs() > 0.01;
+}
+
+/// Spin-out style: A transforms over a static full-frame B → paint A on top.
+bool outgoingShouldPaintOnTop(TransitionLayerEvaluation eval) {
+  return _isActivelyTransformed(eval.outgoing) &&
+      !_isActivelyTransformed(eval.incoming);
+}
+
+/// When both sides share the same brightness (dip), paint one fullscreen veil.
+Color? _sharedBrightnessVeil(TransitionLayerEvaluation eval) {
+  final a = eval.outgoing.brightness;
+  final b = eval.incoming.brightness;
+  if (a.abs() < 0.001 && b.abs() < 0.001) return null;
+  // Same-signed dip authored on `both` — one overlay above the crossfade.
+  if ((a - b).abs() < 0.02 && a.sign == b.sign) {
+    final amount = a.abs().clamp(0.0, 1.0);
+    final base = a >= 0 ? Colors.white : Colors.black;
+    return base.withValues(alpha: amount);
+  }
+  return null;
+}
+
 /// Applies a catalog pose to a child (shared by picker + live dual-slot preview).
 Widget posedTransitionLayer(TransitionLayerPose pose, Size size, Widget child) {
   Widget built = child;
   if (pose.blur.abs() > 0.3) {
     built = ImageFiltered(
-      imageFilter: ImageFilter.blur(
+      imageFilter: ui.ImageFilter.blur(
         sigmaX: pose.blur.abs(),
         sigmaY: pose.blur.abs(),
       ),
@@ -413,6 +468,215 @@ Widget conveyorSlideLayer({
       ],
     ),
   );
+}
+
+/// True for the iMovie-style doorway split (catalog id / customId).
+bool isDoorwayEffect({String? id, String? customId}) {
+  return id == 'doorway' || customId == 'doorway';
+}
+
+bool isPuzzleLeftEffect({String? id, String? customId}) {
+  return id == 'puzzleleft' || customId == 'puzzleleft';
+}
+
+bool isPuzzleRightEffect({String? id, String? customId}) {
+  return id == 'puzzleright' || customId == 'puzzleright';
+}
+
+bool isPuzzleEffect({String? id, String? customId}) {
+  return isPuzzleLeftEffect(id: id, customId: customId) ||
+      isPuzzleRightEffect(id: id, customId: customId);
+}
+
+/// A splits from the center into L/R doors; B advances through the opening.
+///
+/// Uses a single outgoing child (safe for [VideoPlayer]) clipped to the two
+/// door bands as they retreat to the frame edges.
+Widget doorwayTransitionLayer({
+  required Size size,
+  required double t,
+  required Widget outgoing,
+  required Widget incoming,
+}) {
+  final u = Curves.easeInOutCubic.transform(t.clamp(0.0, 1.0));
+  // B comes forward through the doorway as the doors open.
+  final bScale = 0.84 + 0.16 * Curves.easeOutCubic.transform(u);
+
+  return Stack(
+    fit: StackFit.expand,
+    clipBehavior: Clip.hardEdge,
+    children: [
+      Transform.scale(
+        scale: bScale,
+        filterQuality: FilterQuality.low,
+        child: incoming,
+      ),
+      ClipPath(
+        clipper: _DoorwayDoorsClipper(progress: u),
+        child: outgoing,
+      ),
+    ],
+  );
+}
+
+/// Keeps left + right strips of A while the center opening grows.
+class _DoorwayDoorsClipper extends CustomClipper<Path> {
+  _DoorwayDoorsClipper({required this.progress});
+
+  final double progress;
+
+  @override
+  Path getClip(Size size) {
+    final doorWidth = size.width * 0.5 * (1.0 - progress.clamp(0.0, 1.0));
+    if (doorWidth <= 0.5) return Path();
+    return Path()
+      ..addRect(Rect.fromLTWH(0, 0, doorWidth, size.height))
+      ..addRect(
+        Rect.fromLTWH(size.width - doorWidth, 0, doorWidth, size.height),
+      );
+  }
+
+  @override
+  bool shouldReclip(covariant _DoorwayDoorsClipper oldClipper) {
+    return oldClipper.progress != progress;
+  }
+}
+
+/// Puzzle left: B in 3 vertical strips — right (L→R), mid (top→down), left (L→R).
+/// Puzzle right: mirrored — left (R→L), mid (bottom→up), right (R→L).
+Widget puzzleTransitionLayer({
+  required Size size,
+  required double t,
+  required Widget outgoing,
+  required Widget incoming,
+  required bool reverse,
+}) {
+  return Stack(
+    fit: StackFit.expand,
+    clipBehavior: Clip.hardEdge,
+    children: [
+      outgoing,
+      _PuzzleIncomingStrips(
+        progress: t.clamp(0.0, 1.0),
+        reverse: reverse,
+        child: incoming,
+      ),
+    ],
+  );
+}
+
+class _PuzzleIncomingStrips extends SingleChildRenderObjectWidget {
+  const _PuzzleIncomingStrips({
+    required this.progress,
+    required this.reverse,
+    required super.child,
+  });
+
+  final double progress;
+  final bool reverse;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) {
+    return _RenderPuzzleIncomingStrips(
+      progress: progress,
+      reverse: reverse,
+    );
+  }
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant _RenderPuzzleIncomingStrips renderObject,
+  ) {
+    renderObject
+      ..progress = progress
+      ..reverse = reverse;
+  }
+}
+
+class _RenderPuzzleIncomingStrips extends RenderProxyBox {
+  _RenderPuzzleIncomingStrips({
+    required double progress,
+    required bool reverse,
+  })  : _progress = progress,
+        _reverse = reverse;
+
+  double _progress;
+  double get progress => _progress;
+  set progress(double value) {
+    if (_progress == value) return;
+    _progress = value;
+    markNeedsPaint();
+  }
+
+  bool _reverse;
+  bool get reverse => _reverse;
+  set reverse(bool value) {
+    if (_reverse == value) return;
+    _reverse = value;
+    markNeedsPaint();
+  }
+
+  @override
+  bool get alwaysNeedsCompositing => true;
+
+  @override
+  void performLayout() {
+    size = constraints.biggest;
+    child?.layout(BoxConstraints.tight(size));
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    final child = this.child;
+    if (child == null) return;
+
+    final w = size.width / 3;
+    final h = size.height;
+    // Phase order selects columns: left-puzzle right→mid→left; right-puzzle left→mid→right.
+    final columns = _reverse ? const [0, 1, 2] : const [2, 1, 0];
+
+    for (var phase = 0; phase < 3; phase++) {
+      final local = ((_progress - phase / 3) * 3).clamp(0.0, 1.0);
+      if (local <= 0) continue;
+      final eased = Curves.easeOutCubic.transform(local);
+      final col = columns[phase];
+      final double dx;
+      final double dy;
+      if (col == 1) {
+        // Middle strip: vertical enter.
+        dx = 0;
+        dy = (_reverse ? 1 : -1) * h * (1.0 - eased);
+      } else {
+        // Side strips: horizontal enter.
+        dx = (_reverse ? 1 : -1) * w * (1.0 - eased);
+        dy = 0;
+      }
+
+      final clip = Rect.fromLTWH(col * w, 0, w, h);
+      context.pushClipRect(
+        needsCompositing,
+        offset,
+        clip,
+        (PaintingContext ctx, Offset origin) {
+          ctx.pushTransform(
+            needsCompositing,
+            origin,
+            Matrix4.translationValues(dx, dy, 0),
+            (PaintingContext ctx2, Offset o) {
+              ctx2.paintChild(child, o);
+            },
+          );
+        },
+      );
+    }
+  }
+}
+
+/// Dedicated role compositors that need both clips as free widgets (not poses).
+bool isRoleSpecialEffect({String? id, String? customId}) {
+  return isDoorwayEffect(id: id, customId: customId) ||
+      isPuzzleEffect(id: id, customId: customId);
 }
 
 /// Convenience: build from an [AppliedTransition] + catalog definition.
