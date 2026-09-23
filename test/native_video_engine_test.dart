@@ -30,7 +30,21 @@ void main() {
     test('supportedEffects covers slide and push conveyor', () {
       expect(NativeVideoEngine.supportedEffects.contains('slideleft'), isTrue);
       expect(NativeVideoEngine.supportedEffects.contains('pushup'), isTrue);
+      expect(NativeVideoEngine.supportedEffects.contains('coverleft'), isTrue);
       expect(NativeVideoEngine.supportedEffects.contains('fade'), isFalse);
+    });
+
+    test('supports is false on VM (no iOS/Android)', () {
+      expect(
+        NativeVideoEngine.supports(
+          const AppliedTransition(
+            id: 'slideleft',
+            version: 1,
+            duration: Duration(milliseconds: 500),
+          ),
+        ),
+        isFalse,
+      );
     });
   });
 }

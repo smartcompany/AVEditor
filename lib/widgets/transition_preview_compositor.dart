@@ -1,8 +1,9 @@
 import 'dart:math' as math;
-import 'dart:ui' show ImageFilter;
+import 'dart:ui' as ui show ImageFilter;
 
 import 'package:aveditor/models/applied_transition.dart';
 import 'package:aveditor/models/transition_item.dart';
+import 'package:aveditor/models/transition_role_effect.dart';
 import 'package:aveditor/services/transition_engine.dart';
 import 'package:aveditor/widgets/transition_layer_runtime.dart';
 import 'package:flutter/material.dart';
@@ -13,6 +14,8 @@ import 'package:video_player/video_player.dart';
 ///
 /// Prefer catalog [TransitionItem.layers] when present (server-driven). Named
 /// style fallbacks cover classic xfade names without layer authoring.
+/// Role compositors (doorway / puzzle / wipe) are selected only via
+/// [TransitionItem.effect] / `customId`, never by catalog item id.
 class TransitionAbCompositor extends StatelessWidget {
   const TransitionAbCompositor({
     super.key,
@@ -32,6 +35,36 @@ class TransitionAbCompositor extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final progress = t.clamp(0.0, 1.0);
+    final role = TransitionRoleEffect.resolve(plan.definition);
+    if (role != null) {
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final size = Size(constraints.maxWidth, constraints.maxHeight);
+          if (role.isPuzzle) {
+            return puzzleTransitionLayer(
+              size: size,
+              t: progress,
+              outgoing: outgoing,
+              incoming: incoming,
+              reverse: role.reverse,
+            );
+          }
+          if (role.isDoorway) {
+            return doorwayTransitionLayer(
+              size: size,
+              t: progress,
+              outgoing: outgoing,
+              incoming: incoming,
+              incomingScaleFrom: role.incomingScaleFrom,
+              incomingScaleTo: role.incomingScaleTo,
+            );
+          }
+          // Unknown kind that somehow resolved — fall through.
+          return outgoing;
+        },
+      );
+    }
+
     final layers = plan.definition?.layers ?? const [];
     // Primitive effects are fully server-authored via layers. Classic xfade
     // names keep the built-in style map (wipes/iris/etc.).
@@ -82,19 +115,23 @@ class TransitionAbCompositor extends StatelessWidget {
           TransitionPreviewStyle.pushDown =>
             _push(progress, size, const Offset(0, 1)),
           TransitionPreviewStyle.wipeLeft =>
-            _wipe(progress, Alignment.centerLeft, Axis.horizontal),
-          TransitionPreviewStyle.wipeRight =>
+            // Wipe left: edge moves leftward → reveal B from the right.
             _wipe(progress, Alignment.centerRight, Axis.horizontal),
+          TransitionPreviewStyle.wipeRight =>
+            // Wipe right: edge moves rightward → reveal B from the left.
+            _wipe(progress, Alignment.centerLeft, Axis.horizontal),
           TransitionPreviewStyle.wipeUp =>
+            // Wipe up: edge moves upward → reveal B from the top.
             _wipe(progress, Alignment.topCenter, Axis.vertical),
           TransitionPreviewStyle.wipeDown =>
+            // Wipe down: edge moves downward → reveal B from the bottom.
             _wipe(progress, Alignment.bottomCenter, Axis.vertical),
           TransitionPreviewStyle.zoomIn => _zoomIn(progress, intensity),
           TransitionPreviewStyle.zoomOut => _zoomOut(progress, intensity),
           TransitionPreviewStyle.crossZoom => _crossZoom(progress, intensity),
           TransitionPreviewStyle.zoomBlur => _zoomBlur(progress, intensity),
           TransitionPreviewStyle.iris => _iris(progress),
-          TransitionPreviewStyle.irisClose => _iris(1 - progress),
+          TransitionPreviewStyle.irisClose => _irisClose(progress),
           TransitionPreviewStyle.radial => _iris(progress),
           TransitionPreviewStyle.none => outgoing,
         };
@@ -234,7 +271,7 @@ class TransitionAbCompositor extends StatelessWidget {
     Widget blurLayer(Widget child) {
       if (blur < 0.3) return child;
       return ImageFiltered(
-        imageFilter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+        imageFilter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
         child: child,
       );
     }
@@ -271,6 +308,20 @@ class TransitionAbCompositor extends StatelessWidget {
     );
   }
 
+  /// Circle close: outgoing shrinks away and the next clip is fully visible at t=1.
+  Widget _irisClose(double t) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        incoming,
+        ClipPath(
+          clipper: _IrisClipper(t: 1 - t),
+          child: outgoing,
+        ),
+      ],
+    );
+  }
+
   static double _intensity(AppliedTransition applied) {
     final value = applied.parameters['intensity'];
     if (value == null) return 0.75;
@@ -285,7 +336,7 @@ TransitionPreviewStyle resolvePreviewStyle(TransitionRenderPlan plan) {
   }
 
   final id = plan.applied.id.toLowerCase();
-  final name = (plan.xfadeName ?? id).toLowerCase();
+  final name = (plan.effectName ?? id).toLowerCase();
   final token = '$id $name';
 
   if (token.contains('flash')) return TransitionPreviewStyle.flash;
@@ -389,8 +440,7 @@ enum TransitionPreviewStyle {
 }
 
 /// Live dual-player approximation of a catalog transition for the editor
-/// preview. Export still uses FFmpeg; this keeps the top video looking like
-/// the selected effect while scrubbing / playing through a cut.
+/// preview while scrubbing / playing through a cut.
 class TransitionPreviewCompositor extends StatelessWidget {
   const TransitionPreviewCompositor({
     super.key,
@@ -468,6 +518,11 @@ class StableDualSlotPreview extends StatelessWidget {
       mainPose = slotsSwapped ? _hidden : _identity;
       auxPose = slotsSwapped ? _identity : _hidden;
     } else {
+      if (activePlan.definition?.hasRoleCompositor == true) {
+        useRoleCompositor = true;
+        mainPose = _identity;
+        auxPose = _identity;
+      } else {
       final layers = activePlan.definition?.layers ?? const [];
       if (layers.isNotEmpty) {
         final eval = evaluateTransitionLayers(
@@ -478,8 +533,8 @@ class StableDualSlotPreview extends StatelessWidget {
             ...activePlan.applied.parameters,
           },
         );
-        mainPose = slotsSwapped ? eval.incoming : eval.outgoing;
-        auxPose = slotsSwapped ? eval.outgoing : eval.incoming;
+        mainPose = slotsSwapped ? eval.b : eval.a;
+        auxPose = slotsSwapped ? eval.a : eval.b;
       } else {
         final style = resolvePreviewStyle(activePlan);
         if (_needsRoleCompositor(style)) {
@@ -492,9 +547,10 @@ class StableDualSlotPreview extends StatelessWidget {
             progress,
             _intensity(activePlan.applied),
           );
-          mainPose = slotsSwapped ? eval.incoming : eval.outgoing;
-          auxPose = slotsSwapped ? eval.outgoing : eval.incoming;
+          mainPose = slotsSwapped ? eval.b : eval.a;
+          auxPose = slotsSwapped ? eval.a : eval.b;
         }
+      }
       }
     }
 
@@ -523,12 +579,28 @@ class StableDualSlotPreview extends StatelessWidget {
             incomingChild: slotsSwapped ? slotMain : slotAux,
           );
         }
+
+        // Spin-out needs A on top of static B; spin-in needs B on top of A.
+        // Decide from authored layers so easeIn spin-out stays correct at t=0.
+        final layers = activePlan?.definition?.layers ?? const <TransitionLayer>[];
+        final eval = TransitionLayerEvaluation(
+          a: logicalOut,
+          b: logicalIn,
+        );
+        final outgoingOnTop = aShouldPaintOnTop(eval, layers: layers);
+        final bottomPose = outgoingOnTop ? logicalIn : logicalOut;
+        final topPose = outgoingOnTop ? logicalOut : logicalIn;
+        final outgoingChild = slotsSwapped ? slotAux : slotMain;
+        final incomingChild = slotsSwapped ? slotMain : slotAux;
+        final bottomChild = outgoingOnTop ? incomingChild : outgoingChild;
+        final topChild = outgoingOnTop ? outgoingChild : incomingChild;
+
         return Stack(
           fit: StackFit.expand,
           clipBehavior: Clip.hardEdge,
           children: [
-            posedTransitionLayer(mainPose, size, slotMain),
-            posedTransitionLayer(auxPose, size, slotAux),
+            posedTransitionLayer(bottomPose, size, bottomChild),
+            posedTransitionLayer(topPose, size, topChild),
           ],
         );
       },
@@ -558,8 +630,8 @@ class StableDualSlotPreview extends StatelessWidget {
     switch (style) {
       case TransitionPreviewStyle.none:
         return const TransitionLayerEvaluation(
-          outgoing: _identity,
-          incoming: _hidden,
+          a: _identity,
+          b: _hidden,
         );
       case TransitionPreviewStyle.fade:
       case TransitionPreviewStyle.dissolve:
@@ -567,8 +639,8 @@ class StableDualSlotPreview extends StatelessWidget {
       case TransitionPreviewStyle.dipWhite:
       case TransitionPreviewStyle.flash:
         return TransitionLayerEvaluation(
-          outgoing: TransitionLayerPose(opacity: 1 - progress),
-          incoming: TransitionLayerPose(opacity: progress),
+          a: TransitionLayerPose(opacity: 1 - progress),
+          b: TransitionLayerPose(opacity: progress),
         );
       case TransitionPreviewStyle.slideLeft:
         return _slidePoses(progress, const Offset(-1, 0));
@@ -588,27 +660,27 @@ class StableDualSlotPreview extends StatelessWidget {
         return _slidePoses(progress, const Offset(0, 1));
       case TransitionPreviewStyle.zoomIn:
         return TransitionLayerEvaluation(
-          outgoing: TransitionLayerPose(opacity: 1 - progress),
-          incoming: TransitionLayerPose(
+          a: TransitionLayerPose(opacity: 1 - progress),
+          b: TransitionLayerPose(
             opacity: progress,
             scale: 1.0 + 0.35 * intensity * (1 - progress),
           ),
         );
       case TransitionPreviewStyle.zoomOut:
         return TransitionLayerEvaluation(
-          outgoing: TransitionLayerPose(
+          a: TransitionLayerPose(
             opacity: 1 - progress,
             scale: 1.0 + 0.35 * intensity * progress,
           ),
-          incoming: TransitionLayerPose(opacity: progress),
+          b: TransitionLayerPose(opacity: progress),
         );
       case TransitionPreviewStyle.crossZoom:
         return TransitionLayerEvaluation(
-          outgoing: TransitionLayerPose(
+          a: TransitionLayerPose(
             opacity: 1 - progress,
             scale: 1.0 + 0.25 * intensity * progress,
           ),
-          incoming: TransitionLayerPose(
+          b: TransitionLayerPose(
             opacity: progress,
             scale: 1.0 + 0.25 * intensity * (1 - progress),
           ),
@@ -616,12 +688,12 @@ class StableDualSlotPreview extends StatelessWidget {
       case TransitionPreviewStyle.zoomBlur:
         final blur = 8.0 * intensity * math.sin(progress * math.pi);
         return TransitionLayerEvaluation(
-          outgoing: TransitionLayerPose(
+          a: TransitionLayerPose(
             opacity: 1 - progress,
             scale: 1.0 + 0.2 * intensity * progress,
             blur: blur,
           ),
-          incoming: TransitionLayerPose(
+          b: TransitionLayerPose(
             opacity: progress,
             scale: 1.2 - 0.2 * progress,
             blur: blur,
@@ -635,8 +707,8 @@ class StableDualSlotPreview extends StatelessWidget {
       case TransitionPreviewStyle.irisClose:
       case TransitionPreviewStyle.radial:
         return TransitionLayerEvaluation(
-          outgoing: TransitionLayerPose(opacity: 1 - progress),
-          incoming: TransitionLayerPose(opacity: progress),
+          a: TransitionLayerPose(opacity: 1 - progress),
+          b: TransitionLayerPose(opacity: progress),
         );
     }
   }
@@ -644,12 +716,12 @@ class StableDualSlotPreview extends StatelessWidget {
   static TransitionLayerEvaluation _slidePoses(double t, Offset dir) {
     final u = Curves.easeInOutCubic.transform(t.clamp(0.0, 1.0));
     return TransitionLayerEvaluation(
-      outgoing: TransitionLayerPose(
+          a: TransitionLayerPose(
         opacity: 1,
         translateX: dir.dx * u,
         translateY: dir.dy * u,
       ),
-      incoming: TransitionLayerPose(
+      b: TransitionLayerPose(
         opacity: 1,
         translateX: dir.dx * (u - 1),
         translateY: dir.dy * (u - 1),

@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 /// Clip rotation is stored in clockwise radians about the frame centre, the
-/// same convention as `Transform.rotate` and FFmpeg's `rotate` filter.
+/// same convention as `Transform.rotate` and the native export rotate step.
 const double quarterTurn = math.pi / 2;
 
 /// Free rotation lands within a few degrees of an upright frame surprisingly

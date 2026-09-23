@@ -81,31 +81,7 @@ class AudioEnvelope {
     return 0.5 - 0.5 * math.cos(math.pi * t);
   }
 
-  /// Appends afade/volume filters to an ffmpeg audio chain (no trailing label).
-  static String appendFilters({
-    required String chain,
-    required AudioEnvelope envelope,
-    required Duration clipDuration,
-  }) {
-    final fades = envelope.resolvedFades(clipDuration);
-    final fi = fades.$1.inMilliseconds / 1000.0;
-    final fo = fades.$2.inMilliseconds / 1000.0;
-    final clipSec = (clipDuration.inMilliseconds / 1000.0).clamp(0.05, 1e9);
-    final buf = StringBuffer(chain);
-    if (fi > 0) {
-      buf.write(',afade=t=in:st=0:d=${fi.toStringAsFixed(3)}:curve=hsin');
-    }
-    if (fo > 0) {
-      final start = (clipSec - fo).clamp(0.0, clipSec);
-      buf.write(
-        ',afade=t=out:st=${start.toStringAsFixed(3)}:d=${fo.toStringAsFixed(3)}:curve=hsin',
-      );
-    }
-    final volume = envelope.volume.clamp(0.0, 1.0).toStringAsFixed(3);
-    buf.write(',volume=$volume');
-    return buf.toString();
-  }
-
+  /// Volume / fade only — native export applies these on-device.
   AudioEnvelope copyWith({
     double? volume,
     Duration? fadeIn,

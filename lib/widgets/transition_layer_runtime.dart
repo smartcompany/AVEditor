@@ -1,9 +1,10 @@
 import 'dart:math' as math;
-import 'dart:ui' show ImageFilter;
+import 'dart:ui' as ui show ImageFilter;
 
 import 'package:aveditor/models/applied_transition.dart';
 import 'package:aveditor/models/transition_item.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 /// Evaluates catalog [TransitionLayer]s at progress `t` into per-clip poses.
 ///
@@ -18,6 +19,9 @@ class TransitionLayerPose {
     this.rotation = 0,
     this.blur = 0,
     this.brightness = 0,
+    this.blurMode,
+    this.wipe = 0,
+    this.wipeEdge = 'left',
   });
 
   final double opacity;
@@ -30,6 +34,12 @@ class TransitionLayerPose {
   final double blur;
   /// -1…1 style lift used as a white/black overlay.
   final double brightness;
+  /// Server hint for blur rendering (`zoom` = radial streaks).
+  final String? blurMode;
+  /// 0 = full clip, 1 = fully wiped away.
+  final double wipe;
+  /// Edge erased first for [wipe].
+  final String wipeEdge;
 
   TransitionLayerPose copyWith({
     double? opacity,
@@ -39,6 +49,9 @@ class TransitionLayerPose {
     double? rotation,
     double? blur,
     double? brightness,
+    String? blurMode,
+    double? wipe,
+    String? wipeEdge,
   }) {
     return TransitionLayerPose(
       opacity: opacity ?? this.opacity,
@@ -48,18 +61,21 @@ class TransitionLayerPose {
       rotation: rotation ?? this.rotation,
       blur: blur ?? this.blur,
       brightness: brightness ?? this.brightness,
+      blurMode: blurMode ?? this.blurMode,
+      wipe: wipe ?? this.wipe,
+      wipeEdge: wipeEdge ?? this.wipeEdge,
     );
   }
 }
 
 class TransitionLayerEvaluation {
   const TransitionLayerEvaluation({
-    required this.outgoing,
-    required this.incoming,
+    required this.a,
+    required this.b,
   });
 
-  final TransitionLayerPose outgoing;
-  final TransitionLayerPose incoming;
+  final TransitionLayerPose a;
+  final TransitionLayerPose b;
 }
 
 /// Pure evaluation of catalog layers — no Flutter widgets.
@@ -69,31 +85,37 @@ TransitionLayerEvaluation evaluateTransitionLayers({
   Map<String, double> parameters = const {},
 }) {
   final progress = t.clamp(0.0, 1.0);
-  var outgoing = const TransitionLayerPose(opacity: 1);
-  var incoming = const TransitionLayerPose(opacity: 0);
+  var a = const TransitionLayerPose(opacity: 1);
+  var b = const TransitionLayerPose(opacity: 0);
 
   final hasOpacity = layers.any((l) => l.property == TransitionProperty.opacity);
-  var outgoingOpacitySet = false;
-  var incomingOpacitySet = false;
+  var aOpacitySet = false;
+  var bOpacitySet = false;
 
   for (final layer in layers) {
+    // Windowed layers must not apply their `from` before [start] — that would
+    // stomp earlier writers (e.g. fade-to-black's second brightness track
+    // holding -1 for the whole first half).
+    final windowStart = layer.start.clamp(0.0, 1.0);
+    if (progress < windowStart) continue;
+
     final value = evaluateTransitionLayer(
       layer,
       progress,
       parameters: parameters,
     );
-    if (layer.target == TransitionLayerTarget.outgoing ||
+    if (layer.target == TransitionLayerTarget.a ||
         layer.target == TransitionLayerTarget.both) {
-      outgoing = _applyProperty(outgoing, layer.property, value);
+      a = _applyProperty(a, layer, value);
       if (layer.property == TransitionProperty.opacity) {
-        outgoingOpacitySet = true;
+        aOpacitySet = true;
       }
     }
-    if (layer.target == TransitionLayerTarget.incoming ||
+    if (layer.target == TransitionLayerTarget.b ||
         layer.target == TransitionLayerTarget.both) {
-      incoming = _applyProperty(incoming, layer.property, value);
+      b = _applyProperty(b, layer, value);
       if (layer.property == TransitionProperty.opacity) {
-        incomingOpacitySet = true;
+        bOpacitySet = true;
       }
     }
   }
@@ -105,22 +127,23 @@ TransitionLayerEvaluation evaluateTransitionLayers({
       (l) =>
           l.property == TransitionProperty.translateX ||
           l.property == TransitionProperty.translateY ||
-          l.property == TransitionProperty.rotation,
+          l.property == TransitionProperty.rotation ||
+          l.property == TransitionProperty.wipe,
     );
     if (spatial) {
-      outgoing = outgoing.copyWith(opacity: 1);
-      incoming = incoming.copyWith(opacity: 1);
+      a = a.copyWith(opacity: 1);
+      b = b.copyWith(opacity: 1);
     } else {
-      outgoing = outgoing.copyWith(opacity: 1 - progress);
-      incoming = incoming.copyWith(opacity: progress);
+      a = a.copyWith(opacity: 1 - progress);
+      b = b.copyWith(opacity: progress);
     }
-  } else if (outgoingOpacitySet && !incomingOpacitySet) {
-    incoming = incoming.copyWith(opacity: (1 - outgoing.opacity).clamp(0.0, 1.0));
-  } else if (incomingOpacitySet && !outgoingOpacitySet) {
-    outgoing = outgoing.copyWith(opacity: (1 - incoming.opacity).clamp(0.0, 1.0));
+  } else if (aOpacitySet && !bOpacitySet) {
+    b = b.copyWith(opacity: (1 - a.opacity).clamp(0.0, 1.0));
+  } else if (bOpacitySet && !aOpacitySet) {
+    a = a.copyWith(opacity: (1 - b.opacity).clamp(0.0, 1.0));
   }
 
-  return TransitionLayerEvaluation(outgoing: outgoing, incoming: incoming);
+  return TransitionLayerEvaluation(a: a, b: b);
 }
 
 double evaluateTransitionLayer(
@@ -166,16 +189,17 @@ double _identity(TransitionProperty property) {
     case TransitionProperty.brightness:
     case TransitionProperty.saturation:
     case TransitionProperty.contrast:
+    case TransitionProperty.wipe:
       return 0;
   }
 }
 
 TransitionLayerPose _applyProperty(
   TransitionLayerPose pose,
-  TransitionProperty property,
+  TransitionLayer layer,
   double value,
 ) {
-  switch (property) {
+  switch (layer.property) {
     case TransitionProperty.opacity:
       return pose.copyWith(opacity: value.clamp(0.0, 1.0));
     case TransitionProperty.scale:
@@ -187,9 +211,14 @@ TransitionLayerPose _applyProperty(
     case TransitionProperty.rotation:
       return pose.copyWith(rotation: value);
     case TransitionProperty.blur:
-      return pose.copyWith(blur: value);
+      return pose.copyWith(blur: value, blurMode: layer.mode);
     case TransitionProperty.brightness:
       return pose.copyWith(brightness: value);
+    case TransitionProperty.wipe:
+      return pose.copyWith(
+        wipe: value.clamp(0.0, 1.0),
+        wipeEdge: (layer.mode ?? pose.wipeEdge).toLowerCase(),
+      );
     case TransitionProperty.saturation:
     case TransitionProperty.contrast:
       // Not approximated in the dual-layer preview yet.
@@ -251,21 +280,37 @@ class TransitionLayerCompositor extends StatelessWidget {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
         // Always keep both layers mounted. Dropping a VideoPlayer when opacity
         // hits 0 forces a remount/reparent at handoff and flashes the last frame.
-        if (isConveyorSlidePose(eval.outgoing, eval.incoming)) {
+        if (isConveyorSlidePose(eval.a, eval.b)) {
           return conveyorSlideLayer(
             size: size,
-            outgoing: eval.outgoing,
-            incoming: eval.incoming,
+            outgoing: eval.a,
+            incoming: eval.b,
             outgoingChild: outgoing,
             incomingChild: incoming,
           );
         }
+        final veil = _sharedBrightnessVeil(eval);
+        final outgoingOnTop = aShouldPaintOnTop(eval, layers: layers);
+        final bottomPose = outgoingOnTop ? eval.b : eval.a;
+        final topPose = outgoingOnTop ? eval.a : eval.b;
+        final bottomChild = outgoingOnTop ? incoming : outgoing;
+        final topChild = outgoingOnTop ? outgoing : incoming;
         return Stack(
           fit: StackFit.expand,
           clipBehavior: Clip.hardEdge,
           children: [
-            posedTransitionLayer(eval.outgoing, size, outgoing),
-            posedTransitionLayer(eval.incoming, size, incoming),
+            posedTransitionLayer(
+              veil != null ? _poseWithoutBrightness(bottomPose) : bottomPose,
+              size,
+              bottomChild,
+            ),
+            posedTransitionLayer(
+              veil != null ? _poseWithoutBrightness(topPose) : topPose,
+              size,
+              topChild,
+            ),
+            // Shared veil so dip-to-black/white isn't diluted by per-clip opacity.
+            if (veil != null) IgnorePointer(child: ColoredBox(color: veil)),
           ],
         );
       },
@@ -273,17 +318,94 @@ class TransitionLayerCompositor extends StatelessWidget {
   }
 }
 
+TransitionLayerPose _poseWithoutBrightness(TransitionLayerPose pose) {
+  if (pose.brightness.abs() < 0.001) return pose;
+  return pose.copyWith(brightness: 0);
+}
+
+bool _isActivelyTransformed(TransitionLayerPose pose) {
+  return pose.rotation.abs() > 0.001 ||
+      (pose.scale - 1).abs() > 0.01 ||
+      pose.translateX.abs() > 0.01 ||
+      pose.translateY.abs() > 0.01 ||
+      pose.wipe > 0.001;
+}
+
+/// Paint order from catalog: last layer with `target` A or B is on top
+/// (`both` does not change order). Authors put the mover last; optional
+/// identity layers on the other clip document the backdrop.
+///
+/// Fall back to live pose thresholds when only style-derived poses are available.
+bool aShouldPaintOnTop(
+  TransitionLayerEvaluation eval, {
+  List<TransitionLayer> layers = const [],
+}) {
+  if (layers.isNotEmpty) {
+    TransitionLayerTarget? top;
+    for (final layer in layers) {
+      if (layer.target == TransitionLayerTarget.a ||
+          layer.target == TransitionLayerTarget.b) {
+        top = layer.target;
+      }
+    }
+    if (top == null) return false;
+    return top == TransitionLayerTarget.a;
+  }
+  return _isActivelyTransformed(eval.a) && !_isActivelyTransformed(eval.b);
+}
+
+/// When both sides share the same brightness (dip), paint one fullscreen veil.
+Color? _sharedBrightnessVeil(TransitionLayerEvaluation eval) {
+  final a = eval.a.brightness;
+  final b = eval.b.brightness;
+  if (a.abs() < 0.001 && b.abs() < 0.001) return null;
+  // Same-signed dip authored on `both` — one overlay above the crossfade.
+  if ((a - b).abs() < 0.02 && a.sign == b.sign) {
+    final amount = a.abs().clamp(0.0, 1.0);
+    final base = a >= 0 ? Colors.white : Colors.black;
+    return base.withValues(alpha: amount);
+  }
+  return null;
+}
+
 /// Applies a catalog pose to a child (shared by picker + live dual-slot preview).
 Widget posedTransitionLayer(TransitionLayerPose pose, Size size, Widget child) {
   Widget built = child;
   if (pose.blur.abs() > 0.3) {
-    built = ImageFiltered(
-      imageFilter: ImageFilter.blur(
-        sigmaX: pose.blur.abs(),
-        sigmaY: pose.blur.abs(),
-      ),
-      child: built,
-    );
+    if (pose.blurMode == 'zoom') {
+      // Approximate radial zoom streaks: stacked scaled copies + soft blur.
+      final amount = (pose.blur.abs() / 18.0).clamp(0.0, 1.0);
+      final source = built;
+      built = Stack(
+        fit: StackFit.expand,
+        children: [
+          for (var i = 3; i >= 1; i--)
+            Opacity(
+              opacity: 0.18 * amount,
+              child: Transform.scale(
+                scale: 1.0 + amount * 0.12 * i,
+                child: source,
+              ),
+            ),
+          source,
+        ],
+      );
+      built = ImageFiltered(
+        imageFilter: ui.ImageFilter.blur(
+          sigmaX: pose.blur.abs() * 0.35,
+          sigmaY: pose.blur.abs() * 0.35,
+        ),
+        child: built,
+      );
+    } else {
+      built = ImageFiltered(
+        imageFilter: ui.ImageFilter.blur(
+          sigmaX: pose.blur.abs(),
+          sigmaY: pose.blur.abs(),
+        ),
+        child: built,
+      );
+    }
   }
   // Pixel-snap translation. Sub-pixel Flutter transforms on platform
   // [VideoPlayer] views shimmer left/right every frame (esp. long slides).
@@ -301,6 +423,14 @@ Widget posedTransitionLayer(TransitionLayerPose pose, Size size, Widget child) {
         ..scaleByDouble(pose.scale, pose.scale, 1, 1),
       child: built,
     );
+  }
+  if (pose.wipe > 0.001 && pose.wipe < 0.999) {
+    built = ClipRect(
+      clipper: _PoseWipeClipper(wipe: pose.wipe, edge: pose.wipeEdge),
+      child: built,
+    );
+  } else if (pose.wipe >= 0.999) {
+    built = const SizedBox.shrink();
   }
   if (pose.brightness.abs() > 0.001) {
     final overlay = pose.brightness >= 0 ? Colors.white : Colors.black;
@@ -413,6 +543,303 @@ Widget conveyorSlideLayer({
       ],
     ),
   );
+}
+
+/// Clip remaining region for wipe on A (or any pose). [wipe] 0=full, 1=gone;
+/// [edge] is the side erased first.
+class _PoseWipeClipper extends CustomClipper<Rect> {
+  _PoseWipeClipper({required this.wipe, required this.edge});
+
+  final double wipe;
+  final String edge;
+
+  @override
+  Rect getClip(Size size) {
+    final w = wipe.clamp(0.0, 1.0);
+    final remain = 1.0 - w;
+    switch (edge) {
+      case 'right':
+        return Rect.fromLTWH(0, 0, size.width * remain, size.height);
+      case 'top':
+        return Rect.fromLTWH(0, size.height * w, size.width, size.height * remain);
+      case 'bottom':
+        return Rect.fromLTWH(0, 0, size.width, size.height * remain);
+      case 'left':
+      default:
+        return Rect.fromLTWH(size.width * w, 0, size.width * remain, size.height);
+    }
+  }
+
+  @override
+  bool shouldReclip(covariant _PoseWipeClipper oldClipper) =>
+      oldClipper.wipe != wipe || oldClipper.edge != edge;
+}
+
+/// Progressive reveal of B over static A — prefer catalog `wipe` layers on A.
+/// Kept for legacy `effect.kind: wipe` previews.
+Widget wipeTransitionLayer({
+  required Size size,
+  required double t,
+  required Widget outgoing,
+  required Widget incoming,
+  String edge = 'left',
+}) {
+  final progress = t.clamp(0.0, 1.0);
+  final Alignment growFrom;
+  final Axis axis;
+  switch (edge) {
+    case 'right':
+      growFrom = Alignment.centerRight;
+      axis = Axis.horizontal;
+    case 'top':
+      growFrom = Alignment.topCenter;
+      axis = Axis.vertical;
+    case 'bottom':
+      growFrom = Alignment.bottomCenter;
+      axis = Axis.vertical;
+    case 'left':
+    default:
+      growFrom = Alignment.centerLeft;
+      axis = Axis.horizontal;
+  }
+  return Stack(
+    fit: StackFit.expand,
+    clipBehavior: Clip.hardEdge,
+    children: [
+      outgoing,
+      ClipRect(
+        clipper: _WipeEdgeClipper(
+          t: progress,
+          growFrom: growFrom,
+          axis: axis,
+        ),
+        child: incoming,
+      ),
+    ],
+  );
+}
+
+class _WipeEdgeClipper extends CustomClipper<Rect> {
+  _WipeEdgeClipper({
+    required this.t,
+    required this.growFrom,
+    required this.axis,
+  });
+
+  final double t;
+  final Alignment growFrom;
+  final Axis axis;
+
+  @override
+  Rect getClip(Size size) {
+    if (axis == Axis.horizontal) {
+      final w = size.width * t;
+      if (growFrom == Alignment.centerLeft) {
+        return Rect.fromLTWH(0, 0, w, size.height);
+      }
+      return Rect.fromLTWH(size.width - w, 0, w, size.height);
+    }
+    final h = size.height * t;
+    if (growFrom == Alignment.topCenter) {
+      return Rect.fromLTWH(0, 0, size.width, h);
+    }
+    return Rect.fromLTWH(0, size.height - h, size.width, h);
+  }
+
+  @override
+  bool shouldReclip(covariant _WipeEdgeClipper oldClipper) =>
+      oldClipper.t != t ||
+      oldClipper.growFrom != growFrom ||
+      oldClipper.axis != axis;
+}
+
+/// A splits from the center into L/R doors; B advances through the opening.
+///
+/// Uses a single outgoing child (safe for [VideoPlayer]) clipped to the two
+/// door bands as they retreat to the frame edges. Scale endpoints come from
+/// the server `effect` map — not hardcoded catalog ids.
+Widget doorwayTransitionLayer({
+  required Size size,
+  required double t,
+  required Widget outgoing,
+  required Widget incoming,
+  double incomingScaleFrom = 0.84,
+  double incomingScaleTo = 1.0,
+}) {
+  final u = Curves.easeInOutCubic.transform(t.clamp(0.0, 1.0));
+  final from = incomingScaleFrom;
+  final to = incomingScaleTo;
+  final bScale = from + (to - from) * Curves.easeOutCubic.transform(u);
+
+  return Stack(
+    fit: StackFit.expand,
+    clipBehavior: Clip.hardEdge,
+    children: [
+      Transform.scale(
+        scale: bScale,
+        filterQuality: FilterQuality.low,
+        child: incoming,
+      ),
+      ClipPath(
+        clipper: _DoorwayDoorsClipper(progress: u),
+        child: outgoing,
+      ),
+    ],
+  );
+}
+
+/// Keeps left + right strips of A while the center opening grows.
+class _DoorwayDoorsClipper extends CustomClipper<Path> {
+  _DoorwayDoorsClipper({required this.progress});
+
+  final double progress;
+
+  @override
+  Path getClip(Size size) {
+    final doorWidth = size.width * 0.5 * (1.0 - progress.clamp(0.0, 1.0));
+    if (doorWidth <= 0.5) return Path();
+    return Path()
+      ..addRect(Rect.fromLTWH(0, 0, doorWidth, size.height))
+      ..addRect(
+        Rect.fromLTWH(size.width - doorWidth, 0, doorWidth, size.height),
+      );
+  }
+
+  @override
+  bool shouldReclip(covariant _DoorwayDoorsClipper oldClipper) {
+    return oldClipper.progress != progress;
+  }
+}
+
+/// Puzzle left: B in 3 vertical strips — right (L→R), mid (top→down), left (L→R).
+/// Puzzle right: mirrored — left (R→L), mid (bottom→up), right (R→L).
+Widget puzzleTransitionLayer({
+  required Size size,
+  required double t,
+  required Widget outgoing,
+  required Widget incoming,
+  required bool reverse,
+}) {
+  return Stack(
+    fit: StackFit.expand,
+    clipBehavior: Clip.hardEdge,
+    children: [
+      outgoing,
+      _PuzzleIncomingStrips(
+        progress: t.clamp(0.0, 1.0),
+        reverse: reverse,
+        child: incoming,
+      ),
+    ],
+  );
+}
+
+class _PuzzleIncomingStrips extends SingleChildRenderObjectWidget {
+  const _PuzzleIncomingStrips({
+    required this.progress,
+    required this.reverse,
+    required super.child,
+  });
+
+  final double progress;
+  final bool reverse;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) {
+    return _RenderPuzzleIncomingStrips(
+      progress: progress,
+      reverse: reverse,
+    );
+  }
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant _RenderPuzzleIncomingStrips renderObject,
+  ) {
+    renderObject
+      ..progress = progress
+      ..reverse = reverse;
+  }
+}
+
+class _RenderPuzzleIncomingStrips extends RenderProxyBox {
+  _RenderPuzzleIncomingStrips({
+    required double progress,
+    required bool reverse,
+  })  : _progress = progress,
+        _reverse = reverse;
+
+  double _progress;
+  double get progress => _progress;
+  set progress(double value) {
+    if (_progress == value) return;
+    _progress = value;
+    markNeedsPaint();
+  }
+
+  bool _reverse;
+  bool get reverse => _reverse;
+  set reverse(bool value) {
+    if (_reverse == value) return;
+    _reverse = value;
+    markNeedsPaint();
+  }
+
+  @override
+  bool get alwaysNeedsCompositing => true;
+
+  @override
+  void performLayout() {
+    size = constraints.biggest;
+    child?.layout(BoxConstraints.tight(size));
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    final child = this.child;
+    if (child == null) return;
+
+    final w = size.width / 3;
+    final h = size.height;
+    // Phase order selects columns: left-puzzle right→mid→left; right-puzzle left→mid→right.
+    final columns = _reverse ? const [0, 1, 2] : const [2, 1, 0];
+
+    for (var phase = 0; phase < 3; phase++) {
+      final local = ((_progress - phase / 3) * 3).clamp(0.0, 1.0);
+      if (local <= 0) continue;
+      final eased = Curves.easeOutCubic.transform(local);
+      final col = columns[phase];
+      final double dx;
+      final double dy;
+      if (col == 1) {
+        // Middle strip: vertical enter.
+        dx = 0;
+        dy = (_reverse ? 1 : -1) * h * (1.0 - eased);
+      } else {
+        // Side strips: horizontal enter.
+        dx = (_reverse ? 1 : -1) * w * (1.0 - eased);
+        dy = 0;
+      }
+
+      final clip = Rect.fromLTWH(col * w, 0, w, h);
+      context.pushClipRect(
+        needsCompositing,
+        offset,
+        clip,
+        (PaintingContext ctx, Offset origin) {
+          ctx.pushTransform(
+            needsCompositing,
+            origin,
+            Matrix4.translationValues(dx, dy, 0),
+            (PaintingContext ctx2, Offset o) {
+              ctx2.paintChild(child, o);
+            },
+          );
+        },
+      );
+    }
+  }
 }
 
 /// Convenience: build from an [AppliedTransition] + catalog definition.

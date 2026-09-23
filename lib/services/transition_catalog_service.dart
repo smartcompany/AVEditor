@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:aveditor/models/transition_item.dart';
@@ -34,37 +35,69 @@ class TransitionCatalogService extends ChangeNotifier {
       _repository ?? TransitionRepository(httpClient: _http);
 
   Future<void> ensureInitialized() async {
-    if (_ready) return;
+    if (_ready && _catalog.items.isNotEmpty) return;
     await refresh();
   }
 
-  Future<void> refresh() async {
+  Future<void> refresh({bool awaitRemote = false}) async {
     _lastError = null;
     try {
+      // Show bundled catalog immediately so the picker is never blocked on
+      // the network. Remote merge happens afterward (non-blocking for callers
+      // that await this method after bundled is ready).
       final bundled = await _loadBundled();
-      var catalog = bundled;
+      _catalog = bundled;
+      _ready = true;
+      notifyListeners();
 
       final base =
           TextTemplatePackService.instance.remoteBaseUrl.trim().isNotEmpty
               ? TextTemplatePackService.instance.remoteBaseUrl.trim()
               : TextTemplatePackService.defaultRemoteBaseUrl;
 
-      try {
-        final remote = await repository.fetchCatalog(base);
-        catalog = _merge(bundled, remote);
-      } catch (error) {
-        _lastError = error.toString();
+      // Do not await remote by default — a hung network must not keep the
+      // picker spinner up when the caller awaits [ensureInitialized]/refresh.
+      // Tests pass [awaitRemote] so merge completes before assertions.
+      if (awaitRemote) {
+        await _mergeRemote(base, bundled);
+      } else {
+        unawaited(_mergeRemote(base, bundled));
       }
-
-      _catalog = catalog;
-      _ready = true;
-      notifyListeners();
     } catch (error) {
       _lastError = error.toString();
-      _catalog = await _loadBundled();
+      try {
+        _catalog = await _loadBundled();
+      } catch (bundledError) {
+        debugPrint(
+          'TransitionCatalogService: bundled load failed: $bundledError',
+        );
+        _catalog = const TransitionCatalog(version: 0, items: []);
+      }
       _ready = true;
       notifyListeners();
     }
+  }
+
+  Future<void> _mergeRemote(String base, TransitionCatalog bundled) async {
+    try {
+      final remote = await repository.fetchCatalog(base);
+      final merged = _merge(bundled, remote);
+      if (!_catalogEquals(_catalog, merged)) {
+        _catalog = merged;
+        notifyListeners();
+      }
+    } catch (error) {
+      _lastError = error.toString();
+      debugPrint('TransitionCatalogService: remote refresh failed: $error');
+    }
+  }
+
+  static bool _catalogEquals(TransitionCatalog a, TransitionCatalog b) {
+    return identical(a, b) ||
+        (a.version == b.version &&
+            a.items.length == b.items.length &&
+            a.categories.length == b.categories.length &&
+            a.baseUrl == b.baseUrl);
   }
 
   TransitionItem? itemById(String? id) => _catalog.byId(id);
@@ -78,9 +111,9 @@ class TransitionCatalogService extends ChangeNotifier {
   String? resolvedPreviewUrl(TransitionItem item) =>
       _catalog.resolveUrl(item.previewUrl);
 
-  /// Resolves an FFmpeg xfade name for a legacy transition id, or null for a
-  /// hard cut. Prefer [TransitionEngine] for applied transitions.
-  String? ffmpegNameFor(String? transitionId) {
+  /// Resolves an effect name for a legacy transition id, or null for a hard
+  /// cut. Prefer [TransitionEngine] for applied transitions.
+  String? effectNameFor(String? transitionId) {
     if (transitionId == null ||
         transitionId.isEmpty ||
         transitionId == 'none') {
@@ -94,12 +127,12 @@ class TransitionCatalogService extends ChangeNotifier {
       case TransitionRendererKind.cut:
         return null;
       case TransitionRendererKind.xfade:
-        return item.ffmpegName.isEmpty ? 'fade' : item.ffmpegName;
+        return item.effectName.isEmpty ? 'fade' : item.effectName;
       case TransitionRendererKind.primitive:
       case TransitionRendererKind.shader:
       case TransitionRendererKind.custom:
       case TransitionRendererKind.asset:
-        if (item.ffmpegName.isNotEmpty) return item.ffmpegName;
+        if (item.effectName.isNotEmpty) return item.effectName;
         debugPrint(
           'TransitionCatalogService: ${item.renderer.name} "${item.id}" '
           'has no export bridge; falling back to fade',

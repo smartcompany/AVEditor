@@ -286,7 +286,7 @@ Duration totalKeptDuration(List<ClipSegment> segments) {
   );
 }
 
-/// Sum of transition overlaps that shorten the exported timeline.
+/// Sum of transition durations (informational; does not shorten the timeline).
 Duration totalTransitionOverlap(List<ClipSegment> segments) {
   if (segments.length < 2) return Duration.zero;
   var ms = 0;
@@ -301,12 +301,12 @@ Duration totalTransitionOverlap(List<ClipSegment> segments) {
   return Duration(milliseconds: ms);
 }
 
-/// Export length after xfade overlaps are subtracted.
+/// Export / packed timeline length.
+///
+/// Duration-preserving: total stays [totalKeptDuration] (hard-cut length).
+/// Transitions are centered on the cut and sample A-end + B-start via handles.
 Duration exportTimelineDuration(List<ClipSegment> segments) {
-  final kept = totalKeptDuration(segments);
-  final overlap = totalTransitionOverlap(segments);
-  final ms = kept.inMilliseconds - overlap.inMilliseconds;
-  return Duration(milliseconds: ms < 0 ? 0 : ms);
+  return totalKeptDuration(segments);
 }
 
 /// xfade duration must fit inside both adjacent segments.
@@ -328,13 +328,20 @@ Duration clampedTransitionDuration(
   return Duration(milliseconds: safe);
 }
 
+/// Floor(td/2) before the cut; td − floor(td/2) after (odd td safe).
+({int before, int after}) transitionHalfMs(Duration td) {
+  final ms = td.inMilliseconds;
+  if (ms <= 0) return (before: 0, after: 0);
+  final before = ms ~/ 2;
+  return (before: before, after: ms - before);
+}
+
 /// Dual-player transition window on the **source** timeline.
 ///
-/// Window is `[outgoing.end - td, outgoing.end)`. Progress [t] is 0 at the
-/// start of the window and 1 at [outgoing.end].
-///
-/// Any non-cut transition with a dual-layer preview plan is included so the
-/// editor top video can approximate Slide / Zoom / Wipe / Fade, etc.
+/// Duration-preserving, centered on the cut:
+/// `[outgoing.end − ⌊td/2⌋, outgoing.end + ⌈td/2⌉)`.
+/// Main shows A[end−before, end] (via playhead); aux shows B[start, start+after]
+/// stretched over the window — **different** frames so dissolve is visible.
 class PreviewFadeWindow {
   const PreviewFadeWindow({
     required this.afterIndex,
@@ -350,15 +357,39 @@ class PreviewFadeWindow {
   final ClipSegment incoming;
   final Duration td;
 
-  Duration get windowStart => outgoing.end - td;
+  Duration get windowStart {
+    final half = transitionHalfMs(td);
+    return outgoing.end - Duration(milliseconds: half.before);
+  }
+
+  Duration get windowEnd {
+    final half = transitionHalfMs(td);
+    return outgoing.end + Duration(milliseconds: half.after);
+  }
 
   /// Source time the aux player should show for this [t].
+  ///
+  /// B's first ⌈td/2⌉ only, mapped across the full window (matches solo B at t=1).
   Duration get auxSourceTime {
-    final ms = incoming.start.inMilliseconds + (t * td.inMilliseconds).round();
-    final endMs = incoming.end.inMilliseconds;
+    final half = transitionHalfMs(td);
+    final ms = incoming.start.inMilliseconds +
+        (t * half.after).round();
+    final hi = incoming.end.inMilliseconds;
     return Duration(
-      milliseconds: ms.clamp(incoming.start.inMilliseconds, endMs),
+      milliseconds: ms.clamp(incoming.start.inMilliseconds, hi),
     );
+  }
+
+  /// Source time the outgoing (main) layer should show for this [t].
+  ///
+  /// A's last ⌊td/2⌋ only, mapped across the full window (no post-cut handles).
+  Duration get outgoingSourceTime {
+    final half = transitionHalfMs(td);
+    final startMs = outgoing.end.inMilliseconds - half.before;
+    final ms = startMs + (t * half.before).round();
+    final lo = outgoing.start.inMilliseconds;
+    final hi = outgoing.end.inMilliseconds;
+    return Duration(milliseconds: ms.clamp(lo, hi));
   }
 }
 
@@ -377,8 +408,9 @@ PreviewFadeWindow? previewFadeAt(
     if (plan.previewKind != TransitionPreviewKind.dualLayer) continue;
     final td = clampedTransitionDuration(outgoing, next: incoming);
     if (td <= Duration.zero) continue;
-    final startMs = outgoing.end.inMilliseconds - td.inMilliseconds;
-    final endMs = outgoing.end.inMilliseconds;
+    final half = transitionHalfMs(td);
+    final startMs = outgoing.end.inMilliseconds - half.before;
+    final endMs = outgoing.end.inMilliseconds + half.after;
     if (posMs < startMs || posMs >= endMs) continue;
     final span = td.inMilliseconds;
     final t = span <= 0 ? 1.0 : ((posMs - startMs) / span).clamp(0.0, 1.0);
@@ -401,6 +433,8 @@ bool previewUsesFade(ClipSegment outgoing, ClipSegment next) {
 }
 
 /// Packed-timeline time of the cut **after** [afterIndex] (0..n-2).
+///
+/// Duration-preserving: cut sits at the hard-cut offset (sum of prior durations).
 Duration cutExportTimeAfter(List<ClipSegment> segments, int afterIndex) {
   var offset = Duration.zero;
   for (var i = 0; i <= afterIndex && i < segments.length; i++) {
@@ -409,7 +443,8 @@ Duration cutExportTimeAfter(List<ClipSegment> segments, int afterIndex) {
   return offset;
 }
 
-/// Sequence-time span of a cut transition, centered on the cut.
+/// Packed-timeline span of a cut transition, centered on the cut:
+/// `[C − ⌊td/2⌋, C + ⌈td/2⌉)`.
 ({Duration start, Duration end})? transitionSequenceSpan(
   List<ClipSegment> segments,
   int afterIndex,
@@ -421,10 +456,10 @@ Duration cutExportTimeAfter(List<ClipSegment> segments, int afterIndex) {
   if (td <= Duration.zero) return null;
 
   final cut = cutExportTimeAfter(segments, afterIndex);
-  final halfMs = td.inMilliseconds ~/ 2;
-  var startMs = cut.inMilliseconds - halfMs;
-  var endMs = startMs + td.inMilliseconds;
-  final totalMs = totalKeptDuration(segments).inMilliseconds;
+  final half = transitionHalfMs(td);
+  var startMs = cut.inMilliseconds - half.before;
+  var endMs = cut.inMilliseconds + half.after;
+  final totalMs = exportTimelineDuration(segments).inMilliseconds;
   if (startMs < 0) {
     endMs -= startMs;
     startMs = 0;
@@ -476,11 +511,8 @@ Duration? sourceTimeToExportTime(
       return offset + segment.duration;
     }
     offset += segment.duration;
-    if (applyTransitions &&
-        i < segments.length - 1 &&
-        segment.hasTransition) {
-      offset -= clampedTransitionDuration(segment, next: segments[i + 1]);
-    }
+    // Duration-preserving: flag kept for API compat (does not shorten).
+    if (applyTransitions) {}
   }
   // Past the last kept frame: continue linearly so music/text can sit after video.
   final last = segments.last;
@@ -507,11 +539,7 @@ Duration exportTimeToSourceTime(
       return segment.start + (exportTime - offset);
     }
     offset = nextOffset;
-    if (applyTransitions &&
-        i < segments.length - 1 &&
-        segment.hasTransition) {
-      offset -= clampedTransitionDuration(segment, next: segments[i + 1]);
-    }
+    if (applyTransitions) {}
   }
   // Past packed video: keep advancing source time so layers can live after EOF.
   return segments.last.end + (exportTime - offset);
@@ -689,7 +717,7 @@ bool isOverlayVisibleAt(
   return position >= segments.last.end;
 }
 
-/// Export-time spans for FFmpeg `enable` on a single overlay layer.
+/// Export-time spans for a single overlay layer on the packed timeline.
 List<({double start, double end})> overlayExportSpans(
   TextOverlay overlay,
   List<ClipSegment> segments,

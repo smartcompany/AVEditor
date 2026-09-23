@@ -10,7 +10,7 @@ class ExportFrameSize {
   final int width;
   final int height;
 
-  /// Intermediate scale dimensions fed to FFmpeg before the centre crop.
+  /// Intermediate scale dimensions before the centre crop in native export.
   final int scaleWidth;
   final int scaleHeight;
 }

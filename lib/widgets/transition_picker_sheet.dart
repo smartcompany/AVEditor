@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:aveditor/l10n/app_localizations.dart';
@@ -71,25 +72,37 @@ class _TransitionPickerPanelState extends State<TransitionPickerPanel> {
   }
 
   void _onChanged() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    // Hot reload / late catalog ready: clear spinner without re-bootstrap.
+    if (_loading &&
+        _service.isReady &&
+        _service.catalog.items.isNotEmpty) {
+      setState(() => _loading = false);
+      return;
+    }
+    setState(() {});
   }
 
   Future<void> _bootstrap() async {
-    await Future.wait([
-      _service.ensureInitialized(),
-      _assets.ensureScanned(),
-    ]);
-    if (!mounted) return;
-    final categories = _service.catalog.displayCategories;
-    if (categories.isNotEmpty) {
-      _categoryId ??= categories.first.id;
+    try {
+      // Catalog first so tiles can paint; asset scan is optional chrome.
+      await _service.ensureInitialized();
+      if (!mounted) return;
+      final categories = _service.catalog.displayCategories;
+      if (categories.isNotEmpty) {
+        _categoryId ??= categories.first.id;
+      }
+      final selected = _service.itemById(_selectedId);
+      if (selected != null && _parameters.isEmpty) {
+        _parameters = selected.defaultParameters();
+      }
+      _duration = _clampDuration(_duration, selected);
+      setState(() => _loading = false);
+      unawaited(_assets.ensureScanned());
+    } catch (error, stack) {
+      debugPrint('TransitionPickerPanel bootstrap failed: $error\n$stack');
+      if (mounted) setState(() => _loading = false);
     }
-    final selected = _service.itemById(_selectedId);
-    if (selected != null && _parameters.isEmpty) {
-      _parameters = selected.defaultParameters();
-    }
-    _duration = _clampDuration(_duration, selected);
-    setState(() => _loading = false);
   }
 
   TransitionItem? get _selectedItem {
@@ -192,20 +205,32 @@ class _TransitionPickerPanelState extends State<TransitionPickerPanel> {
   void _commitDuration() {
     final item = _selectedItem;
     if (item == null || item.isNone) return;
-    widget.onDurationChanged(_duration);
+    debugPrint(
+      '[TL] duration.commit ui=${_duration.inMilliseconds}ms id=${item.id}',
+    );
+    // Apply with the new duration so the panel preview rebuilds (onApplied).
     widget.onApplied(_buildApplied(item, _duration));
   }
 
   void _close() {
-    _commitDuration();
+    // Persist duration into the project; do not re-preview — confirm dismisses.
+    final item = _selectedItem;
+    if (item != null && !item.isNone) {
+      widget.onDurationChanged(_duration);
+    }
     widget.onConfirm();
   }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final locale = Localizations.localeOf(context).languageCode;
     final theme = Theme.of(context);
     final categories = _service.catalog.displayCategories;
+    // Recover if catalog became ready while this State was stuck mid-bootstrap
+    // (common after hot reload).
+    final loading = _loading &&
+        !(_service.isReady && _service.catalog.items.isNotEmpty);
     TransitionCategory? category;
     if (categories.isNotEmpty) {
       category = categories.firstWhere(
@@ -222,7 +247,7 @@ class _TransitionPickerPanelState extends State<TransitionPickerPanel> {
     final (minMsInt, maxMsInt) = _boundsFor(_selectedItem);
     final minMs = minMsInt.toDouble();
     final maxMs = maxMsInt.toDouble();
-    final showDuration = _hasEffect && !_loading && items.isNotEmpty;
+    final showDuration = _hasEffect && !loading && items.length > 1;
 
     return Material(
       color: const Color(0xFF12141A),
@@ -286,7 +311,7 @@ class _TransitionPickerPanelState extends State<TransitionPickerPanel> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                cat.title,
+                                cat.localizedTitle(locale),
                                 style: TextStyle(
                                   fontSize: 13,
                                   height: 1.2,
@@ -318,9 +343,18 @@ class _TransitionPickerPanelState extends State<TransitionPickerPanel> {
                 ),
               if (showGrid)
                 Expanded(
-                  child: _loading
-                      ? const Center(child: CircularProgressIndicator())
-                      : categories.isEmpty
+                  child: loading
+                      ? const Center(
+                          child: SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: Color(0xFF4CC9F0),
+                            ),
+                          ),
+                        )
+                      : categories.isEmpty || items.length <= 1
                           ? Padding(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 16,
@@ -352,7 +386,7 @@ class _TransitionPickerPanelState extends State<TransitionPickerPanel> {
                                   item: item,
                                   label: item.isNone
                                       ? l10n.transitionNone
-                                      : item.title,
+                                      : item.localizedTitle(locale),
                                   selected: isSelected,
                                   previewToken:
                                       isSelected ? _previewToken : 0,
@@ -675,7 +709,6 @@ class _PremiumBadge extends StatelessWidget {
   }
 }
 
-/// Shared A / B sample stills for transition thumbnails (no network assets).
 class _TransitionSampleFrame extends StatelessWidget {
   const _TransitionSampleFrame({required this.variant});
 

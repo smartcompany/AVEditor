@@ -148,8 +148,44 @@ object NativeVideoEngineMedia {
       Composition.Builder(
         EditedMediaItemSequence(EditedMediaItem.Builder(mediaItem).build()),
       ).build()
-    } else {
+    } else if (segments.isEmpty()) {
       Composition.Builder(EditedMediaItemSequence(editedItems)).build()
+    } else {
+      // Media3 1.5 cannot composite video transitions between items (gaps are
+      // audio-only). Keep full segment durations so the export timeline matches
+      // iOS duration-preserving packing (total = A+B). Visual effect is still a
+      // hard cut until Transformer gains video crossfade support.
+      // TODO(android): align centered A-end/B-start sampling when Media3 can
+      // composite overlapping video tracks for transitions.
+      val trimmedItems = ArrayList<EditedMediaItem>()
+      for (raw in segments) {
+        val segment = raw as? Map<*, *> ?: continue
+        val startMs = (segment["startMs"] as? Number)?.toLong() ?: 0L
+        val endMs = (segment["endMs"] as? Number)?.toLong() ?: 0L
+        val clipping = MediaItem.ClippingConfiguration.Builder()
+          .setStartPositionMs(startMs)
+          .setEndPositionMs(endMs)
+          .build()
+        val mediaItem = MediaItem.Builder()
+          .setUri(Uri.fromFile(File(sourcePath)))
+          .setClippingConfiguration(clipping)
+          .build()
+        val effects = Effects(
+          /* audioProcessors= */ emptyList(),
+          listOf(
+            Presentation.createForWidthAndHeight(width, height, Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP),
+            ScaleAndRotateTransformation.Builder()
+              .setRotationDegrees(Math.toDegrees(rotation.toDouble()).toFloat())
+              .build(),
+          ),
+        )
+        trimmedItems.add(
+          EditedMediaItem.Builder(mediaItem)
+            .setEffects(effects)
+            .build(),
+        )
+      }
+      Composition.Builder(EditedMediaItemSequence(trimmedItems.ifEmpty { editedItems })).build()
     }
 
     val transformer = Transformer.Builder(context)

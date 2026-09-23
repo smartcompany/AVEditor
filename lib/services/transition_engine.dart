@@ -1,5 +1,6 @@
 import 'package:aveditor/models/applied_transition.dart';
 import 'package:aveditor/models/transition_item.dart';
+import 'package:aveditor/models/transition_role_effect.dart';
 import 'package:aveditor/services/transition_catalog_service.dart';
 import 'package:flutter/foundation.dart';
 
@@ -19,7 +20,7 @@ class TransitionRenderPlan {
     required this.applied,
     required this.definition,
     required this.renderer,
-    required this.xfadeName,
+    required this.effectName,
     required this.previewKind,
     required this.supportedInExport,
     this.fallbackReason,
@@ -29,8 +30,8 @@ class TransitionRenderPlan {
   final TransitionItem? definition;
   final TransitionRendererKind renderer;
 
-  /// FFmpeg `xfade` transition name when [supportedInExport] is true.
-  final String? xfadeName;
+  /// Native / export effect id when [supportedInExport] is true.
+  final String? effectName;
   final TransitionPreviewKind previewKind;
   final bool supportedInExport;
   final String? fallbackReason;
@@ -40,8 +41,8 @@ class TransitionRenderPlan {
 
 /// Resolves catalog definitions into a single render plan for preview + export.
 ///
-/// Renderers are hybrid: primitive/shader/custom may soft-bridge to xfade until
-/// a full GPU / filter-graph path exists — but the decision always goes through
+/// Renderers are hybrid: primitive/shader/custom may soft-bridge to a named
+/// effect until a full GPU path exists — but the decision always goes through
 /// this engine so preview and export cannot diverge silently.
 class TransitionEngine {
   TransitionEngine({TransitionCatalogService? catalog})
@@ -57,7 +58,7 @@ class TransitionEngine {
         applied: AppliedTransition.none,
         definition: null,
         renderer: TransitionRendererKind.cut,
-        xfadeName: null,
+        effectName: null,
         previewKind: TransitionPreviewKind.none,
         supportedInExport: false,
       );
@@ -72,7 +73,7 @@ class TransitionEngine {
           applied: applied,
           definition: definition,
           renderer: renderer,
-          xfadeName: null,
+          effectName: null,
           previewKind: TransitionPreviewKind.none,
           supportedInExport: false,
         );
@@ -80,8 +81,9 @@ class TransitionEngine {
         return _xfadePlan(applied, definition);
       case TransitionRendererKind.primitive:
         return _primitivePlan(applied, definition);
-      case TransitionRendererKind.shader:
       case TransitionRendererKind.custom:
+        return _customPlan(applied, definition);
+      case TransitionRendererKind.shader:
       case TransitionRendererKind.asset:
         return _hybridSoftFail(applied, definition, renderer);
     }
@@ -105,25 +107,25 @@ class TransitionEngine {
     );
   }
 
-  String? ffmpegNameFor(AppliedTransition? applied) {
+  String? effectNameFor(AppliedTransition? applied) {
     final resolved = plan(applied);
     if (!resolved.supportedInExport) return null;
-    return resolved.xfadeName;
+    return resolved.effectName;
   }
 
   TransitionRenderPlan _xfadePlan(
     AppliedTransition applied,
     TransitionItem? definition,
   ) {
-    final name = (definition?.ffmpegName.isNotEmpty == true)
-        ? definition!.ffmpegName
+    final name = (definition?.effectName.isNotEmpty == true)
+        ? definition!.effectName
         : applied.id;
     return TransitionRenderPlan(
       applied: applied,
       definition: definition,
       renderer: TransitionRendererKind.xfade,
-      xfadeName: name,
-      previewKind: _previewForXfade(name),
+      effectName: name,
+      previewKind: _previewForEffect(name),
       supportedInExport: true,
     );
   }
@@ -133,26 +135,26 @@ class TransitionEngine {
     TransitionItem? definition,
   ) {
     // Prefer an explicit export bridge when the author provided one.
-    if (definition != null && definition.ffmpegName.isNotEmpty) {
+    if (definition != null && definition.effectName.isNotEmpty) {
       return TransitionRenderPlan(
         applied: applied,
         definition: definition,
         renderer: TransitionRendererKind.primitive,
-        xfadeName: definition.ffmpegName,
-        previewKind: _previewForXfade(definition.ffmpegName),
+        effectName: definition.effectName,
+        previewKind: _previewForEffect(definition.effectName),
         supportedInExport: true,
         fallbackReason: 'primitive_bridged_to_xfade',
       );
     }
 
-    final inferred = _inferXfadeFromLayers(definition?.layers ?? const []);
+    final inferred = _inferEffectFromLayers(definition?.layers ?? const []);
     if (inferred != null) {
       return TransitionRenderPlan(
         applied: applied,
         definition: definition,
         renderer: TransitionRendererKind.primitive,
-        xfadeName: inferred,
-        previewKind: _previewForXfade(inferred),
+        effectName: inferred,
+        previewKind: _previewForEffect(inferred),
         supportedInExport: true,
         fallbackReason: 'primitive_inferred_xfade',
       );
@@ -166,11 +168,38 @@ class TransitionEngine {
       applied: applied,
       definition: definition,
       renderer: TransitionRendererKind.primitive,
-      xfadeName: 'fade',
+      effectName: 'fade',
       previewKind: TransitionPreviewKind.dualLayer,
       supportedInExport: true,
       fallbackReason: 'primitive_soft_fail_fade',
     );
+  }
+
+  /// Server-driven role compositors (`effect.kind` / customId) — preview is
+  /// fully implemented; [effectName] is only the export bridge.
+  TransitionRenderPlan _customPlan(
+    AppliedTransition applied,
+    TransitionItem? definition,
+  ) {
+    final role = TransitionRoleEffect.resolve(definition);
+    final bridge = definition?.effectName;
+    final name = (bridge != null && bridge.isNotEmpty) ? bridge : 'fade';
+
+    if (role != null) {
+      return TransitionRenderPlan(
+        applied: applied,
+        definition: definition,
+        renderer: TransitionRendererKind.custom,
+        effectName: name,
+        previewKind: TransitionPreviewKind.dualLayer,
+        supportedInExport: true,
+        fallbackReason: bridge != null && bridge.isNotEmpty
+            ? 'custom_export_bridge'
+            : 'custom_export_bridge_fade',
+      );
+    }
+
+    return _hybridSoftFail(applied, definition, TransitionRendererKind.custom);
   }
 
   TransitionRenderPlan _hybridSoftFail(
@@ -178,30 +207,30 @@ class TransitionEngine {
     TransitionItem? definition,
     TransitionRendererKind renderer,
   ) {
-    final bridge = definition?.ffmpegName;
+    final bridge = definition?.effectName;
     final name = (bridge != null && bridge.isNotEmpty) ? bridge : 'fade';
     debugPrint(
       'TransitionEngine: $renderer "${applied.id}" is not fully implemented; '
-      'bridging to xfade=$name',
+      'bridging to effect=$name',
     );
     return TransitionRenderPlan(
       applied: applied,
       definition: definition,
       renderer: renderer,
-      xfadeName: name,
+      effectName: name,
       previewKind: TransitionPreviewKind.dualLayer,
       supportedInExport: true,
       fallbackReason: '${renderer.name}_soft_fail',
     );
   }
 
-  TransitionPreviewKind _previewForXfade(String name) {
+  TransitionPreviewKind _previewForEffect(String name) {
     if (name.isEmpty) return TransitionPreviewKind.none;
-    // Any named xfade gets a dual-player approximation in the editor.
+    // Any named effect gets a dual-player approximation in the editor.
     return TransitionPreviewKind.dualLayer;
   }
 
-  String? _inferXfadeFromLayers(List<TransitionLayer> layers) {
+  String? _inferEffectFromLayers(List<TransitionLayer> layers) {
     if (layers.isEmpty) return null;
     final props = layers.map((l) => l.property).toSet();
     if (props.length == 1 && props.single == TransitionProperty.opacity) {

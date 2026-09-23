@@ -14,6 +14,7 @@ import android.opengl.GLES11Ext
 import android.opengl.GLES20
 import android.os.Handler
 import android.os.HandlerThread
+import android.util.Log
 import android.os.Looper
 import android.view.Surface
 import androidx.media3.common.MimeTypes
@@ -127,6 +128,8 @@ class NativeVideoEnginePlugin :
             mapOf(
               "textureId" to entry.id(),
               "durationMs" to durationMs.toInt(),
+              "width" to 720,
+              "height" to 1280,
             ),
           )
         } catch (e: Exception) {
@@ -146,6 +149,11 @@ class NativeVideoEnginePlugin :
         val ms = ((call.arguments as? Map<*, *>)?.get("positionMs") as? Number)?.toLong() ?: 0L
         session?.seekToMs(ms)
         result.success(null)
+      }
+      "preroll" -> {
+        val ms = ((call.arguments as? Map<*, *>)?.get("positionMs") as? Number)?.toLong() ?: 0L
+        val ready = session?.prerollToMs(ms) ?: false
+        result.success(ready)
       }
       "dispose" -> {
         session?.release()
@@ -210,7 +218,10 @@ class NativeVideoEnginePlugin :
             Handler(Looper.getMainLooper()).post {
               exportResult.fold(
                 onSuccess = { path -> result.success(mapOf("outputPath" to path)) },
-                onFailure = { e -> result.error("export_failed", e.message, null) },
+                onFailure = { e ->
+                  Log.e("NativeVideoEngine", "export failed", e)
+                  result.error("export_failed", e.message ?: e.toString(), e.toString())
+                },
               )
             }
           },
@@ -306,6 +317,31 @@ private class TransitionEngineSession(
       drawFrame(t.coerceIn(0f, 1f))
       onEvent(mapOf("type" to "position", "positionMs" to (us / 1000L).toInt()))
     }
+  }
+
+  fun prerollToMs(ms: Long): Boolean {
+    val us = (ms * 1000L).coerceIn(0L, durationUs)
+    val latch = CountDownLatch(1)
+    var ready = false
+    glHandler.post {
+      try {
+        positionUs = us
+        startWallNs = System.nanoTime()
+        startPosUs = us
+        outDecoder?.seekAndDecode(us)
+        inDecoder?.seekAndDecode(us)
+        val t = if (durationUs > 0) us.toFloat() / durationUs else 1f
+        drawFrame(t.coerceIn(0f, 1f))
+        ready = true
+        onEvent(mapOf("type" to "position", "positionMs" to (us / 1000L).toInt()))
+      } catch (_: Exception) {
+        ready = false
+      } finally {
+        latch.countDown()
+      }
+    }
+    latch.await()
+    return ready
   }
 
   fun release() {
@@ -490,17 +526,25 @@ private class TransitionEngineSession(
   }
 }
 
-/** GPU Renderer — CapCut-style conveyor offsets in clip space. */
+/** GPU Renderer — iMovie slide/push conveyor + cover (incoming overlays). */
 private object GpuSlideRenderer {
   fun offsets(effect: String, t: Float): Pair<FloatArray, FloatArray> {
     return when (effect.lowercase()) {
-      "slideleft", "pushleft", "coverleft" ->
+      "coverleft" ->
+        floatArrayOf(0f, 0f) to floatArrayOf(2f * (1f - t), 0f)
+      "coverright" ->
+        floatArrayOf(0f, 0f) to floatArrayOf(-2f * (1f - t), 0f)
+      "coverup" ->
+        floatArrayOf(0f, 0f) to floatArrayOf(0f, -2f * (1f - t))
+      "coverdown" ->
+        floatArrayOf(0f, 0f) to floatArrayOf(0f, 2f * (1f - t))
+      "slideleft", "pushleft" ->
         floatArrayOf(-2f * t, 0f) to floatArrayOf(2f * (1f - t), 0f)
-      "slideright", "pushright", "coverright" ->
+      "slideright", "pushright" ->
         floatArrayOf(2f * t, 0f) to floatArrayOf(-2f * (1f - t), 0f)
-      "slideup", "pushup", "coverup" ->
+      "slideup", "pushup" ->
         floatArrayOf(0f, 2f * t) to floatArrayOf(0f, -2f * (1f - t))
-      "slidedown", "pushdown", "coverdown" ->
+      "slidedown", "pushdown" ->
         floatArrayOf(0f, -2f * t) to floatArrayOf(0f, 2f * (1f - t))
       else ->
         floatArrayOf(-2f * t, 0f) to floatArrayOf(2f * (1f - t), 0f)
