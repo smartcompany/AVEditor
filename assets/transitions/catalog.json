@@ -1,5 +1,5 @@
 {
-  "version": 37,
+  "version": 40,
   "baseUrl": "",
   "categories": [
     {
@@ -570,54 +570,17 @@
           "thumbnailUrl": "transitions/thumbs/mosaic.webp",
           "layers": [
             {
-              "property": "blur",
+              "property": "rotationY",
               "from": 0,
-              "to": 8,
+              "to": 0.5,
+              "easing": "easeInOut",
               "target": "A",
-              "end": 0.5,
-              "param": "intensity"
-            },
-            {
-              "property": "opacity",
-              "from": 1,
-              "to": 0,
-              "target": "A",
-              "start": 0.35,
-              "end": 0.65
-            },
-            {
-              "property": "blur",
-              "from": 8,
-              "to": 0,
-              "target": "B",
-              "start": 0.5,
-              "param": "intensity"
-            },
-            {
-              "property": "opacity",
-              "from": 0,
-              "to": 1,
-              "target": "B",
-              "start": 0.35,
-              "end": 0.65
-            }
-          ],
-          "parameters": {
-            "intensity": {
-              "type": "double",
-              "default": 0.7,
-              "min": 0,
-              "max": 1
-            }
-          },
-          "controls": [
-            {
-              "type": "slider",
-              "key": "intensity",
-              "label": "Intensity",
-              "min": 0,
-              "max": 1,
-              "default": 0.7
+              "grid": {
+                "columns": 4,
+                "rows": 4,
+                "gap": 0.055,
+                "stagger": 0.58
+              }
             }
           ]
         },
@@ -1090,50 +1053,11 @@
           "thumbnailUrl": "transitions/thumbs/ripple.webp",
           "layers": [
             {
-              "property": "blur",
-              "from": 0,
-              "to": 10,
-              "target": "A",
-              "end": 0.5,
-              "param": "intensity"
-            },
-            {
-              "property": "scale",
-              "from": 1,
-              "to": 1.08,
-              "target": "A",
-              "end": 0.5
-            },
-            {
-              "property": "opacity",
-              "from": 1,
-              "to": 0,
-              "target": "A",
-              "start": 0.3,
-              "end": 0.65
-            },
-            {
-              "property": "blur",
-              "from": 10,
-              "to": 0,
-              "target": "B",
-              "start": 0.45,
-              "param": "intensity"
-            },
-            {
-              "property": "scale",
-              "from": 1.08,
-              "to": 1,
-              "target": "B",
-              "start": 0.45
-            },
-            {
-              "property": "opacity",
+              "property": "ripple",
               "from": 0,
               "to": 1,
-              "target": "B",
-              "start": 0.3,
-              "end": 0.65
+              "easing": "easeInOut",
+              "target": "both"
             }
           ],
           "parameters": {
@@ -1717,54 +1641,17 @@
       "thumbnailUrl": "transitions/thumbs/mosaic.webp",
       "layers": [
         {
-          "property": "blur",
+          "property": "rotationY",
           "from": 0,
-          "to": 8,
+          "to": 0.5,
+          "easing": "easeInOut",
           "target": "A",
-          "end": 0.5,
-          "param": "intensity"
-        },
-        {
-          "property": "opacity",
-          "from": 1,
-          "to": 0,
-          "target": "A",
-          "start": 0.35,
-          "end": 0.65
-        },
-        {
-          "property": "blur",
-          "from": 8,
-          "to": 0,
-          "target": "B",
-          "start": 0.5,
-          "param": "intensity"
-        },
-        {
-          "property": "opacity",
-          "from": 0,
-          "to": 1,
-          "target": "B",
-          "start": 0.35,
-          "end": 0.65
-        }
-      ],
-      "parameters": {
-        "intensity": {
-          "type": "double",
-          "default": 0.7,
-          "min": 0,
-          "max": 1
-        }
-      },
-      "controls": [
-        {
-          "type": "slider",
-          "key": "intensity",
-          "label": "Intensity",
-          "min": 0,
-          "max": 1,
-          "default": 0.7
+          "grid": {
+            "columns": 4,
+            "rows": 4,
+            "gap": 0.055,
+            "stagger": 0.58
+          }
         }
       ]
     },
@@ -2237,50 +2124,11 @@
       "thumbnailUrl": "transitions/thumbs/ripple.webp",
       "layers": [
         {
-          "property": "blur",
-          "from": 0,
-          "to": 10,
-          "target": "A",
-          "end": 0.5,
-          "param": "intensity"
-        },
-        {
-          "property": "scale",
-          "from": 1,
-          "to": 1.08,
-          "target": "A",
-          "end": 0.5
-        },
-        {
-          "property": "opacity",
-          "from": 1,
-          "to": 0,
-          "target": "A",
-          "start": 0.3,
-          "end": 0.65
-        },
-        {
-          "property": "blur",
-          "from": 10,
-          "to": 0,
-          "target": "B",
-          "start": 0.45,
-          "param": "intensity"
-        },
-        {
-          "property": "scale",
-          "from": 1.08,
-          "to": 1,
-          "target": "B",
-          "start": 0.45
-        },
-        {
-          "property": "opacity",
+          "property": "ripple",
           "from": 0,
           "to": 1,
-          "target": "B",
-          "start": 0.3,
-          "end": 0.65
+          "easing": "easeInOut",
+          "target": "both"
         }
       ],
       "parameters": {

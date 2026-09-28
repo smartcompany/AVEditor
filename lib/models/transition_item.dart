@@ -76,6 +76,10 @@ enum TransitionProperty {
   translateX,
   translateY,
   rotation,
+  /// Turns around the vertical axis. 0.5 = half turn; the back face is the other clip.
+  rotationY,
+  /// Concentric wave progress. 0 = untouched, 1 = the wave has passed.
+  ripple,
   blur,
   brightness,
   saturation,
@@ -122,6 +126,48 @@ enum TransitionRendererKind {
   String toJson() => name;
 }
 
+/// Repeats a layer across a cell grid. Absent = the whole frame.
+class TransitionGrid {
+  const TransitionGrid({
+    this.columns = 4,
+    this.rows = 4,
+    this.gap = 0,
+    this.stagger = 0,
+  });
+
+  final int columns;
+  final int rows;
+  /// Inset as a fraction of the cell size.
+  final double gap;
+  /// 0…0.95. Share of the timeline used to spread cell start times.
+  final double stagger;
+
+  static int _axis(Object? raw, int fallback) {
+    final n = (raw as num?)?.round() ?? fallback;
+    if (n < 1) return 1;
+    if (n > 8) return 8;
+    return n;
+  }
+
+  factory TransitionGrid.fromJson(Map<String, dynamic> json) {
+    final gap = (json['gap'] as num?)?.toDouble() ?? 0;
+    final stagger = (json['stagger'] as num?)?.toDouble() ?? 0;
+    return TransitionGrid(
+      columns: _axis(json['columns'], 4),
+      rows: _axis(json['rows'], 4),
+      gap: gap.clamp(0.0, 0.4),
+      stagger: stagger.clamp(0.0, 0.95),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'columns': columns,
+        'rows': rows,
+        'gap': gap,
+        'stagger': stagger,
+      };
+}
+
 class TransitionLayer {
   const TransitionLayer({
     required this.property,
@@ -134,6 +180,7 @@ class TransitionLayer {
     this.end = 1,
     this.param,
     this.mode,
+    this.grid,
   });
 
   final TransitionProperty property;
@@ -159,6 +206,9 @@ class TransitionLayer {
   /// - wipe: edge erased first (`left` / `right` / `top` / `bottom`)
   final String? mode;
 
+  /// When set, this layer is sampled per cell. See [TransitionGrid].
+  final TransitionGrid? grid;
+
   factory TransitionLayer.fromJson(Map<String, dynamic> json) {
     final property = TransitionProperty.fromJson(json['property'] as String?);
     if (property == null) {
@@ -180,6 +230,13 @@ class TransitionLayer {
       end: end < start ? start : end.clamp(0.0, 1.0),
       param: json['param'] as String?,
       mode: json['mode'] as String?,
+      grid: json['grid'] is Map<String, dynamic>
+          ? TransitionGrid.fromJson(json['grid'] as Map<String, dynamic>)
+          : json['grid'] is Map
+              ? TransitionGrid.fromJson(
+                  Map<String, dynamic>.from(json['grid'] as Map),
+                )
+              : null,
     );
   }
 
@@ -194,6 +251,7 @@ class TransitionLayer {
         if (end != 1) 'end': end,
         if (param != null) 'param': param,
         if (mode != null) 'mode': mode,
+        if (grid != null) 'grid': grid!.toJson(),
       };
 }
 

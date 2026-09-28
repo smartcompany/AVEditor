@@ -262,6 +262,74 @@ void main() {
       expect(TransitionRoleEffect.resolve(byIdOnly), isNull);
     });
 
+    test('ripple layer progress opens the wave and finishes on B', () {
+      final layer = TransitionLayer.fromJson(const {
+        'property': 'ripple',
+        'from': 0,
+        'to': 1,
+        'easing': 'easeInOut',
+        'target': 'both',
+      });
+      final start = evaluateTransitionLayers(layers: [layer], t: 0);
+      final end = evaluateTransitionLayers(layers: [layer], t: 1);
+      expect(start.a.ripple, 0);
+      expect(start.b.ripple, 0);
+      expect(start.a.opacity, 1);
+      expect(start.b.opacity, 1);
+      expect(end.a.ripple, 1);
+      expect(end.b.ripple, 1);
+    });
+
+    test('grid rotationY is catalog data, not an effect kind', () {
+      final layer = TransitionLayer.fromJson(const {
+        'property': 'rotationY',
+        'from': 0,
+        'to': 0.5,
+        'easing': 'easeInOut',
+        'target': 'A',
+        'grid': {'columns': 5, 'rows': 3, 'gap': 0.04, 'stagger': 0.5},
+      });
+      expect(layer.property, TransitionProperty.rotationY);
+      expect(layer.grid!.columns, 5);
+      expect(layer.grid!.rows, 3);
+      expect(layer.grid!.stagger, 0.5);
+      expect(TransitionRoleEffect.resolve(TransitionItem(
+        id: 'mosaic',
+        title: 'Mosaic',
+        effectName: 'pixelize',
+        defaultDurationMs: 700,
+        accent: '#fff',
+        renderer: TransitionRendererKind.primitive,
+        layers: [layer],
+      )), isNull);
+
+      expect(gridCellProgress(0, 0, 0.5), 0);
+      expect(gridCellProgress(2, 1, 0.5), 1);
+      final mid = List.generate(16, (i) => gridCellProgress(i, 0.5, 0.58));
+      expect(mid.toSet().length, greaterThan(1));
+
+      final start = evaluateGridCell(
+        [layer],
+        0,
+        0,
+      );
+      expect(start.a.rotationY, 0);
+      expect(start.a.opacity, 1);
+      expect(start.b.opacity, 1);
+      final end = applyTransitionLayers(
+        base: const TransitionLayerEvaluation(
+          a: TransitionLayerPose(),
+          b: TransitionLayerPose(),
+        ),
+        layers: [layer],
+        t: 1,
+      );
+      expect(end.a.rotationY, 0.5);
+      final face = rotationYFace(0.5);
+      expect(face.showBack, isTrue);
+      expect(face.faceRadians.abs(), lessThan(0.001));
+    });
+
     test('puzzle effect resolves from effect.kind + reverse param', () {
       final left = TransitionItem(
         id: 'whatever-left',

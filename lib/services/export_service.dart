@@ -292,6 +292,13 @@ class ExportService {
           'end': layer.end,
           if (layer.param != null) 'param': layer.param!,
           if (layer.mode != null) 'mode': layer.mode!,
+          if (layer.grid != null)
+            'grid': {
+              'columns': layer.grid!.columns,
+              'rows': layer.grid!.rows,
+              'gap': layer.grid!.gap,
+              'stagger': layer.grid!.stagger,
+            },
         },
     ];
   }

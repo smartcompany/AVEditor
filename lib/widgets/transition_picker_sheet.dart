@@ -621,7 +621,10 @@ class _TransitionTileState extends State<_TransitionTile>
                                   incoming: const _TransitionSampleFrame(
                                     variant: 1,
                                   ),
-                                  t: widget.selected ? _play.value : 0,
+                                  // Idle tiles show the middle of the effect so
+                                  // wipes, spins, and fades are distinguishable.
+                                  // The selected tile still plays from the start.
+                                  t: widget.selected ? _play.value : 0.5,
                                   plan: _plan,
                                 ),
                               if (widget.item.isNone)

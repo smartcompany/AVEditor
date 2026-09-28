@@ -17,6 +17,8 @@ class TransitionLayerPose {
     this.translateX = 0,
     this.translateY = 0,
     this.rotation = 0,
+    this.rotationY = 0,
+    this.ripple = 0,
     this.blur = 0,
     this.brightness = 0,
     this.blurMode,
@@ -29,8 +31,12 @@ class TransitionLayerPose {
   /// Frame-normalized (-1 = full width left, 1 = full width right).
   final double translateX;
   final double translateY;
-  /// Turns (1.0 = 360°).
+  /// Turns (1.0 = 360°) around Z.
   final double rotation;
+  /// Turns around Y. 0.5 shows the other clip.
+  final double rotationY;
+  /// Concentric wave progress. 0 = A, 1 = B after the wave.
+  final double ripple;
   final double blur;
   /// -1…1 style lift used as a white/black overlay.
   final double brightness;
@@ -47,6 +53,8 @@ class TransitionLayerPose {
     double? translateX,
     double? translateY,
     double? rotation,
+    double? rotationY,
+    double? ripple,
     double? blur,
     double? brightness,
     String? blurMode,
@@ -59,6 +67,8 @@ class TransitionLayerPose {
       translateX: translateX ?? this.translateX,
       translateY: translateY ?? this.translateY,
       rotation: rotation ?? this.rotation,
+      rotationY: rotationY ?? this.rotationY,
+      ripple: ripple ?? this.ripple,
       blur: blur ?? this.blur,
       brightness: brightness ?? this.brightness,
       blurMode: blurMode ?? this.blurMode,
@@ -85,14 +95,22 @@ TransitionLayerEvaluation evaluateTransitionLayers({
   Map<String, double> parameters = const {},
 }) {
   final progress = t.clamp(0.0, 1.0);
+  final frameLayers = layers.where((layer) => layer.grid == null).toList();
+  if (frameLayers.isEmpty && layers.any((layer) => layer.grid != null)) {
+    return const TransitionLayerEvaluation(
+      a: TransitionLayerPose(),
+      b: TransitionLayerPose(),
+    );
+  }
   var a = const TransitionLayerPose(opacity: 1);
   var b = const TransitionLayerPose(opacity: 0);
 
-  final hasOpacity = layers.any((l) => l.property == TransitionProperty.opacity);
+  final hasOpacity =
+      frameLayers.any((l) => l.property == TransitionProperty.opacity);
   var aOpacitySet = false;
   var bOpacitySet = false;
 
-  for (final layer in layers) {
+  for (final layer in frameLayers) {
     // Windowed layers must not apply their `from` before [start] — that would
     // stomp earlier writers (e.g. fade-to-black's second brightness track
     // holding -1 for the whole first half).
@@ -123,11 +141,13 @@ TransitionLayerEvaluation evaluateTransitionLayers({
   if (!hasOpacity) {
     // Spatial motion (slide/push) should stay solid — auto crossfade makes
     // the two clips ghost through each other and looks unnatural.
-    final spatial = layers.any(
+    final spatial = frameLayers.any(
       (l) =>
           l.property == TransitionProperty.translateX ||
           l.property == TransitionProperty.translateY ||
           l.property == TransitionProperty.rotation ||
+          l.property == TransitionProperty.rotationY ||
+          l.property == TransitionProperty.ripple ||
           l.property == TransitionProperty.wipe,
     );
     if (spatial) {
@@ -144,6 +164,94 @@ TransitionLayerEvaluation evaluateTransitionLayers({
   }
 
   return TransitionLayerEvaluation(a: a, b: b);
+}
+
+/// Applies [layers] at [t] onto [base] without the opacity auto-fill.
+TransitionLayerEvaluation applyTransitionLayers({
+  required TransitionLayerEvaluation base,
+  required List<TransitionLayer> layers,
+  required double t,
+  Map<String, double> parameters = const {},
+}) {
+  final progress = t.clamp(0.0, 1.0);
+  var a = base.a;
+  var b = base.b;
+  for (final layer in layers) {
+    if (progress < layer.start.clamp(0.0, 1.0)) continue;
+    final value = evaluateTransitionLayer(
+      layer,
+      progress,
+      parameters: parameters,
+    );
+    if (layer.target == TransitionLayerTarget.a ||
+        layer.target == TransitionLayerTarget.both) {
+      a = _applyProperty(a, layer, value);
+    }
+    if (layer.target == TransitionLayerTarget.b ||
+        layer.target == TransitionLayerTarget.both) {
+      b = _applyProperty(b, layer, value);
+    }
+  }
+  return TransitionLayerEvaluation(a: a, b: b);
+}
+
+/// Cell-local progress. [stagger] is the share of the timeline used as delay.
+///
+/// Phase is a golden-ratio scramble so neighboring cells do not move together.
+/// Same formula in the dashboard and the iOS exporter.
+double gridCellProgress(int index, double t, double stagger) {
+  final progress = t.clamp(0.0, 1.0);
+  final spread = stagger.clamp(0.0, 0.95);
+  if (spread <= 0.0001) return progress;
+  final phase = (index * 0.618033988749895) % 1.0;
+  final start = phase * spread;
+  return ((progress - start) / (1.0 - spread)).clamp(0.0, 1.0);
+}
+
+/// One cell: base layers use global [t], gridded layers use [gridCellProgress].
+TransitionLayerEvaluation evaluateGridCell(
+  List<TransitionLayer> layers,
+  double t,
+  int index, {
+  Map<String, double> parameters = const {},
+}) {
+  final gridLayers = layers.where((layer) => layer.grid != null).toList();
+  final cellLayers = gridLayers.isEmpty
+      ? layers
+          .where((layer) => layer.property == TransitionProperty.rotationY)
+          .toList()
+      : gridLayers;
+  final baseLayers =
+      layers.where((layer) => !cellLayers.contains(layer)).toList();
+  var evaluation = baseLayers.isEmpty
+      ? const TransitionLayerEvaluation(
+          a: TransitionLayerPose(),
+          b: TransitionLayerPose(),
+        )
+      : evaluateTransitionLayers(
+          layers: baseLayers,
+          t: t,
+          parameters: parameters,
+        );
+  for (final layer in cellLayers) {
+    evaluation = applyTransitionLayers(
+      base: evaluation,
+      layers: [layer],
+      t: gridCellProgress(index, t, layer.grid?.stagger ?? 0),
+      parameters: parameters,
+    );
+  }
+  return evaluation;
+}
+
+/// Visible Y-rotation. Past 90° the other clip faces the camera.
+({bool showBack, double faceRadians}) rotationYFace(double turns) {
+  final angle = turns * math.pi * 2;
+  final showBack = math.cos(angle) < 0;
+  final face = showBack
+      ? (angle > 0 ? angle - math.pi : angle + math.pi)
+      : angle;
+  return (showBack: showBack, faceRadians: face);
 }
 
 double evaluateTransitionLayer(
@@ -185,6 +293,8 @@ double _identity(TransitionProperty property) {
     case TransitionProperty.translateX:
     case TransitionProperty.translateY:
     case TransitionProperty.rotation:
+    case TransitionProperty.rotationY:
+    case TransitionProperty.ripple:
     case TransitionProperty.blur:
     case TransitionProperty.brightness:
     case TransitionProperty.saturation:
@@ -210,6 +320,10 @@ TransitionLayerPose _applyProperty(
       return pose.copyWith(translateY: value);
     case TransitionProperty.rotation:
       return pose.copyWith(rotation: value);
+    case TransitionProperty.rotationY:
+      return pose.copyWith(rotationY: value);
+    case TransitionProperty.ripple:
+      return pose.copyWith(ripple: value.clamp(0.0, 1.0));
     case TransitionProperty.blur:
       return pose.copyWith(blur: value, blurMode: layer.mode);
     case TransitionProperty.brightness:
@@ -269,6 +383,25 @@ class TransitionLayerCompositor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (layers.any((layer) => layer.property == TransitionProperty.ripple)) {
+      return _RippleLayer(
+        progress: t.clamp(0.0, 1.0),
+        layers: layers,
+        parameters: parameters,
+        outgoing: outgoing,
+        incoming: incoming,
+      );
+    }
+    if (layers.any((layer) => layer.grid != null) ||
+        layers.any((layer) => layer.property == TransitionProperty.rotationY)) {
+      return _GridLayer(
+        progress: t.clamp(0.0, 1.0),
+        layers: layers,
+        parameters: parameters,
+        outgoing: outgoing,
+        incoming: incoming,
+      );
+    }
     final eval = evaluateTransitionLayers(
       layers: layers,
       t: t,
@@ -325,6 +458,7 @@ TransitionLayerPose _poseWithoutBrightness(TransitionLayerPose pose) {
 
 bool _isActivelyTransformed(TransitionLayerPose pose) {
   return pose.rotation.abs() > 0.001 ||
+      pose.rotationY.abs() > 0.001 ||
       (pose.scale - 1).abs() > 0.01 ||
       pose.translateX.abs() > 0.01 ||
       pose.translateY.abs() > 0.01 ||
@@ -838,6 +972,480 @@ class _RenderPuzzleIncomingStrips extends RenderProxyBox {
           );
         },
       );
+    }
+  }
+}
+
+/// Concentric wave. [progress] is the catalog `ripple` value (0 = A, 1 = B).
+/// `parameters.intensity` scales only the ring bulge.
+class _RippleLayer extends MultiChildRenderObjectWidget {
+  _RippleLayer({
+    required this.progress,
+    required this.layers,
+    required this.parameters,
+    required Widget outgoing,
+    required Widget incoming,
+  }) : super(children: [outgoing, incoming]);
+
+  final double progress;
+  final List<TransitionLayer> layers;
+  final Map<String, double> parameters;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) {
+    return _RenderRipple(
+      progress: progress,
+      layers: layers,
+      parameters: parameters,
+    );
+  }
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant _RenderRipple renderObject,
+  ) {
+    renderObject
+      ..progress = progress
+      ..layers = layers
+      ..parameters = parameters;
+  }
+}
+
+class _RippleParentData extends ContainerBoxParentData<RenderBox> {}
+
+class _RenderRipple extends RenderBox
+    with
+        ContainerRenderObjectMixin<RenderBox, _RippleParentData>,
+        RenderBoxContainerDefaultsMixin<RenderBox, _RippleParentData> {
+  _RenderRipple({
+    required double progress,
+    required List<TransitionLayer> layers,
+    required Map<String, double> parameters,
+  })  : _progress = progress,
+        _layers = layers,
+        _parameters = parameters;
+
+  double _progress;
+  List<TransitionLayer> _layers;
+  Map<String, double> _parameters;
+
+  double get progress => _progress;
+  set progress(double value) {
+    if (_progress == value) return;
+    _progress = value;
+    markNeedsPaint();
+  }
+
+  List<TransitionLayer> get layers => _layers;
+  set layers(List<TransitionLayer> value) {
+    _layers = value;
+    markNeedsPaint();
+  }
+
+  Map<String, double> get parameters => _parameters;
+  set parameters(Map<String, double> value) {
+    _parameters = value;
+    markNeedsPaint();
+  }
+
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! _RippleParentData) {
+      child.parentData = _RippleParentData();
+    }
+  }
+
+  @override
+  bool get alwaysNeedsCompositing => true;
+
+  @override
+  void performLayout() {
+    size = constraints.biggest;
+    var child = firstChild;
+    while (child != null) {
+      child.layout(BoxConstraints.tight(size));
+      child = (child.parentData! as _RippleParentData).nextSibling;
+    }
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    final outgoing = firstChild;
+    if (outgoing == null) return;
+    final incoming = (outgoing.parentData! as _RippleParentData).nextSibling;
+    if (incoming == null) {
+      context.paintChild(outgoing, offset);
+      return;
+    }
+
+    var wave = 0.0;
+    final eval = evaluateTransitionLayers(
+      layers: layers,
+      t: progress,
+      parameters: parameters,
+    );
+    wave = math.max(eval.a.ripple, eval.b.ripple).clamp(0.0, 1.0);
+    final intensity = (parameters['intensity'] ?? 0.7).clamp(0.0, 1.0);
+    final center = size.center(Offset.zero);
+    final maxR = math.sqrt(size.width * size.width + size.height * size.height) * 0.62;
+    final front = wave * maxR;
+    final ring = math.min(size.width, size.height) * (0.10 + 0.08 * intensity);
+    final bulge = math.sin(wave * math.pi) * intensity * 0.22;
+
+    context.paintChild(outgoing, offset);
+
+    final wake = front - ring * 0.35;
+    if (wake > 1) {
+      _paintDisc(context, offset, incoming, center, wake);
+    }
+
+    const bands = 7;
+    for (var i = 0; i < bands; i++) {
+      final u0 = i / bands;
+      final u1 = (i + 1) / bands;
+      final r0 = front - ring * 0.2 + u0 * ring * 1.5;
+      final r1 = front - ring * 0.2 + u1 * ring * 1.5;
+      if (r1 <= 1) continue;
+      final phase = (u0 + u1) * 0.5;
+      final scale = 1 + math.sin(phase * math.pi) * bulge;
+      final child = (r0 + r1) * 0.5 < front ? incoming : outgoing;
+      _paintRing(context, offset, child, center, math.max(0, r0), r1, scale);
+    }
+  }
+
+  void _paintDisc(
+    PaintingContext context,
+    Offset offset,
+    RenderBox child,
+    Offset center,
+    double radius,
+  ) {
+    final path = Path()
+      ..addOval(Rect.fromCircle(center: center, radius: radius));
+    context.pushClipPath(
+      needsCompositing,
+      offset,
+      Rect.fromCircle(center: center, radius: radius),
+      path,
+      (
+        PaintingContext clipped,
+        Offset origin,
+      ) {
+        clipped.paintChild(child, origin);
+      },
+    );
+  }
+
+  void _paintRing(
+    PaintingContext context,
+    Offset offset,
+    RenderBox child,
+    Offset center,
+    double inner,
+    double outer,
+    double scale,
+  ) {
+    final path = Path()
+      ..addOval(Rect.fromCircle(center: center, radius: outer))
+      ..addOval(Rect.fromCircle(center: center, radius: inner))
+      ..fillType = PathFillType.evenOdd;
+    final matrix = Matrix4.identity()
+      ..translateByDouble(center.dx, center.dy, 0, 1)
+      ..scaleByDouble(scale, scale, 1, 1)
+      ..translateByDouble(-center.dx, -center.dy, 0, 1);
+    context.pushClipPath(
+      needsCompositing,
+      offset,
+      Rect.fromCircle(center: center, radius: outer),
+      path,
+      (
+        PaintingContext clipped,
+        Offset origin,
+      ) {
+        clipped.pushTransform(needsCompositing, origin, matrix, (
+          PaintingContext transformed,
+          Offset childOffset,
+        ) {
+          transformed.paintChild(child, childOffset);
+        });
+      },
+    );
+  }
+}
+
+/// Paints catalog layers that use `grid` or `rotationY`.
+///
+/// Cell layout comes from the first `grid`. Each gridded layer uses its own
+/// `stagger`. `rotationY` flips that target; the back face is the other clip.
+class _GridLayer extends MultiChildRenderObjectWidget {
+  _GridLayer({
+    required this.progress,
+    required this.layers,
+    required this.parameters,
+    required Widget outgoing,
+    required Widget incoming,
+  }) : super(children: [outgoing, incoming]);
+
+  final double progress;
+  final List<TransitionLayer> layers;
+  final Map<String, double> parameters;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) {
+    return _RenderGridLayer(
+      progress: progress,
+      layers: layers,
+      parameters: parameters,
+    );
+  }
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant _RenderGridLayer renderObject,
+  ) {
+    renderObject
+      ..progress = progress
+      ..layers = layers
+      ..parameters = parameters;
+  }
+}
+
+class _GridParentData extends ContainerBoxParentData<RenderBox> {}
+
+class _RenderGridLayer extends RenderBox
+    with
+        ContainerRenderObjectMixin<RenderBox, _GridParentData>,
+        RenderBoxContainerDefaultsMixin<RenderBox, _GridParentData> {
+  _RenderGridLayer({
+    required double progress,
+    required List<TransitionLayer> layers,
+    required Map<String, double> parameters,
+  })  : _progress = progress,
+        _layers = layers,
+        _parameters = parameters;
+
+  double _progress;
+  List<TransitionLayer> _layers;
+  Map<String, double> _parameters;
+
+  double get progress => _progress;
+  set progress(double value) {
+    if (_progress == value) return;
+    _progress = value;
+    markNeedsPaint();
+  }
+
+  List<TransitionLayer> get layers => _layers;
+  set layers(List<TransitionLayer> value) {
+    _layers = value;
+    markNeedsPaint();
+  }
+
+  Map<String, double> get parameters => _parameters;
+  set parameters(Map<String, double> value) {
+    _parameters = value;
+    markNeedsPaint();
+  }
+
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! _GridParentData) {
+      child.parentData = _GridParentData();
+    }
+  }
+
+  @override
+  bool get alwaysNeedsCompositing => true;
+
+  @override
+  void performLayout() {
+    size = constraints.biggest;
+    var child = firstChild;
+    while (child != null) {
+      child.layout(BoxConstraints.tight(size));
+      child = (child.parentData! as _GridParentData).nextSibling;
+    }
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    final outgoing = firstChild;
+    if (outgoing == null) return;
+    final incoming = (outgoing.parentData! as _GridParentData).nextSibling;
+    if (incoming == null) {
+      context.paintChild(outgoing, offset);
+      return;
+    }
+
+    final gridLayers = layers.where((layer) => layer.grid != null).toList();
+    final cellLayers = gridLayers.isEmpty
+        ? layers
+            .where((layer) => layer.property == TransitionProperty.rotationY)
+            .toList()
+        : gridLayers;
+    final baseLayers = layers
+        .where((layer) => !cellLayers.contains(layer))
+        .toList();
+    final layout = gridLayers.isEmpty ? null : gridLayers.first.grid;
+    final columns = layout?.columns ?? 1;
+    final rows = layout?.rows ?? 1;
+    final gap = layout?.gap ?? 0;
+    final base = baseLayers.isEmpty
+        ? const TransitionLayerEvaluation(
+            a: TransitionLayerPose(),
+            b: TransitionLayerPose(),
+          )
+        : evaluateTransitionLayers(
+            layers: baseLayers,
+            t: progress,
+            parameters: parameters,
+          );
+
+    final canvas = context.canvas;
+    canvas.drawRect(offset & size, Paint()..color = const Color(0xFF000000));
+
+    final cellW = size.width / columns;
+    final cellH = size.height / rows;
+    final hasFlip = cellLayers.any(
+      (layer) => layer.property == TransitionProperty.rotationY,
+    );
+    var flipFront = TransitionLayerTarget.a;
+    for (final layer in cellLayers) {
+      if (layer.property != TransitionProperty.rotationY) continue;
+      if (layer.target != TransitionLayerTarget.both) flipFront = layer.target;
+    }
+
+    for (var row = 0; row < rows; row++) {
+      for (var col = 0; col < columns; col++) {
+        final index = row * columns + col;
+        var eval = base;
+        for (final layer in cellLayers) {
+          final cellT = gridCellProgress(
+            index,
+            progress,
+            layer.grid?.stagger ?? 0,
+          );
+          eval = applyTransitionLayers(
+            base: eval,
+            layers: [layer],
+            t: cellT,
+            parameters: parameters,
+          );
+        }
+        final gapX = cellW * gap;
+        final gapY = cellH * gap;
+        final cell = Rect.fromLTWH(
+          col * cellW + gapX,
+          row * cellH + gapY,
+          math.max(0, cellW - gapX * 2),
+          math.max(0, cellH - gapY * 2),
+        );
+        if (cell.width < 0.5 || cell.height < 0.5) continue;
+        if (hasFlip) {
+          final turns = flipFront == TransitionLayerTarget.b
+              ? eval.b.rotationY
+              : eval.a.rotationY;
+          final face = rotationYFace(turns);
+          final showB = flipFront == TransitionLayerTarget.b
+              ? !face.showBack
+              : face.showBack;
+          final pose = showB ? eval.b : eval.a;
+          _paintCellFace(
+            context,
+            offset,
+            cell,
+            pose,
+            showB ? incoming : outgoing,
+            faceRadians: face.faceRadians,
+          );
+        } else {
+          final aOnTop = aShouldPaintOnTop(eval, layers: layers);
+          final firstPose = aOnTop ? eval.b : eval.a;
+          final firstChildBox = aOnTop ? incoming : outgoing;
+          final secondPose = aOnTop ? eval.a : eval.b;
+          final secondChildBox = aOnTop ? outgoing : incoming;
+          _paintCellFace(context, offset, cell, firstPose, firstChildBox);
+          _paintCellFace(context, offset, cell, secondPose, secondChildBox);
+        }
+      }
+    }
+  }
+
+  void _paintCellFace(
+    PaintingContext context,
+    Offset offset,
+    Rect cell,
+    TransitionLayerPose pose,
+    RenderBox child, {
+    double faceRadians = 0,
+  }) {
+    if (pose.opacity <= 0.001 || pose.scale.abs() < 0.001 || pose.wipe >= 0.999) {
+      return;
+    }
+    final center = cell.center;
+    final matrix = Matrix4.identity()
+      ..setEntry(3, 2, faceRadians == 0 ? 0 : 0.0014)
+      ..translateByDouble(
+        center.dx + pose.translateX * cell.width,
+        center.dy + pose.translateY * cell.height,
+        0,
+        1,
+      )
+      ..rotateY(faceRadians)
+      ..rotateZ(pose.rotation * math.pi * 2)
+      ..scaleByDouble(pose.scale, pose.scale, 1, 1)
+      ..translateByDouble(-center.dx, -center.dy, 0, 1);
+    final clip = _wipedCell(cell, pose);
+    context.pushTransform(needsCompositing, offset, matrix, (
+      PaintingContext transformed,
+      Offset transformedOffset,
+    ) {
+      void paint(PaintingContext clipped, Offset clipOffset) {
+        clipped.pushClipRect(needsCompositing, clipOffset, clip, (
+          PaintingContext cellCtx,
+          Offset origin,
+        ) {
+          cellCtx.paintChild(child, origin);
+        });
+      }
+
+      if (pose.opacity >= 0.999) {
+        paint(transformed, transformedOffset);
+        return;
+      }
+      transformed.pushOpacity(
+        transformedOffset,
+        (pose.opacity.clamp(0.0, 1.0) * 255).round(),
+        paint,
+      );
+    });
+  }
+
+  Rect _wipedCell(Rect cell, TransitionLayerPose pose) {
+    final w = pose.wipe.clamp(0.0, 1.0);
+    if (w <= 0.001) return cell;
+    switch (pose.wipeEdge) {
+      case 'right':
+        return Rect.fromLTWH(cell.left, cell.top, cell.width * (1 - w), cell.height);
+      case 'top':
+        return Rect.fromLTWH(
+          cell.left,
+          cell.top + cell.height * w,
+          cell.width,
+          cell.height * (1 - w),
+        );
+      case 'bottom':
+        return Rect.fromLTWH(cell.left, cell.top, cell.width, cell.height * (1 - w));
+      case 'left':
+      default:
+        return Rect.fromLTWH(
+          cell.left + cell.width * w,
+          cell.top,
+          cell.width * (1 - w),
+          cell.height,
+        );
     }
   }
 }

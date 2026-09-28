@@ -266,7 +266,7 @@ void main() {
         jsonDecode(raw) as Map<String, dynamic>,
       );
 
-      expect(catalog.version, 26);
+      expect(catalog.version, 40);
       expect(catalog.displayCategories.length, 1);
       expect(catalog.displayCategories.single.id, 'basic');
       expect(catalog.byId('fade'), isNull);
@@ -434,6 +434,27 @@ void main() {
           expect(kind, 'doorway');
           final params = first['transitionParams'] as Map;
           expect(params['incomingScaleFrom'], 0.84);
+        }
+        if (item.id == 'ripple') {
+          expect(kind, isNull);
+          final wave = (layers ?? const []).cast<Map>().firstWhere(
+                (e) => e['property'] == 'ripple',
+              );
+          expect(wave['from'], 0);
+          expect(wave['to'], 1);
+          expect(wave['target'], 'both');
+        }
+        if (item.id == 'mosaic') {
+          expect(kind, isNull);
+          final flip = (layers ?? const []).cast<Map>().firstWhere(
+                (e) => e['property'] == 'rotationY',
+              );
+          expect(flip['target'], 'A');
+          expect(flip['to'], 0.5);
+          final grid = flip['grid'] as Map;
+          expect(grid['columns'], 4);
+          expect(grid['rows'], 4);
+          expect(grid['stagger'], 0.58);
         }
         if (item.id == 'puzzleright') {
           expect(kind, 'puzzle');

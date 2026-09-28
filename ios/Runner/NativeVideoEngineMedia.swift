@@ -763,6 +763,11 @@ struct ExportMotion {
   let start: CGFloat
   let end: CGFloat
   let mode: String
+  /// 0 = whole frame. Otherwise this layer is sampled per cell.
+  let columns: Int
+  let rows: Int
+  let gap: CGFloat
+  let stagger: CGFloat
 }
 
 func exportMotionLayers(_ raw: Any?) -> [ExportMotion] {
@@ -773,6 +778,16 @@ func exportMotionLayers(_ raw: Any?) -> [ExportMotion] {
     else { return nil }
     let start = map["start"] == nil ? 0 : exportNumber(map["start"])
     let end = map["end"] == nil ? 1 : exportNumber(map["end"])
+    var columns = 0
+    var rows = 0
+    var gap: CGFloat = 0
+    var stagger: CGFloat = 0
+    if let grid = map["grid"] as? [String: Any] {
+      columns = gridAxisCount(grid["columns"], fallback: 4)
+      rows = gridAxisCount(grid["rows"], fallback: 4)
+      gap = min(0.4, max(0, exportOptionalNumber(grid["gap"]) ?? 0))
+      stagger = min(0.95, max(0, exportOptionalNumber(grid["stagger"]) ?? 0))
+    }
     return ExportMotion(
       property: property,
       from: exportNumber(map["from"]),
@@ -781,7 +796,11 @@ func exportMotionLayers(_ raw: Any?) -> [ExportMotion] {
       target: (map["target"] as? String) ?? "A",
       start: start,
       end: max(start, end),
-      mode: (map["mode"] as? String)?.lowercased() ?? ""
+      mode: (map["mode"] as? String)?.lowercased() ?? "",
+      columns: columns,
+      rows: rows,
+      gap: gap,
+      stagger: stagger
     )
   }
 }
@@ -789,6 +808,11 @@ func exportMotionLayers(_ raw: Any?) -> [ExportMotion] {
 private func exportNumber(_ value: Any?) -> CGFloat {
   if let number = value as? NSNumber { return CGFloat(number.doubleValue) }
   return 0
+}
+
+func gridAxisCount(_ value: Any?, fallback: Int) -> Int {
+  guard let number = exportOptionalNumber(value) else { return fallback }
+  return min(8, max(1, Int(number.rounded())))
 }
 
 func exportOptionalNumber(_ value: Any?) -> CGFloat? {
@@ -1309,6 +1333,9 @@ private struct ExportPose {
   var opacity: CGFloat = 1
   var scale: CGFloat = 1
   var turns: CGFloat = 0
+  var rotationY: CGFloat = 0
+  /// Concentric wave progress. 0 = outgoing, 1 = incoming.
+  var ripple: CGFloat = 0
   var tx: CGFloat = 0
   var ty: CGFloat = 0
   var blur: CGFloat = 0
@@ -1409,6 +1436,12 @@ private final class ExportFrameRenderer {
     t: CGFloat,
     canvas: CGRect
   ) -> CIImage {
+    if layers.contains(where: { $0.property == "ripple" }) {
+      return composeRipple(outgoing, incoming, layers: layers, t: t, canvas: canvas)
+    }
+    if layers.contains(where: { $0.columns > 0 || $0.property == "rotationY" }) {
+      return composeCells(outgoing, incoming, layers: layers, t: t, canvas: canvas)
+    }
     let (outPose, inPose, outgoingOnTop) = evaluateExportPoses(layers, t: t)
     let outLayer = applyPose(outgoing, outPose, canvas: canvas)
     let inLayer = applyPose(incoming, inPose, canvas: canvas)
@@ -1421,6 +1454,125 @@ private final class ExportFrameRenderer {
       image = CIImage(color: color).cropped(to: canvas).composited(over: image)
     }
     return image.cropped(to: canvas)
+  }
+
+  /// `ripple` layer value is the wave progress. The ring displaces the source
+  /// frames; inside the front the incoming clip is revealed. A shading image is
+  /// not used — a white one replaces the video with a blank ripple.
+  private func composeRipple(
+    _ outgoing: CIImage,
+    _ incoming: CIImage,
+    layers: [ExportMotion],
+    t: CGFloat,
+    canvas: CGRect
+  ) -> CIImage {
+    let poses = evaluateExportPoses(layers, t: t)
+    let progress = min(1, max(poses.0.ripple, poses.1.ripple))
+    let from = outgoing.cropped(to: canvas)
+    let to = incoming.cropped(to: canvas)
+    if progress <= 0.001 { return from }
+    if progress >= 0.999 { return to }
+
+    let side = min(canvas.width, canvas.height)
+    let front = progress * hypot(canvas.width, canvas.height) * 0.62
+    let ring = side * 0.16
+    let warpedFrom: CIImage
+    let warpedTo: CIImage
+    if let map = rippleDisplacementMap(canvas: canvas, progress: progress, front: front, ring: ring) {
+      let scale = side * 0.18
+      warpedFrom = displace(from, map: map, scale: scale, canvas: canvas)
+      warpedTo = displace(to, map: map, scale: scale, canvas: canvas)
+    } else {
+      warpedFrom = from
+      warpedTo = to
+    }
+    let mask = rippleRevealMask(canvas: canvas, radius: front, softness: ring * 0.9)
+    return warpedTo.applyingFilter("CIBlendWithMask", parameters: [
+      kCIInputBackgroundImageKey: warpedFrom,
+      kCIInputMaskImageKey: mask,
+    ]).cropped(to: canvas)
+  }
+
+  /// Concentric displacement. Mid-gray (0.5) is no shift; the crest moves pixels
+  /// radially so the source image bends instead of being covered.
+  private func rippleDisplacementMap(
+    canvas: CGRect,
+    progress: CGFloat,
+    front: CGFloat,
+    ring: CGFloat
+  ) -> CIImage? {
+    let width = 180
+    let height = max(1, Int((canvas.height / max(canvas.width, 1) * CGFloat(width)).rounded()))
+    let rowBytes = width * 4
+    var pixels = [UInt8](repeating: 128, count: height * rowBytes)
+    let scaleX = canvas.width / CGFloat(width)
+    let scaleY = canvas.height / CGFloat(height)
+    let cx = CGFloat(width - 1) * 0.5
+    let cy = CGFloat(height - 1) * 0.5
+    let env = sin(progress * .pi)
+    let sigma = max(ring * 0.42, 1)
+    for y in 0..<height {
+      for x in 0..<width {
+        let px = (CGFloat(x) - cx) * scaleX
+        let py = (CGFloat(y) - cy) * scaleY
+        let r = hypot(px, py)
+        var mag: CGFloat = 0
+        if r > 0.5 {
+          for k in 0..<3 {
+            let crest = front - CGFloat(k) * ring * 0.72
+            let dist = r - crest
+            let band = exp(-(dist * dist) / (sigma * sigma))
+            let wave = sin(dist / max(ring, 1) * (.pi * 2))
+            mag += wave * band * env * (k == 0 ? 1 : 0.45)
+          }
+          mag = min(1, max(-1, mag))
+        }
+        let inv = r > 0.5 ? 1 / r : 0
+        let ox = px * inv * mag
+        let oy = py * inv * mag
+        let i = y * rowBytes + x * 4
+        pixels[i] = UInt8(clamping: Int((0.5 + ox * 0.5) * 255))
+        pixels[i + 1] = UInt8(clamping: Int((0.5 + oy * 0.5) * 255))
+        pixels[i + 2] = 128
+        pixels[i + 3] = 255
+      }
+    }
+    let bitmap = CIImage(
+      bitmapData: Data(pixels),
+      bytesPerRow: rowBytes,
+      size: CGSize(width: width, height: height),
+      format: .RGBA8,
+      colorSpace: CGColorSpaceCreateDeviceRGB()
+    )
+    // Copy now. The bitmap buffer must not be read lazily after this returns.
+    guard let cg = context.createCGImage(bitmap, from: bitmap.extent) else { return nil }
+    let sx = canvas.width / CGFloat(width)
+    let sy = canvas.height / CGFloat(height)
+    return CIImage(cgImage: cg)
+      .transformed(by: CGAffineTransform(scaleX: sx, y: sy))
+      .cropped(to: canvas)
+  }
+
+  private func displace(_ image: CIImage, map: CIImage, scale: CGFloat, canvas: CGRect) -> CIImage {
+    guard let filter = CIFilter(name: "CIDisplacementDistortion") else { return image }
+    filter.setValue(image, forKey: kCIInputImageKey)
+    filter.setValue(map, forKey: "inputDisplacementImage")
+    filter.setValue(scale, forKey: kCIInputScaleKey)
+    return (filter.outputImage ?? image).cropped(to: canvas)
+  }
+
+  /// White shows the incoming frame. The soft edge is the ghosted ring.
+  private func rippleRevealMask(canvas: CGRect, radius: CGFloat, softness: CGFloat) -> CIImage {
+    let inner = max(0, radius - softness)
+    let outer = max(inner + 1, radius + softness * 0.2)
+    let clear = CIImage(color: .black).cropped(to: canvas)
+    guard let gradient = CIFilter(name: "CIRadialGradient") else { return clear }
+    gradient.setValue(CIVector(x: canvas.midX, y: canvas.midY), forKey: kCIInputCenterKey)
+    gradient.setValue(inner, forKey: "inputRadius0")
+    gradient.setValue(outer, forKey: "inputRadius1")
+    gradient.setValue(CIColor.white, forKey: "inputColor0")
+    gradient.setValue(CIColor.black, forKey: "inputColor1")
+    return (gradient.outputImage ?? clear).cropped(to: canvas)
   }
 
   private func composeWipe(
@@ -1525,6 +1677,183 @@ private final class ExportFrameRenderer {
     let left = outgoing.cropped(to: CGRect(x: 0, y: 0, width: door, height: canvas.height))
     let right = outgoing.cropped(to: CGRect(x: canvas.width - door, y: 0, width: door, height: canvas.height))
     return right.composited(over: left.composited(over: incomingPosed.composited(over: CIImage(color: .black).cropped(to: canvas))))
+  }
+
+  /// Same stagger as Flutter `gridCellProgress` and the dashboard.
+  private func gridCellProgress(index: Int, t: CGFloat, stagger: CGFloat) -> CGFloat {
+    let progress = min(1, max(0, t))
+    let spread = min(0.95, max(0, stagger))
+    if spread <= 0.0001 { return progress }
+    let phase = (CGFloat(index) * 0.618033988749895).truncatingRemainder(dividingBy: 1)
+    let start = phase * spread
+    return min(1, max(0, (progress - start) / (1 - spread)))
+  }
+
+  private func rotationYFace(_ turns: CGFloat) -> (showBack: Bool, face: CGFloat) {
+    let angle = turns * 2 * CGFloat.pi
+    let showBack = cos(angle) < 0
+    let face = showBack ? (angle > 0 ? angle - .pi : angle + .pi) : angle
+    return (showBack, face)
+  }
+
+  private func applyCellMotion(
+    _ layer: ExportMotion,
+    t: CGFloat,
+    outgoing: inout ExportPose,
+    incoming: inout ExportPose
+  ) {
+    if t < layer.start { return }
+    let span = max(layer.end - layer.start, 0.0001)
+    let local = min(1, max(0, (t - layer.start) / span))
+    let value = layer.from + (layer.to - layer.from) * exportEase(local, layer.easing)
+    func apply(_ pose: inout ExportPose) {
+      switch layer.property {
+      case "opacity": pose.opacity = min(1, max(0, value))
+      case "scale": pose.scale = value
+      case "rotation": pose.turns = value
+      case "rotationY": pose.rotationY = value
+      case "ripple": pose.ripple = min(1, max(0, value))
+      case "translateX": pose.tx = value
+      case "translateY": pose.ty = value
+      case "blur":
+        pose.blur = value
+        if !layer.mode.isEmpty { pose.blurMode = layer.mode }
+      case "brightness": pose.brightness = value
+      case "wipe":
+        pose.wipe = min(1, max(0, value))
+        if !layer.mode.isEmpty { pose.wipeEdge = layer.mode }
+      default: break
+      }
+    }
+    if layer.target == "A" || layer.target == "both" { apply(&outgoing) }
+    if layer.target == "B" || layer.target == "both" { apply(&incoming) }
+  }
+
+  /// Cell repeat of catalog layers. `grid` on a layer selects the lattice.
+  /// `rotationY` flips that target; the back face is the other clip.
+  private func composeCells(
+    _ outgoing: CIImage,
+    _ incoming: CIImage,
+    layers: [ExportMotion],
+    t: CGFloat,
+    canvas: CGRect
+  ) -> CIImage {
+    let gridLayers = layers.filter { $0.columns > 0 }
+    let cellLayers = gridLayers.isEmpty
+      ? layers.filter { $0.property == "rotationY" }
+      : gridLayers
+    let baseLayers = layers.filter { layer in
+      if gridLayers.isEmpty { return layer.property != "rotationY" }
+      return layer.columns == 0
+    }
+    let layout = gridLayers.first
+    let cols = max(1, layout?.columns ?? 1)
+    let rowCount = max(1, layout?.rows ?? 1)
+    let gap = layout?.gap ?? 0
+    var image = CIImage(color: .black).cropped(to: canvas)
+    let base: (ExportPose, ExportPose)
+    if baseLayers.isEmpty {
+      base = (ExportPose(), ExportPose())
+    } else {
+      let evaluated = evaluateExportPoses(baseLayers, t: t)
+      base = (evaluated.0, evaluated.1)
+    }
+    var flipFront = "A"
+    var hasFlip = false
+    for layer in cellLayers where layer.property == "rotationY" {
+      hasFlip = true
+      if layer.target == "A" || layer.target == "B" { flipFront = layer.target }
+    }
+    let cellW = canvas.width / CGFloat(cols)
+    let cellH = canvas.height / CGFloat(rowCount)
+    for row in 0..<rowCount {
+      for col in 0..<cols {
+        let index = row * cols + col
+        var outPose = base.0
+        var inPose = base.1
+        for layer in cellLayers {
+          let cellT = gridCellProgress(index: index, t: t, stagger: layer.stagger)
+          applyCellMotion(layer, t: cellT, outgoing: &outPose, incoming: &inPose)
+        }
+        let gapX = cellW * gap
+        let gapY = cellH * gap
+        let cell = CGRect(
+          x: CGFloat(col) * cellW + gapX,
+          y: canvas.height - CGFloat(row + 1) * cellH + gapY,
+          width: max(0, cellW - gapX * 2),
+          height: max(0, cellH - gapY * 2)
+        )
+        if cell.width < 0.5 || cell.height < 0.5 { continue }
+        if hasFlip {
+          let turns = flipFront == "B" ? inPose.rotationY : outPose.rotationY
+          let face = rotationYFace(turns)
+          let showIncoming = flipFront == "B" ? !face.showBack : face.showBack
+          let source = showIncoming ? incoming : outgoing
+          let pose = showIncoming ? inPose : outPose
+          if let tile = perspectiveTile(source, cell: cell, pose: pose, face: face.face, canvas: canvas) {
+            image = tile.composited(over: image)
+          }
+        } else {
+          let aOnTop = exportAOnTop(layers)
+          let bottom = aOnTop ? incoming : outgoing
+          let bottomPose = aOnTop ? inPose : outPose
+          let top = aOnTop ? outgoing : incoming
+          let topPose = aOnTop ? outPose : inPose
+          if let under = flatTile(bottom, cell: cell, pose: bottomPose) {
+            image = under.composited(over: image)
+          }
+          if let over = flatTile(top, cell: cell, pose: topPose) {
+            image = over.composited(over: image)
+          }
+        }
+      }
+    }
+    return image.cropped(to: canvas)
+  }
+
+  private func perspectiveTile(
+    _ source: CIImage,
+    cell: CGRect,
+    pose: ExportPose,
+    face: CGFloat,
+    canvas: CGRect
+  ) -> CIImage? {
+    if pose.opacity <= 0.001 || abs(pose.scale) < 0.001 || pose.wipe >= 0.999 { return nil }
+    let cropped = source.cropped(to: cell)
+    let scale = max(0.035, abs(cos(face))) * pose.scale
+    let halfW = cell.width * 0.5 * scale
+    let cx = cell.midX + pose.tx * cell.width
+    let cy = cell.midY + pose.ty * cell.height
+    let tilt = cell.height * 0.10 * sin(face)
+    guard let filter = CIFilter(name: "CIPerspectiveTransform") else { return cropped }
+    filter.setValue(cropped, forKey: kCIInputImageKey)
+    filter.setValue(CIVector(x: cx - halfW, y: cy + cell.height * 0.5 - tilt), forKey: "inputTopLeft")
+    filter.setValue(CIVector(x: cx + halfW, y: cy + cell.height * 0.5 + tilt), forKey: "inputTopRight")
+    filter.setValue(CIVector(x: cx - halfW, y: cy - cell.height * 0.5 - tilt), forKey: "inputBottomLeft")
+    filter.setValue(CIVector(x: cx + halfW, y: cy - cell.height * 0.5 + tilt), forKey: "inputBottomRight")
+    guard let tile = filter.outputImage else { return nil }
+    return withOpacity(tile, pose.opacity).cropped(to: canvas)
+  }
+
+  private func flatTile(_ source: CIImage, cell: CGRect, pose: ExportPose) -> CIImage? {
+    if pose.opacity <= 0.001 || abs(pose.scale) < 0.001 || pose.wipe >= 0.999 { return nil }
+    let cx = cell.midX
+    let cy = cell.midY
+    var image = source.cropped(to: cell)
+    image = image
+      .transformed(by: CGAffineTransform(translationX: -cx, y: -cy))
+      .transformed(by: CGAffineTransform(scaleX: pose.scale, y: pose.scale))
+      .transformed(by: CGAffineTransform(rotationAngle: pose.turns * 2 * .pi))
+      .transformed(by: CGAffineTransform(translationX: cx + pose.tx * cell.width, y: cy + pose.ty * cell.height))
+    return withOpacity(image, pose.opacity).cropped(to: cell.insetBy(dx: -2, dy: -2))
+  }
+
+  private func withOpacity(_ image: CIImage, _ opacity: CGFloat) -> CIImage {
+    if opacity >= 0.999 { return image }
+    guard let filter = CIFilter(name: "CIColorMatrix") else { return image }
+    filter.setValue(image, forKey: kCIInputImageKey)
+    filter.setValue(CIVector(x: 0, y: 0, z: 0, w: opacity), forKey: "inputAVector")
+    return filter.outputImage ?? image
   }
 
   private func composePuzzle(
@@ -1685,7 +2014,7 @@ private func evaluateExportPoses(_ layers: [ExportMotion], t: CGFloat) -> (Expor
   if !hasOpacity {
     // Match preview: rotation/slide/wipe stay solid. Scale-only still crossfades.
     let spatial = layers.contains {
-      ["translateX", "translateY", "rotation", "wipe"].contains($0.property)
+      ["translateX", "translateY", "rotation", "rotationY", "ripple", "wipe"].contains($0.property)
     }
     if spatial {
       outgoing.opacity = 1
@@ -1708,6 +2037,8 @@ private func evaluateExportPoses(_ layers: [ExportMotion], t: CGFloat) -> (Expor
         opacity = true
       case "scale": pose.scale = value
       case "rotation": pose.turns = value
+      case "rotationY": pose.rotationY = value
+      case "ripple": pose.ripple = min(1, max(0, value))
       case "translateX": pose.tx = value
       case "translateY": pose.ty = value
       case "blur":
