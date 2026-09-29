@@ -2021,29 +2021,36 @@ private final class ExportFrameRenderer {
     return placed
   }
 
-  /// Entrance PNGs are `frame_0001.png` … at `frameRate`. After the last frame, hold it.
+  /// Entrance PNGs are `frame_0001.png` …. Index matches playback:
+  /// progress is time since the overlay's own start, divided by the entrance
+  /// length. A later clip does not start the entrance over.
   private func sequenceFramePath(_ overlay: [String: Any], atMs ms: Int) -> String? {
     guard let dir = overlay["sequenceDir"] as? String else { return nil }
     let count = (overlay["frameCount"] as? NSNumber)?.intValue ?? 0
     if count <= 0 { return nil }
-    let rate = (overlay["frameRate"] as? NSNumber)?.doubleValue ?? 24
+    let overlayStart = (overlay["overlayStartMs"] as? NSNumber)?.intValue ?? 0
+    let duration = (overlay["entranceDurationMs"] as? NSNumber)?.intValue ?? 0
     let spans = overlay["spans"] as? [[String: Any]] ?? []
-    // A transition splits one overlay into a span per clip. Clock from the
-    // first span so the entrance does not play again at the cut.
-    var anchor = 0
-    var haveAnchor = false
-    for span in spans {
+    let span = spans.first { span in
       let start = (span["startMs"] as? NSNumber)?.intValue ?? 0
-      if !haveAnchor || start < anchor {
-        anchor = start
-        haveAnchor = true
-      }
-    }
-    let elapsed = max(0, ms - anchor)
-    let raw = Int((Double(elapsed) * rate / 1000.0).rounded(.down))
-    let index = min(count - 1, max(0, raw))
+      let end = (span["endMs"] as? NSNumber)?.intValue ?? 0
+      return ms >= start && ms < end
+    } ?? spans.first
+    let exportStart = (span?["startMs"] as? NSNumber)?.intValue ?? 0
+    let sourceStart = (span?["sourceStartMs"] as? NSNumber)?.intValue ?? exportStart
+    let elapsed = max(0, sourceStart - overlayStart + ms - exportStart)
+    let index = entranceFrameIndex(elapsedMs: elapsed, durationMs: duration, frameCount: count)
     return String(format: "%@/frame_%04d.png", dir, index + 1)
   }
+}
+
+private func entranceFrameIndex(elapsedMs: Int, durationMs: Int, frameCount: Int) -> Int {
+  if frameCount <= 1 { return 0 }
+  if durationMs <= 0 || elapsedMs >= durationMs { return frameCount - 1 }
+  if elapsedMs <= 0 { return 0 }
+  let progress = Double(elapsedMs) / Double(durationMs)
+  let index = Int((progress * Double(frameCount - 1)).rounded())
+  return min(frameCount - 1, max(0, index))
 }
 
 private extension CIImage {

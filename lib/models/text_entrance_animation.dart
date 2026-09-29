@@ -107,3 +107,19 @@ double entranceProgressAt({
   if (totalMs <= 0) return 1;
   return (elapsed.inMilliseconds / totalMs).clamp(0.0, 1.0);
 }
+
+/// PNG index for [elapsedMs] since the overlay's own start.
+///
+/// Same clock as [entranceProgressAt]: 0 is the first entrance frame, and
+/// once the entrance ends the last frame holds. Clip boundaries do not reset it.
+int entranceFrameIndex({
+  required int elapsedMs,
+  required int durationMs,
+  required int frameCount,
+}) {
+  if (frameCount <= 1) return 0;
+  if (durationMs <= 0 || elapsedMs >= durationMs) return frameCount - 1;
+  if (elapsedMs <= 0) return 0;
+  final progress = elapsedMs / durationMs;
+  return (progress * (frameCount - 1)).round().clamp(0, frameCount - 1);
+}

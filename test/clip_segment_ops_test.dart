@@ -342,6 +342,27 @@ void main() {
     expect(spans[0].end, closeTo(3.0, 0.001));
     expect(spans[1].start, closeTo(3.0, 0.001));
     expect(spans[1].end, closeTo(4.0, 0.001));
+    expect(spans[0].sourceStartMs, 1000);
+    expect(spans[1].sourceStartMs, 7000);
+  });
+
+  test('overlayExportSpans keeps one window across a touching cut', () {
+    final overlay = TextOverlay(
+      text: 'hello',
+      start: const Duration(seconds: 1),
+      end: const Duration(seconds: 9),
+    );
+    final segments = [
+      seg(Duration.zero, const Duration(seconds: 5)),
+      seg(const Duration(seconds: 5), const Duration(seconds: 10)),
+    ];
+
+    final spans = overlayExportSpans(overlay, segments);
+
+    expect(spans, hasLength(1));
+    expect(spans.single.start, closeTo(1.0, 0.001));
+    expect(spans.single.end, closeTo(9.0, 0.001));
+    expect(spans.single.sourceStartMs, 1000);
   });
 
   test('exportTimeToSourceTime maps packed timeline positions', () {

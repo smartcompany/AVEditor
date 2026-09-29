@@ -121,6 +121,25 @@ void main() {
       );
     });
 
+    test('entrance frame index follows overlay start, not a later clip', () {
+      expect(
+        entranceFrameIndex(elapsedMs: 0, durationMs: 800, frameCount: 21),
+        0,
+      );
+      expect(
+        entranceFrameIndex(elapsedMs: 400, durationMs: 800, frameCount: 21),
+        10,
+      );
+      expect(
+        entranceFrameIndex(elapsedMs: 800, durationMs: 800, frameCount: 21),
+        20,
+      );
+      expect(
+        entranceFrameIndex(elapsedMs: 5000, durationMs: 800, frameCount: 21),
+        20,
+      );
+    });
+
     test('pack catalog durationMs is used when overlay has no override', () async {
       await TextTemplatePackService.instance.ensureInitialized();
       final overlay = TextOverlay(

@@ -34,6 +34,7 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 /** Probe / waveform / export helpers — Media3 + MediaCodec (no FFmpeg). */
 @UnstableApi
@@ -363,14 +364,16 @@ object NativeVideoEngineMedia {
     return OverlayEffect(textures)
   }
 
-  private fun parseSpans(raw: Any?): List<LongRange> {
+  private fun parseSpans(raw: Any?): List<OverlaySpan> {
     val list = raw as? List<*> ?: return emptyList()
-    val spans = ArrayList<LongRange>()
+    val spans = ArrayList<OverlaySpan>()
     for (item in list) {
       val span = item as? Map<*, *> ?: continue
       val start = (span["startMs"] as? Number)?.toLong() ?: 0L
       val end = (span["endMs"] as? Number)?.toLong() ?: 0L
-      if (end > start) spans.add(start until end)
+      if (end <= start) continue
+      val sourceStart = (span["sourceStartMs"] as? Number)?.toLong() ?: start
+      spans.add(OverlaySpan(start, end, sourceStart))
     }
     return spans
   }
@@ -582,10 +585,24 @@ private class TransitionCompositor(
   private fun hidden(): OverlaySettings = StaticOverlaySettings.Builder().setAlphaScale(0f).build()
 }
 
+private data class OverlaySpan(
+  val startMs: Long,
+  val endMs: Long,
+  val sourceStartMs: Long,
+)
+
+private fun entranceFrameIndex(elapsedMs: Long, durationMs: Int, frameCount: Int): Int {
+  if (frameCount <= 1) return 0
+  if (durationMs <= 0 || elapsedMs >= durationMs) return frameCount - 1
+  if (elapsedMs <= 0L) return 0
+  val progress = elapsedMs.toDouble() / durationMs.toDouble()
+  return (progress * (frameCount - 1)).roundToInt().coerceIn(0, frameCount - 1)
+}
+
 @UnstableApi
 private class TimedBitmapOverlay(
   private val overlay: Map<*, *>,
-  private val spans: List<LongRange>,
+  private val spans: List<OverlaySpan>,
 ) : BitmapOverlay() {
   private val cache = HashMap<String, Bitmap>()
 
@@ -601,7 +618,7 @@ private class TimedBitmapOverlay(
 
   override fun getOverlaySettings(presentationTimeUs: Long): OverlaySettings {
     val ms = presentationTimeUs / 1000L
-    val on = spans.any { ms in it }
+    val on = spans.any { ms in it.startMs until it.endMs }
     return StaticOverlaySettings.Builder().setAlphaScale(if (on) 1f else 0f).build()
   }
 
@@ -611,12 +628,12 @@ private class TimedBitmapOverlay(
     val dir = overlay["sequenceDir"] as? String ?: return null
     val count = (overlay["frameCount"] as? Number)?.toInt() ?: return null
     if (count <= 0) return null
-    val rate = (overlay["frameRate"] as? Number)?.toDouble() ?: 30.0
     if (spans.isEmpty()) return null
-    // A transition splits one overlay into a span per clip. Clock from the
-    // first span so the entrance does not play again at the cut.
-    val anchor = spans.minOf { it.first }
-    val index = ((timeMs - anchor) * rate / 1000.0).toInt().coerceIn(0, count - 1)
+    val overlayStart = (overlay["overlayStartMs"] as? Number)?.toInt() ?: 0
+    val duration = (overlay["entranceDurationMs"] as? Number)?.toInt() ?: 0
+    val span = spans.firstOrNull { timeMs in it.startMs until it.endMs } ?: spans.first()
+    val elapsed = (span.sourceStartMs - overlayStart + (timeMs - span.startMs)).coerceAtLeast(0L)
+    val index = entranceFrameIndex(elapsed, duration, count)
     return String.format(Locale.US, "%s/frame_%04d.png", dir, index + 1)
   }
 

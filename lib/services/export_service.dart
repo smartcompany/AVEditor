@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:aveditor/models/export_preset.dart';
 import 'package:aveditor/models/export_quality_profile.dart';
 import 'package:aveditor/models/clip_segment.dart';
+import 'package:aveditor/models/text_entrance_animation.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/video_project.dart';
 import 'package:aveditor/models/applied_transition.dart';
@@ -191,11 +192,19 @@ class ExportService {
     for (final raster in rasters) {
       final spans = visibleSpans(raster.overlay, segments: project.segments);
       if (spans.isEmpty) continue;
+      // Same rules as timeline playback: show the title on frames where
+      // isOverlayVisibleAt is true, and run entrance from the title's own start.
+      final animation = resolveOverlayAnimation(raster.overlay);
       overlays.add({
+        'overlayStartMs': raster.overlay.start.inMilliseconds,
         if (raster.isAnimated) ...{
           'sequenceDir': raster.sequenceDir!.path,
           'frameCount': raster.frameCount,
           'frameRate': raster.frameRate,
+          'entranceDurationMs': resolvedEntranceDuration(
+            overlay: raster.overlay,
+            animation: animation,
+          ).inMilliseconds,
         } else
           'path': raster.file!.path,
         'spans': [
@@ -203,6 +212,7 @@ class ExportService {
             {
               'startMs': (span.start * 1000).round(),
               'endMs': (span.end * 1000).round(),
+              'sourceStartMs': span.sourceStartMs,
             },
         ],
       });
@@ -327,7 +337,7 @@ class ExportService {
 
   /// Visible spans of [overlay] on the packed export timeline.
   @visibleForTesting
-  static List<({double start, double end})> visibleSpans(
+  static List<({double start, double end, int sourceStartMs})> visibleSpans(
     TextOverlay overlay, {
     required List<ClipSegment> segments,
   }) {

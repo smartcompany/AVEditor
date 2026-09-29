@@ -717,16 +717,20 @@ bool isOverlayVisibleAt(
   return position >= segments.last.end;
 }
 
-/// Export-time spans for a single overlay layer on the packed timeline.
-List<({double start, double end})> overlayExportSpans(
+/// Export-time windows where playback would show [overlay].
+///
+/// Touching clips stay one window, matching the timeline. A deleted gap stays
+/// two windows. [sourceStartMs] is the source time at [start], so motion can
+/// keep counting from the overlay's own start across a gap.
+List<({double start, double end, int sourceStartMs})> overlayExportSpans(
   TextOverlay overlay,
   List<ClipSegment> segments,
 ) {
   final exportDurationSec =
       exportTimelineDuration(segments).inMilliseconds / 1000.0;
-  final spans = <({double start, double end})>[];
+  final spans = <({double start, double end, int sourceStartMs})>[];
 
-  for (final range in overlayKeptRanges(overlay, segments)) {
+  for (final range in overlayTimelineRanges(overlay, segments)) {
     final exportStart = sourceTimeToExportTime(
       segments,
       range.start,
@@ -757,7 +761,11 @@ List<({double start, double end})> overlayExportSpans(
     final clampedStart = startSec.clamp(0.0, exportDurationSec);
     final clampedEnd = endSec.clamp(0.0, exportDurationSec);
     if (clampedEnd <= clampedStart) continue;
-    spans.add((start: clampedStart, end: clampedEnd));
+    spans.add((
+      start: clampedStart,
+      end: clampedEnd,
+      sourceStartMs: range.start.inMilliseconds,
+    ));
   }
 
   return spans;
