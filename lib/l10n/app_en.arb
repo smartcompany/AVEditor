@@ -28,11 +28,12 @@
   "permissionCameraDenied": "Camera access is off. Enable it in Settings.",
   "openSettings": "Settings",
   "comingSoon": "Coming soon",
+  "youtubeUploadNeedsSignIn": "Sign in with YouTube before uploading. Sign-in is not connected yet, so the upload was not started.",
   "trimStart": "Trim start",
   "trimEnd": "Trim end",
   "textOverlayHint": "Tap to enter text",
   "uploadTitleHint": "Short title",
-  "uploadDescriptionHint": "Description (#Shorts recommended)",
+  "uploadDescriptionHint": "Description (optional, #Shorts recommended)",
   "privacyPublic": "Public",
   "privacyUnlisted": "Unlisted",
   "privacyPrivate": "Private",
@@ -186,5 +187,32 @@
   },
   "cannotDeleteLastSegment": "At least one clip segment must remain.",
   "undo": "Undo",
-  "redo": "Redo"
+  "redo": "Redo",
+  "uploadVisibility": "Visibility",
+  "uploadThumbnail": "Thumbnail",
+  "uploadThumbnailAuto": "Automatic",
+  "uploadThumbnailFromPhoto": "Choose photo",
+  "uploadPlaylist": "Playlist",
+  "uploadPlaylistNone": "Don't add to a playlist",
+  "uploadPlaylistLoad": "Load playlists",
+  "uploadPlaylistEmpty": "This channel has no playlists.",
+  "uploadPlaylistFailed": "Could not load playlists.",
+  "uploadAudience": "Audience",
+  "uploadAudienceNotForKids": "Not made for kids",
+  "uploadAudienceForKids": "Made for kids",
+  "uploadAudienceHelp": "YouTube requires this. Made-for-kids videos have limited features.",
+  "uploadAgeRestriction": "Age restriction",
+  "uploadAgeRestrictionHelp": "Only viewers 18 and older can watch. Unavailable for kids content.",
+  "savedToDevice": "Saved to device",
+  "exportDone": "Done",
+  "shareToYouTube": "Share to YouTube",
+  "shareMore": "More",
+  "shareAppMissing": "That app is not installed.",
+  "uploadPartialFailure": "The video was uploaded ({videoId}). A later step failed: {message}",
+  "@uploadPartialFailure": {
+    "placeholders": {
+      "videoId": {"type": "String"},
+      "message": {"type": "String"}
+    }
+  }
 }

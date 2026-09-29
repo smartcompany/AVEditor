@@ -26,6 +26,19 @@ import kotlin.math.min
 /** Probe / waveform / export helpers — Media3 + MediaCodec (no FFmpeg). */
 @UnstableApi
 object NativeVideoEngineMedia {
+  private var activeTransformer: androidx.media3.transformer.Transformer? = null
+  private var activeOutput: File? = null
+  private var progressHandler: android.os.Handler? = null
+  private var progressTick: Runnable? = null
+  private var cancelRequested = false
+
+  fun cancelExport() {
+    cancelRequested = true
+    progressTick?.let { progressHandler?.removeCallbacks(it) }
+    activeTransformer?.cancel()
+    activeOutput?.delete()
+  }
+
   fun probe(path: String): Map<String, Any> {
     val retriever = MediaMetadataRetriever()
     try {
@@ -90,6 +103,8 @@ object NativeVideoEngineMedia {
       return
     }
     File(outputPath).delete()
+    cancelRequested = false
+    activeOutput = File(outputPath)
 
     val width = (args["width"] as? Number)?.toInt() ?: 1080
     val height = (args["height"] as? Number)?.toInt() ?: 1920
@@ -194,6 +209,12 @@ object NativeVideoEngineMedia {
       .addListener(
         object : Transformer.Listener {
           override fun onCompleted(composition: Composition, result: ExportResult) {
+            progressTick?.let { progressHandler?.removeCallbacks(it) }
+            if (cancelRequested) {
+              File(outputPath).delete()
+              onComplete(Result.failure(IllegalStateException("export_cancelled")))
+              return
+            }
             onProgress(1.0)
             onComplete(Result.success(outputPath))
           }
@@ -203,6 +224,12 @@ object NativeVideoEngineMedia {
             result: ExportResult,
             exception: ExportException,
           ) {
+            progressTick?.let { progressHandler?.removeCallbacks(it) }
+            if (cancelRequested) {
+              File(outputPath).delete()
+              onComplete(Result.failure(IllegalStateException("export_cancelled")))
+              return
+            }
             onComplete(Result.failure(exception))
           }
         },
@@ -210,18 +237,21 @@ object NativeVideoEngineMedia {
       .build()
 
     // Progress polling — Transformer doesn't expose a continuous callback on all versions.
-    val progressHandler = android.os.Handler(Looper.getMainLooper())
-    val progressTick = object : Runnable {
+    val handler = android.os.Handler(Looper.getMainLooper())
+    val tick = object : Runnable {
       override fun run() {
         onProgress(0.5)
-        progressHandler.postDelayed(this, 250)
+        handler.postDelayed(this, 250)
       }
     }
-    progressHandler.post(progressTick)
+    progressHandler = handler
+    progressTick = tick
+    handler.post(tick)
 
+    activeTransformer = transformer
     transformer.start(composition, outputPath)
     // Stop polling when complete/error via listener above; cancel after a grace.
-    progressHandler.postDelayed({ progressHandler.removeCallbacks(progressTick) }, 120_000)
+    handler.postDelayed({ handler.removeCallbacks(tick) }, 120_000)
   }
 }
 

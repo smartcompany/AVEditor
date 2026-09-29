@@ -80,6 +80,10 @@ class AppLocalizationsJa extends AppLocalizations {
   String get comingSoon => '準備中';
 
   @override
+  String get youtubeUploadNeedsSignIn =>
+      'アップロードするにはYouTubeにログインしてください。ログイン接続はまだ準備中のため、アップロードは開始しません。';
+
+  @override
   String get trimStart => '開始位置';
 
   @override
@@ -92,7 +96,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get uploadTitleHint => 'Shortsタイトル';
 
   @override
-  String get uploadDescriptionHint => '説明（#Shorts推奨）';
+  String get uploadDescriptionHint => '説明（任意、#Shorts推奨）';
 
   @override
   String get privacyPublic => '公開';
@@ -473,4 +477,69 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get redo => 'やり直す';
+
+  @override
+  String get uploadVisibility => '公開範囲';
+
+  @override
+  String get uploadThumbnail => 'サムネイル';
+
+  @override
+  String get uploadThumbnailAuto => '自動';
+
+  @override
+  String get uploadThumbnailFromPhoto => '写真から選択';
+
+  @override
+  String get uploadPlaylist => '再生リスト';
+
+  @override
+  String get uploadPlaylistNone => '再生リストに追加しない';
+
+  @override
+  String get uploadPlaylistLoad => '再生リストを読み込む';
+
+  @override
+  String get uploadPlaylistEmpty => 'このチャンネルに再生リストはありません。';
+
+  @override
+  String get uploadPlaylistFailed => '再生リストを読み込めませんでした。';
+
+  @override
+  String get uploadAudience => '視聴者層';
+
+  @override
+  String get uploadAudienceNotForKids => '子ども向けではない';
+
+  @override
+  String get uploadAudienceForKids => '子ども向け';
+
+  @override
+  String get uploadAudienceHelp => 'YouTubeへの申告が必要です。子ども向けは機能が制限されます。';
+
+  @override
+  String get uploadAgeRestriction => '年齢制限';
+
+  @override
+  String get uploadAgeRestrictionHelp => '18歳以上のみ視聴できます。子ども向けでは使えません。';
+
+  @override
+  String get savedToDevice => 'デバイスに保存しました';
+
+  @override
+  String get exportDone => '完了';
+
+  @override
+  String get shareToYouTube => 'YouTubeにシェア';
+
+  @override
+  String get shareMore => 'その他';
+
+  @override
+  String get shareAppMissing => 'そのアプリはインストールされていません。';
+
+  @override
+  String uploadPartialFailure(String videoId, String message) {
+    return '動画はアップロードされました ($videoId)。その後の処理に失敗しました: $message';
+  }
 }

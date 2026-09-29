@@ -115,10 +115,10 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       await _youtubeAuth.signIn();
       await _refreshYouTubeStatus();
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.comingSoon)),
+        SnackBar(content: Text(error.toString())),
       );
     }
   }

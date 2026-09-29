@@ -11,8 +11,8 @@ import 'package:aveditor/models/project_music.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/timeline_filmstrip_frame.dart';
 import 'package:aveditor/models/video_project.dart';
+import 'package:aveditor/screens/export_share_screen.dart';
 import 'package:aveditor/screens/music_picker_screen.dart';
-import 'package:aveditor/screens/youtube_upload_screen.dart';
 import 'package:aveditor/services/editor_history.dart';
 import 'package:aveditor/services/audio_waveform_service.dart';
 import 'package:aveditor/services/music_storage_service.dart';
@@ -26,11 +26,7 @@ import 'package:aveditor/utils/duration_format.dart';
 import 'package:aveditor/utils/editor_sheet_metrics.dart';
 import 'package:aveditor/utils/overlay_event_log.dart';
 import 'package:aveditor/utils/timeline_math.dart';
-import 'package:aveditor/services/app_settings_service.dart';
-import 'package:aveditor/services/export_service.dart';
-import 'package:aveditor/services/export_save_service.dart';
 import 'package:aveditor/widgets/basic_text_edit_toolbar.dart';
-import 'package:aveditor/widgets/export_progress_dialog.dart';
 import 'package:aveditor/widgets/text_studio_panel.dart';
 import 'package:aveditor/widgets/timeline_widget.dart';
 import 'package:aveditor/widgets/transition_picker_sheet.dart';
@@ -152,7 +148,7 @@ class _EditorScreenState extends State<EditorScreen>
   /// CapCut-style text studio is open for this overlay id.
   String? _textStudioOverlayId;
   bool _ready = false;
-  bool _exporting = false;
+  final bool _exporting = false;
   bool _applyingHistory = false;
   String? _errorMessage;
 
@@ -164,9 +160,6 @@ class _EditorScreenState extends State<EditorScreen>
   bool _edgeFramePreviewActive = false;
   Duration? _lastEdgePreviewSeek;
 
-  final _export = ExportService();
-  final _exportSave = ExportSaveService();
-  final _settings = const AppSettingsService();
   final _projectStorage = const ProjectStorageService();
   final _history = EditorHistory();
   final _thumbnailService = const TimelineThumbnailService();
@@ -290,11 +283,9 @@ class _EditorScreenState extends State<EditorScreen>
     final cut = cutExportTimeAfter(project.segments, fade.afterIndex);
     final half = transitionHalfMs(fade.td);
     final t = _fadeHandoffInFlight ? 1.0 : (_fadeProgress ?? fade.t);
-    final traveledMs = (t * fade.td.inMilliseconds).round().clamp(
-      0,
-      1 << 30,
-    );
-    final sequenceTime = cut -
+    final traveledMs = (t * fade.td.inMilliseconds).round().clamp(0, 1 << 30);
+    final sequenceTime =
+        cut -
         Duration(milliseconds: half.before) +
         Duration(milliseconds: traveledMs);
     return exportTimeToSourceTime(
@@ -1116,7 +1107,8 @@ class _EditorScreenState extends State<EditorScreen>
               '${s.start.inMilliseconds}-${s.end.inMilliseconds}-${s.transitionId}-${s.transitionDuration.inMilliseconds}',
         )
         .join('|');
-    final desired = seekTo ??
+    final desired =
+        seekTo ??
         _pendingTimelineSeek ??
         _scrubPlayhead ??
         _nativePackedToSource(NativeVideoEngine.instance.position);
@@ -1127,11 +1119,15 @@ class _EditorScreenState extends State<EditorScreen>
       // freeze at the cut / playhead).
       final explicitSeek = seekTo ?? _pendingTimelineSeek;
       if (explicitSeek != null) {
-        await NativeVideoEngine.instance.preroll(_sourceToNativePacked(explicitSeek));
+        await NativeVideoEngine.instance.preroll(
+          _sourceToNativePacked(explicitSeek),
+        );
         if (wasPlaying) await NativeVideoEngine.instance.play();
       } else if (!NativeVideoEngine.instance.isPlaying &&
           (desired > Duration.zero || seekTo != null)) {
-        await NativeVideoEngine.instance.preroll(_sourceToNativePacked(desired));
+        await NativeVideoEngine.instance.preroll(
+          _sourceToNativePacked(desired),
+        );
       }
       return;
     }
@@ -1139,7 +1135,8 @@ class _EditorScreenState extends State<EditorScreen>
     var pos = desired;
     // After a short panel preview the native clock is 0 — never rebuild there.
     if (pos <= Duration.zero) {
-      final pinned = _pendingTimelineSeek ?? _scrubPlayhead ?? _panelPreviewSourcePos;
+      final pinned =
+          _pendingTimelineSeek ?? _scrubPlayhead ?? _panelPreviewSourcePos;
       if (pinned != null && pinned > Duration.zero) {
         pos = pinned;
       } else if (_transitionStudioCutIndex != null) {
@@ -1166,8 +1163,9 @@ class _EditorScreenState extends State<EditorScreen>
       await _auxController?.pause();
       await _auxController?.setVolume(0);
     } catch (_) {}
-    _timelinePositionSub =
-        NativeVideoEngine.instance.positionStream.listen((packed) {
+    _timelinePositionSub = NativeVideoEngine.instance.positionStream.listen((
+      packed,
+    ) {
       if (!mounted || !NativeVideoEngine.instance.isTimelineActive) return;
       final current = _project;
       if (current == null) return;
@@ -1182,7 +1180,8 @@ class _EditorScreenState extends State<EditorScreen>
           !_transitionPreviewSeekConfirmed) {
         final start = _transitionPreviewWindowStart;
         final until = _transitionPreviewUntil!;
-        final inWindow = start != null &&
+        final inWindow =
+            start != null &&
             position >= start - const Duration(milliseconds: 50) &&
             position < until;
         if (!inWindow) {
@@ -1265,10 +1264,7 @@ class _EditorScreenState extends State<EditorScreen>
         }
         if (entering || !_spatialPreviewActive) {
           unawaited(
-            _showSpatialPreviewAt(
-              fade,
-              playing: controller.value.isPlaying,
-            ),
+            _showSpatialPreviewAt(fade, playing: controller.value.isPlaying),
           );
         } else {
           if (controller.value.isPlaying && _fadeWallClockStart == null) {
@@ -1298,9 +1294,11 @@ class _EditorScreenState extends State<EditorScreen>
         _setFadeProgress(fade.t, playing: controller.value.isPlaying);
         final aux = _auxController;
         if (controller.value.isPlaying) {
-          unawaited(_safeVideo(aux, (player) async {
-            if (!player.value.isPlaying) await player.play();
-          }));
+          unawaited(
+            _safeVideo(aux, (player) async {
+              if (!player.value.isPlaying) await player.play();
+            }),
+          );
         }
       }
       return;
@@ -1473,10 +1471,12 @@ class _EditorScreenState extends State<EditorScreen>
     _spatialPreviewActive = true;
     _spatialPositionSub?.cancel();
     _spatialPlayingSub?.cancel();
-    _spatialPositionSub =
-        NativeVideoEngine.instance.positionStream.listen(_onNativeSpatialPosition);
-    _spatialPlayingSub =
-        NativeVideoEngine.instance.playingStream.listen((playing) {
+    _spatialPositionSub = NativeVideoEngine.instance.positionStream.listen(
+      _onNativeSpatialPosition,
+    );
+    _spatialPlayingSub = NativeVideoEngine.instance.playingStream.listen((
+      playing,
+    ) {
       if (!mounted) return;
       if (!playing && _spatialPreviewActive && _activeFade != null) {
         final fade = _activeFade!;
@@ -1800,7 +1800,8 @@ class _EditorScreenState extends State<EditorScreen>
         return;
       }
 
-      final wasPlaying = main.value.isPlaying ||
+      final wasPlaying =
+          main.value.isPlaying ||
           aux.value.isPlaying ||
           NativeVideoEngine.instance.isPlaying;
 
@@ -2141,12 +2142,13 @@ class _EditorScreenState extends State<EditorScreen>
       unawaited(_auxController?.pause() ?? Future<void>.value());
     }
     final fade = previewFadeAt(project.segments, clamped);
-    if (fade != null &&
-        NativeVideoEngine.supports(fade.outgoing.transition)) {
+    if (fade != null && NativeVideoEngine.supports(fade.outgoing.transition)) {
       _scrubPlayhead = clamped;
       unawaited(
         _showSpatialPreviewAt(fade, playing: false).then((_) {
-          controller.seekTo(clampDuration(clamped, Duration.zero, project.duration));
+          controller.seekTo(
+            clampDuration(clamped, Duration.zero, project.duration),
+          );
           unawaited(_syncMusicPlayback());
           _syncVideoAudioVolume();
         }),
@@ -2319,7 +2321,7 @@ class _EditorScreenState extends State<EditorScreen>
       final start = isInKeptRegion(project.segments, _playhead)
           ? _playhead
           : (segmentAt(project.segments, _playhead)?.start ??
-              project.segments.first.start);
+                project.segments.first.start);
       // Seek pauses natively — resume after it lands. play() is optimistic so
       // the transport icon flips on this setState before seek completes.
       unawaited(NativeVideoEngine.instance.play());
@@ -2488,7 +2490,8 @@ class _EditorScreenState extends State<EditorScreen>
 
     // Panel is dock chrome. Preview stays on the timeline session — closing
     // only dismisses the overlay. No tear-down, no restore, no re-seek.
-    final land = _scrubPlayhead ??
+    final land =
+        _scrubPlayhead ??
         _panelPreviewFurthestPos ??
         _panelPreviewSourcePos ??
         (NativeVideoEngine.instance.isTimelineActive
@@ -2646,7 +2649,8 @@ class _EditorScreenState extends State<EditorScreen>
     _transitionPreviewWindowStart = null;
 
     // Prefer the preview end, then furthest reached — never a stale 0 sample.
-    final land = until ??
+    final land =
+        until ??
         _panelPreviewFurthestPos ??
         (NativeVideoEngine.instance.isTimelineActive
             ? _nativePackedToSource(NativeVideoEngine.instance.position)
@@ -2666,10 +2670,10 @@ class _EditorScreenState extends State<EditorScreen>
     if (active != null && active.td > Duration.zero) {
       _setFadeProgress(1.0, playing: false);
       final half = transitionHalfMs(active.td);
-      final auxEnd =
-          active.incoming.start + Duration(milliseconds: half.after);
-      final auxTarget =
-          auxEnd > active.incoming.end ? active.incoming.end : auxEnd;
+      final auxEnd = active.incoming.start + Duration(milliseconds: half.after);
+      final auxTarget = auxEnd > active.incoming.end
+          ? active.incoming.end
+          : auxEnd;
       try {
         await _controller?.pause();
         await _auxController?.pause();
@@ -2708,8 +2712,9 @@ class _EditorScreenState extends State<EditorScreen>
     const hardCutPad = Duration(milliseconds: 500);
     // Duration-preserving: play [cut − ⌊td/2⌋, cut + ⌈td/2⌉), land on B at ⌈td/2⌉.
     final half = transitionHalfMs(td);
-    final windowBefore =
-        hardCut ? hardCutPad : Duration(milliseconds: half.before);
+    final windowBefore = hardCut
+        ? hardCutPad
+        : Duration(milliseconds: half.before);
     final previewStart = outgoing.end - windowBefore;
     final clampedStart = previewStart < outgoing.start
         ? outgoing.start
@@ -2772,11 +2777,7 @@ class _EditorScreenState extends State<EditorScreen>
         }
         // Arm after play so in-flight position events from the previous
         // playhead (already past until) cannot stop us on the start frame.
-        _armTransitionPreviewStop(
-          gen,
-          previewUntil,
-          windowStart: clampedStart,
-        );
+        _armTransitionPreviewStop(gen, previewUntil, windowStart: clampedStart);
         unawaited(_syncMusicPlayback());
         _syncVideoAudioVolume();
         if (mounted) setState(() {});
@@ -3320,115 +3321,15 @@ class _EditorScreenState extends State<EditorScreen>
     _openTextStudio(overlay);
   }
 
-  Future<void> _showExportOptions() async {
+  Future<void> _presentExport() {
     final project = _project;
-    if (project == null || _exporting) return;
-
-    final l10n = context.l10n;
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.photo_album_outlined),
-                title: Text(l10n.saveToAlbum),
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  unawaited(_exportAndSave());
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.play_circle_outline),
-                title: Text(l10n.uploadShorts),
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  _openUpload();
-                },
-              ),
-              const SizedBox(height: 8),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  void _openUpload() {
-    final project = _project;
-    if (project == null) return;
-
-    Navigator.of(context).push(
+    if (project == null || _exporting) return Future.value();
+    return Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => YouTubeUploadScreen(project: project),
+        fullscreenDialog: true,
+        builder: (_) => ExportShareScreen(project: project),
       ),
     );
-  }
-
-  Future<void> _exportAndSave() async {
-    final project = _project;
-    if (project == null || _exporting) return;
-
-    final l10n = context.l10n;
-    final progress = ValueNotifier(0.0);
-    setState(() => _exporting = true);
-
-    if (!mounted) return;
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => ExportProgressDialog(progressListenable: progress),
-    );
-
-    try {
-      final quality = await _settings.getExportQualityProfile();
-      final exportedPath = await _export.exportToFile(
-        project,
-        quality: quality,
-        onProgress: (value) => progress.value = value,
-      );
-      await _exportSave.saveExportedVideo(exportedPath);
-
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(l10n.exportSuccess)));
-    } catch (e, stack) {
-      debugPrint('Editor export failed: $e\n$stack');
-      if (!mounted) return;
-      Navigator.of(context).pop();
-
-      final message = e.toString();
-      if (message.contains('save_cancelled')) {
-        return;
-      }
-      if (message.contains('photos_permission_denied')) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(l10n.permissionPhotosDenied)));
-        return;
-      }
-      if (message.contains('export_file_missing') ||
-          message.contains('export_file_empty')) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(l10n.exportFailed)));
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.exportFailedWithMessage(message))),
-      );
-    } finally {
-      progress.dispose();
-      if (mounted) {
-        setState(() => _exporting = false);
-      }
-    }
   }
 
   @override
@@ -3491,7 +3392,7 @@ class _EditorScreenState extends State<EditorScreen>
               tooltip: l10n.redo,
             ),
             IconButton(
-              onPressed: _exporting ? null : _showExportOptions,
+              onPressed: _exporting ? null : _presentExport,
               icon: const Icon(Icons.upload_outlined),
               tooltip: l10n.export,
             ),
@@ -3589,12 +3490,12 @@ class _EditorScreenState extends State<EditorScreen>
                                             position: _playhead,
                                             isPlaying:
                                                 NativeVideoEngine
-                                                        .instance
-                                                        .isTimelineActive
-                                                    ? NativeVideoEngine
-                                                        .instance.isPlaying
-                                                    : controller
-                                                        .value.isPlaying,
+                                                    .instance
+                                                    .isTimelineActive
+                                                ? NativeVideoEngine
+                                                      .instance
+                                                      .isPlaying
+                                                : controller.value.isPlaying,
                                             clipRotation: project.rotation,
                                             hostViewportSize: Size(
                                               constraints.maxWidth,

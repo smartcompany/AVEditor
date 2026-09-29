@@ -82,6 +82,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get comingSoon => 'Coming soon';
 
   @override
+  String get youtubeUploadNeedsSignIn =>
+      'Sign in with YouTube before uploading. Sign-in is not connected yet, so the upload was not started.';
+
+  @override
   String get trimStart => 'Trim start';
 
   @override
@@ -94,7 +98,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get uploadTitleHint => 'Short title';
 
   @override
-  String get uploadDescriptionHint => 'Description (#Shorts recommended)';
+  String get uploadDescriptionHint =>
+      'Description (optional, #Shorts recommended)';
 
   @override
   String get privacyPublic => 'Public';
@@ -481,4 +486,71 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get redo => 'Redo';
+
+  @override
+  String get uploadVisibility => 'Visibility';
+
+  @override
+  String get uploadThumbnail => 'Thumbnail';
+
+  @override
+  String get uploadThumbnailAuto => 'Automatic';
+
+  @override
+  String get uploadThumbnailFromPhoto => 'Choose photo';
+
+  @override
+  String get uploadPlaylist => 'Playlist';
+
+  @override
+  String get uploadPlaylistNone => 'Don\'t add to a playlist';
+
+  @override
+  String get uploadPlaylistLoad => 'Load playlists';
+
+  @override
+  String get uploadPlaylistEmpty => 'This channel has no playlists.';
+
+  @override
+  String get uploadPlaylistFailed => 'Could not load playlists.';
+
+  @override
+  String get uploadAudience => 'Audience';
+
+  @override
+  String get uploadAudienceNotForKids => 'Not made for kids';
+
+  @override
+  String get uploadAudienceForKids => 'Made for kids';
+
+  @override
+  String get uploadAudienceHelp =>
+      'YouTube requires this. Made-for-kids videos have limited features.';
+
+  @override
+  String get uploadAgeRestriction => 'Age restriction';
+
+  @override
+  String get uploadAgeRestrictionHelp =>
+      'Only viewers 18 and older can watch. Unavailable for kids content.';
+
+  @override
+  String get savedToDevice => 'Saved to device';
+
+  @override
+  String get exportDone => 'Done';
+
+  @override
+  String get shareToYouTube => 'Share to YouTube';
+
+  @override
+  String get shareMore => 'More';
+
+  @override
+  String get shareAppMissing => 'That app is not installed.';
+
+  @override
+  String uploadPartialFailure(String videoId, String message) {
+    return 'The video was uploaded ($videoId). A later step failed: $message';
+  }
 }

@@ -417,6 +417,16 @@ class NativeVideoEngine {
     return (peaks: peaks, duration: Duration(milliseconds: durationMs));
   }
 
+  /// Stops the in-flight encode. The pending [export] future then fails.
+  Future<void> cancelExport() async {
+    if (!isPlatformSupported) return;
+    try {
+      await _channel.invokeMethod<void>('cancelExport');
+    } catch (error, stack) {
+      debugPrint('NativeVideoEngine.cancelExport failed: $error\n$stack');
+    }
+  }
+
   /// Export with the OS encoder (VideoToolbox / MediaCodec via Media3).
   Future<String> export({
     required Map<String, dynamic> request,
@@ -427,11 +437,16 @@ class NativeVideoEngine {
     }
     _exportProgress = onProgress;
     _ensureEventListening();
+    final watch = Stopwatch()..start();
+    final mode = request['streamCopy'] == true ? 'passthrough' : 'reencode';
+    final overlays = (request['overlays'] as List?)?.length ?? 0;
     try {
       debugPrint(
         'NativeVideoEngine.export start segments='
         '${(request['segments'] as List?)?.length ?? 0} '
-        'durationMs=${request['durationMs']}',
+        'durationMs=${request['durationMs']} '
+        'mode=$mode overlays=$overlays '
+        '${request['width']}x${request['height']}',
       );
       final result = await _channel.invokeMapMethod<String, dynamic>(
         'export',
@@ -441,10 +456,18 @@ class NativeVideoEngine {
       if (path == null || path.isEmpty) {
         throw StateError('Native export returned no output');
       }
-      debugPrint('NativeVideoEngine.export done path=$path');
+      debugPrint(
+        'NativeVideoEngine.export done ${_elapsed(watch)} path=$path',
+      );
       return path;
     } catch (error, stack) {
-      debugPrint('NativeVideoEngine.export failed: $error\n$stack');
+      if ('$error'.contains('export_cancelled')) {
+        debugPrint('NativeVideoEngine.export cancelled ${_elapsed(watch)}');
+      } else {
+        debugPrint(
+          'NativeVideoEngine.export failed ${_elapsed(watch)}: $error\n$stack',
+        );
+      }
       rethrow;
     } finally {
       _exportProgress = null;
@@ -464,5 +487,11 @@ class NativeVideoEngine {
         child: Texture(textureId: id),
       ),
     );
+  }
+
+  String _elapsed(Stopwatch watch) {
+    final ms = watch.elapsedMilliseconds;
+    if (ms < 1000) return '${ms}ms';
+    return '${(ms / 1000).toStringAsFixed(1)}s';
   }
 }

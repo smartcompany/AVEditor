@@ -194,6 +194,11 @@ class NativeVideoEnginePlugin :
         }.start()
       }
 
+      "cancelExport" -> {
+        NativeVideoEngineMedia.cancelExport()
+        result.success(null)
+      }
+
       "export" -> {
         val args = call.arguments as? Map<*, *>
         val context = appContext

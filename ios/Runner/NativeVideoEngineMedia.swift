@@ -5,7 +5,13 @@ import UIKit
 
 // MARK: - Probe / waveform / export (AVFoundation + VideoToolbox)
 
+private var activeExportSession: AVAssetExportSession?
+
 enum NativeVideoEngineMedia {
+  static func cancelExport() {
+    activeExportSession?.cancelExport()
+  }
+
   static func probe(path: String) throws -> [String: Any] {
     let url = URL(fileURLWithPath: path)
     let asset = AVURLAsset(url: url)
@@ -240,6 +246,7 @@ private func exportStreamCopy(
   let start = CMTime(value: CMTimeValue(startMs), timescale: 1000)
   let duration = CMTime(value: CMTimeValue(max(0, endMs - startMs)), timescale: 1000)
   session.timeRange = CMTimeRange(start: start, duration: duration)
+  activeExportSession = session
 
   let timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { t in
     onProgress(Double(session.progress))
@@ -247,10 +254,16 @@ private func exportStreamCopy(
   }
   session.exportAsynchronously {
     timer.invalidate()
+    if activeExportSession === session { activeExportSession = nil }
     switch session.status {
     case .completed:
       onProgress(1)
       completion(.success(request.outputPath))
+    case .cancelled:
+      try? FileManager.default.removeItem(atPath: request.outputPath)
+      completion(.failure(NSError(domain: "NativeVideoEngine", code: 26, userInfo: [
+        NSLocalizedDescriptionKey: "export_cancelled",
+      ])))
     default:
       completion(.failure(session.error ?? NSError(domain: "NativeVideoEngine", code: 22)))
     }
@@ -319,9 +332,10 @@ private func exportReencode(
   let videoComp = AVMutableVideoComposition()
   videoComp.renderSize = renderSize
   videoComp.frameDuration = CMTime(value: 1, timescale: 30)
-  let needsCompositor = placements.contains { $0.transitionMs > 0 }
+  // Core Animation export crashes in the simulator (IOSurface / xpc_shmem)
+  // while burning text. The frame compositor already paints those images.
+  let needsCompositor = placements.contains { $0.transitionMs > 0 } || !request.overlays.isEmpty
   if needsCompositor {
-    // Core Animation tools cannot be combined with a custom compositor.
     ExportOverlayStore.set(request.overlays)
     videoComp.customVideoCompositorClass = ExportFrameCompositor.self
     videoComp.instructions = buildCustomExportInstructions(
@@ -336,53 +350,6 @@ private func exportReencode(
       videoTracks: videoTracks,
       baseTransform: baseTransform,
       renderSize: renderSize
-    )
-  }
-
-  if !needsCompositor && !request.overlays.isEmpty {
-    let parent = CALayer()
-    let videoLayer = CALayer()
-    parent.frame = CGRect(origin: .zero, size: renderSize)
-    videoLayer.frame = parent.frame
-    parent.addSublayer(videoLayer)
-
-    for overlay in request.overlays {
-      let image: UIImage?
-      if let path = overlay["path"] as? String {
-        image = UIImage(contentsOfFile: path)
-      } else if let dir = overlay["sequenceDir"] as? String,
-                let count = overlay["frameCount"] as? Int,
-                count > 0 {
-        let last = String(format: "%@/frame_%04d.png", dir, count)
-        image = UIImage(contentsOfFile: last)
-      } else {
-        image = nil
-      }
-      guard let image else { continue }
-      let layer = CALayer()
-      layer.contents = image.cgImage
-      layer.frame = parent.frame
-      layer.opacity = 0
-      if let spans = overlay["spans"] as? [[String: Any]] {
-        for span in spans {
-          let startMs = span["startMs"] as? Int ?? 0
-          let endMs = span["endMs"] as? Int ?? 0
-          let anim = CABasicAnimation(keyPath: "opacity")
-          anim.fromValue = 1
-          anim.toValue = 1
-          anim.beginTime = AVCoreAnimationBeginTimeAtZero + Double(startMs) / 1000.0
-          anim.duration = max(0.001, Double(endMs - startMs) / 1000.0)
-          anim.fillMode = .forwards
-          anim.isRemovedOnCompletion = false
-          layer.add(anim, forKey: "opacity-\(startMs)")
-        }
-      }
-      parent.addSublayer(layer)
-    }
-    parent.isGeometryFlipped = true
-    videoComp.animationTool = AVVideoCompositionCoreAnimationTool(
-      postProcessingAsVideoLayer: videoLayer,
-      in: parent
     )
   }
 
@@ -404,6 +371,7 @@ private func exportReencode(
     : videoEnd
   let exportDuration = CMTimeMinimum(CMTimeMinimum(requested, videoEnd), composition.duration)
   session.timeRange = CMTimeRange(start: .zero, duration: exportDuration)
+  activeExportSession = session
   for (index, instruction) in videoComp.instructions.enumerated() {
     let range = instruction.timeRange
     NSLog(
@@ -430,10 +398,16 @@ private func exportReencode(
   session.exportAsynchronously {
     timer.invalidate()
     ExportOverlayStore.clear()
+    if activeExportSession === session { activeExportSession = nil }
     switch session.status {
     case .completed:
       onProgress(1)
       completion(.success(request.outputPath))
+    case .cancelled:
+      try? FileManager.default.removeItem(atPath: request.outputPath)
+      completion(.failure(NSError(domain: "NativeVideoEngine", code: 26, userInfo: [
+        NSLocalizedDescriptionKey: "export_cancelled",
+      ])))
     default:
       let error = session.error ?? NSError(domain: "NativeVideoEngine", code: 25, userInfo: [
         NSLocalizedDescriptionKey: "Export status \(session.status.rawValue)",
@@ -1281,7 +1255,6 @@ final class ExportCompositionInstruction: NSObject, AVVideoCompositionInstructio
 
 final class ExportFrameCompositor: NSObject, AVVideoCompositing {
   private let renderer = ExportFrameRenderer()
-  private let queue = DispatchQueue(label: "aveditor.export.frames")
   var sourcePixelBufferAttributes: [String: Any]? = [
     kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
   ]
@@ -1294,24 +1267,25 @@ final class ExportFrameCompositor: NSObject, AVVideoCompositing {
   func cancelAllPendingVideoCompositionRequests() {}
 
   func startRequest(_ request: AVAsynchronousVideoCompositionRequest) {
-    guard let instruction = request.videoCompositionInstruction as? ExportCompositionInstruction,
-          let dst = request.renderContext.newPixelBuffer()
-    else {
-      request.finish(with: NSError(domain: "ExportFrameCompositor", code: 1, userInfo: [
-        NSLocalizedDescriptionKey: "Missing composition instruction",
-      ]))
-      return
-    }
-    // Sample buffers must be taken before startRequest returns.
-    let outBuf = request.sourceFrame(byTrackID: instruction.outgoingTrackID)
-    let incoming = instruction.incomingTrackID == kCMPersistentTrackID_Invalid
-      ? nil
-      : request.sourceFrame(byTrackID: instruction.incomingTrackID)
-    let duration = CMTimeGetSeconds(instruction.timeRange.duration)
-    let elapsed = CMTimeGetSeconds(request.compositionTime) - CMTimeGetSeconds(instruction.timeRange.start)
-    let t = duration > 0.0001 ? CGFloat(min(1, max(0, elapsed / duration))) : 1
-    let compositionSeconds = CMTimeGetSeconds(request.compositionTime)
-    queue.async { [renderer] in
+    // Finish before returning. Queueing frames retains every source buffer
+    // until the serial queue catches up, which jetsams a 4GB phone (~2GB limit).
+    autoreleasepool {
+      guard let instruction = request.videoCompositionInstruction as? ExportCompositionInstruction,
+            let dst = request.renderContext.newPixelBuffer()
+      else {
+        request.finish(with: NSError(domain: "ExportFrameCompositor", code: 1, userInfo: [
+          NSLocalizedDescriptionKey: "Missing composition instruction",
+        ]))
+        return
+      }
+      let outBuf = request.sourceFrame(byTrackID: instruction.outgoingTrackID)
+      let incoming = instruction.incomingTrackID == kCMPersistentTrackID_Invalid
+        ? nil
+        : request.sourceFrame(byTrackID: instruction.incomingTrackID)
+      let duration = CMTimeGetSeconds(instruction.timeRange.duration)
+      let elapsed = CMTimeGetSeconds(request.compositionTime) - CMTimeGetSeconds(instruction.timeRange.start)
+      let t = duration > 0.0001 ? CGFloat(min(1, max(0, elapsed / duration))) : 1
+      let compositionSeconds = CMTimeGetSeconds(request.compositionTime)
       if outBuf == nil && incoming == nil {
         renderer.renderBlack(into: dst)
       } else {
@@ -1351,13 +1325,20 @@ private struct ExportPose {
 private final class ExportFrameRenderer {
   private let context: CIContext
   private let lock = NSLock()
+  private var overlayCache: [String: CIImage] = [:]
+  private var renderedFrames = 0
 
   init() {
+    let options: [CIContextOption: Any] = [
+      .cacheIntermediates: false,
+      .workingFormat: NSNumber(value: CIFormat.BGRA8.rawValue),
+      .workingColorSpace: CGColorSpaceCreateDeviceRGB(),
+    ]
     let device = MTLCreateSystemDefaultDevice()
     if let device {
-      context = CIContext(mtlDevice: device, options: [.cacheIntermediates: false])
+      context = CIContext(mtlDevice: device, options: options)
     } else {
-      context = CIContext(options: [.useSoftwareRenderer: true])
+      context = CIContext(options: options.merging([.useSoftwareRenderer: true]) { _, new in new })
     }
   }
 
@@ -1365,14 +1346,7 @@ private final class ExportFrameRenderer {
     let w = CGFloat(CVPixelBufferGetWidth(destination))
     let h = CGFloat(CVPixelBufferGetHeight(destination))
     let canvas = CGRect(x: 0, y: 0, width: w, height: h)
-    lock.lock()
-    context.render(
-      CIImage(color: .black).cropped(to: canvas),
-      to: destination,
-      bounds: canvas,
-      colorSpace: CGColorSpaceCreateDeviceRGB()
-    )
-    lock.unlock()
+    renderImage(CIImage(color: .black).cropped(to: canvas), to: destination, canvas: canvas)
   }
 
   func render(
@@ -1395,8 +1369,16 @@ private final class ExportFrameRenderer {
       composed = outImage ?? inImage ?? CIImage(color: .black).cropped(to: canvas)
     }
     composed = applyOverlays(composed, seconds: compositionSeconds, canvas: canvas)
+    renderImage(composed, to: destination, canvas: canvas)
+  }
+
+  private func renderImage(_ image: CIImage, to destination: CVPixelBuffer, canvas: CGRect) {
     lock.lock()
-    context.render(composed, to: destination, bounds: canvas, colorSpace: CGColorSpaceCreateDeviceRGB())
+    context.render(image, to: destination, bounds: canvas, colorSpace: CGColorSpaceCreateDeviceRGB())
+    renderedFrames += 1
+    if renderedFrames % 30 == 0 {
+      context.clearCaches()
+    }
     lock.unlock()
   }
 
@@ -1988,16 +1970,21 @@ private final class ExportFrameRenderer {
     } else {
       path = nil
     }
-    guard let path, let ui = UIImage(contentsOfFile: path), let cg = ui.cgImage else { return nil }
+    guard let path else { return nil }
+    let key = "\(path)|\(Int(canvas.width))x\(Int(canvas.height))"
+    if let cached = overlayCache[key] { return cached }
+    guard let ui = UIImage(contentsOfFile: path), let cg = ui.cgImage else { return nil }
     var ci = CIImage(cgImage: cg)
     ci = ci.transformed(by: CGAffineTransform(scaleX: 1, y: -1).translatedBy(x: 0, y: -ci.extent.height))
     let e = ci.extent
     let sx = canvas.width / max(e.width, 1)
     let sy = canvas.height / max(e.height, 1)
-    return ci
+    let placed = ci
       .transformed(by: CGAffineTransform(scaleX: sx, y: sy))
       .transformed(by: CGAffineTransform(translationX: -e.origin.x * sx, y: -e.origin.y * sy))
       .cropped(to: canvas)
+    overlayCache[key] = placed
+    return placed
   }
 }
 

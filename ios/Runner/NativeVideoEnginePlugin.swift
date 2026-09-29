@@ -156,6 +156,10 @@ final class NativeVideoEnginePlugin: NSObject, FlutterPlugin {
         }
       }
 
+    case "cancelExport":
+      NativeVideoEngineMedia.cancelExport()
+      result(nil)
+
     case "export":
       guard let args = call.arguments as? [String: Any] else {
         result(FlutterError(code: "bad_args", message: "export", details: nil))
@@ -164,10 +168,12 @@ final class NativeVideoEnginePlugin: NSObject, FlutterPlugin {
       NativeVideoEngineMedia.export(
         args: args,
         onProgress: { [weak self] progress in
-          self?.eventSink?([
-            "type": "exportProgress",
-            "progress": progress,
-          ])
+          DispatchQueue.main.async {
+            self?.eventSink?([
+              "type": "exportProgress",
+              "progress": progress,
+            ])
+          }
         },
         completion: { exportResult in
           DispatchQueue.main.async {

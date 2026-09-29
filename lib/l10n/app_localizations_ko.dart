@@ -80,6 +80,10 @@ class AppLocalizationsKo extends AppLocalizations {
   String get comingSoon => '준비 중';
 
   @override
+  String get youtubeUploadNeedsSignIn =>
+      'YouTube에 로그인한 뒤에 업로드할 수 있습니다. 로그인 연결이 아직 없어서 업로드를 시작하지 않았습니다.';
+
+  @override
   String get trimStart => '시작 지점';
 
   @override
@@ -92,7 +96,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get uploadTitleHint => 'Shorts 제목';
 
   @override
-  String get uploadDescriptionHint => '설명 (#Shorts 권장)';
+  String get uploadDescriptionHint => '설명 (선택, #Shorts 권장)';
 
   @override
   String get privacyPublic => '공개';
@@ -474,4 +478,70 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get redo => '다시 실행';
+
+  @override
+  String get uploadVisibility => '공개 범위';
+
+  @override
+  String get uploadThumbnail => '썸네일';
+
+  @override
+  String get uploadThumbnailAuto => '자동';
+
+  @override
+  String get uploadThumbnailFromPhoto => '사진에서 선택';
+
+  @override
+  String get uploadPlaylist => '재생목록';
+
+  @override
+  String get uploadPlaylistNone => '재생목록에 넣지 않음';
+
+  @override
+  String get uploadPlaylistLoad => '재생목록 불러오기';
+
+  @override
+  String get uploadPlaylistEmpty => '이 채널에 재생목록이 없습니다.';
+
+  @override
+  String get uploadPlaylistFailed => '재생목록을 불러오지 못했습니다.';
+
+  @override
+  String get uploadAudience => '시청자층';
+
+  @override
+  String get uploadAudienceNotForKids => '아동용이 아님';
+
+  @override
+  String get uploadAudienceForKids => '아동용';
+
+  @override
+  String get uploadAudienceHelp => 'YouTube에 필수로 알려야 합니다. 아동용은 기능이 제한됩니다.';
+
+  @override
+  String get uploadAgeRestriction => '연령 제한';
+
+  @override
+  String get uploadAgeRestrictionHelp =>
+      '18세 이상만 시청할 수 있습니다. 아동용이면 사용할 수 없습니다.';
+
+  @override
+  String get savedToDevice => '장치에 저장됨';
+
+  @override
+  String get exportDone => '완료';
+
+  @override
+  String get shareToYouTube => 'YouTube에 공유';
+
+  @override
+  String get shareMore => '기타';
+
+  @override
+  String get shareAppMissing => '해당 앱이 설치되어 있지 않습니다.';
+
+  @override
+  String uploadPartialFailure(String videoId, String message) {
+    return '영상은 업로드되었습니다 ($videoId). 다음 단계가 실패했습니다: $message';
+  }
 }

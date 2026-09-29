@@ -80,6 +80,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get comingSoon => '即将推出';
 
   @override
+  String get youtubeUploadNeedsSignIn => '上传前需要登录 YouTube。登录尚未接通，因此没有开始上传。';
+
+  @override
   String get trimStart => '修剪起点';
 
   @override
@@ -92,7 +95,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get uploadTitleHint => 'Shorts 标题';
 
   @override
-  String get uploadDescriptionHint => '描述（建议含 #Shorts）';
+  String get uploadDescriptionHint => '描述（可选，建议含 #Shorts）';
 
   @override
   String get privacyPublic => '公开';
@@ -470,4 +473,69 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get redo => '重做';
+
+  @override
+  String get uploadVisibility => '公开范围';
+
+  @override
+  String get uploadThumbnail => '缩略图';
+
+  @override
+  String get uploadThumbnailAuto => '自动';
+
+  @override
+  String get uploadThumbnailFromPhoto => '从照片选择';
+
+  @override
+  String get uploadPlaylist => '播放列表';
+
+  @override
+  String get uploadPlaylistNone => '不加入播放列表';
+
+  @override
+  String get uploadPlaylistLoad => '加载播放列表';
+
+  @override
+  String get uploadPlaylistEmpty => '此频道没有播放列表。';
+
+  @override
+  String get uploadPlaylistFailed => '无法加载播放列表。';
+
+  @override
+  String get uploadAudience => '观众';
+
+  @override
+  String get uploadAudienceNotForKids => '非儿童向';
+
+  @override
+  String get uploadAudienceForKids => '儿童向';
+
+  @override
+  String get uploadAudienceHelp => 'YouTube 要求声明。儿童向视频功能会受限。';
+
+  @override
+  String get uploadAgeRestriction => '年龄限制';
+
+  @override
+  String get uploadAgeRestrictionHelp => '仅 18 岁以上可观看。儿童向内容不能使用。';
+
+  @override
+  String get savedToDevice => '已保存到设备';
+
+  @override
+  String get exportDone => '完成';
+
+  @override
+  String get shareToYouTube => '分享到 YouTube';
+
+  @override
+  String get shareMore => '更多';
+
+  @override
+  String get shareAppMissing => '未安装该应用。';
+
+  @override
+  String uploadPartialFailure(String videoId, String message) {
+    return '视频已上传 ($videoId)。后续步骤失败: $message';
+  }
 }

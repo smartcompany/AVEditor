@@ -240,6 +240,12 @@ abstract class AppLocalizations {
   /// **'Coming soon'**
   String get comingSoon;
 
+  /// No description provided for @youtubeUploadNeedsSignIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in with YouTube before uploading. Sign-in is not connected yet, so the upload was not started.'**
+  String get youtubeUploadNeedsSignIn;
+
   /// No description provided for @trimStart.
   ///
   /// In en, this message translates to:
@@ -267,7 +273,7 @@ abstract class AppLocalizations {
   /// No description provided for @uploadDescriptionHint.
   ///
   /// In en, this message translates to:
-  /// **'Description (#Shorts recommended)'**
+  /// **'Description (optional, #Shorts recommended)'**
   String get uploadDescriptionHint;
 
   /// No description provided for @privacyPublic.
@@ -965,6 +971,132 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Redo'**
   String get redo;
+
+  /// No description provided for @uploadVisibility.
+  ///
+  /// In en, this message translates to:
+  /// **'Visibility'**
+  String get uploadVisibility;
+
+  /// No description provided for @uploadThumbnail.
+  ///
+  /// In en, this message translates to:
+  /// **'Thumbnail'**
+  String get uploadThumbnail;
+
+  /// No description provided for @uploadThumbnailAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Automatic'**
+  String get uploadThumbnailAuto;
+
+  /// No description provided for @uploadThumbnailFromPhoto.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose photo'**
+  String get uploadThumbnailFromPhoto;
+
+  /// No description provided for @uploadPlaylist.
+  ///
+  /// In en, this message translates to:
+  /// **'Playlist'**
+  String get uploadPlaylist;
+
+  /// No description provided for @uploadPlaylistNone.
+  ///
+  /// In en, this message translates to:
+  /// **'Don\'t add to a playlist'**
+  String get uploadPlaylistNone;
+
+  /// No description provided for @uploadPlaylistLoad.
+  ///
+  /// In en, this message translates to:
+  /// **'Load playlists'**
+  String get uploadPlaylistLoad;
+
+  /// No description provided for @uploadPlaylistEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'This channel has no playlists.'**
+  String get uploadPlaylistEmpty;
+
+  /// No description provided for @uploadPlaylistFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load playlists.'**
+  String get uploadPlaylistFailed;
+
+  /// No description provided for @uploadAudience.
+  ///
+  /// In en, this message translates to:
+  /// **'Audience'**
+  String get uploadAudience;
+
+  /// No description provided for @uploadAudienceNotForKids.
+  ///
+  /// In en, this message translates to:
+  /// **'Not made for kids'**
+  String get uploadAudienceNotForKids;
+
+  /// No description provided for @uploadAudienceForKids.
+  ///
+  /// In en, this message translates to:
+  /// **'Made for kids'**
+  String get uploadAudienceForKids;
+
+  /// No description provided for @uploadAudienceHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'YouTube requires this. Made-for-kids videos have limited features.'**
+  String get uploadAudienceHelp;
+
+  /// No description provided for @uploadAgeRestriction.
+  ///
+  /// In en, this message translates to:
+  /// **'Age restriction'**
+  String get uploadAgeRestriction;
+
+  /// No description provided for @uploadAgeRestrictionHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Only viewers 18 and older can watch. Unavailable for kids content.'**
+  String get uploadAgeRestrictionHelp;
+
+  /// No description provided for @savedToDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved to device'**
+  String get savedToDevice;
+
+  /// No description provided for @exportDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get exportDone;
+
+  /// No description provided for @shareToYouTube.
+  ///
+  /// In en, this message translates to:
+  /// **'Share to YouTube'**
+  String get shareToYouTube;
+
+  /// No description provided for @shareMore.
+  ///
+  /// In en, this message translates to:
+  /// **'More'**
+  String get shareMore;
+
+  /// No description provided for @shareAppMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'That app is not installed.'**
+  String get shareAppMissing;
+
+  /// No description provided for @uploadPartialFailure.
+  ///
+  /// In en, this message translates to:
+  /// **'The video was uploaded ({videoId}). A later step failed: {message}'**
+  String uploadPartialFailure(String videoId, String message);
 }
 
 class _AppLocalizationsDelegate
