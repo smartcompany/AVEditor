@@ -612,8 +612,11 @@ private class TimedBitmapOverlay(
     val count = (overlay["frameCount"] as? Number)?.toInt() ?: return null
     if (count <= 0) return null
     val rate = (overlay["frameRate"] as? Number)?.toDouble() ?: 30.0
-    val span = spans.firstOrNull { timeMs in it } ?: spans.firstOrNull() ?: return null
-    val index = ((timeMs - span.first) * rate / 1000.0).toInt().coerceIn(0, count - 1)
+    if (spans.isEmpty()) return null
+    // A transition splits one overlay into a span per clip. Clock from the
+    // first span so the entrance does not play again at the cut.
+    val anchor = spans.minOf { it.first }
+    val index = ((timeMs - anchor) * rate / 1000.0).toInt().coerceIn(0, count - 1)
     return String.format(Locale.US, "%s/frame_%04d.png", dir, index + 1)
   }
 

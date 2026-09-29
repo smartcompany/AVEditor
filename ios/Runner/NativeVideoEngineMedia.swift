@@ -1331,6 +1331,8 @@ private final class ExportFrameRenderer {
   private let context: CIContext
   private let lock = NSLock()
   private var overlayCache: [String: CIImage] = [:]
+  /// Entrance frames are full-canvas bitmaps. Keep only the recent ones.
+  private var sequenceFrameCache: [String: CIImage] = [:]
   private var renderedFrames = 0
 
   init() {
@@ -1965,7 +1967,7 @@ private final class ExportFrameRenderer {
     let ms = Int(seconds * 1000)
     for overlay in overlays {
       guard overlayVisible(overlay, atMs: ms),
-            let ci = overlayImage(overlay, canvas: canvas)
+            let ci = overlayImage(overlay, canvas: canvas, atMs: ms)
       else { continue }
       result = ci.composited(over: result)
     }
@@ -1981,20 +1983,22 @@ private final class ExportFrameRenderer {
     }
   }
 
-  private func overlayImage(_ overlay: [String: Any], canvas: CGRect) -> CIImage? {
+  private func overlayImage(_ overlay: [String: Any], canvas: CGRect, atMs ms: Int) -> CIImage? {
     let path: String?
+    let animated: Bool
     if let file = overlay["path"] as? String {
       path = file
-    } else if let dir = overlay["sequenceDir"] as? String,
-              let count = overlay["frameCount"] as? Int,
-              count > 0 {
-      path = String(format: "%@/frame_%04d.png", dir, count)
+      animated = false
+    } else if let sequence = sequenceFramePath(overlay, atMs: ms) {
+      path = sequence
+      animated = true
     } else {
       path = nil
+      animated = false
     }
     guard let path else { return nil }
     let key = "\(path)|\(Int(canvas.width))x\(Int(canvas.height))"
-    if let cached = overlayCache[key] { return cached }
+    if let cached = overlayCache[key] ?? sequenceFrameCache[key] { return cached }
     guard let ui = UIImage(contentsOfFile: path), let cg = ui.cgImage else { return nil }
     // Flutter's PNG is already top-row-first. CIImage(cgImage:) keeps that row
     // at the top of the pixel buffer. An extra Y flip turns the glyphs over.
@@ -2006,8 +2010,39 @@ private final class ExportFrameRenderer {
       .transformed(by: CGAffineTransform(scaleX: sx, y: sy))
       .transformed(by: CGAffineTransform(translationX: -e.origin.x * sx, y: -e.origin.y * sy))
       .cropped(to: canvas)
-    overlayCache[key] = placed
+    if animated {
+      if sequenceFrameCache[key] == nil, sequenceFrameCache.count >= 4 {
+        sequenceFrameCache.remove(at: sequenceFrameCache.startIndex)
+      }
+      sequenceFrameCache[key] = placed
+    } else {
+      overlayCache[key] = placed
+    }
     return placed
+  }
+
+  /// Entrance PNGs are `frame_0001.png` … at `frameRate`. After the last frame, hold it.
+  private func sequenceFramePath(_ overlay: [String: Any], atMs ms: Int) -> String? {
+    guard let dir = overlay["sequenceDir"] as? String else { return nil }
+    let count = (overlay["frameCount"] as? NSNumber)?.intValue ?? 0
+    if count <= 0 { return nil }
+    let rate = (overlay["frameRate"] as? NSNumber)?.doubleValue ?? 24
+    let spans = overlay["spans"] as? [[String: Any]] ?? []
+    // A transition splits one overlay into a span per clip. Clock from the
+    // first span so the entrance does not play again at the cut.
+    var anchor = 0
+    var haveAnchor = false
+    for span in spans {
+      let start = (span["startMs"] as? NSNumber)?.intValue ?? 0
+      if !haveAnchor || start < anchor {
+        anchor = start
+        haveAnchor = true
+      }
+    }
+    let elapsed = max(0, ms - anchor)
+    let raw = Int((Double(elapsed) * rate / 1000.0).rounded(.down))
+    let index = min(count - 1, max(0, raw))
+    return String(format: "%@/frame_%04d.png", dir, index + 1)
   }
 }
 
