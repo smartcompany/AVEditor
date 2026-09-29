@@ -323,11 +323,17 @@ private func exportReencode(
   }
 
   let renderSize = CGSize(width: request.width, height: request.height)
-  let baseTransform = exportFitTransform(
+  let layerTransform = exportFitTransform(
     track: sourceVideo,
     renderSize: renderSize,
     rotationDegrees: request.rotationDegrees
   )
+  var compositorTransform = sourceVideo.preferredTransform
+  if request.rotationDegrees != 0 {
+    compositorTransform = compositorTransform.concatenating(
+      CGAffineTransform(rotationAngle: CGFloat(request.rotationDegrees))
+    )
+  }
 
   let videoComp = AVMutableVideoComposition()
   videoComp.renderSize = renderSize
@@ -341,14 +347,14 @@ private func exportReencode(
     videoComp.instructions = buildCustomExportInstructions(
       placements: placements,
       videoTracks: videoTracks,
-      baseTransform: baseTransform
+      baseTransform: compositorTransform
     )
   } else {
     ExportOverlayStore.clear()
     videoComp.instructions = buildExportInstructions(
       placements: placements,
       videoTracks: videoTracks,
-      baseTransform: baseTransform,
+      baseTransform: layerTransform,
       renderSize: renderSize
     )
   }
@@ -1104,11 +1110,10 @@ func makeTimelinePreviewItem(args: [String: Any]) throws -> (item: AVPlayerItem,
     width: max(2, floor(oriented.width * fit / 2) * 2),
     height: max(2, floor(oriented.height * fit / 2) * 2)
   )
-  let baseTransform = exportFitTransform(
-    track: sourceVideo,
-    renderSize: renderSize,
-    rotationDegrees: 0
-  )
+  // Raw track transform. The compositor fits it in Core Image space.
+  // exportFitTransform is for AVFoundation layer instructions, which use the
+  // opposite Y axis and turn phone video upside down here.
+  let baseTransform = sourceVideo.preferredTransform
   let videoComp = AVMutableVideoComposition()
   videoComp.renderSize = renderSize
   videoComp.frameDuration = CMTime(value: 1, timescale: 30)
@@ -1933,7 +1938,24 @@ private final class ExportFrameRenderer {
   }
 
   private func placed(_ buffer: CVPixelBuffer, _ transform: CGAffineTransform, _ canvas: CGRect) -> CIImage {
-    CIImage(cvPixelBuffer: buffer).transformed(by: transform).cropped(to: canvas)
+    // preferredTransform is defined for AVFoundation's top-left buffer.
+    // CIImage is bottom-left, so conjugate by a Y flip or a 90° phone
+    // recording lands upside down. Then fit the oriented picture to the canvas.
+    let flip = CGAffineTransform(scaleX: 1, y: -1)
+    var img = CIImage(cvPixelBuffer: buffer).transformed(
+      by: flip.concatenating(transform).concatenating(flip)
+    )
+    var extent = img.extent
+    img = img.transformed(by: CGAffineTransform(translationX: -extent.origin.x, y: -extent.origin.y))
+    extent = img.extent
+    let scale = max(canvas.width / max(extent.width, 1), canvas.height / max(extent.height, 1))
+    img = img.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+    extent = img.extent
+    let tx = (canvas.width - extent.width) / 2 - extent.origin.x
+    let ty = (canvas.height - extent.height) / 2 - extent.origin.y
+    return img
+      .transformed(by: CGAffineTransform(translationX: tx, y: ty))
+      .cropped(to: canvas)
   }
 
   private func applyOverlays(_ image: CIImage, seconds: Double, canvas: CGRect) -> CIImage {
@@ -1974,8 +1996,9 @@ private final class ExportFrameRenderer {
     let key = "\(path)|\(Int(canvas.width))x\(Int(canvas.height))"
     if let cached = overlayCache[key] { return cached }
     guard let ui = UIImage(contentsOfFile: path), let cg = ui.cgImage else { return nil }
-    var ci = CIImage(cgImage: cg)
-    ci = ci.transformed(by: CGAffineTransform(scaleX: 1, y: -1).translatedBy(x: 0, y: -ci.extent.height))
+    // Flutter's PNG is already top-row-first. CIImage(cgImage:) keeps that row
+    // at the top of the pixel buffer. An extra Y flip turns the glyphs over.
+    let ci = CIImage(cgImage: cg)
     let e = ci.extent
     let sx = canvas.width / max(e.width, 1)
     let sy = canvas.height / max(e.height, 1)
