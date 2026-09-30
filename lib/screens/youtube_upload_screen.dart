@@ -4,15 +4,14 @@ import 'package:aveditor/l10n/app_localizations.dart';
 import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/video_project.dart';
+import 'package:aveditor/screens/thumbnail_editor_screen.dart';
 import 'package:aveditor/services/app_settings_service.dart';
 import 'package:aveditor/services/export_service.dart';
 import 'package:aveditor/services/youtube_auth_service.dart';
 import 'package:aveditor/services/youtube_upload_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
-import 'package:video_thumbnail/video_thumbnail.dart';
 
 class YouTubeUploadScreen extends StatefulWidget {
   const YouTubeUploadScreen({
@@ -31,44 +30,44 @@ class YouTubeUploadScreen extends StatefulWidget {
 }
 
 class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
-  final _titleController = TextEditingController();
-  final _descriptionController = TextEditingController(text: '#Shorts');
+  final _descriptionController = TextEditingController();
+  final _locationController = TextEditingController();
+  final _relatedController = TextEditingController();
+  final _tagsController = TextEditingController();
   String _privacy = 'public';
   bool _madeForKids = false;
   bool _ageRestricted = false;
+  bool _paidPromotion = false;
+  bool _syntheticMedia = false;
   bool _busy = false;
+  bool _moreOpen = false;
   String? _thumbnailPath;
-  List<String> _framePaths = const [];
-  bool _framesLoading = true;
   String? _playlistId;
   List<YouTubePlaylist> _playlists = const [];
   bool _playlistsLoading = false;
   String? _playlistsError;
 
   VideoPlayerController? _preview;
-  var _segmentIndex = 0;
-  var _advancingSegment = false;
   var _previewFailed = false;
 
   final _export = ExportService();
   final _upload = YouTubeUploadService();
   final _auth = YouTubeAuthService();
   final _settings = const AppSettingsService();
-  final _picker = ImagePicker();
 
   @override
   void initState() {
     super.initState();
     _openPreview();
-    _loadFrames();
   }
 
   @override
   void dispose() {
-    _preview?.removeListener(_onPreviewTick);
     _preview?.dispose();
-    _titleController.dispose();
     _descriptionController.dispose();
+    _locationController.dispose();
+    _relatedController.dispose();
+    _tagsController.dispose();
     super.dispose();
   }
 
@@ -84,7 +83,6 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
       await controller.setLooping(false);
       final start = _segments.isEmpty ? Duration.zero : _segments.first.start;
       await controller.seekTo(start);
-      controller.addListener(_onPreviewTick);
       if (!mounted) return;
       setState(() {});
     } catch (error, stack) {
@@ -94,107 +92,33 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
     }
   }
 
-  void _onPreviewTick() {
-    final controller = _preview;
-    if (controller == null ||
-        _advancingSegment ||
-        !controller.value.isPlaying ||
-        _segments.isEmpty) {
-      return;
-    }
-    final index = _segmentIndex.clamp(0, _segments.length - 1);
-    final segment = _segments[index];
-    if (controller.value.position <
-        segment.end - const Duration(milliseconds: 80)) {
-      return;
-    }
-    _advancingSegment = true;
-    if (index + 1 < _segments.length) {
-      _segmentIndex = index + 1;
-      controller.seekTo(_segments[_segmentIndex].start).whenComplete(() {
-        _advancingSegment = false;
-      });
-      return;
-    }
-    _segmentIndex = 0;
-    controller.pause();
-    controller.seekTo(_segments.first.start).whenComplete(() {
-      _advancingSegment = false;
-      if (mounted) setState(() {});
-    });
+  String _thumbnailDurationLabel() {
+    final trimmed = widget.project.trimmedDuration;
+    final duration = trimmed > Duration.zero
+        ? trimmed
+        : (_preview?.value.duration ?? Duration.zero);
+    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '${duration.inMinutes}:$seconds';
   }
 
-  Future<void> _togglePreview() async {
-    final controller = _preview;
-    if (controller == null || !controller.value.isInitialized) return;
-    if (controller.value.isPlaying) {
-      await controller.pause();
-    } else {
-      if (_segments.isNotEmpty &&
-          controller.value.position >= _segments.last.end) {
-        _segmentIndex = 0;
-        await controller.seekTo(_segments.first.start);
-      }
-      await controller.play();
-    }
-    if (mounted) setState(() {});
+  String _titleFromCaption(String caption) {
+    final line = caption
+        .split('\n')
+        .map((part) => part.trim())
+        .firstWhere((part) => part.isNotEmpty, orElse: () => '');
+    if (line.length <= 100) return line;
+    return line.substring(0, 100);
   }
 
-  Future<void> _loadFrames() async {
-    try {
-      final times = _thumbnailTimes();
-      final paths = <String>[];
-      for (final timeMs in times) {
-        final path = await VideoThumbnail.thumbnailFile(
-          video: widget.project.sourcePath,
-          imageFormat: ImageFormat.JPEG,
-          timeMs: timeMs,
-          maxHeight: 720,
-          quality: 80,
-        );
-        if (path != null) paths.add(path);
-      }
-      if (!mounted) return;
-      setState(() => _framePaths = paths);
-    } catch (error, stack) {
-      debugPrint('[YouTubeUpload] 썸네일 프레임 실패: $error\n$stack');
-    } finally {
-      if (mounted) setState(() => _framesLoading = false);
-    }
-  }
-
-  List<int> _thumbnailTimes() {
-    const count = 8;
-    if (_segments.isEmpty) return const [0];
-    final total = widget.project.trimmedDuration.inMilliseconds;
-    if (total <= 0) return [_segments.first.start.inMilliseconds];
-    return [
-      for (var i = 0; i < count; i++)
-        _sourceMsForTimeline((total * i / count).round()),
-    ];
-  }
-
-  int _sourceMsForTimeline(int timelineMs) {
-    var cursor = 0;
-    for (final segment in _segments) {
-      final length = segment.duration.inMilliseconds;
-      if (length <= 0) continue;
-      if (timelineMs < cursor + length) {
-        return segment.start.inMilliseconds + (timelineMs - cursor);
-      }
-      cursor += length;
-    }
-    return _segments.last.end.inMilliseconds - 1;
-  }
-
-  Future<void> _pickThumbnailPhoto() async {
-    final file = await _picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 85,
-      maxWidth: 1280,
+  Future<void> _editThumbnail() async {
+    final path = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => ThumbnailEditorScreen(project: widget.project),
+      ),
     );
-    if (file == null || !mounted) return;
-    setState(() => _thumbnailPath = file.path);
+    if (!mounted || path == null) return;
+    setState(() => _thumbnailPath = path);
   }
 
   Future<void> _loadPlaylists() async {
@@ -276,23 +200,55 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
 
   Future<void> _submit() async {
     final l10n = context.l10n;
-    if (_titleController.text.trim().isEmpty) {
+    var description = _descriptionController.text.trim();
+    final title = _titleFromCaption(description);
+    if (title.isEmpty) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(l10n.uploadTitleHint)));
       return;
     }
+    final relatedRaw = _relatedController.text.trim();
+    final relatedId = youtubeVideoId(relatedRaw);
+    if (relatedRaw.isNotEmpty && relatedId == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.uploadRelatedVideoInvalid)));
+      return;
+    }
+    final tags = youtubeTags(_tagsController.text);
+    if (relatedId != null) {
+      final link = 'https://www.youtube.com/watch?v=$relatedId';
+      if (!description.contains(link)) {
+        description = description.isEmpty ? link : '$description\n$link';
+      }
+    }
 
     setState(() => _busy = true);
     await _preview?.pause();
     debugPrint(
-      '[YouTubeUpload] 시작 title="${_titleController.text.trim()}" '
+      '[YouTubeUpload] 시작 title="$title" '
       'privacy=$_privacy kids=$_madeForKids ageRestricted=$_ageRestricted '
+      'paid=$_paidPromotion synthetic=$_syntheticMedia '
+      'tags=${tags.length} location="${_locationController.text.trim()}" '
+      'related=${relatedId ?? "none"} '
       'playlist=${_playlistId ?? "none"} '
       'thumbnail=${_thumbnailPath == null ? "auto" : "custom"}',
     );
     String? videoId;
     try {
+      ({double latitude, double longitude})? place;
+      final location = _locationController.text.trim();
+      if (location.isNotEmpty) {
+        place = await _upload.lookupPlace(location);
+        if (!mounted) return;
+        if (place == null) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(l10n.uploadLocationNotFound)));
+          return;
+        }
+      }
       final signedIn = await _auth.isSignedIn;
       debugPrint(
         signedIn ? '[YouTubeUpload] 이미 로그인됨' : '[YouTubeUpload] 로그인 필요',
@@ -301,7 +257,7 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
         await _auth.signIn();
         debugPrint('[YouTubeUpload] 로그인 완료');
       }
-      if (_playlistId != null || _ageRestricted) {
+      if (_playlistId != null || _ageRestricted || place != null) {
         await _auth.ensureAccountScope();
       }
       debugPrint('[YouTubeUpload] 액세스 토큰 요청');
@@ -333,13 +289,20 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
         project: widget.project,
         exportedPath: path,
         accessToken: token,
-        title: _titleController.text.trim(),
-        description: _descriptionController.text.trim(),
+        title: title,
+        description: description,
         privacyStatus: _privacy,
         madeForKids: _madeForKids,
+        tags: tags,
+        containsSyntheticMedia: _syntheticMedia,
+        paidPromotion: _paidPromotion,
       );
       debugPrint('[YouTubeUpload] 업로드 완료 videoId=$videoId');
-      final followUp = await _applyDetails(token: token, videoId: videoId);
+      final followUp = await _applyDetails(
+        token: token,
+        videoId: videoId,
+        place: place,
+      );
       if (!mounted) return;
       if (followUp != null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -370,6 +333,7 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
   Future<String?> _applyDetails({
     required String token,
     required String videoId,
+    ({double latitude, double longitude})? place,
   }) async {
     final errors = <String>[];
     final thumbnail = _thumbnailPath;
@@ -403,6 +367,18 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
         errors.add('$error');
       }
     }
+    if (place != null) {
+      try {
+        await _upload.setRecordingLocation(
+          accessToken: token,
+          videoId: videoId,
+          latitude: place.latitude,
+          longitude: place.longitude,
+        );
+      } catch (error) {
+        errors.add('$error');
+      }
+    }
     if (errors.isEmpty) return null;
     return errors.join('\n');
   }
@@ -417,30 +393,8 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
         children: [
-          Center(child: _buildPreview(l10n, preview)),
+          _buildPreview(l10n, preview),
           const SizedBox(height: 20),
-          TextField(
-            controller: _titleController,
-            enabled: !_busy,
-            textInputAction: TextInputAction.next,
-            decoration: InputDecoration(labelText: l10n.uploadTitleHint),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _descriptionController,
-            enabled: !_busy,
-            minLines: 3,
-            maxLines: 6,
-            decoration: InputDecoration(labelText: l10n.uploadDescriptionHint),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            l10n.uploadThumbnail,
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 8),
-          _buildThumbnailChoices(l10n),
-          const SizedBox(height: 16),
           DropdownButtonFormField<String>(
             initialValue: _privacy,
             decoration: InputDecoration(labelText: l10n.uploadVisibility),
@@ -526,6 +480,65 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
                 ? null
                 : (value) => setState(() => _ageRestricted = value),
           ),
+          const SizedBox(height: 8),
+          if (_moreOpen) ...[
+            TextField(
+              controller: _locationController,
+              enabled: !_busy,
+              decoration: InputDecoration(
+                labelText: l10n.uploadLocation,
+                hintText: l10n.uploadLocationHint,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _relatedController,
+              enabled: !_busy,
+              decoration: InputDecoration(
+                labelText: l10n.uploadRelatedVideo,
+                hintText: l10n.uploadRelatedVideoHint,
+              ),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(l10n.uploadPaidPromotion),
+              subtitle: Text(l10n.uploadPaidPromotionHelp),
+              value: _paidPromotion,
+              onChanged: _busy
+                  ? null
+                  : (value) => setState(() => _paidPromotion = value),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(l10n.uploadAlteredContent),
+              subtitle: Text(l10n.uploadAlteredContentHelp),
+              value: _syntheticMedia,
+              onChanged: _busy
+                  ? null
+                  : (value) => setState(() => _syntheticMedia = value),
+            ),
+            TextField(
+              controller: _tagsController,
+              enabled: !_busy,
+              decoration: InputDecoration(
+                labelText: l10n.uploadTags,
+                hintText: l10n.uploadTagsHint,
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          SizedBox(
+            width: double.infinity,
+            child: TextButton.icon(
+              onPressed: _busy
+                  ? null
+                  : () => setState(() => _moreOpen = !_moreOpen),
+              icon: Icon(_moreOpen ? Icons.expand_less : Icons.expand_more),
+              label: Text(
+                _moreOpen ? l10n.uploadFewerDetails : l10n.uploadMoreDetails,
+              ),
+            ),
+          ),
           const SizedBox(height: 16),
           FilledButton(
             onPressed: _busy ? null : _submit,
@@ -545,19 +558,55 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
   Widget _buildPreview(AppLocalizations l10n, VideoPlayerController? preview) {
     final ready =
         preview != null && preview.value.isInitialized && !_previewFailed;
+    final showStill = _thumbnailPath != null;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        _thumbnailFrame(preview, ready, showStill),
+        const SizedBox(width: 16),
+        Expanded(
+          child: TextField(
+            controller: _descriptionController,
+            enabled: !_busy,
+            minLines: 1,
+            maxLines: 4,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
+            decoration: InputDecoration(
+              hintText: l10n.uploadShortsCaption,
+              hintStyle: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w500,
+                color: Theme.of(context).hintColor,
+              ),
+              border: InputBorder.none,
+              isCollapsed: true,
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _thumbnailFrame(
+    VideoPlayerController? preview,
+    bool ready,
+    bool showStill,
+  ) {
     return SizedBox(
-      height: 320,
-      width: 180,
+      width: 78,
+      height: 138,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         child: ColoredBox(
           color: AppTheme.surface,
-          child: ready
-              ? GestureDetector(
-                  onTap: _busy ? null : _togglePreview,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
+          child: ready && preview != null
+              ? Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (showStill)
+                      Image.file(File(_thumbnailPath!), fit: BoxFit.cover)
+                    else
                       FittedBox(
                         fit: BoxFit.cover,
                         child: SizedBox(
@@ -566,123 +615,66 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
                           child: VideoPlayer(preview),
                         ),
                       ),
-                      if (!preview.value.isPlaying)
-                        const Center(
-                          child: Icon(
-                            Icons.play_circle_fill,
-                            size: 56,
-                            color: Colors.white,
+                    Positioned(
+                      left: 6,
+                      top: 6,
+                      child: _editThumbnailButton(ready),
+                    ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 6,
+                      child: Center(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.72),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            child: Text(
+                              _thumbnailDurationLabel(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                height: 1.2,
+                              ),
+                            ),
                           ),
                         ),
-                    ],
-                  ),
+                      ),
+                    ),
+                  ],
                 )
               : Center(
                   child: _previewFailed
-                      ? Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Text(
-                            l10n.videoLoadError,
-                            textAlign: TextAlign.center,
-                          ),
-                        )
-                      : const CircularProgressIndicator(strokeWidth: 2),
+                      ? const Icon(Icons.broken_image_outlined, size: 20)
+                      : const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
                 ),
         ),
       ),
     );
   }
 
-  Widget _buildThumbnailChoices(AppLocalizations l10n) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          height: 72,
-          child: _framesLoading
-              ? const Center(
-                  child: SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                )
-              : ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: [
-                    _thumbnailTile(
-                      label: l10n.uploadThumbnailAuto,
-                      selected: _thumbnailPath == null,
-                      onTap: () => setState(() => _thumbnailPath = null),
-                    ),
-                    for (final path in _framePaths)
-                      _thumbnailTile(
-                        imagePath: path,
-                        selected: _thumbnailPath == path,
-                        onTap: () => setState(() => _thumbnailPath = path),
-                      ),
-                  ],
-                ),
-        ),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          onPressed: _busy ? null : _pickThumbnailPhoto,
-          icon: const Icon(Icons.photo_outlined),
-          label: Text(l10n.uploadThumbnailFromPhoto),
-        ),
-        if (_thumbnailPath != null && !_framePaths.contains(_thumbnailPath))
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.file(
-                File(_thumbnailPath!),
-                height: 96,
-                fit: BoxFit.cover,
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _thumbnailTile({
-    String? label,
-    String? imagePath,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
+  Widget _editThumbnailButton(bool ready) {
+    return Material(
+      color: Colors.black.withValues(alpha: 0.55),
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: _busy ? null : onTap,
-        child: Container(
-          width: 54,
-          height: 72,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: selected
-                  ? AppTheme.accent
-                  : AppTheme.muted.withValues(alpha: 0.4),
-              width: selected ? 2 : 1,
-            ),
-            image: imagePath == null
-                ? null
-                : DecorationImage(
-                    image: FileImage(File(imagePath)),
-                    fit: BoxFit.cover,
-                  ),
-          ),
-          child: label == null
-              ? null
-              : Text(
-                  label,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 11),
-                ),
+        onTap: !ready || _busy ? null : _editThumbnail,
+        child: const SizedBox(
+          width: 26,
+          height: 26,
+          child: Icon(Icons.edit, size: 15, color: Colors.white),
         ),
       ),
     );

@@ -486,6 +486,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get uploadThumbnail => '썸네일';
 
   @override
+  String get uploadThumbnailSelect => '썸네일 선택';
+
+  @override
   String get uploadThumbnailAuto => '자동';
 
   @override
@@ -524,6 +527,55 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get uploadAgeRestrictionHelp =>
       '18세 이상만 시청할 수 있습니다. 아동용이면 사용할 수 없습니다.';
+
+  @override
+  String get uploadMoreDetails => '더보기';
+
+  @override
+  String get uploadFewerDetails => '간략히 보기';
+
+  @override
+  String get uploadShortsCaption => 'Shorts 동영상 설명 추가';
+
+  @override
+  String get uploadLocation => '위치';
+
+  @override
+  String get uploadLocationHint => '장소 이름';
+
+  @override
+  String get uploadLocationNotFound => '위치를 찾지 못했습니다.';
+
+  @override
+  String get uploadRelatedVideo => '관련 동영상';
+
+  @override
+  String get uploadRelatedVideoHint => 'YouTube 링크 또는 영상 ID';
+
+  @override
+  String get uploadRelatedVideoInvalid => '관련 동영상 주소를 확인해 주세요.';
+
+  @override
+  String get uploadPaidPromotion => '유료 프로모션 및 브랜드';
+
+  @override
+  String get uploadPaidPromotionHelp =>
+      '유료 제품 배치가 있으면 켜세요. 업로드할 때 YouTube에 표시됩니다.';
+
+  @override
+  String get uploadAlteredContent => 'AI 사용';
+
+  @override
+  String get uploadAlteredContentHelp => '실제처럼 보이게 바꾼 합성 영상이면 켜세요.';
+
+  @override
+  String get uploadTags => '태그';
+
+  @override
+  String get uploadTagsHint => '쉼표로 구분';
+
+  @override
+  String get exportComplete => '내보내기 완료';
 
   @override
   String get savedToDevice => '장치에 저장됨';

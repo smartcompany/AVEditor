@@ -29,6 +29,38 @@ class BasicTextEditDismissGuard {
   }
 }
 
+/// Pins [BasicTextEditToolbar] to the top of the keyboard.
+///
+/// The parent scaffold must keep `resizeToAvoidBottomInset` false so the
+/// timeline or thumbnail strip stays put and this tray paints over the inset.
+class BasicTextEditKeyboardTray extends StatelessWidget {
+  const BasicTextEditKeyboardTray({
+    super.key,
+    required this.overlay,
+    required this.onChanged,
+  });
+
+  final TextOverlay overlay;
+  final ValueChanged<TextOverlay> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final keyboard = MediaQueryData.fromView(
+      View.of(context),
+    ).viewInsets.bottom;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        BasicTextEditToolbar(overlay: overlay, onChanged: onChanged),
+        ColoredBox(
+          color: BasicTextEditToolbar.barBackground,
+          child: SizedBox(height: keyboard, width: double.infinity),
+        ),
+      ],
+    );
+  }
+}
+
 enum _TrayMode { fonts, colors }
 
 /// Matches [minOverlayFontSize] / [maxOverlayFontSize] in video_preview.
@@ -216,11 +248,7 @@ class _BasicTextEditToolbarState extends State<BasicTextEditToolbar> {
       child: InkWell(
         onTap: onTap,
         customBorder: const CircleBorder(),
-        child: SizedBox(
-          width: 44,
-          height: 44,
-          child: Center(child: child),
-        ),
+        child: SizedBox(width: 44, height: 44, child: Center(child: child)),
       ),
     );
   }
@@ -234,8 +262,7 @@ class _BasicTextEditToolbarState extends State<BasicTextEditToolbar> {
     // Size scrubber sits above the opaque color bar so it never covers it.
     // Stack empty space is transparent — preview shows through.
     return SizedBox(
-      height: BasicTextEditToolbar.barHeight +
-          _FontSizeVerticalScrubber.height,
+      height: BasicTextEditToolbar.barHeight + _FontSizeVerticalScrubber.height,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -284,14 +311,15 @@ class _BasicTextEditToolbarState extends State<BasicTextEditToolbar> {
                                 ),
                               ),
                               Padding(
-                                padding:
-                                    const EdgeInsets.only(left: 2, right: 10),
+                                padding: const EdgeInsets.only(
+                                  left: 2,
+                                  right: 10,
+                                ),
                                 child: _buildColorSwatch(
                                   color: _overlay.color,
                                   selected: colorsOpen,
-                                  onTap: () => setState(
-                                    () => _tray = _TrayMode.colors,
-                                  ),
+                                  onTap: () =>
+                                      setState(() => _tray = _TrayMode.colors),
                                 ),
                               ),
                             ],
@@ -367,8 +395,7 @@ class _BasicTextEditToolbarState extends State<BasicTextEditToolbar> {
       separatorBuilder: (_, _) => const SizedBox(width: 6),
       itemBuilder: (context, index) {
         final option = OverlayFonts.all[index];
-        final selected =
-            option.id == OverlayFonts.byId(_overlay.fontFamily).id;
+        final selected = option.id == OverlayFonts.byId(_overlay.fontFamily).id;
         return Center(
           child: _ToolbarChip(
             selected: selected,
@@ -378,9 +405,7 @@ class _BasicTextEditToolbarState extends State<BasicTextEditToolbar> {
               style: option
                   .apply(
                     TextStyle(
-                      color: selected
-                          ? const Color(0xFF4CC9F0)
-                          : Colors.white,
+                      color: selected ? const Color(0xFF4CC9F0) : Colors.white,
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),
@@ -454,8 +479,8 @@ class _FontSizeVerticalScrubberState extends State<_FontSizeVerticalScrubber> {
     BasicTextEditDismissGuard.arm();
     final usable = (height - _thumb).clamp(1.0, double.infinity);
     final t = (1.0 - ((dy - _thumb / 2) / usable)).clamp(0.0, 1.0);
-    final next = _toolbarMinFontSize +
-        t * (_toolbarMaxFontSize - _toolbarMinFontSize);
+    final next =
+        _toolbarMinFontSize + t * (_toolbarMaxFontSize - _toolbarMinFontSize);
     widget.onChanged(next);
   }
 
@@ -500,8 +525,7 @@ class _FontSizeVerticalScrubberState extends State<_FontSizeVerticalScrubber> {
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final h = constraints.maxHeight;
-                  final thumbCenterY =
-                      (1.0 - _t) * (h - _thumb) + _thumb / 2;
+                  final thumbCenterY = (1.0 - _t) * (h - _thumb) + _thumb / 2;
                   return GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onVerticalDragDown: (d) =>

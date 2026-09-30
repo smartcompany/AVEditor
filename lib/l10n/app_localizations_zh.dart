@@ -481,6 +481,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get uploadThumbnail => '缩略图';
 
   @override
+  String get uploadThumbnailSelect => '选择缩略图';
+
+  @override
   String get uploadThumbnailAuto => '自动';
 
   @override
@@ -518,6 +521,54 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get uploadAgeRestrictionHelp => '仅 18 岁以上可观看。儿童向内容不能使用。';
+
+  @override
+  String get uploadMoreDetails => '更多';
+
+  @override
+  String get uploadFewerDetails => '收起';
+
+  @override
+  String get uploadShortsCaption => '添加 Shorts 说明';
+
+  @override
+  String get uploadLocation => '位置';
+
+  @override
+  String get uploadLocationHint => '地点名称';
+
+  @override
+  String get uploadLocationNotFound => '找不到该地点。';
+
+  @override
+  String get uploadRelatedVideo => '相关视频';
+
+  @override
+  String get uploadRelatedVideoHint => 'YouTube 链接或视频 ID';
+
+  @override
+  String get uploadRelatedVideoInvalid => '请检查相关视频地址。';
+
+  @override
+  String get uploadPaidPromotion => '付费推广和品牌';
+
+  @override
+  String get uploadPaidPromotionHelp => '视频含有付费产品植入时打开。上传时会发给 YouTube。';
+
+  @override
+  String get uploadAlteredContent => 'AI 或合成内容';
+
+  @override
+  String get uploadAlteredContentHelp => '画面是逼真的合成或改动影像时打开。';
+
+  @override
+  String get uploadTags => '标签';
+
+  @override
+  String get uploadTagsHint => '用逗号分隔';
+
+  @override
+  String get exportComplete => '导出完成';
 
   @override
   String get savedToDevice => '已保存到设备';

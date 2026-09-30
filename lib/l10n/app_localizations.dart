@@ -984,6 +984,12 @@ abstract class AppLocalizations {
   /// **'Thumbnail'**
   String get uploadThumbnail;
 
+  /// No description provided for @uploadThumbnailSelect.
+  ///
+  /// In en, this message translates to:
+  /// **'Select thumbnail'**
+  String get uploadThumbnailSelect;
+
   /// No description provided for @uploadThumbnailAuto.
   ///
   /// In en, this message translates to:
@@ -1061,6 +1067,102 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Only viewers 18 and older can watch. Unavailable for kids content.'**
   String get uploadAgeRestrictionHelp;
+
+  /// No description provided for @uploadMoreDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'More'**
+  String get uploadMoreDetails;
+
+  /// No description provided for @uploadFewerDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'See less'**
+  String get uploadFewerDetails;
+
+  /// No description provided for @uploadShortsCaption.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a Shorts description'**
+  String get uploadShortsCaption;
+
+  /// No description provided for @uploadLocation.
+  ///
+  /// In en, this message translates to:
+  /// **'Location'**
+  String get uploadLocation;
+
+  /// No description provided for @uploadLocationHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Place name'**
+  String get uploadLocationHint;
+
+  /// No description provided for @uploadLocationNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'That place could not be found.'**
+  String get uploadLocationNotFound;
+
+  /// No description provided for @uploadRelatedVideo.
+  ///
+  /// In en, this message translates to:
+  /// **'Related video'**
+  String get uploadRelatedVideo;
+
+  /// No description provided for @uploadRelatedVideoHint.
+  ///
+  /// In en, this message translates to:
+  /// **'YouTube link or video ID'**
+  String get uploadRelatedVideoHint;
+
+  /// No description provided for @uploadRelatedVideoInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Check the related video link.'**
+  String get uploadRelatedVideoInvalid;
+
+  /// No description provided for @uploadPaidPromotion.
+  ///
+  /// In en, this message translates to:
+  /// **'Paid promotion and brand'**
+  String get uploadPaidPromotion;
+
+  /// No description provided for @uploadPaidPromotionHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on when the video includes paid product placement. This is sent to YouTube.'**
+  String get uploadPaidPromotionHelp;
+
+  /// No description provided for @uploadAlteredContent.
+  ///
+  /// In en, this message translates to:
+  /// **'Altered or synthetic content'**
+  String get uploadAlteredContent;
+
+  /// No description provided for @uploadAlteredContentHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on when the video shows realistic AI or altered footage.'**
+  String get uploadAlteredContentHelp;
+
+  /// No description provided for @uploadTags.
+  ///
+  /// In en, this message translates to:
+  /// **'Tags'**
+  String get uploadTags;
+
+  /// No description provided for @uploadTagsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Separate with commas'**
+  String get uploadTagsHint;
+
+  /// No description provided for @exportComplete.
+  ///
+  /// In en, this message translates to:
+  /// **'Export complete'**
+  String get exportComplete;
 
   /// No description provided for @savedToDevice.
   ///

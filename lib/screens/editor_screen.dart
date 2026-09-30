@@ -3626,32 +3626,9 @@ class _EditorScreenState extends State<EditorScreen>
                   left: 0,
                   right: 0,
                   bottom: 0,
-                  child: Builder(
-                    builder: (context) {
-                      final keyboard = MediaQueryData.fromView(
-                        View.of(context),
-                      ).viewInsets.bottom;
-                      // Anchor to the body bottom and fill the inset with the
-                      // toolbar color. Pinning with `bottom: keyboard` alone
-                      // left a dark strip when the inset and the visible
-                      // keyboard top disagreed.
-                      return Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          BasicTextEditToolbar(
-                            overlay: editingOverlay,
-                            onChanged: _updateOverlay,
-                          ),
-                          ColoredBox(
-                            color: BasicTextEditToolbar.barBackground,
-                            child: SizedBox(
-                              height: keyboard,
-                              width: double.infinity,
-                            ),
-                          ),
-                        ],
-                      );
-                    },
+                  child: BasicTextEditKeyboardTray(
+                    overlay: editingOverlay,
+                    onChanged: _updateOverlay,
                   ),
                 ),
             ],

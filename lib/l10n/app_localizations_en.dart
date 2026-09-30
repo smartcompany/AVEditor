@@ -494,6 +494,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get uploadThumbnail => 'Thumbnail';
 
   @override
+  String get uploadThumbnailSelect => 'Select thumbnail';
+
+  @override
   String get uploadThumbnailAuto => 'Automatic';
 
   @override
@@ -533,6 +536,56 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get uploadAgeRestrictionHelp =>
       'Only viewers 18 and older can watch. Unavailable for kids content.';
+
+  @override
+  String get uploadMoreDetails => 'More';
+
+  @override
+  String get uploadFewerDetails => 'See less';
+
+  @override
+  String get uploadShortsCaption => 'Add a Shorts description';
+
+  @override
+  String get uploadLocation => 'Location';
+
+  @override
+  String get uploadLocationHint => 'Place name';
+
+  @override
+  String get uploadLocationNotFound => 'That place could not be found.';
+
+  @override
+  String get uploadRelatedVideo => 'Related video';
+
+  @override
+  String get uploadRelatedVideoHint => 'YouTube link or video ID';
+
+  @override
+  String get uploadRelatedVideoInvalid => 'Check the related video link.';
+
+  @override
+  String get uploadPaidPromotion => 'Paid promotion and brand';
+
+  @override
+  String get uploadPaidPromotionHelp =>
+      'Turn on when the video includes paid product placement. This is sent to YouTube.';
+
+  @override
+  String get uploadAlteredContent => 'Altered or synthetic content';
+
+  @override
+  String get uploadAlteredContentHelp =>
+      'Turn on when the video shows realistic AI or altered footage.';
+
+  @override
+  String get uploadTags => 'Tags';
+
+  @override
+  String get uploadTagsHint => 'Separate with commas';
+
+  @override
+  String get exportComplete => 'Export complete';
 
   @override
   String get savedToDevice => 'Saved to device';

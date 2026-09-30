@@ -485,6 +485,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get uploadThumbnail => 'サムネイル';
 
   @override
+  String get uploadThumbnailSelect => 'サムネイルを選択';
+
+  @override
   String get uploadThumbnailAuto => '自動';
 
   @override
@@ -522,6 +525,55 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get uploadAgeRestrictionHelp => '18歳以上のみ視聴できます。子ども向けでは使えません。';
+
+  @override
+  String get uploadMoreDetails => 'もっと見る';
+
+  @override
+  String get uploadFewerDetails => '概要を閉じる';
+
+  @override
+  String get uploadShortsCaption => 'Shortsの説明を追加';
+
+  @override
+  String get uploadLocation => '場所';
+
+  @override
+  String get uploadLocationHint => '場所の名前';
+
+  @override
+  String get uploadLocationNotFound => '場所が見つかりませんでした。';
+
+  @override
+  String get uploadRelatedVideo => '関連動画';
+
+  @override
+  String get uploadRelatedVideoHint => 'YouTubeリンクまたは動画ID';
+
+  @override
+  String get uploadRelatedVideoInvalid => '関連動画のアドレスを確認してください。';
+
+  @override
+  String get uploadPaidPromotion => '有料プロモーションとブランド';
+
+  @override
+  String get uploadPaidPromotionHelp =>
+      '有料の製品紹介があるときにオンにします。アップロード時にYouTubeへ送られます。';
+
+  @override
+  String get uploadAlteredContent => 'AI・改変コンテンツ';
+
+  @override
+  String get uploadAlteredContentHelp => '実在のように見える合成・改変映像ならオンにします。';
+
+  @override
+  String get uploadTags => 'タグ';
+
+  @override
+  String get uploadTagsHint => 'カンマで区切る';
+
+  @override
+  String get exportComplete => '書き出し完了';
 
   @override
   String get savedToDevice => 'デバイスに保存しました';

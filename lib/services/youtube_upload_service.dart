@@ -20,17 +20,39 @@ class YouTubeUploadService {
     required String description,
     required String privacyStatus,
     required bool madeForKids,
+    List<String> tags = const [],
+    bool containsSyntheticMedia = false,
+    bool paidPromotion = false,
   }) async {
     final file = File(filePath);
     if (!await file.exists()) {
       throw StateError('Exported video not found');
     }
     final length = await file.length();
+    final parts = <String>['snippet', 'status'];
+    final snippet = <String, Object>{
+      'title': title,
+      'description': description,
+      'categoryId': '22',
+      if (tags.isNotEmpty) 'tags': tags,
+    };
+    final status = <String, Object>{
+      'privacyStatus': privacyStatus,
+      'selfDeclaredMadeForKids': madeForKids,
+      if (containsSyntheticMedia) 'containsSyntheticMedia': true,
+    };
+    final metadata = <String, Object>{'snippet': snippet, 'status': status};
+    if (paidPromotion) {
+      parts.add('paidProductPlacementDetails');
+      metadata['paidProductPlacementDetails'] = {
+        'hasPaidProductPlacement': true,
+      };
+    }
     debugPrint('[YouTubeUpload] 업로드 세션 요청 $length바이트');
     final start = await _client.post(
       Uri.parse(
         'https://www.googleapis.com/upload/youtube/v3/videos'
-        '?uploadType=resumable&part=snippet,status',
+        '?uploadType=resumable&part=${parts.join(',')}',
       ),
       headers: {
         'Authorization': 'Bearer $accessToken',
@@ -38,17 +60,7 @@ class YouTubeUploadService {
         'X-Upload-Content-Length': '$length',
         'X-Upload-Content-Type': 'video/*',
       },
-      body: jsonEncode({
-        'snippet': {
-          'title': title,
-          'description': description,
-          'categoryId': '22',
-        },
-        'status': {
-          'privacyStatus': privacyStatus,
-          'selfDeclaredMadeForKids': madeForKids,
-        },
-      }),
+      body: jsonEncode(metadata),
     );
     if (start.statusCode != 200) {
       debugPrint('[YouTubeUpload] 세션 실패 ${start.statusCode} ${start.body}');
@@ -107,6 +119,9 @@ class YouTubeUploadService {
     required String description,
     required String privacyStatus,
     required bool madeForKids,
+    List<String> tags = const [],
+    bool containsSyntheticMedia = false,
+    bool paidPromotion = false,
   }) {
     return uploadShort(
       filePath: exportedPath,
@@ -115,6 +130,9 @@ class YouTubeUploadService {
       description: description,
       privacyStatus: privacyStatus,
       madeForKids: madeForKids,
+      tags: tags,
+      containsSyntheticMedia: containsSyntheticMedia,
+      paidPromotion: paidPromotion,
     );
   }
 
@@ -252,6 +270,66 @@ class YouTubeUploadService {
     }
     debugPrint('[YouTubeUpload] 연령 제한 완료');
   }
+
+  Future<({double latitude, double longitude})?> lookupPlace(
+    String query,
+  ) async {
+    final response = await _client
+        .get(
+          Uri.https('nominatim.openstreetmap.org', '/search', {
+            'q': query,
+            'format': 'jsonv2',
+            'limit': '1',
+          }),
+          headers: const {'User-Agent': 'AVEditor/1.0 (com.smart.aveditor)'},
+        )
+        .timeout(const Duration(seconds: 8));
+    if (response.statusCode != 200) {
+      throw StateError('location lookup failed (${response.statusCode})');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! List || decoded.isEmpty || decoded.first is! Map) {
+      return null;
+    }
+    final place = decoded.first as Map;
+    final latitude = double.tryParse('${place['lat']}');
+    final longitude = double.tryParse('${place['lon']}');
+    if (latitude == null || longitude == null) return null;
+    return (latitude: latitude, longitude: longitude);
+  }
+
+  Future<void> setRecordingLocation({
+    required String accessToken,
+    required String videoId,
+    required double latitude,
+    required double longitude,
+  }) async {
+    debugPrint('[YouTubeUpload] 위치 설정 $latitude,$longitude');
+    final response = await _client.put(
+      Uri.parse(
+        'https://www.googleapis.com/youtube/v3/videos?part=recordingDetails',
+      ),
+      headers: {
+        'Authorization': 'Bearer $accessToken',
+        'Content-Type': 'application/json; charset=UTF-8',
+      },
+      body: jsonEncode({
+        'id': videoId,
+        'recordingDetails': {
+          'location': {'latitude': latitude, 'longitude': longitude},
+        },
+      }),
+    );
+    if (response.statusCode != 200) {
+      debugPrint(
+        '[YouTubeUpload] 위치 실패 ${response.statusCode} ${response.body}',
+      );
+      throw StateError(
+        'YouTube location failed (${response.statusCode}) ${response.body}',
+      );
+    }
+    debugPrint('[YouTubeUpload] 위치 완료');
+  }
 }
 
 class YouTubePlaylist {
@@ -259,4 +337,30 @@ class YouTubePlaylist {
 
   final String id;
   final String title;
+}
+
+/// Accepts a bare id or a watch, shorts, embed, or youtu.be link.
+String? youtubeVideoId(String raw) {
+  final text = raw.trim();
+  if (text.isEmpty) return null;
+  if (RegExp(r'^[A-Za-z0-9_-]{11}$').hasMatch(text)) return text;
+  return RegExp(
+    r'(?:youtu\.be/|youtube\.com/(?:watch\?(?:.*&)?v=|shorts/|embed/|live/))([A-Za-z0-9_-]{11})',
+  ).firstMatch(text)?.group(1);
+}
+
+/// Splits comma-separated tags and keeps YouTube's 500-character budget.
+List<String> youtubeTags(String raw) {
+  final tags = <String>[];
+  var budget = 500;
+  for (final part in raw.split(RegExp(r'[,\n]'))) {
+    final tag = part.trim();
+    if (tag.isEmpty) continue;
+    final cost = tag.contains(' ') ? tag.length + 2 : tag.length;
+    final separator = tags.isEmpty ? 0 : 1;
+    if (separator + cost > budget) break;
+    budget -= separator + cost;
+    tags.add(tag);
+  }
+  return tags;
 }

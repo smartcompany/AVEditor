@@ -16,8 +16,9 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 
-/// Presented after Export. Shows encode progress, then the saved video
-/// and the server-ordered share row.
+/// Presented after Export. Shows encode progress, then the video and the
+/// server-ordered share row. The photo album is updated only when a share
+/// target is chosen.
 class ExportShareScreen extends StatefulWidget {
   const ExportShareScreen({super.key, required this.project});
 
@@ -39,6 +40,8 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
   String? _thumbPath;
   String? _exportedPath;
   String? _error;
+  var _savedToAlbum = false;
+  var _savingToAlbum = false;
   List<ShareTarget> _targets = ShareCatalogService.fallback;
   VideoPlayerController? _player;
 
@@ -93,9 +96,6 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
       );
       debugPrint('[ExportShare] 내보내기 완료 path=$path');
       if (_cancelled || !mounted) return;
-      await _save.saveExportedVideo(path);
-      if (_cancelled || !mounted) return;
-      debugPrint('[ExportShare] 앨범 저장 완료');
       await thumbFuture;
       final targets = await catalogFuture;
       final player = VideoPlayerController.file(File(path));
@@ -137,10 +137,40 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<bool> _saveToAlbumIfNeeded() async {
+    final path = _exportedPath;
+    if (path == null || _savingToAlbum) return false;
+    if (_savedToAlbum) return true;
+    setState(() => _savingToAlbum = true);
+    try {
+      await _save.saveExportedVideo(path);
+      if (!mounted) return false;
+      setState(() => _savedToAlbum = true);
+      debugPrint('[ExportShare] 앨범 저장 완료');
+      return true;
+    } catch (error, stack) {
+      if (error.toString().contains('save_cancelled')) {
+        debugPrint('[ExportShare] 앨범 저장 취소');
+        return false;
+      }
+      debugPrint('[ExportShare] 앨범 저장 실패: $error\n$stack');
+      if (!mounted) return false;
+      final message = error.toString();
+      final text = message.contains('photos_permission_denied')
+          ? context.l10n.permissionPhotosDenied
+          : context.l10n.exportFailedWithMessage(message);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+      return false;
+    } finally {
+      if (mounted) setState(() => _savingToAlbum = false);
+    }
+  }
+
   Future<void> _onTarget(ShareTarget target) async {
     final path = _exportedPath;
     if (path == null) return;
     await _player?.pause();
+    if (!await _saveToAlbumIfNeeded() || !mounted) return;
     if (target.kind == ShareTargetKind.youtube) {
       if (!mounted) return;
       await Navigator.of(context).push(
@@ -166,6 +196,7 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
     final path = _exportedPath;
     if (path == null) return;
     await _player?.pause();
+    if (!await _saveToAlbumIfNeeded() || !mounted) return;
     await _share.shareFile(path);
   }
 
@@ -183,7 +214,11 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
         backgroundColor: const Color(0xFF161616),
         appBar: AppBar(
           backgroundColor: const Color(0xFF161616),
-          title: Text(ready ? l10n.savedToDevice : l10n.exporting),
+          title: Text(
+            ready
+                ? (_savedToAlbum ? l10n.savedToDevice : l10n.exportComplete)
+                : l10n.exporting,
+          ),
           actions: [
             if (ready)
               TextButton(
