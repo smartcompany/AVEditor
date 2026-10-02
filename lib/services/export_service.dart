@@ -90,9 +90,7 @@ class ExportService {
 
     final outputPath = p.join(outputDir.path, 'aveditor_export_$stamp.mp4');
     final musicPath = _musicPathForProject(project);
-    final hasVideoAudio = musicPath == null
-        ? true
-        : await probeService.hasAudioStream(project.sourcePath);
+    final hasVideoAudio = await probeService.hasAudioStream(project.sourcePath);
 
     final streamCopy = canStreamCopy(
       project: project,

@@ -289,10 +289,12 @@ private func exportReencode(
     composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)!,
   ]
   // Keep audio on one track without overlap so transitions don't double volume.
-  let compAudio = request.hasVideoAudio
+  // A track with no samples makes AVAssetExportSession fail at once
+  // (AVErrorOperationNotSupportedForAsset -11838, underlying -16976).
+  let sourceAudio = source.tracks(withMediaType: .audio).first
+  let compAudio = request.hasVideoAudio && sourceAudio != nil
     ? composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
     : nil
-  let sourceAudio = source.tracks(withMediaType: .audio).first
 
   let placements = try packTransitionPlacements(
     segments: request.segments,
