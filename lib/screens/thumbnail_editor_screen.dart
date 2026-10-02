@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -120,9 +121,9 @@ const _filters = <_ThumbFilter>[
 ];
 
 class _ThumbnailEditorScreenState extends State<ThumbnailEditorScreen> {
-  static const _frameCount = 7;
   static const _outWidth = 1080.0;
   static const _outHeight = 1920.0;
+  static const _stripHeight = 58.0;
 
   final _previewKey = GlobalKey<VideoPreviewWithOverlaysState>();
 
@@ -130,7 +131,10 @@ class _ThumbnailEditorScreenState extends State<ThumbnailEditorScreen> {
   var _saving = false;
   var _filtersOpen = false;
   var _filterIndex = 0;
-  var _selectedFrame = 0;
+  var _scrub = 0.0;
+  var _dragging = false;
+  var _heroRequest = 0;
+  Uint8List? _hero;
   List<Uint8List?> _frames = const [];
   List<int> _frameMs = const [];
   List<TextOverlay> _overlays = const [];
@@ -143,9 +147,54 @@ class _ThumbnailEditorScreenState extends State<ThumbnailEditorScreen> {
     _loadFrames();
   }
 
+  int get _scrubMs {
+    final total = _timelineMaxMs;
+    if (total <= 0) return 0;
+    return (total * _scrub).round().clamp(0, total);
+  }
+
+  int _nearestFrame(int ms) {
+    if (_frameMs.isEmpty) return 0;
+    var best = 0;
+    var bestDistance = 1 << 30;
+    for (var i = 0; i < _frameMs.length; i++) {
+      final distance = (_frameMs[i] - ms).abs();
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = i;
+      }
+    }
+    return best;
+  }
+
   Uint8List? get _selectedBytes {
-    if (_selectedFrame < 0 || _selectedFrame >= _frames.length) return null;
-    return _frames[_selectedFrame];
+    if (!_dragging && _hero != null) return _hero;
+    final index = _nearestFrame(_scrubMs);
+    if (index >= 0 && index < _frames.length) {
+      final frame = _frames[index];
+      if (frame != null) return frame;
+    }
+    return _hero;
+  }
+
+  Future<void> _loadHero() async {
+    final request = ++_heroRequest;
+    final timelineMs = _scrubMs;
+    try {
+      final bytes = await VideoThumbnail.thumbnailData(
+        video: widget.project.sourcePath,
+        imageFormat: ImageFormat.JPEG,
+        timeMs: _sourceMs(timelineMs),
+        maxHeight: 1280,
+        maxWidth: 1280,
+        quality: 86,
+      );
+      if (!mounted || request != _heroRequest) return;
+      if (bytes == null || bytes.isEmpty) return;
+      setState(() => _hero = bytes);
+    } catch (error, stack) {
+      debugPrint('[ThumbnailEditor] 미리보기 실패: $error\n$stack');
+    }
   }
 
   Future<void> _loadFrames() async {
@@ -159,9 +208,9 @@ class _ThumbnailEditorScreenState extends State<ThumbnailEditorScreen> {
           video: widget.project.sourcePath,
           imageFormat: ImageFormat.JPEG,
           timeMs: _sourceMs(times[i]),
-          maxHeight: 1280,
-          maxWidth: 1280,
-          quality: 85,
+          maxHeight: 360,
+          maxWidth: 360,
+          quality: 68,
         );
         if (!mounted) return;
         if (bytes == null || bytes.isEmpty) continue;
@@ -173,15 +222,21 @@ class _ThumbnailEditorScreenState extends State<ThumbnailEditorScreen> {
       if (!mounted) return;
       setState(() => _failed = true);
     }
+    if (mounted) unawaited(_loadHero());
+  }
+
+  int get _stripFrameCount {
+    final total = _timelineMaxMs;
+    if (total <= 0) return 12;
+    return (total / 400).ceil().clamp(12, 28);
   }
 
   List<int> _frameTimes() {
     final total = _timelineMaxMs;
+    final count = _stripFrameCount;
     if (total <= 0) return const [0];
-    return [
-      for (var i = 0; i < _frameCount; i++)
-        (total * i / (_frameCount - 1)).round(),
-    ];
+    if (count <= 1) return const [0];
+    return [for (var i = 0; i < count; i++) (total * i / (count - 1)).round()];
   }
 
   int get _timelineMaxMs {
@@ -246,7 +301,7 @@ class _ThumbnailEditorScreenState extends State<ThumbnailEditorScreen> {
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() => _saving = true);
     try {
-      final timelineMs = _frameMs[_selectedFrame.clamp(0, _frameMs.length - 1)];
+      final timelineMs = _scrubMs;
       final bytes = await VideoThumbnail.thumbnailData(
         video: widget.project.sourcePath,
         imageFormat: ImageFormat.JPEG,
@@ -548,37 +603,81 @@ class _ThumbnailEditorScreenState extends State<ThumbnailEditorScreen> {
 
   Widget _filmstrip() {
     return SizedBox(
-      height: 72,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: _frameMs.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final selected = index == _selectedFrame;
-          final image = index < _frames.length ? _frames[index] : null;
+      height: _stripHeight,
+      width: double.infinity,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          final count = _frameMs.isEmpty ? 1 : _frameMs.length;
+          final tileWidth = width / count;
+          final windowWidth = (width * 0.18).clamp(46.0, 72.0);
+          final travel = (width - windowWidth).clamp(0.0, width);
+          final windowLeft = travel * _scrub.clamp(0.0, 1.0);
+
+          void seekTo(double localX) {
+            if (_saving || travel <= 0) return;
+            final next = ((localX - windowWidth / 2) / travel).clamp(0.0, 1.0);
+            setState(() {
+              _dragging = true;
+              _scrub = next;
+            });
+          }
+
           return GestureDetector(
-            onTap: _saving
-                ? null
-                : () => setState(() => _selectedFrame = index),
-            child: Container(
-              width: 64,
-              height: 72,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: selected ? Colors.white : Colors.transparent,
-                  width: 2,
+            behavior: HitTestBehavior.opaque,
+            onTapDown: (details) => seekTo(details.localPosition.dx),
+            onHorizontalDragStart: (details) =>
+                seekTo(details.localPosition.dx),
+            onHorizontalDragUpdate: (details) {
+              if (_saving || travel <= 0) return;
+              setState(() {
+                _dragging = true;
+                _scrub = (_scrub + details.delta.dx / travel).clamp(0.0, 1.0);
+              });
+            },
+            onHorizontalDragEnd: (_) {
+              setState(() => _dragging = false);
+              unawaited(_loadHero());
+            },
+            onTapUp: (_) {
+              setState(() => _dragging = false);
+              unawaited(_loadHero());
+            },
+            child: Stack(
+              fit: StackFit.expand,
+              clipBehavior: Clip.hardEdge,
+              children: [
+                Row(
+                  children: [
+                    for (var i = 0; i < count; i++)
+                      SizedBox(
+                        width: tileWidth,
+                        height: _stripHeight,
+                        child: i < _frames.length && _frames[i] != null
+                            ? Image.memory(
+                                _frames[i]!,
+                                fit: BoxFit.cover,
+                                gaplessPlayback: true,
+                              )
+                            : const ColoredBox(color: Color(0xFF2A2A2A)),
+                      ),
+                  ],
                 ),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: image == null
-                  ? const ColoredBox(color: Color(0xFF2A2A2A))
-                  : Image.memory(
-                      image,
-                      fit: BoxFit.cover,
-                      gaplessPlayback: true,
+                Positioned(
+                  left: windowLeft,
+                  top: 0,
+                  width: windowWidth,
+                  height: _stripHeight,
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.white, width: 2.5),
+                      ),
                     ),
+                  ),
+                ),
+              ],
             ),
           );
         },

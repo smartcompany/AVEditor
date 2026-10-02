@@ -637,6 +637,17 @@ class TimelineWidgetState extends State<TimelineWidget>
     );
   }
 
+  bool _cutMarkerHiddenBySegmentFocus(int afterIndex) {
+    final selectedId = widget.selectedSegmentId;
+    if (selectedId == null ||
+        afterIndex < 0 ||
+        afterIndex >= widget.segments.length - 1) {
+      return false;
+    }
+    return widget.segments[afterIndex].id == selectedId ||
+        widget.segments[afterIndex + 1].id == selectedId;
+  }
+
   int? _transitionAtViewportX(double x, double y) {
     if (y < 0 || y >= _videoTrackHeight) return null;
     if (widget.segments.length < 2) return null;
@@ -644,11 +655,13 @@ class TimelineWidgetState extends State<TimelineWidget>
 
     // Prefer the compact cut chip on every seam (hard cut + transition).
     for (var i = 0; i < widget.segments.length - 1; i++) {
+      if (_cutMarkerHiddenBySegmentFocus(i)) continue;
       if (_cutMarkerViewportRect(i).contains(point)) return i;
     }
 
     // Wider duration band for applied transitions (edge-drag resize).
     for (var i = 0; i < widget.segments.length - 1; i++) {
+      if (_cutMarkerHiddenBySegmentFocus(i)) continue;
       if (!widget.segments[i].hasTransition) continue;
       final rect = _transitionViewportRect(i);
       if (rect != null && rect.contains(point)) return i;
@@ -3221,6 +3234,7 @@ class _TimelinePainter extends CustomPainter {
     if (segments.length < 2) return;
 
     for (var i = 0; i < segments.length - 1; i++) {
+      if (_cutMarkerHiddenBySegmentFocus(i)) continue;
       final segment = segments[i];
       final hasFx = segment.hasTransition;
       final selected = selectedTransitionAfterIndex == i;
@@ -3276,6 +3290,17 @@ class _TimelinePainter extends CustomPainter {
         selected: selected,
       );
     }
+  }
+
+  bool _cutMarkerHiddenBySegmentFocus(int afterIndex) {
+    final selectedId = selectedSegmentId;
+    if (selectedId == null ||
+        afterIndex < 0 ||
+        afterIndex >= segments.length - 1) {
+      return false;
+    }
+    return segments[afterIndex].id == selectedId ||
+        segments[afterIndex + 1].id == selectedId;
   }
 
   void _paintCutMarkerIcon(
