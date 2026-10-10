@@ -300,7 +300,7 @@ private class TransitionBlendProgram(
 
       vec4 sampleIncoming(vec2 uv) {
         if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return vec4(0.0);
-        return texture2D(uIncoming, uv);
+        return texture2D(uIncoming, vec2(uv.x, 1.0 - uv.y));
       }
 
       vec4 take(vec2 uv, float side) {
