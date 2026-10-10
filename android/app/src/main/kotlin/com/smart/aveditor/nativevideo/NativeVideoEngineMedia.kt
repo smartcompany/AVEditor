@@ -36,6 +36,16 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
+/** Shared export composition played by the timeline and written by album export. */
+internal data class TimelinePreview(
+  val composition: Composition,
+  val width: Int,
+  val height: Int,
+  val durationMs: Int,
+  /** Live blend list the timeline mixer reads every frame. Export leaves this null. */
+  val mix: TimelineMix? = null,
+)
+
 /** Probe / waveform / export helpers — Media3 + MediaCodec (no FFmpeg). */
 @UnstableApi
 object NativeVideoEngineMedia {
@@ -101,6 +111,128 @@ object NativeVideoEngineMedia {
     } finally {
       retriever.release()
     }
+  }
+
+  /** Same composition the timeline player prepares. Tests call this without a device file probe. */
+  internal fun buildCompositionForTest(
+    sourcePath: String,
+    segments: List<*>,
+    hasVideoAudio: Boolean,
+    forPlayback: Boolean,
+    width: Int = 404,
+    height: Int = 720,
+  ): Composition {
+    return buildExportComposition(
+      sourcePath = sourcePath,
+      width = width,
+      height = height,
+      rotationDegrees = 0f,
+      segments = segments,
+      streamCopy = false,
+      hasVideoAudio = hasVideoAudio,
+      overlays = emptyList<Any>(),
+      music = emptyList<Any>(),
+      forPlayback = forPlayback,
+    )
+  }
+
+  /**
+   * Preview composition. One [androidx.media3.transformer.CompositionPlayer] plays one
+   * video sequence. A transition is drawn in the frame effect from that frame plus the
+   * incoming picture.
+   */
+  internal fun buildTimelinePreview(
+    sourcePath: String,
+    segments: List<*>,
+    mix: TimelineMix? = null,
+  ): TimelinePreview {
+    val retriever = MediaMetadataRetriever()
+    val oriented = try {
+      retriever.setDataSource(sourcePath)
+      var width =
+        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull()
+          ?: 720
+      var height =
+        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull()
+          ?: 1280
+      val rotation =
+        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull()
+          ?: 0
+      if (rotation == 90 || rotation == 270) {
+        val swap = width
+        width = height
+        height = swap
+      }
+      val hasAudio =
+        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO) == "yes"
+      Triple(max(1, width), max(1, height), hasAudio)
+    } finally {
+      retriever.release()
+    }
+    val longSide = max(oriented.first, oriented.second).coerceAtLeast(1)
+    val fit = min(1.0, 720.0 / longSide)
+    val outW = max(2, (kotlin.math.floor(oriented.first * fit / 2.0) * 2.0).toInt())
+    val outH = max(2, (kotlin.math.floor(oriented.second * fit / 2.0) * 2.0).toInt())
+    val liveMix = mix ?: TimelineMix()
+    val composition = buildExportComposition(
+      sourcePath = sourcePath,
+      width = outW,
+      height = outH,
+      rotationDegrees = 0f,
+      segments = segments,
+      streamCopy = false,
+      hasVideoAudio = oriented.third,
+      overlays = emptyList<Any>(),
+      music = emptyList<Any>(),
+      forPlayback = true,
+      mix = liveMix,
+    )
+    var durationMs = 0L
+    for (raw in segments) {
+      val segment = raw as? Map<*, *> ?: continue
+      val startMs = (segment["startMs"] as? Number)?.toLong() ?: 0L
+      val endMs = (segment["endMs"] as? Number)?.toLong() ?: startMs
+      durationMs += (endMs - startMs).coerceAtLeast(0L)
+    }
+    Log.i(
+      "NativeVideoEngine",
+      "timeline preview ${outW}x$outH durationMs=$durationMs segments=${segments.size}",
+    )
+    return TimelinePreview(
+      composition,
+      outW,
+      outH,
+      durationMs.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+      liveMix,
+    )
+  }
+
+  /** Clips played when the preview has no transition. */
+  private fun previewPlan(segments: List<*>): ExportPlan {
+    val clips = coalesceHardCuts(parseSegments(segments))
+    val pieces = ArrayList<VideoPiece>()
+    var cursor = 0L
+    for (seg in clips) {
+      val dur = (seg.endMs - seg.startMs).coerceAtLeast(0L)
+      pieces.add(VideoPiece(cursor, dur, seg.startMs, dur))
+      cursor += dur
+    }
+    return ExportPlan(arrayOf(pieces, ArrayList()), emptyList(), cursor)
+  }
+
+  internal fun sameMixerLayout(mix: TimelineMix, segments: List<*>): Boolean {
+    return mix.matchesPlayback(playbackLayout(segments))
+  }
+
+  /** One sequence. Through a blend the player keeps showing the outgoing clip. */
+  private fun playbackLayout(segments: List<*>): ExportPlan {
+    val packed = packSegments(parseSegments(segments))
+    if (packed.blends.isEmpty()) return previewPlan(segments)
+    return ExportPlan(
+      arrayOf(playbackPieces(packed), ArrayList()),
+      emptyList(),
+      packed.totalMs,
+    )
   }
 
   fun export(
@@ -201,52 +333,96 @@ object NativeVideoEngineMedia {
     hasVideoAudio: Boolean,
     overlays: List<*>,
     music: List<*>,
+    forPlayback: Boolean = false,
+    mix: TimelineMix? = null,
   ): Composition {
     val parsed = parseSegments(segments)
     if (streamCopy && parsed.size == 1) {
       val only = parsed.first()
-      val item = EditedMediaItem.Builder(
-        clipped(sourcePath, only.startMs, only.endMs),
-      ).build()
+      val item = clipItem(sourcePath, only.startMs, only.endMs)
       return Composition.Builder(
         EditedMediaItemSequence.withAudioAndVideoFrom(listOf(item)),
       ).build()
     }
     if (parsed.isEmpty()) {
+      val durationMs = (probe(sourcePath)["durationMs"] as? Int)?.toLong() ?: 0L
       val item = EditedMediaItem.Builder(
         MediaItem.fromUri(Uri.fromFile(File(sourcePath))),
-      ).build()
+      ).setDurationUs(max(durationMs, 1L) * 1000L).build()
       return Composition.Builder(
         EditedMediaItemSequence.withAudioAndVideoFrom(listOf(item)),
       ).build()
     }
 
     val plan = packSegments(parsed)
+    val playbackBlend = forPlayback && plan.blends.isNotEmpty()
+    val played = if (playbackBlend) playbackPieces(plan) else ArrayList()
+    val drawPlan = if (playbackBlend) {
+      ExportPlan(arrayOf(played, ArrayList<VideoPiece>()), plan.blends, plan.totalMs)
+    } else {
+      plan
+    }
     val videoEffects = videoEffects(width, height, rotationDegrees)
     val sequences = ArrayList<EditedMediaItemSequence>()
     val blends = plan.blends
-    if (blends.isEmpty()) {
-      val items = parsed.map { seg ->
-        EditedMediaItem.Builder(clipped(sourcePath, seg.startMs, seg.endMs))
-          .setRemoveAudio(!hasVideoAudio)
-          .setEffects(videoEffects)
-          .build()
-      }
-      sequences.add(
-        if (hasVideoAudio) {
-          EditedMediaItemSequence.withAudioAndVideoFrom(items)
+    if (forPlayback && mix != null) {
+      mix.sourcePath = if (playbackBlend) sourcePath else ""
+      mix.setPlayback(playbackLayout(segments))
+      mix.set(
+        if (playbackBlend) {
+          plan
         } else {
-          EditedMediaItemSequence.withVideoFrom(items)
+          ExportPlan(arrayOf(ArrayList(), ArrayList()), emptyList(), plan.totalMs)
         },
       )
+    }
+    val holder = if (blends.isEmpty()) {
+      null
+    } else if (forPlayback && mix != null) {
+      mix
+    } else {
+      (mix ?: TimelineMix()).also {
+        it.sourcePath = ""
+        it.set(plan)
+      }
+    }
+    if (forPlayback || blends.isEmpty()) {
+      if (playbackBlend) {
+        sequences.add(
+          playbackSequence(
+            sourcePath,
+            played,
+            plan.totalMs,
+            videoEffects,
+            removeAudio = !hasVideoAudio,
+          ),
+        )
+      } else {
+        // A split is a marker. Separate clipped items make the export join at a
+        // boundary that does not exist in the source.
+        val items = coalesceHardCuts(parsed).map { seg ->
+          clipItem(
+            sourcePath,
+            seg.startMs,
+            seg.endMs,
+            removeAudio = !hasVideoAudio,
+            effects = videoEffects,
+          )
+        }
+        sequences.add(
+          if (hasVideoAudio) {
+            EditedMediaItemSequence.withAudioAndVideoFrom(items)
+          } else {
+            EditedMediaItemSequence.withVideoFrom(items)
+          },
+        )
+      }
     } else {
       sequences.add(videoSequence(sourcePath, plan.tracks[0], plan.totalMs, videoEffects))
       sequences.add(videoSequence(sourcePath, plan.tracks[1], plan.totalMs, videoEffects))
       if (hasVideoAudio) {
         val audioItems = parsed.map { seg ->
-          EditedMediaItem.Builder(clipped(sourcePath, seg.startMs, seg.endMs))
-            .setRemoveVideo(true)
-            .build()
+          clipItem(sourcePath, seg.startMs, seg.endMs, removeVideo = true)
         }
         sequences.add(EditedMediaItemSequence.withAudioFrom(audioItems))
       }
@@ -263,28 +439,63 @@ object NativeVideoEngineMedia {
       val builder = EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_AUDIO))
       if (timelineMs > 0L) builder.addGap(timelineMs * 1000L)
       builder.addItem(
-        EditedMediaItem.Builder(clipped(path, offsetMs, offsetMs + dur))
-          .setRemoveVideo(true)
-          .build(),
+        clipItem(path, offsetMs, offsetMs + dur, removeVideo = true),
       )
       sequences.add(builder.build())
     }
 
     Log.i(
       "NativeVideoEngine",
-      "export segments=${parsed.size} totalMs=${plan.totalMs} " +
+      "compose segments=${parsed.size} totalMs=${plan.totalMs} " +
         "blends=${blends.size} overlays=${overlays.size} music=${music.size} " +
-        "mode=${if (blends.isEmpty()) "reencode" else "transition"}",
+        "mode=${when {
+          forPlayback -> "playback"
+          blends.isEmpty() -> "reencode"
+          else -> "transition"
+        }} " +
+        "size=${width}x$height",
     )
-    val builder = Composition.Builder(sequences)
-    if (blends.isNotEmpty()) {
-      builder.setVideoCompositorSettings(
-        TransitionCompositor(width, height, plan.tracks, blends),
+    for (index in parsed.indices) {
+      val seg = parsed[index]
+      Log.i(
+        "NativeVideoEngine",
+        "compose segment#$index ${seg.startMs}-${seg.endMs} " +
+          "td=${seg.transitionMs} effect=${seg.effect} kind=${seg.kind} " +
+          "layers=${seg.layers.size}",
       )
     }
+    for (index in blends.indices) {
+      val blend = blends[index]
+      Log.i(
+        "NativeVideoEngine",
+        "compose blend#$index start=${blend.startMs} dur=${blend.durationMs} " +
+          "effect=${blend.effect} kind=${blend.kind} " +
+          "out=${blend.outgoingTrack} in=${blend.incomingTrack}",
+      )
+    }
+    for (track in drawPlan.tracks.indices) {
+      for (piece in drawPlan.tracks[track]) {
+        val speed = piece.srcDurMs.toFloat() / piece.compDurMs.toFloat()
+        Log.i(
+          "NativeVideoEngine",
+          "compose track$track comp=${piece.compStartMs}+${piece.compDurMs} " +
+            "src=${piece.srcStartMs}+${piece.srcDurMs} speed=$speed " +
+            "hidden=${piece.hidden}",
+        )
+      }
+    }
+    val builder = Composition.Builder(sequences)
+    if (holder != null && !forPlayback) {
+      builder.setVideoCompositorSettings(TransitionCompositor(width, height, holder))
+    }
+    val compositionEffects = ArrayList<androidx.media3.common.Effect>()
+    if (holder != null) {
+      compositionEffects.add(TransitionBlendEffect(holder))
+    }
     val overlayEffect = overlayEffect(overlays)
-    if (overlayEffect != null) {
-      builder.setEffects(Effects(emptyList(), listOf(overlayEffect)))
+    if (overlayEffect != null) compositionEffects.add(overlayEffect)
+    if (compositionEffects.isNotEmpty()) {
+      builder.setEffects(Effects(emptyList(), compositionEffects))
     }
     return builder.build()
   }
@@ -313,8 +524,15 @@ object NativeVideoEngineMedia {
     pieces: List<VideoPiece>,
     totalMs: Long,
     effects: Effects,
+    removeAudio: Boolean = true,
+    idSuffix: String = "",
   ): EditedMediaItemSequence {
-    val builder = EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_VIDEO))
+    val types = if (removeAudio) {
+      setOf(C.TRACK_TYPE_VIDEO)
+    } else {
+      setOf(C.TRACK_TYPE_VIDEO, C.TRACK_TYPE_AUDIO)
+    }
+    val builder = EditedMediaItemSequence.Builder(types)
     var cursor = 0L
     for (piece in pieces) {
       if (piece.compDurMs <= 0L || piece.srcDurMs <= 0L) continue
@@ -323,13 +541,16 @@ object NativeVideoEngineMedia {
         builder.addGap((piece.compStartMs - cursor) * 1000L)
       }
       val speed = piece.srcDurMs.toFloat() / piece.compDurMs.toFloat()
-      val item = EditedMediaItem.Builder(
-        clipped(sourcePath, piece.srcStartMs, piece.srcStartMs + piece.srcDurMs),
-      ).setRemoveAudio(true).setEffects(effects)
-      if (abs(speed - 1f) > 0.01f) {
-        item.setSpeed(ConstantSpeed(speed))
-      }
-      builder.addItem(item.build())
+      val item = clipItem(
+        sourcePath,
+        piece.srcStartMs,
+        piece.srcStartMs + piece.srcDurMs,
+        removeAudio = removeAudio,
+        effects = effects,
+        speed = speed,
+        idSuffix = "$idSuffix@${piece.compStartMs}",
+      )
+      builder.addItem(item)
       cursor = piece.compStartMs + piece.compDurMs
     }
     if (cursor == 0L) {
@@ -340,9 +561,126 @@ object NativeVideoEngineMedia {
     return builder.build()
   }
 
-  private fun clipped(path: String, startMs: Long, endMs: Long): MediaItem {
+  /**
+   * One media item for the whole preview. A new item at the end of a blend
+   * releases the decoder and the next period stays buffering.
+   */
+  private fun playbackSequence(
+    sourcePath: String,
+    pieces: List<VideoPiece>,
+    totalMs: Long,
+    effects: Effects,
+    removeAudio: Boolean,
+  ): EditedMediaItemSequence {
+    val types = if (removeAudio) {
+      setOf(C.TRACK_TYPE_VIDEO)
+    } else {
+      setOf(C.TRACK_TYPE_VIDEO, C.TRACK_TYPE_AUDIO)
+    }
+    val builder = EditedMediaItemSequence.Builder(types)
+    var cursor = 0L
+    var index = 0
+    while (index < pieces.size) {
+      val first = pieces[index]
+      if (first.compDurMs <= 0L || first.srcDurMs <= 0L) {
+        index++
+        continue
+      }
+      if (first.compStartMs > cursor) {
+        builder.addGap((first.compStartMs - cursor) * 1000L)
+      }
+      var srcEnd = first.srcStartMs + first.srcDurMs
+      var compEnd = first.compStartMs + first.compDurMs
+      val changes = ArrayList<Pair<Long, Float>>()
+      var inputUs = 0L
+      changes.add(inputUs to pieceSpeed(first))
+      inputUs += first.srcDurMs * 1000L
+      var next = index + 1
+      while (next < pieces.size) {
+        val piece = pieces[next]
+        if (piece.compStartMs != compEnd) break
+        if (piece.srcStartMs > srcEnd) {
+          val gapUs = (piece.srcStartMs - srcEnd) * 1000L
+          changes.add(inputUs to gapUs * 2f)
+          inputUs += gapUs
+          srcEnd = piece.srcStartMs
+        } else if (piece.srcStartMs != srcEnd) {
+          break
+        }
+        val speed = pieceSpeed(piece)
+        if (abs(speed - changes.last().second) > 0.01f) {
+          changes.add(inputUs to speed)
+        }
+        inputUs += piece.srcDurMs * 1000L
+        srcEnd = piece.srcStartMs + piece.srcDurMs
+        compEnd = piece.compStartMs + piece.compDurMs
+        next++
+      }
+      val provider = if (changes.size == 1 && abs(changes[0].second - 1f) <= 0.01f) {
+        null
+      } else {
+        PiecewiseSpeed(changes)
+      }
+      builder.addItem(
+        clipItem(
+          sourcePath,
+          first.srcStartMs,
+          srcEnd,
+          removeAudio = removeAudio,
+          effects = effects,
+          speedProvider = provider,
+          idSuffix = "@${first.compStartMs}",
+        ),
+      )
+      cursor = compEnd
+      index = next
+    }
+    if (cursor == 0L) {
+      builder.addGap(max(totalMs, 1L) * 1000L)
+    } else if (cursor < totalMs) {
+      builder.addGap((totalMs - cursor) * 1000L)
+    }
+    return builder.build()
+  }
+
+  private fun pieceSpeed(piece: VideoPiece): Float {
+    return piece.srcDurMs.toFloat() / piece.compDurMs.toFloat()
+  }
+
+  /**
+   * CompositionPlayer rejects an item whose durationUs is unset, so a timeline
+   * that contains a transition never starts and the preview falls back to a hard cut.
+   * durationUs is the source end; clipping and [ConstantSpeed] then yield the
+   * composition length.
+   */
+  private fun clipItem(
+    path: String,
+    startMs: Long,
+    endMs: Long,
+    removeAudio: Boolean = false,
+    removeVideo: Boolean = false,
+    effects: Effects? = null,
+    speed: Float = 1f,
+    speedProvider: SpeedProvider? = null,
+    idSuffix: String = "",
+  ): EditedMediaItem {
+    val end = endMs.coerceAtLeast(startMs + 1L)
+    val item = EditedMediaItem.Builder(clipped(path, startMs, end, idSuffix))
+      .setRemoveAudio(removeAudio)
+      .setRemoveVideo(removeVideo)
+      .setDurationUs(end * 1000L)
+    if (effects != null) item.setEffects(effects)
+    when {
+      speedProvider != null -> item.setSpeed(speedProvider)
+      abs(speed - 1f) > 0.01f -> item.setSpeed(ConstantSpeed(speed))
+    }
+    return item.build()
+  }
+
+  private fun clipped(path: String, startMs: Long, endMs: Long, idSuffix: String = ""): MediaItem {
     return MediaItem.Builder()
       .setUri(Uri.fromFile(File(path)))
+      .setMediaId("clip-$startMs-$endMs$idSuffix")
       .setClippingConfiguration(
         MediaItem.ClippingConfiguration.Builder()
           .setStartPositionMs(startMs)
@@ -390,10 +728,50 @@ object NativeVideoEngineMedia {
           endMs = endMs,
           transitionMs = (segment["transitionDurationMs"] as? Number)?.toLong() ?: 0L,
           effect = (segment["transitionEffect"] as? String)?.lowercase(Locale.US) ?: "fade",
+          layers = parseMotionLayers(segment["transitionLayers"]),
+          kind = (segment["transitionKind"] as? String)?.lowercase(Locale.US) ?: "",
+          reverse = segment["transitionReverse"] as? Boolean ?: false,
+          edge = ((segment["transitionParams"] as? Map<*, *>)?.get("edge") as? String)
+            ?.lowercase(Locale.US) ?: "",
+          scaleFrom = ((segment["transitionParams"] as? Map<*, *>)?.get("incomingScaleFrom") as? Number)
+            ?.toFloat() ?: 0.84f,
+          scaleTo = ((segment["transitionParams"] as? Map<*, *>)?.get("incomingScaleTo") as? Number)
+            ?.toFloat() ?: 1f,
         ),
       )
     }
     return parsed
+  }
+
+  /**
+   * Adjacent hard cuts are one source range. A split does not remove frames,
+   * and a new item at the cut is where playback stops.
+   */
+  private fun coalesceHardCuts(segments: List<ExportSegment>): List<ExportSegment> {
+    if (segments.isEmpty()) return segments
+    val merged = ArrayList<ExportSegment>()
+    var current = segments.first()
+    for (index in 1 until segments.size) {
+      val next = segments[index]
+      if (current.transitionMs <= 0L && current.endMs == next.startMs) {
+        current = current.copy(
+          endMs = next.endMs,
+          transitionMs = next.transitionMs,
+          effect = next.effect,
+          layers = next.layers,
+          kind = next.kind,
+          reverse = next.reverse,
+          edge = next.edge,
+          scaleFrom = next.scaleFrom,
+          scaleTo = next.scaleTo,
+        )
+      } else {
+        merged.add(current)
+        current = next
+      }
+    }
+    merged.add(current)
+    return merged
   }
 
   /** Same duration-preserving packing as iOS: timeline length is the sum of segment lengths. */
@@ -447,6 +825,12 @@ object NativeVideoEngineMedia {
             effect = seg.effect,
             outgoingTrack = track,
             incomingTrack = (track + 1) % 2,
+            layers = seg.layers,
+            kind = seg.kind,
+            reverse = seg.reverse,
+            edge = seg.edge,
+            scaleFrom = seg.scaleFrom,
+            scaleTo = seg.scaleTo,
           ),
         )
       }
@@ -456,6 +840,126 @@ object NativeVideoEngineMedia {
     tracks[0].sortBy { it.compStartMs }
     tracks[1].sortBy { it.compStartMs }
     return ExportPlan(tracks, blends, cursor)
+  }
+
+  /**
+   * Playback stays one sequence, so the player does not wait for a second clip
+   * at the blend. The outgoing picture stays on screen through the blend.
+   */
+  private fun playbackPieces(plan: ExportPlan): ArrayList<VideoPiece> {
+    val out = ArrayList<VideoPiece>()
+    var cursor = 0L
+    while (cursor < plan.totalMs) {
+      val blend = plan.blends.firstOrNull { cursor < it.startMs + it.durationMs }
+      val active = blend?.takeIf { cursor >= it.startMs }
+      val limit = when {
+        active != null -> active.startMs + active.durationMs
+        blend != null -> blend.startMs
+        else -> plan.totalMs
+      }
+      val track = if (active != null) active.outgoingTrack else trackCovering(plan, cursor)
+      if (track < 0) break
+      val piece = plan.tracks[track].firstOrNull {
+        !it.hidden && cursor >= it.compStartMs && cursor < it.compStartMs + it.compDurMs
+      } ?: break
+      val end = min(limit, piece.compStartMs + piece.compDurMs)
+      val sliced = slicePiece(piece, cursor, end) ?: break
+      out.add(sliced)
+      cursor = end
+    }
+    return out
+  }
+
+  private fun trackCovering(plan: ExportPlan, cursor: Long): Int {
+    for (track in plan.tracks.indices) {
+      val hit = plan.tracks[track].any {
+        !it.hidden && cursor >= it.compStartMs && cursor < it.compStartMs + it.compDurMs
+      }
+      if (hit) return track
+    }
+    return -1
+  }
+
+  private fun slicePiece(piece: VideoPiece, from: Long, to: Long): VideoPiece? {
+    val compDur = to - from
+    if (compDur <= 0L || piece.compDurMs <= 0L) return null
+    val srcOffset = (from - piece.compStartMs) * piece.srcDurMs / piece.compDurMs
+    val srcDur = compDur * piece.srcDurMs / piece.compDurMs
+    if (srcDur <= 0L) return null
+    return piece.copy(
+      compStartMs = from,
+      compDurMs = compDur,
+      srcStartMs = piece.srcStartMs + srcOffset,
+      srcDurMs = srcDur,
+    )
+  }
+
+  /**
+   * CompositionPlayer waits for a frame from every input. A gap produces none,
+   * so a transition project stays BUFFERING at position 0. Copy the other
+   * track into that gap and mark it hidden — the compositor draws alpha 0,
+   * but the decoder still releases buffers.
+   */
+  private fun fillDecoderGaps(plan: ExportPlan): ExportPlan {
+    val filled = arrayOf(
+      fillGaps(plan.tracks[0], plan.tracks[1], plan.totalMs),
+      fillGaps(plan.tracks[1], plan.tracks[0], plan.totalMs),
+    )
+    return ExportPlan(filled, plan.blends, plan.totalMs)
+  }
+
+  private fun fillGaps(
+    mine: List<VideoPiece>,
+    other: List<VideoPiece>,
+    totalMs: Long,
+  ): ArrayList<VideoPiece> {
+    val visible = mine.filter { !it.hidden }.sortedBy { it.compStartMs }
+    val donors = other.filter { !it.hidden }.sortedBy { it.compStartMs }
+    val out = ArrayList<VideoPiece>()
+    var cursor = 0L
+    for (piece in visible) {
+      if (piece.compStartMs > cursor) {
+        out.addAll(hiddenCovering(donors, cursor, piece.compStartMs))
+      }
+      out.add(piece)
+      cursor = max(cursor, piece.compStartMs + piece.compDurMs)
+    }
+    if (cursor < totalMs) {
+      out.addAll(hiddenCovering(donors, cursor, totalMs))
+    }
+    return out
+  }
+
+  private fun hiddenCovering(
+    donors: List<VideoPiece>,
+    from: Long,
+    to: Long,
+  ): List<VideoPiece> {
+    val result = ArrayList<VideoPiece>()
+    var cursor = from
+    while (cursor < to) {
+      val donor = donors.firstOrNull { piece ->
+        cursor >= piece.compStartMs && cursor < piece.compStartMs + piece.compDurMs
+      } ?: break
+      val gapEnd = min(to, donor.compStartMs + donor.compDurMs)
+      val compDur = gapEnd - cursor
+      if (compDur <= 0L || donor.compDurMs <= 0L) break
+      val srcDur = compDur * donor.srcDurMs / donor.compDurMs
+      val srcOffset = (cursor - donor.compStartMs) * donor.srcDurMs / donor.compDurMs
+      if (srcDur > 0L) {
+        result.add(
+          VideoPiece(
+            compStartMs = cursor,
+            compDurMs = compDur,
+            srcStartMs = donor.srcStartMs + srcOffset,
+            srcDurMs = srcDur,
+            hidden = true,
+          ),
+        )
+      }
+      cursor = gapEnd
+    }
+    return result
   }
 
   private fun transitionHalf(tdMs: Long): Pair<Long, Long> {
@@ -469,24 +973,189 @@ private data class ExportSegment(
   val endMs: Long,
   val transitionMs: Long,
   val effect: String,
+  val layers: List<MotionLayer> = emptyList(),
+  val kind: String = "",
+  val reverse: Boolean = false,
+  val edge: String = "",
+  val scaleFrom: Float = 0.84f,
+  val scaleTo: Float = 1f,
 )
 
-private data class VideoPiece(
+internal data class VideoPiece(
   val compStartMs: Long,
   val compDurMs: Long,
   val srcStartMs: Long,
   val srcDurMs: Long,
+  val hidden: Boolean = false,
 )
 
-private data class BlendWindow(
+internal data class BlendWindow(
   val startMs: Long,
   val durationMs: Long,
   val effect: String,
   val outgoingTrack: Int,
   val incomingTrack: Int,
+  val layers: List<MotionLayer> = emptyList(),
+  val kind: String = "",
+  val reverse: Boolean = false,
+  val edge: String = "",
+  val scaleFrom: Float = 0.84f,
+  val scaleTo: Float = 1f,
 )
 
-private data class ExportPlan(
+internal data class MotionLayer(
+  val property: String,
+  val from: Float,
+  val to: Float,
+  val easing: String,
+  val target: String,
+  val start: Float,
+  val end: Float,
+  val mode: String = "",
+  val columns: Int = 0,
+  val rows: Int = 0,
+  val gap: Float = 0f,
+  val stagger: Float = 0f,
+)
+
+internal data class MotionPose(
+  var opacity: Float = 1f,
+  var scale: Float = 1f,
+  var turns: Float = 0f,
+  var tx: Float = 0f,
+  var ty: Float = 0f,
+  var blur: Float = 0f,
+  var blurMode: String = "",
+  var brightness: Float = 0f,
+  var wipe: Float = 0f,
+  var wipeEdge: String = "left",
+  var ripple: Float = 0f,
+  var rotationY: Float = 0f,
+)
+
+private fun parseMotionLayers(raw: Any?): List<MotionLayer> {
+  val list = raw as? List<*> ?: return emptyList()
+  val layers = ArrayList<MotionLayer>()
+  for (item in list) {
+    val map = item as? Map<*, *> ?: continue
+    val property = map["property"] as? String ?: continue
+    val start = (map["start"] as? Number)?.toFloat() ?: 0f
+    val end = (map["end"] as? Number)?.toFloat() ?: 1f
+    layers.add(
+      MotionLayer(
+        property = property,
+        from = (map["from"] as? Number)?.toFloat() ?: 0f,
+        to = (map["to"] as? Number)?.toFloat() ?: 0f,
+        easing = map["easing"] as? String ?: "linear",
+        target = map["target"] as? String ?: "A",
+        start = start,
+        end = max(start, end),
+        mode = (map["mode"] as? String)?.lowercase(Locale.US) ?: "",
+        columns = ((map["grid"] as? Map<*, *>)?.get("columns") as? Number)?.toInt() ?: 0,
+        rows = ((map["grid"] as? Map<*, *>)?.get("rows") as? Number)?.toInt() ?: 0,
+        gap = ((map["grid"] as? Map<*, *>)?.get("gap") as? Number)?.toFloat() ?: 0f,
+        stagger = ((map["grid"] as? Map<*, *>)?.get("stagger") as? Number)?.toFloat() ?: 0f,
+      ),
+    )
+  }
+  return layers
+}
+
+internal fun motionEase(t: Float, name: String): Float {
+  val u = t.coerceIn(0f, 1f)
+  return when (name) {
+    "easeOut" -> 1f - (1f - u) * (1f - u) * (1f - u)
+    "easeIn" -> u * u * u
+    "easeInOut" ->
+      if (u < 0.5f) 4f * u * u * u
+      else {
+        val v = -2f * u + 2f
+        1f - (v * v * v) / 2f
+      }
+    else -> u
+  }
+}
+
+/** Same pose evaluation as iOS [evaluateExportPoses], for fields OverlaySettings can draw. */
+internal fun motionOutgoingOnTop(layers: List<MotionLayer>): Boolean {
+  var top: String? = null
+  for (layer in layers) {
+    if (layer.target == "A" || layer.target == "B") top = layer.target
+  }
+  return top == "A"
+}
+
+internal fun evaluateMotionPoses(layers: List<MotionLayer>, t: Float): Pair<MotionPose, MotionPose> {
+  val outgoing = MotionPose()
+  val incoming = MotionPose(opacity = 0f)
+  val hasOpacity = layers.any { it.property == "opacity" }
+  if (!hasOpacity) {
+    val spatial = layers.any {
+      it.property == "translateX" || it.property == "translateY" ||
+        it.property == "rotation" || it.property == "rotationY" ||
+        it.property == "ripple" || it.property == "wipe"
+    }
+    if (spatial) {
+      outgoing.opacity = 1f
+      incoming.opacity = 1f
+    } else {
+      outgoing.opacity = 1f - t
+      incoming.opacity = t
+    }
+  }
+  var outgoingOpacity = false
+  var incomingOpacity = false
+  for (layer in layers) {
+    if (t < layer.start) continue
+    val span = max(layer.end - layer.start, 0.0001f)
+    val local = ((t - layer.start) / span).coerceIn(0f, 1f)
+    val value = layer.from + (layer.to - layer.from) * motionEase(local, layer.easing)
+    fun apply(pose: MotionPose, markOpacity: Boolean): Boolean {
+      when (layer.property) {
+        "opacity" -> {
+          pose.opacity = value.coerceIn(0f, 1f)
+          return true
+        }
+        "scale" -> pose.scale = value
+        "rotation" -> pose.turns = value
+        "translateX" -> pose.tx = value
+        "translateY" -> pose.ty = value
+        "blur" -> {
+          pose.blur = value
+          if (layer.mode.isNotEmpty()) pose.blurMode = layer.mode
+        }
+        "brightness" -> pose.brightness = value
+        "wipe" -> {
+          pose.wipe = value.coerceIn(0f, 1f)
+          if (layer.mode.isNotEmpty()) pose.wipeEdge = layer.mode
+        }
+        "ripple" -> pose.ripple = value.coerceIn(0f, 1f)
+        "rotationY" -> pose.rotationY = value
+      }
+      return markOpacity
+    }
+    if (layer.target == "A" || layer.target == "both") {
+      outgoingOpacity = apply(outgoing, outgoingOpacity)
+    }
+    if (layer.target == "B" || layer.target == "both") {
+      incomingOpacity = apply(incoming, incomingOpacity)
+    }
+  }
+  if (hasOpacity) {
+    if (outgoingOpacity && !incomingOpacity) incoming.opacity = 1f - outgoing.opacity
+    if (incomingOpacity && !outgoingOpacity) outgoing.opacity = 1f - incoming.opacity
+  }
+  return outgoing to incoming
+}
+
+private fun motionLayersDrawable(layers: List<MotionLayer>): Boolean {
+  return layers.any {
+    it.property == "opacity" || it.property == "scale" || it.property == "rotation" ||
+      it.property == "translateX" || it.property == "translateY"
+  }
+}
+
+internal data class ExportPlan(
   val tracks: Array<ArrayList<VideoPiece>>,
   val blends: List<BlendWindow>,
   val totalMs: Long,
@@ -497,31 +1166,166 @@ private class ConstantSpeed(private val speed: Float) : SpeedProvider {
   override fun getNextSpeedChangeTimeUs(timeUs: Long): Long = C.TIME_UNSET
 }
 
+private class PiecewiseSpeed(
+  private val changes: List<Pair<Long, Float>>,
+) : SpeedProvider {
+  override fun getSpeed(timeUs: Long): Float {
+    var speed = changes.first().second
+    for ((at, value) in changes) {
+      if (at > timeUs) break
+      speed = value
+    }
+    return speed
+  }
+
+  override fun getNextSpeedChangeTimeUs(timeUs: Long): Long {
+    for ((at, _) in changes) {
+      if (at > timeUs) return at
+    }
+    return C.TIME_UNSET
+  }
+}
+
+/**
+ * Blend windows the timeline mixer reads on every frame.
+ * Applying a transition replaces this list. The player stays open.
+ */
+internal class TimelineMix {
+  val blends = ArrayList<BlendWindow>()
+  val tracks = arrayOf(ArrayList<VideoPiece>(), ArrayList<VideoPiece>())
+  var sourcePath: String = ""
+  /** Called on the GL thread after the output frame for [ms] is drawn. */
+  @Volatile var onDrawnMs: ((Long) -> Unit)? = null
+  private val playback = arrayOf(ArrayList<VideoPiece>(), ArrayList<VideoPiece>())
+
+  fun set(plan: ExportPlan) {
+    blends.clear()
+    blends.addAll(plan.blends)
+    tracks[0].clear()
+    tracks[0].addAll(plan.tracks[0])
+    tracks[1].clear()
+    tracks[1].addAll(plan.tracks[1])
+  }
+
+  fun setPlayback(plan: ExportPlan) {
+    playback[0].clear()
+    playback[0].addAll(plan.tracks[0])
+    playback[1].clear()
+    playback[1].addAll(plan.tracks[1])
+  }
+
+  /** Source time of the incoming clip at [compMs], in microseconds. */
+  fun incomingSourceUs(compMs: Long): Long {
+    val blend = blends.firstOrNull { compMs >= it.startMs && compMs < it.startMs + it.durationMs }
+      ?: return compMs * 1000L
+    val pieces = tracks.getOrNull(blend.incomingTrack) ?: return compMs * 1000L
+    val piece = pieces.firstOrNull {
+      !it.hidden && compMs >= it.compStartMs && compMs < it.compStartMs + it.compDurMs
+    } ?: return compMs * 1000L
+    if (piece.compDurMs <= 0L) return piece.srcStartMs * 1000L
+    val t = (compMs - piece.compStartMs).toDouble() / piece.compDurMs.toDouble()
+    return ((piece.srcStartMs + t * piece.srcDurMs) * 1000.0).toLong()
+  }
+
+  fun matchesPlayback(plan: ExportPlan): Boolean {
+    if (playback[0].size != plan.tracks[0].size || playback[1].size != plan.tracks[1].size) {
+      return false
+    }
+    for (track in playback.indices) {
+      for (index in playback[track].indices) {
+        val have = playback[track][index]
+        val want = plan.tracks[track][index]
+        if (have.compStartMs != want.compStartMs ||
+          have.compDurMs != want.compDurMs ||
+          have.srcStartMs != want.srcStartMs ||
+          have.srcDurMs != want.srcDurMs
+        ) {
+          return false
+        }
+      }
+    }
+    return true
+  }
+
+  fun matches(plan: ExportPlan): Boolean {
+    if (tracks[0].size != plan.tracks[0].size || tracks[1].size != plan.tracks[1].size) {
+      return false
+    }
+    for (track in tracks.indices) {
+      for (index in tracks[track].indices) {
+        val have = tracks[track][index]
+        val want = plan.tracks[track][index]
+        if (have.compStartMs != want.compStartMs ||
+          have.compDurMs != want.compDurMs ||
+          have.srcStartMs != want.srcStartMs ||
+          have.srcDurMs != want.srcDurMs ||
+          have.hidden != want.hidden
+        ) {
+          return false
+        }
+      }
+    }
+    return true
+  }
+}
+
 @UnstableApi
 private class TransitionCompositor(
   private val width: Int,
   private val height: Int,
-  private val tracks: Array<ArrayList<VideoPiece>>,
-  private val blends: List<BlendWindow>,
+  private val mix: TimelineMix,
 ) : VideoCompositorSettings {
+  private var overlayLogs = 0
+  private var lastOverlayKey = ""
+
   override fun getOutputSize(inputSizes: List<Size>): Size = Size(width, height)
 
   override fun getOverlaySettings(inputId: Int, presentationTimeUs: Long): OverlaySettings {
     val ms = presentationTimeUs / 1000L
-    val blend = blends.firstOrNull { ms >= it.startMs && ms < it.startMs + it.durationMs }
-    if (blend != null && (inputId == blend.outgoingTrack || inputId == blend.incomingTrack)) {
-      val t = ((ms - blend.startMs).toFloat() / blend.durationMs.toFloat()).coerceIn(0f, 1f)
-      return blendSettings(inputId, blend, t)
+    val blend = mix.blends.firstOrNull { ms >= it.startMs && ms < it.startMs + it.durationMs }
+    val packed = blend != null && (inputId == blend.outgoingTrack || inputId == blend.incomingTrack)
+    val covered = covers(inputId, ms)
+    val action = when {
+      packed -> "pack"
+      covered -> "opaque"
+      else -> "hidden"
     }
-    return if (covers(inputId, ms)) opaque() else hidden()
+    val key = "$inputId:$action:${blend?.startMs ?: -1}:${ms / 250}"
+    if (overlayLogs < 24 || key != lastOverlayKey) {
+      Log.i(
+        "NativeVideoEngine",
+        "composite input=$inputId tUs=$presentationTimeUs ms=$ms action=$action " +
+          "blendStart=${blend?.startMs ?: -1} covers=$covered " +
+          "windows=${mix.blends.joinToString { "${it.startMs}+${it.durationMs}" }}",
+      )
+      overlayLogs++
+      lastOverlayKey = key
+    }
+    if (blend != null && packed) return packHalf(inputId == blend.outgoingTrack)
+    return if (covered) opaque() else hidden()
+  }
+
+  private fun packHalf(left: Boolean): OverlaySettings {
+    return StaticOverlaySettings.Builder()
+      .setAlphaScale(1f)
+      .setScale(0.5f, 1f)
+      .setBackgroundFrameAnchor(if (left) -0.5f else 0.5f, 0f)
+      .build()
   }
 
   private fun covers(track: Int, ms: Long): Boolean {
-    val pieces = tracks.getOrNull(track) ?: return false
-    return pieces.any { ms >= it.compStartMs && ms < it.compStartMs + it.compDurMs }
+    val pieces = mix.tracks.getOrNull(track) ?: return false
+    return pieces.any {
+      !it.hidden && ms >= it.compStartMs && ms < it.compStartMs + it.compDurMs
+    }
   }
 
   private fun blendSettings(inputId: Int, blend: BlendWindow, t: Float): OverlaySettings {
+    if (motionLayersDrawable(blend.layers)) {
+      val (outgoing, incoming) = evaluateMotionPoses(blend.layers, t)
+      val pose = if (inputId == blend.outgoingTrack) outgoing else incoming
+      return poseSettings(pose)
+    }
     return when (blend.effect) {
       "slideleft", "pushleft" ->
         shift(if (inputId == blend.outgoingTrack) -t else 1f - t, 0f)
@@ -578,6 +1382,20 @@ private class TransitionCompositor(
       .setOverlayFrameAnchor(-cx, -cy)
       .setBackgroundFrameAnchor(cx, cy)
       .build()
+  }
+
+  private fun poseSettings(pose: MotionPose): OverlaySettings {
+    if (pose.opacity <= 0.001f || kotlin.math.abs(pose.scale) < 0.001f) return hidden()
+    val builder = StaticOverlaySettings.Builder()
+      .setAlphaScale(pose.opacity.coerceIn(0f, 1f))
+      .setScale(pose.scale, pose.scale)
+      .setRotationDegrees(pose.turns * 360f)
+    val cx = pose.tx.coerceIn(-1f, 1f)
+    val cy = pose.ty.coerceIn(-1f, 1f)
+    if (cx != 0f || cy != 0f) {
+      builder.setOverlayFrameAnchor(-cx, -cy).setBackgroundFrameAnchor(cx, cy)
+    }
+    return builder.build()
   }
 
   private fun opaque(): OverlaySettings = StaticOverlaySettings.Builder().setAlphaScale(1f).build()

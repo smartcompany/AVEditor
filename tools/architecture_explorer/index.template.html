@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AVEditor Architecture Explorer</title>
+<style>
+  :root {
+    --bg: #10130f;
+    --panel: #181c16;
+    --panel-2: #20251d;
+    --line: #31382c;
+    --text: #e7ecdf;
+    --muted: #9aa392;
+    --accent: #d6f25c;
+    --accent-2: #7ec8a3;
+    --warn: #e2b15a;
+    --hot: #f2f7e8;
+    --shadow: 0 12px 40px rgba(0,0,0,.35);
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: "IBM Plex Sans", "Pretendard", "Apple SD Gothic Neo", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; -webkit-user-select: text; user-select: text; }
+  nav.tabs button, .toolbar button, .mobile-switch button, .layer > button {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  body, p, li, td, th, code, h1, h2, h3, .detail-body, .seq, .branch, .read-list, .copy-label {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  .copy-label {
+    font: 13px/18px var(--mono);
+    white-space: nowrap;
+    cursor: text;
+  }
+  .app { height: 100%; display: grid; grid-template-rows: auto auto 1fr; }
+  header {
+    display: flex; gap: 16px; align-items: flex-end; justify-content: space-between;
+    padding: 16px 18px 10px; border-bottom: 1px solid var(--line);
+  }
+  header h1 { margin: 0; font-size: 18px; letter-spacing: -0.03em; }
+  header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; max-width: 820px; line-height: 1.45; }
+  .meta { color: var(--muted); font-size: 12px; text-align: right; white-space: nowrap; }
+  nav.tabs { display: flex; gap: 6px; padding: 8px 12px; overflow-x: auto; border-bottom: 1px solid var(--line); }
+  nav.tabs button {
+    border: 1px solid transparent; background: transparent; color: var(--muted);
+    padding: 7px 12px; border-radius: 999px; white-space: nowrap;
+  }
+  nav.tabs button.active { background: var(--accent); color: #1a2208; border-color: var(--accent); font-weight: 650; }
+  .workspace { display: grid; grid-template-columns: minmax(0,1fr) 340px; min-height: 0; }
+  aside, .detail { background: var(--panel); min-height: 0; overflow: auto; }
+  aside { display: none; border-right: 1px solid var(--line); }
+  body[data-view="files"] aside { display: block; }
+  body[data-view="files"] .stage { display: none; }
+  .detail { border-left: 1px solid var(--line); }
+  .side-head, .detail-head { position: sticky; top: 0; background: var(--panel); padding: 12px; border-bottom: 1px solid var(--line); z-index: 2; }
+  .side-head input, .flow-select {
+    width: 100%; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+  }
+  .tree, .component-list { padding: 8px 8px 20px; font-size: 13px; }
+  .tree button, .component-list button {
+    display: block; width: 100%; text-align: left; background: transparent; border: 0; border-radius: 6px;
+    padding: 4px 6px; color: var(--text);
+  }
+  .tree button:hover, .component-list button:hover, .tree button.on, .component-list button.on { background: #2a3224; }
+  .tree .dir { color: var(--muted); }
+  .tree .file { font-family: var(--mono); font-size: 12px; }
+  .stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; background:
+    radial-gradient(circle at 1px 1px, #242a20 1px, transparent 0) 0 0 / 22px 22px; }
+  .stage.scroll { overflow: auto; }
+  .stage.scroll .canvas { position: relative; width: max-content; min-width: 100%; min-height: 100%; }
+  .toolbar {
+    position: absolute; z-index: 3; top: 10px; left: 10px; display: flex; gap: 6px; flex-wrap: wrap;
+  }
+  .toolbar button, .play {
+    background: #12160f; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px;
+  }
+  .canvas { position: absolute; inset: 0; transform-origin: 0 0; }
+  .layers { display: flex; gap: 18px; padding: 64px 24px 40px; align-items: flex-start; min-width: max-content; }
+  .layer {
+    width: 230px; background: rgba(18,22,15,.86); border: 1px solid var(--line); border-radius: 14px; padding: 10px;
+  }
+  .layer h3 { margin: 0 8px 4px; font-size: 13px; }
+  .layer .note { color: var(--muted); font-size: 11px; margin: 0 8px 8px; line-height: 1.35; }
+  .node {
+    width: 100%; text-align: left; margin: 6px 0; padding: 8px 10px; border-radius: 10px;
+    background: var(--panel-2); border: 1px solid #3a4334; color: var(--text);
+  }
+  .node small { display: block; color: var(--muted); font-family: var(--mono); font-size: 10px; margin-top: 3px; }
+  .node.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .node.related { border-color: var(--accent-2); }
+  .node.dim { opacity: .38; }
+  .flow-col { padding: 72px 28px 40px; display: flex; flex-direction: column; align-items: flex-start; gap: 0; min-width: 420px; }
+  .step {
+    width: min(560px, 70vw); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px;
+  }
+  .step .fn { font-family: var(--mono); font-size: 12px; color: var(--accent); }
+  .step .actors { color: var(--muted); font-size: 12px; }
+  .step.current { border-color: var(--accent); }
+  .step.dim { opacity: .4; }
+  .arrow { color: var(--muted); padding: 4px 18px; font-family: var(--mono); font-size: 12px; }
+  .seq { padding: 64px 20px 40px; }
+  .seq table { border-collapse: collapse; min-width: 720px; }
+  .seq th { font-size: 12px; font-weight: 650; padding: 8px; border-bottom: 2px solid var(--accent-2); }
+  .seq td { height: 46px; text-align: center; vertical-align: top; position: relative; }
+  .life { width: 1px; height: 100%; background: #3c4636; margin: 0 auto; }
+  .msg { font-size: 11px; font-family: var(--mono); color: var(--hot); white-space: nowrap; }
+  .msg.async { color: var(--warn); }
+  .data-board { padding: 72px 28px; display: flex; gap: 28px; flex-wrap: wrap; }
+  .pipe { width: 280px; }
+  .pipe h3 { margin: 0 0 10px; font-size: 14px; }
+  .datum { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+  .datum strong { display: block; }
+  .datum span { color: var(--muted); font-size: 12px; }
+  .read-list { padding: 72px 28px 40px; max-width: 760px; }
+  .read-list ol { margin: 0; padding: 0; list-style: none; counter-reset: step; }
+  .read-list li { counter-increment: step; margin: 0 0 12px; padding: 12px 12px 12px 52px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; position: relative; }
+  .read-list li::before { content: counter(step); position: absolute; left: 12px; top: 12px; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: #1a2208; display: grid; place-items: center; font-weight: 700; }
+  .read-list code { font-family: var(--mono); font-size: 12px; }
+  .detail-body { padding: 14px 14px 28px; font-size: 14px; line-height: 1.5; }
+  .detail-body h2 { margin: 0 0 6px; font-size: 18px; }
+  .badge { display: inline-block; font-size: 11px; border-radius: 999px; padding: 2px 8px; margin-right: 6px; border: 1px solid var(--line); color: var(--muted); }
+  .badge.verified { color: #102016; background: var(--accent-2); border-color: transparent; }
+  .badge.partial { color: #2a210c; background: var(--warn); border-color: transparent; }
+  .detail-body h3 { font-size: 13px; margin: 16px 0 6px; color: var(--accent); }
+  .detail-body ul { margin: 0; padding-left: 18px; }
+  .detail-body code, .path { font-family: var(--mono); font-size: 12px; }
+  .unknowns { margin-top: 18px; padding-top: 8px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+  .branch { padding: 72px 22px 40px; max-width: 1100px; }
+  .branch .path { font-family: var(--mono); font-size: 12px; color: var(--accent-2); }
+  table.contract { width: 100%; border-collapse: collapse; font-size: 13px; margin: 12px 0 20px; }
+  table.contract th, table.contract td { border: 1px solid var(--line); padding: 8px 10px; vertical-align: top; text-align: left; }
+  table.contract th { background: #20251d; color: var(--accent); font-weight: 650; }
+  table.contract .muted { color: var(--muted); font-family: var(--mono); font-size: 11px; margin-top: 4px; }
+  .splits { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .split { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .split h3 { margin: 0 0 8px; }
+  .split p { margin: 6px 0; color: var(--text); }
+  .split b { color: var(--accent); font-weight: 650; }
+  .mobile-switch { display: none; }
+  @media (max-width: 980px) {
+    .workspace { grid-template-columns: 1fr; }
+    .mobile-switch { display: flex; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+    .mobile-switch button { flex: 1; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+    .mobile-switch button.on { background: var(--accent); color: #1a2208; }
+    body[data-pane="detail"] aside,
+    body[data-pane="detail"] .stage { display: none; }
+    body[data-pane="detail"] .detail { display: block; }
+    body:not([data-pane="detail"]) .detail { display: none; }
+    .stage { min-height: 70vh; }
+  }
+</style>
+</head>
+<body data-pane="diagram" data-view="architecture">
+<div class="app">
+  <header>
+    <div>
+      <h1>AVEditor Architecture Explorer</h1>
+      <p id="summary"></p>
+    </div>
+    <div class="meta" id="meta"></div>
+  </header>
+  <nav class="tabs" id="tabs"></nav>
+  <div class="mobile-switch" id="mobileSwitch">
+    <button data-pane="diagram" class="on">화면</button>
+    <button data-pane="detail">설명</button>
+  </div>
+  <div class="workspace">
+    <aside>
+      <div class="side-head">
+        <input id="filter" placeholder="파일 또는 클래스 검색" />
+      </div>
+      <div class="component-list" id="components"></div>
+      <div class="tree" id="tree"></div>
+    </aside>
+    <main class="stage" id="stage">
+      <div class="toolbar" id="toolbar"></div>
+      <div class="canvas" id="canvas"></div>
+    </main>
+    <section class="detail">
+      <div class="detail-head">Detail</div>
+      <div class="detail-body" id="detail"></div>
+    </section>
+  </div>
+</div>
+<script>
+const ARCH = /*__ARCH_JSON__*/ null;
+const state = {
+  view: "architecture",
+  selected: "editor",
+  flow: ARCH.flows[0].id,
+  data: ARCH.dataFlows[0].id,
+  step: -1,
+  zoom: 1,
+  x: 0,
+  y: 0,
+  collapsed: {},
+  filter: "",
+};
+const nodeById = Object.fromEntries(ARCH.nodes.map((n) => [n.id, n]));
+const fileByPath = Object.fromEntries(ARCH.files.map((f) => [f.path, f]));
+
+function $(id) { return document.getElementById(id); }
+
+function setView(view) {
+  state.view = view;
+  state.step = -1;
+  state.x = 0;
+  state.y = 0;
+  document.body.dataset.view = view;
+  const stage = $("stage");
+  if (stage) stage.scrollTop = 0;
+  if (stage) stage.scrollLeft = 0;
+  render();
+}
+
+function selectNode(id) {
+  state.selected = id;
+  document.body.dataset.pane = window.innerWidth <= 980 ? "detail" : document.body.dataset.pane;
+  render();
+}
+
+function relatedIds(id) {
+  const node = nodeById[id];
+  if (!node) return new Set();
+  const set = new Set([id, ...node.depends, ...node.usedBy]);
+  return set;
+}
+
+function render() {
+  $("summary").textContent = ARCH.summary;
+  $("meta").textContent = `${ARCH.generatedAt}\n${ARCH.fileCount} files scanned`;
+  renderTabs();
+  renderSidebar();
+  renderToolbar();
+  renderCanvas();
+  renderDetail();
+  const scrolling = state.view === "sequence";
+  $("stage").classList.toggle("scroll", scrolling);
+  $("canvas").style.transform = scrolling
+    ? "none"
+    : `translate(${state.x}px, ${state.y}px) scale(${state.zoom})`;
+}
+
+function renderTabs() {
+  const tabs = [
+    ["architecture", "Architecture"],
+    ["files", "파일 / 클래스"],
+    ["flows", "실행 흐름"],
+    ["sequence", "Sequence"],
+    ["branch", "인터페이스 / 플랫폼"],
+    ["data", "Data Flow"],
+    ["deps", "Dependencies"],
+    ["read", "읽기 순서"],
+  ];
+  $("tabs").innerHTML = tabs.map(([id, label]) =>
+    `<button class="${state.view === id ? "active" : ""}" data-view="${id}">${label}</button>`
+  ).join("");
+}
+
+function renderSidebar() {
+  const q = state.filter.toLowerCase();
+  const comps = ARCH.nodes.filter((n) => !q || n.name.toLowerCase().includes(q) || n.file.toLowerCase().includes(q));
+  $("components").innerHTML = `<div class="dir" style="padding:4px 6px">Components</div>` + comps.map((n) =>
+    `<button class="${state.selected === n.id ? "on" : ""}" data-node="${n.id}">${n.name}</button>`
+  ).join("");
+  $("tree").innerHTML = renderTree(ARCH.tree, 0);
+}
+
+function renderTree(node, depth) {
+  const entries = Object.values(node.children || {}).sort((a, b) => {
+    if (!!a.file !== !!b.file) return a.file ? 1 : -1;
+    return a.name.localeCompare(b.name);
+  });
+  return entries.map((child) => {
+    const q = state.filter.toLowerCase();
+    if (q && child.file && !child.file.toLowerCase().includes(q) && !child.name.toLowerCase().includes(q)) return "";
+    const pad = `style="padding-left:${8 + depth * 12}px"`;
+    if (!child.file) {
+      const inner = renderTree(child, depth + 1);
+      if (q && !inner) return "";
+      return `<div class="dir" ${pad}>${child.name}/</div>${inner}`;
+    }
+    return `<button class="file ${state.selected === child.file ? "on" : ""}" data-file="${child.file}" ${pad}>${child.name}</button>`;
+  }).join("");
+}
+
+function renderToolbar() {
+  const parts = [
+    `<button data-zoom="in">+</button>`,
+    `<button data-zoom="out">−</button>`,
+    `<button data-zoom="reset">맞춤</button>`,
+  ];
+  if (state.view === "flows" || state.view === "sequence") {
+    parts.push(`<select class="flow-select" id="flowSelect" style="width:auto">${ARCH.flows.map((f) =>
+      `<option value="${f.id}" ${f.id === state.flow ? "selected" : ""}>${f.title}</option>`).join("")}</select>`);
+    parts.push(`<button class="play" id="play">경로 재생</button>`);
+  }
+  if (state.view === "data") {
+    parts.push(`<select class="flow-select" id="dataSelect" style="width:auto">${ARCH.dataFlows.map((f) =>
+      `<option value="${f.id}" ${f.id === state.data ? "selected" : ""}>${f.title}</option>`).join("")}</select>`);
+  }
+  $("toolbar").innerHTML = parts.join("");
+}
+
+function renderCanvas() {
+  const el = $("canvas");
+  if (state.view === "architecture") el.innerHTML = architectureHtml();
+  else if (state.view === "deps") el.innerHTML = depsHtml();
+  else if (state.view === "flows") el.innerHTML = flowHtml();
+  else if (state.view === "sequence") el.innerHTML = sequenceHtml();
+  else if (state.view === "branch") el.innerHTML = branchHtml();
+  else if (state.view === "data") el.innerHTML = dataHtml();
+  else el.innerHTML = readHtml();
+}
+
+function nodeClass(id) {
+  if (!state.selected || !nodeById[state.selected]) return "";
+  const rel = relatedIds(state.selected);
+  if (id === state.selected) return "selected";
+  if (rel.has(id)) return "related";
+  return "dim";
+}
+
+function architectureHtml() {
+  return `<div class="layers">${ARCH.layers.map((layer) => {
+    const open = !state.collapsed[layer.id];
+    const nodes = layer.nodeIds.map((id) => {
+      const n = nodeById[id];
+      return `<button class="node ${nodeClass(id)}" data-node="${id}"><b>${n.name}</b><small>${n.file.split("/").slice(-2).join("/")}</small></button>`;
+    }).join("");
+    return `<section class="layer"><h3>${layer.title}</h3><p class="note">${layer.note}</p>${open ? nodes : ""}<button data-collapse="${layer.id}">${open ? "접기" : "펼치기"}</button></section>`;
+  }).join('<div class="arrow">→</div>')}</div>`;
+}
+
+function depsHtml() {
+  const focus = nodeById[state.selected];
+  const visible = focus ? [focus, ...focus.depends.map((id) => nodeById[id]), ...focus.usedBy.map((id) => nodeById[id])].filter(Boolean) : ARCH.nodes;
+  const unique = [];
+  const seen = new Set();
+  visible.forEach((n) => { if (!seen.has(n.id)) { seen.add(n.id); unique.push(n); } });
+  const colW = 240;
+  const rowH = 72;
+  const byLayer = {};
+  unique.forEach((n) => { (byLayer[n.layer] = byLayer[n.layer] || []).push(n); });
+  const layerOrder = ARCH.layers.map((l) => l.id).filter((id) => byLayer[id]);
+  const pos = {};
+  layerOrder.forEach((layerId, row) => {
+    byLayer[layerId].forEach((n, col) => { pos[n.id] = { x: 40 + col * colW, y: 40 + row * rowH }; });
+  });
+  const width = 40 + Math.max(...layerOrder.map((id) => byLayer[id].length)) * colW;
+  const height = 80 + layerOrder.length * rowH;
+  const lines = unique.flatMap((n) => n.depends.filter((id) => pos[id]).map((id) => {
+    const a = pos[n.id];
+    const b = pos[id];
+    const hot = focus && (n.id === focus.id || id === focus.id);
+    return `<line x1="${a.x + 90}" y1="${a.y + 18}" x2="${b.x + 90}" y2="${b.y + 8}" stroke="${hot ? "#d6f25c" : "#3c4636"}" stroke-width="${hot ? 2 : 1}" marker-end="url(#arrow)"/>`;
+  })).join("");
+  const boxes = unique.map((n) => {
+    const p = pos[n.id];
+    return `<g data-node="${n.id}" style="cursor:pointer">
+      <rect x="${p.x}" y="${p.y}" width="180" height="36" rx="8" fill="#20251d" stroke="${n.id === state.selected ? "#d6f25c" : "#3a4334"}"/>
+      <text x="${p.x + 90}" y="${p.y + 22}" text-anchor="middle" fill="#e7ecdf" font-size="11">${n.name}</text>
+    </g>`;
+  }).join("");
+  const hint = focus
+    ? `${focus.name}이 의존하는 곳과, 이 컴포넌트를 쓰는 곳을 표시한다.`
+    : "노드를 누르면 그 노드의 의존 관계만 남긴다.";
+  return `<div class="seq"><p style="color:var(--muted)">${hint}</p>
+    <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+      <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="#7ec8a3"/></marker></defs>
+      ${lines}${boxes}
+    </svg></div>`;
+}
+
+function flowHtml() {
+  const flow = ARCH.flows.find((f) => f.id === state.flow);
+  return `<div class="flow-col"><p style="color:var(--muted);max-width:560px">${flow.summary}</p>${flow.steps.map((step, i) => {
+    const cls = state.step < 0 ? "" : i === state.step ? "current" : i < state.step ? "" : "dim";
+    return `<button class="step ${cls}" data-node="${step.node}" data-step="${i}"><div class="actors">${step.actor} → ${step.target}</div><div class="fn">${step.fn}${step.async ? "  ·  async" : ""}</div></button><div class="arrow">${i < flow.steps.length - 1 ? "↓ " + flow.steps[i + 1].fn : ""}</div>`;
+  }).join("")}</div>`;
+}
+
+function esc(value) {
+  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function textPx(value, size = 13) {
+  let width = 0;
+  for (const ch of String(value)) width += ch.charCodeAt(0) > 127 ? size : size * 0.62;
+  return width;
+}
+
+function sequenceHtml() {
+  const flow = ARCH.flows.find((f) => f.id === state.flow);
+  const actors = flow.participants;
+  const messages = flow.messages;
+  const boxW = actors.map((actor) => Math.max(132, textPx(actor.name, 13) + 28));
+  const centers = [];
+  let cursor = 36;
+  boxW.forEach((width) => {
+    centers.push(cursor + width / 2);
+    cursor += width + 36;
+  });
+  const textWidth = messages.reduce((max, message) => {
+    return Math.max(max, 56 + textPx(message.label, 13));
+  }, 0);
+  const guardWidth = (flow.fragments || []).reduce((max, fragment) => {
+    return (fragment.sections || []).reduce((inner, section) => {
+      return Math.max(inner, 48 + textPx(section.guard, 12));
+    }, max);
+  }, 0);
+  const width = Math.max(cursor + 48, textWidth, guardWidth) + 24;
+  const rowH = 68;
+  const top = 108;
+  const height = top + messages.length * rowH + 28;
+  const xOf = (id) => centers[actors.findIndex((actor) => actor.id === id)];
+  const heads = actors.map((actor, index) => {
+    const x = centers[index] - boxW[index] / 2;
+    return `<g>
+      <rect x="${x}" y="28" width="${boxW[index]}" height="46" rx="8" fill="#20251d" stroke="#7ec8a3"/>
+      <foreignObject x="${x}" y="40" width="${boxW[index]}" height="24">
+        <div xmlns="http://www.w3.org/1999/xhtml" class="copy-label" style="color:#e7ecdf;text-align:center">${esc(actor.name)}</div>
+      </foreignObject>
+    </g>`;
+  }).join("");
+  const lives = centers.map((x) =>
+    `<line x1="${x}" y1="74" x2="${x}" y2="${height - 16}" stroke="#6d7864" stroke-dasharray="3 5"/>`
+  ).join("");
+  const fragments = (flow.fragments || []).map((fragment) => {
+    const y1 = top + fragment.start * rowH - 30;
+    const y2 = top + fragment.end * rowH + 34;
+    const dividers = (fragment.sections || []).map((section) => {
+      const y = top + section.at * rowH - 30;
+      return `<line x1="18" y1="${y}" x2="${width - 18}" y2="${y}" stroke="#7ec8a3" stroke-dasharray="4 4"/>
+        <foreignObject x="28" y="${y + 2}" width="${Math.max(80, width - 56)}" height="22">
+          <div xmlns="http://www.w3.org/1999/xhtml" class="copy-label" style="color:#d6f25c">${esc(section.guard)}</div>
+        </foreignObject>`;
+    }).join("");
+    return `<g>
+      <rect x="12" y="${y1}" width="${width - 24}" height="${Math.max(24, y2 - y1)}" rx="8" fill="rgba(126,200,163,0.06)" stroke="#7ec8a3"/>
+      <rect x="12" y="${y1}" width="34" height="16" fill="#10130f" stroke="#7ec8a3"/>
+      <foreignObject x="14" y="${y1}" width="48" height="16">
+        <div xmlns="http://www.w3.org/1999/xhtml" class="copy-label" style="color:#d6f25c;font-size:11px;line-height:16px">${esc(fragment.label)}</div>
+      </foreignObject>
+      ${dividers}
+    </g>`;
+  }).join("");
+  const arrows = messages.map((message, index) => {
+    const y = top + index * rowH + 16;
+    const x1 = xOf(message.from);
+    const x2 = xOf(message.to);
+    const hot = index === state.step;
+    const color = hot ? "#d6f25c" : message.kind === "return" || message.kind === "note" ? "#e2b15a" : "#e7ecdf";
+    const dashed = message.kind === "return" || message.kind === "async" || message.kind === "note";
+    const dash = dashed ? 'stroke-dasharray="6 4"' : "";
+    let shaft;
+    if (message.from === message.to) {
+      shaft = `<path d="M ${x1} ${y} h 28 v 14 h -20" fill="none" stroke="${color}" stroke-width="${hot ? 2.2 : 1.5}" ${dash}/>
+        <polygon points="${x1 + 8},${y + 14} ${x1 + 16},${y + 10} ${x1 + 16},${y + 18}" fill="${color}"/>`;
+    } else {
+      const dir = x2 >= x1 ? 1 : -1;
+      const end = x2 - dir * 9;
+      const head = message.kind === "return" || message.kind === "note"
+        ? `<polyline points="${x2},${y} ${end},${y - 5} ${end},${y + 5}" fill="none" stroke="${color}" stroke-width="1.5"/>`
+        : `<polygon points="${x2},${y} ${end},${y - 5} ${end},${y + 5}" fill="${color}"/>`;
+      shaft = `<line x1="${x1}" y1="${y}" x2="${end}" y2="${y}" stroke="${color}" stroke-width="${hot ? 2.4 : 1.6}" ${dash}/>${head}`;
+    }
+    return `<g data-node="${message.node || ""}" data-step="${index}" style="cursor:pointer">
+      ${hot ? `<rect x="16" y="${y - 28}" width="${width - 32}" height="52" rx="6" fill="rgba(214,242,92,0.08)"/>` : ""}
+      <foreignObject x="28" y="${y - 28}" width="${Math.max(120, width - 48)}" height="22">
+        <div xmlns="http://www.w3.org/1999/xhtml" class="copy-label" style="color:${color}">${esc(message.label)}</div>
+      </foreignObject>
+      <rect x="${x1 - 5}" y="${y - 10}" width="10" height="22" rx="2" fill="${hot ? "#d6f25c" : "#3c4636"}"/>
+      ${shaft}
+    </g>`;
+  }).join("");
+  const scale = state.zoom;
+  return `<div class="seq">
+    <p style="color:var(--muted);max-width:920px">${esc(flow.summary)}</p>
+    <p style="color:var(--muted);font-size:12px">호출 이름은 화살표 위에 한 줄로 둔다. 실선은 호출, 점선은 async/Future 또는 반환, 노란 글씨는 반환·주석, 초록 상자는 alt 분기다.</p>
+    <svg width="${Math.ceil(width * scale)}" height="${Math.ceil(height * scale)}" viewBox="0 0 ${width} ${height}">${fragments}${lives}${heads}${arrows}</svg>
+  </div>`;
+}
+
+function branchHtml() {
+  const branch = ARCH.branches;
+  const rows = branch.methods.map((method) => `<tr>
+    <td><code>${esc(method.name)}</code><div class="muted">${esc(method.caller)}</div></td>
+    <td>${esc(method.editor)}</td>
+    <td>${esc(method.ios)}</td>
+    <td>${esc(method.android)}</td>
+  </tr>`).join("");
+  const cards = branch.splits.map((split) => `<article class="split">
+    <h3>${esc(split.title)}</h3>
+    <p><b>공통</b> ${esc(split.shared)}</p>
+    <p><b>iOS 구현</b> ${esc(split.ios)}</p>
+    <p><b>Android 구현</b> ${esc(split.android)}</p>
+    <p><b>폴백</b> ${esc(split.fallback)}</p>
+  </article>`).join("");
+  return `<div class="branch">
+    <p>${esc(branch.note)}</p>
+    <p class="path">MethodChannel <code>${esc(branch.channel)}</code><br>EventChannel <code>${esc(branch.events)}</code></p>
+    <table class="contract">
+      <thead><tr><th>채널 메서드</th><th>에디터가 부르는 조건</th><th>iOS 구현체</th><th>Android 구현체</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="splits">${cards}</div>
+  </div>`;
+}
+
+function dataHtml() {
+  return `<div class="data-board">${ARCH.dataFlows.map((flow) => `
+    <div class="pipe"><h3>${flow.title}</h3>
+      ${flow.steps.map((s, i) => `<div class="datum"><strong>${s.name}</strong><span>${s.note}</span></div>${i < flow.steps.length - 1 ? '<div class="arrow">↓ 변환</div>' : ""}`).join("")}
+    </div>`).join("")}</div>`;
+}
+
+function readHtml() {
+  return `<div class="read-list"><ol>${ARCH.reading.map((item) =>
+    `<li data-file="${item.file}"><code>${item.file}</code><div>${item.why}</div></li>`
+  ).join("")}</ol></div>`;
+}
+
+function renderDetail() {
+  const node = nodeById[state.selected];
+  const file = fileByPath[state.selected] || (node && fileByPath[node.file]);
+  if (node) {
+    const conf = node.confidence === "verified" ? "코드에서 확인" : node.confidence === "partial" ? "일부 확인 필요" : "파일 없음";
+    $("detail").innerHTML = `
+      <span class="badge ${node.confidence}">${conf}</span>
+      <h2>${node.name}</h2>
+      <p>${node.summary}</p>
+      <h3>파일 경로</h3><div class="path">${node.file}${node.lines ? " · " + node.lines + " lines" : ""}</div>
+      <h3>무엇을 하는가</h3><ul>${node.does.map((x) => `<li>${x}</li>`).join("")}</ul>
+      <h3>왜 필요한가</h3><ul>${node.why.map((x) => `<li>${x}</li>`).join("")}</ul>
+      <h3>주요 함수</h3><ul>${(node.methods || []).slice(0, 12).map((x) => `<li><code>${x}</code></li>`).join("") || "<li>스캔된 함수 없음</li>"}</ul>
+      <h3>누구와 통신하는가</h3><ul>${node.talks.map((x) => `<li>${x}</li>`).join("")}</ul>
+      <h3>의존하는 컴포넌트</h3><ul>${node.depends.map((id) => `<li><button data-node="${id}">${nodeById[id] ? nodeById[id].name : id}</button></li>`).join("") || "<li>없음</li>"}</ul>
+      <h3>이 컴포넌트를 사용하는 곳</h3><ul>${node.usedBy.map((id) => `<li><button data-node="${id}">${nodeById[id].name}</button></li>`).join("") || "<li>그래프 안에서 상위 호출 없음</li>"}</ul>
+      <h3>먼저 볼 것</h3><ul>${node.readFirst.map((x) => `<li>${x}</li>`).join("")}</ul>
+      <h3>주의할 점</h3><ul>${node.cautions.map((x) => `<li>${x}</li>`).join("") || "<li>없음</li>"}</ul>
+      ${scannedFileBlock(file)}
+      ${unknownsBlock()}`;
+    return;
+  }
+  if (file) {
+    $("detail").innerHTML = `
+      <h2>${file.path.split("/").pop()}</h2>
+      <div class="path">${file.path} · ${file.lines} lines</div>
+      <p>${file.doc || "파일 상단 문서 주석이 없다. 역할은 클래스와 함수 이름으로 본다."}</p>
+      <h3>클래스</h3><ul>${file.classes.map((x) => `<li><code>${x}</code></li>`).join("") || "<li>선언된 타입 없음</li>"}</ul>
+      <h3>함수</h3><ul>${file.methods.map((x) => `<li><code>${x}</code></li>`).join("") || "<li>추출된 함수 없음</li>"}</ul>
+      <h3>패키지 import</h3><ul>${file.imports.map((x) => `<li><button data-file="${x}">${x}</button></li>`).join("") || "<li>package:aveditor import 없음</li>"}</ul>
+      ${unknownsBlock()}`;
+    return;
+  }
+  $("detail").innerHTML = `<p>파일 / 클래스 탭에서 고르면 여기 설명이 바뀐다.</p>${unknownsBlock()}`;
+}
+
+function scannedFileBlock(file) {
+  if (!file) return `<h3>스캔</h3><p>이 경로의 소스 스캔 결과가 없다.</p>`;
+  return `<h3>스캔된 클래스</h3><ul>${file.classes.map((x) => `<li><code>${x}</code></li>`).join("") || "<li>없음</li>"}</ul>`;
+}
+
+function unknownsBlock() {
+  return `<div class="unknowns"><strong>확인하지 않은 것</strong><ul>${ARCH.unknowns.map((x) => `<li>${x}</li>`).join("")}</ul></div>`;
+}
+
+document.body.addEventListener("click", (event) => {
+  const picked = window.getSelection();
+  if (picked && !picked.isCollapsed && picked.toString().trim()) return;
+  const view = event.target.closest("[data-view]");
+  if (view) { setView(view.dataset.view); return; }
+  const pane = event.target.closest("[data-pane]");
+  if (pane && pane.closest("#mobileSwitch")) {
+    document.body.dataset.pane = pane.dataset.pane;
+    document.querySelectorAll("#mobileSwitch button").forEach((b) => b.classList.toggle("on", b === pane));
+    return;
+  }
+  const node = event.target.closest("[data-node]");
+  if (node) { selectNode(node.dataset.node); return; }
+  const file = event.target.closest("[data-file]");
+  if (file) { selectNode(file.dataset.file); return; }
+  const collapse = event.target.closest("[data-collapse]");
+  if (collapse) {
+    state.collapsed[collapse.dataset.collapse] = !state.collapsed[collapse.dataset.collapse];
+    render();
+    return;
+  }
+  const zoom = event.target.closest("[data-zoom]");
+  if (zoom) {
+    if (zoom.dataset.zoom === "in") state.zoom = Math.min(1.8, state.zoom + 0.1);
+    if (zoom.dataset.zoom === "out") state.zoom = Math.max(0.45, state.zoom - 0.1);
+    if (zoom.dataset.zoom === "reset") { state.zoom = 1; state.x = 0; state.y = 0; }
+    render();
+    return;
+  }
+  if (event.target.id === "play") playPath();
+});
+
+document.body.addEventListener("change", (event) => {
+  if (event.target.id === "flowSelect") { state.flow = event.target.value; state.step = -1; render(); }
+  if (event.target.id === "dataSelect") { state.data = event.target.value; render(); }
+});
+
+$("filter").addEventListener("input", (event) => {
+  state.filter = event.target.value;
+  renderSidebar();
+});
+
+const stage = $("stage");
+let drag = null;
+
+function applyTransform() {
+  $("canvas").style.transform = `translate(${state.x}px, ${state.y}px) scale(${state.zoom})`;
+}
+
+function endDrag(event) {
+  if (!drag) return;
+  if (event && event.pointerId !== drag.pointerId) return;
+  drag = null;
+}
+
+stage.addEventListener("pointerdown", (event) => {
+  if (state.view === "sequence") return;
+  if (event.button !== 0) return;
+  if (event.target.closest("button, select, a, input, p, li, code, td, th, h1, h2, h3, .copy-label")) return;
+  drag = {
+    pointerId: event.pointerId,
+    x: event.clientX - state.x,
+    y: event.clientY - state.y,
+  };
+  stage.setPointerCapture(event.pointerId);
+  event.preventDefault();
+});
+stage.addEventListener("pointermove", (event) => {
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  state.x = event.clientX - drag.x;
+  state.y = event.clientY - drag.y;
+  applyTransform();
+});
+stage.addEventListener("pointerup", endDrag);
+stage.addEventListener("pointercancel", endDrag);
+stage.addEventListener("wheel", (event) => {
+  if (state.view === "sequence") return;
+  event.preventDefault();
+  if (drag) return;
+  const pinch = event.ctrlKey;
+  const mouseWheel = event.deltaMode !== 0 || (event.deltaX === 0 && Math.abs(event.deltaY) >= 40);
+  if (pinch || mouseWheel) {
+    const next = pinch
+      ? state.zoom * Math.exp(-event.deltaY * 0.01)
+      : state.zoom * (event.deltaY < 0 ? 1.08 : 0.92);
+    state.zoom = Math.min(1.8, Math.max(0.45, next));
+  } else {
+    state.x -= event.deltaX;
+    state.y -= event.deltaY;
+  }
+  applyTransform();
+}, { passive: false });
+
+let playTimer = null;
+function playPath() {
+  const flow = ARCH.flows.find((f) => f.id === state.flow);
+  clearInterval(playTimer);
+  state.step = 0;
+  render();
+  playTimer = setInterval(() => {
+    state.step += 1;
+    if (state.step >= flow.steps.length) {
+      clearInterval(playTimer);
+      state.step = flow.steps.length - 1;
+    }
+    state.selected = flow.steps[state.step].node;
+    render();
+  }, 700);
+}
+
+render();
+</script>
+</body>
+</html>

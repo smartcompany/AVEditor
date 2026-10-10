@@ -33,6 +33,7 @@ import 'package:aveditor/widgets/transition_picker_sheet.dart';
 import 'package:aveditor/widgets/transition_preview_compositor.dart';
 import 'package:aveditor/widgets/overflow_hit_stack.dart';
 import 'package:aveditor/services/transition_engine.dart';
+import 'package:aveditor/services/composition_segments.dart';
 import 'package:aveditor/services/native_video_engine.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/widgets/video_preview.dart';
@@ -83,6 +84,9 @@ class _EditorScreenState extends State<EditorScreen>
   /// instead of tracking noisy decoder timestamps.
   DateTime? _fadeWallClockStart;
   double _fadeWallClockStartT = 0;
+  Timer? _fadeHoldTimer;
+  var _outgoingHeld = false;
+  var _fadeHoldShouldResume = false;
 
   /// Last fade window driven this playthrough (for handoff past [outgoing.end]).
   PreviewFadeWindow? _activeFade;
@@ -241,6 +245,17 @@ class _EditorScreenState extends State<EditorScreen>
     if (NativeVideoEngine.instance.isTimelineActive) {
       // Native timeline is packed export time (duration-preserving A+B).
       return _nativePackedToSource(NativeVideoEngine.instance.position);
+    }
+    // Outgoing video is paused on its last frame. Keep the playhead moving
+    // across the rest of the transition window.
+    if (_outgoingHeld) {
+      final fade = _activeFade;
+      final t = _fadeProgress;
+      if (fade != null && t != null) {
+        final startMs = fade.windowStart.inMilliseconds;
+        final spanMs = fade.windowEnd.inMilliseconds - startMs;
+        return Duration(milliseconds: startMs + (spanMs * t).round());
+      }
     }
     return _controller?.value.position ?? Duration.zero;
   }
@@ -1096,17 +1111,14 @@ class _EditorScreenState extends State<EditorScreen>
     Duration? seekTo,
   }) async {
     final project = _project;
-    if (project == null || !Platform.isIOS) return;
+    if (project == null || !NativeVideoEngine.instance.isPlatformSupported) {
+      return;
+    }
     // Panel selection uses a short transition session — do not replace it.
     if (_spatialPreviewActive) return;
     // Background refresh (save debounce) must not pause mid-transition.
     if (_transitionPreviewArmed && seekTo == null) return;
-    final sig = project.segments
-        .map(
-          (s) =>
-              '${s.start.inMilliseconds}-${s.end.inMilliseconds}-${s.transitionId}-${s.transitionDuration.inMilliseconds}',
-        )
-        .join('|');
+    final sig = timelineCompositionSignature(project.segments);
     final desired =
         seekTo ??
         _pendingTimelineSeek ??
@@ -1124,10 +1136,15 @@ class _EditorScreenState extends State<EditorScreen>
         );
         if (wasPlaying) await NativeVideoEngine.instance.play();
       } else if (!NativeVideoEngine.instance.isPlaying &&
-          (desired > Duration.zero || seekTo != null)) {
-        await NativeVideoEngine.instance.preroll(
-          _sourceToNativePacked(desired),
-        );
+          desired > Duration.zero) {
+        // Save runs while paused. Seeking the frame already on screen clears
+        // the texture and the preview flashes black.
+        final packed = _sourceToNativePacked(desired);
+        final delta =
+            (NativeVideoEngine.instance.position - packed).inMilliseconds.abs();
+        if (delta > 40) {
+          await NativeVideoEngine.instance.preroll(packed);
+        }
       }
       return;
     }
@@ -1154,6 +1171,7 @@ class _EditorScreenState extends State<EditorScreen>
     await _timelinePositionSub?.cancel();
     _timelinePositionSub = null;
     if (id == null) {
+      debugPrint('timeline compositor failed; preview stays on the hard-cut player');
       setState(() {});
       return;
     }
@@ -1210,7 +1228,14 @@ class _EditorScreenState extends State<EditorScreen>
           _transitionPreviewSeekConfirmed &&
           until != null &&
           position >= until) {
-        unawaited(_stopTransitionPreview());
+        debugPrint(
+          '[TL] panel.stop reason=position>=until '
+          'position=${position.inMilliseconds}ms '
+          'until=${until.inMilliseconds}ms '
+          'nativePos=${packed.inMilliseconds}ms '
+          'playing=${NativeVideoEngine.instance.isPlaying}',
+        );
+        unawaited(_stopTransitionPreview(reason: 'position>=until'));
         return;
       }
       if (_scrubPlayhead == null &&
@@ -1218,6 +1243,11 @@ class _EditorScreenState extends State<EditorScreen>
           !isInKeptRegion(current.segments, position)) {
         final next = nextSegmentStartAfter(current.segments, position);
         if (next != null) {
+          debugPrint(
+            '[TL] playback.seek reason=gap '
+            'position=${position.inMilliseconds}ms '
+            'next=${next.inMilliseconds}ms',
+          );
           // Native seek() pauses — resume so a gap at a split does not freeze.
           unawaited(
             NativeVideoEngine.instance.seek(
@@ -1300,6 +1330,12 @@ class _EditorScreenState extends State<EditorScreen>
             }),
           );
         }
+      }
+      // The source file keeps playing past the cut, so the outgoing slot would
+      // show the incoming clip. Hold A's last frame and finish the blend on
+      // the wall clock.
+      if (controller.value.isPlaying && pos >= fade.outgoing.end) {
+        _holdOutgoingAtCut(fade);
       }
       return;
     }
@@ -1428,80 +1464,18 @@ class _EditorScreenState extends State<EditorScreen>
     final main = _controller;
     final transition = fade.outgoing.transition;
     if (project == null || main == null || transition == null) return;
-    if (!NativeVideoEngine.supports(transition)) {
-      unawaited(_driveFadePreview(fade));
-      _setFadeProgress(fade.t, playing: playing);
-      return;
-    }
-
-    final gen = ++_spatialPreviewGen;
-    _fadeAnchoredAfterIndex = fade.afterIndex;
-    _activeFade = fade;
-
-    final textureId = await NativeVideoEngine.instance.prepareTransition(
-      sourcePath: project.sourcePath,
-      outgoing: fade.outgoing,
-      incoming: fade.incoming,
-      transition: transition,
-    );
-    if (!mounted || gen != _spatialPreviewGen) return;
-
-    if (textureId == null) {
+    // One playback path on every platform that has the native engine:
+    // the same composition plan timeline preview and export already share.
+    if (NativeVideoEngine.instance.isPlatformSupported &&
+        NativeVideoEngine.supports(transition)) {
+      final at = fade.windowStart +
+          Duration(milliseconds: (fade.t * fade.td.inMilliseconds).round());
       await _tearDownSpatialPreview();
-      await _attachTimelineCompositor(resume: false);
-      unawaited(_driveFadePreview(fade));
-      _setFadeProgress(fade.t, playing: playing);
+      await _attachTimelineCompositor(resume: playing, seekTo: at);
       return;
     }
-
-    final pos = Duration(
-      milliseconds: (fade.t * fade.td.inMilliseconds).round(),
-    );
-    final ready = await NativeVideoEngine.instance.preroll(pos);
-    if (!mounted || gen != _spatialPreviewGen) return;
-    if (!ready) {
-      await _tearDownSpatialPreview();
-      await _attachTimelineCompositor(resume: false);
-      unawaited(_driveFadePreview(fade));
-      _setFadeProgress(fade.t, playing: playing);
-      return;
-    }
-
-    _spatialTextureId = textureId;
-    _spatialPreviewActive = true;
-    _spatialPositionSub?.cancel();
-    _spatialPlayingSub?.cancel();
-    _spatialPositionSub = NativeVideoEngine.instance.positionStream.listen(
-      _onNativeSpatialPosition,
-    );
-    _spatialPlayingSub = NativeVideoEngine.instance.playingStream.listen((
-      playing,
-    ) {
-      if (!mounted) return;
-      if (!playing && _spatialPreviewActive && _activeFade != null) {
-        final fade = _activeFade!;
-        final pos = NativeVideoEngine.instance.position;
-        if (fade.td > Duration.zero &&
-            pos >= fade.td - const Duration(milliseconds: 80) &&
-            !_fadeHandoffInFlight) {
-          unawaited(_finishSpatialTransitionPreview(fade));
-        }
-      }
-      setState(() {});
-    });
-
-    try {
-      await main.pause();
-      await main.setVolume(0);
-      await _auxController?.pause();
-      await _auxController?.setVolume(0);
-    } catch (_) {}
-
-    if (playing) {
-      await NativeVideoEngine.instance.play();
-    }
+    unawaited(_driveFadePreview(fade));
     _setFadeProgress(fade.t, playing: playing);
-    if (mounted) setState(() {});
   }
 
   void _onNativeSpatialPosition(Duration position) {
@@ -1644,6 +1618,8 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   void _clearFadeProgress() {
+    _stopFadeHold();
+    _fadeHoldShouldResume = false;
     _fadeProgress = null;
     _fadeProgressPeak = 0;
     _fadeWallClockStart = null;
@@ -1654,6 +1630,65 @@ class _EditorScreenState extends State<EditorScreen>
     _fadeWallClockStart = DateTime.now();
     _fadeWallClockStartT = t.clamp(0.0, 1.0);
     _fadeProgressPeak = _fadeWallClockStartT;
+  }
+
+  void _holdOutgoingAtCut(PreviewFadeWindow fade) {
+    if (_outgoingHeld || _fadeHandoffInFlight) return;
+    _outgoingHeld = true;
+    _fadeHoldShouldResume = true;
+    if (_fadeWallClockStart == null) {
+      _beginFadeWallClock(fade.t);
+    }
+    final main = _controller;
+    if (main != null) {
+      unawaited(main.pause());
+      unawaited(main.seekTo(fade.outgoing.end));
+    }
+    unawaited(_auxController?.pause() ?? Future<void>.value());
+    _fadeHoldTimer?.cancel();
+    _fadeHoldTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
+      _tickFadeHold();
+    });
+  }
+
+  void _tickFadeHold() {
+    if (!mounted || _fadeHandoffInFlight) {
+      _stopFadeHold();
+      return;
+    }
+    final active = _activeFade;
+    if (active == null) {
+      _stopFadeHold();
+      return;
+    }
+    _setFadeProgress(active.t, playing: true);
+    final t = _fadeProgress ?? active.t;
+    if (t >= 0.999) {
+      _stopFadeHold();
+      unawaited(_completeFadeHandoff(active));
+      return;
+    }
+    final updated = PreviewFadeWindow(
+      afterIndex: active.afterIndex,
+      t: t,
+      outgoing: active.outgoing,
+      incoming: active.incoming,
+      td: active.td,
+    );
+    _activeFade = updated;
+    final aux = _auxController;
+    if (!_isLiveVideo(aux)) return;
+    final target = updated.auxSourceTime;
+    final drift = (aux!.value.position - target).inMilliseconds.abs();
+    if (drift > 40) {
+      unawaited(_safeVideo(aux, (player) => player.seekTo(target)));
+    }
+  }
+
+  void _stopFadeHold() {
+    _fadeHoldTimer?.cancel();
+    _fadeHoldTimer = null;
+    _outgoingHeld = false;
   }
 
   Future<void> _ensureAuxController() async {
@@ -1785,22 +1820,28 @@ class _EditorScreenState extends State<EditorScreen>
     try {
       if (main == null) return;
 
+      final resumePlayback = _fadeHoldShouldResume;
+      _fadeHoldShouldResume = false;
+
       // Fallback: no aux → hard seek (should be rare).
       if (aux == null || !aux.value.isInitialized) {
         final half = transitionHalfMs(done.td);
         final handoff =
             done.incoming.start + Duration(milliseconds: half.after);
-        await main.seekTo(
-          handoff > done.incoming.end ? done.incoming.end : handoff,
-        );
+        final land = handoff > done.incoming.end ? done.incoming.end : handoff;
+        await main.seekTo(land < done.windowEnd ? done.windowEnd : land);
         _activeFade = null;
         _clearFadeProgress();
         _fadeAnchoredAfterIndex = null;
+        if (resumePlayback && mounted) {
+          await main.play();
+        }
         if (mounted) setState(() {});
         return;
       }
 
       final wasPlaying =
+          resumePlayback ||
           main.value.isPlaying ||
           aux.value.isPlaying ||
           NativeVideoEngine.instance.isPlaying;
@@ -1825,6 +1866,11 @@ class _EditorScreenState extends State<EditorScreen>
       } catch (_) {}
       if (!mounted || gen != _fadeSyncGen) return;
 
+      final pastCut = done.windowEnd;
+      if (_controller!.value.position < pastCut) {
+        await _controller!.seekTo(pastCut);
+      }
+      if (!mounted || gen != _fadeSyncGen) return;
       if (wasPlaying) {
         if (!_controller!.value.isPlaying) {
           await _controller!.play();
@@ -1994,7 +2040,12 @@ class _EditorScreenState extends State<EditorScreen>
     if (previewUntil != null &&
         !NativeVideoEngine.instance.isTimelineActive &&
         pos >= previewUntil) {
-      unawaited(_stopTransitionPreview());
+      debugPrint(
+        '[TL] panel.stop reason=controller>=until '
+        'pos=${pos.inMilliseconds}ms '
+        'until=${previewUntil.inMilliseconds}ms',
+      );
+      unawaited(_stopTransitionPreview(reason: 'controller>=until'));
       return;
     }
 
@@ -2013,6 +2064,7 @@ class _EditorScreenState extends State<EditorScreen>
     WidgetsBinding.instance.removeObserver(this);
     _saveDebounce?.cancel();
     _transitionPreviewTimer?.cancel();
+    _fadeHoldTimer?.cancel();
     unawaited(_timelinePositionSub?.cancel());
     final project = _project;
     if (project != null) {
@@ -2322,15 +2374,21 @@ class _EditorScreenState extends State<EditorScreen>
           ? _playhead
           : (segmentAt(project.segments, _playhead)?.start ??
                 project.segments.first.start);
-      // Seek pauses natively — resume after it lands. play() is optimistic so
-      // the transport icon flips on this setState before seek completes.
-      unawaited(NativeVideoEngine.instance.play());
+      // Same frame: play() only. A seek here pauses the player and the
+      // picture never starts. A different frame is applied first, then play
+      // runs once — play() before that seek leaves the player stopped.
+      final packed = _sourceToNativePacked(start);
+      final alreadyThere =
+          (NativeVideoEngine.instance.position - packed).inMilliseconds.abs() <=
+          40;
       setState(() {});
+      if (alreadyThere) {
+        unawaited(NativeVideoEngine.instance.play());
+        unawaited(_syncMusicPlayback());
+        return;
+      }
       unawaited(() async {
-        await NativeVideoEngine.instance.seek(
-          _sourceToNativePacked(start),
-          resume: true,
-        );
+        await NativeVideoEngine.instance.seek(packed, resume: true);
         if (!mounted) return;
         await _syncMusicPlayback();
         if (mounted) setState(() {});
@@ -2635,11 +2693,16 @@ class _EditorScreenState extends State<EditorScreen>
     if (wallClockFallback == null) return;
     _transitionPreviewTimer = Timer(wallClockFallback, () {
       if (!mounted || gen != _transitionPreviewGen) return;
-      unawaited(_stopTransitionPreview());
+      debugPrint(
+        '[TL] panel.stop reason=wallClock '
+        'until=${until.inMilliseconds}ms '
+        'fallback=${wallClockFallback.inMilliseconds}ms',
+      );
+      unawaited(_stopTransitionPreview(reason: 'wallClock'));
     });
   }
 
-  Future<void> _stopTransitionPreview() async {
+  Future<void> _stopTransitionPreview({String reason = 'unspecified'}) async {
     _transitionPreviewTimer?.cancel();
     _transitionPreviewTimer = null;
     final until = _transitionPreviewUntil;
@@ -2689,6 +2752,13 @@ class _EditorScreenState extends State<EditorScreen>
       } catch (_) {}
     }
 
+    debugPrint(
+      '[TL] panel.stop pause reason=$reason '
+      'until=${until?.inMilliseconds}ms '
+      'land=${land.inMilliseconds}ms '
+      'nativePos=${NativeVideoEngine.instance.position.inMilliseconds}ms '
+      'playing=${NativeVideoEngine.instance.isPlaying}',
+    );
     await NativeVideoEngine.instance.pause();
     // Timeline path: already on the end frame — do not seek/preroll. A second
     // seek often lands on an earlier keyframe and looks like a jump to start.
@@ -2763,15 +2833,26 @@ class _EditorScreenState extends State<EditorScreen>
     }
     if (!mounted || gen != _transitionPreviewGen) return;
 
-    if (Platform.isIOS) {
+    if (NativeVideoEngine.instance.isPlatformSupported) {
       // Force rebuild when effect/duration changed, then play the cut window.
       _timelineSig = '';
       await _attachTimelineCompositor(resume: false, seekTo: clampedStart);
       if (!mounted || gen != _transitionPreviewGen) return;
       if (NativeVideoEngine.instance.isTimelineActive) {
         _scrubPlayhead = null;
+        debugPrint(
+          '[TL] panel.play native cut=$cutIndex '
+          'effect=${outgoing.transitionId} '
+          'td=${td.inMilliseconds}ms '
+          'from=${clampedStart.inMilliseconds}ms '
+          'until=${previewUntil.inMilliseconds}ms '
+          'nativePos=${NativeVideoEngine.instance.position.inMilliseconds}ms',
+        );
         await NativeVideoEngine.instance.play();
         if (!mounted || gen != _transitionPreviewGen) {
+          debugPrint(
+            '[TL] panel.play cancelled gen=$gen current=$_transitionPreviewGen pause',
+          );
           await NativeVideoEngine.instance.pause();
           return;
         }
@@ -2798,6 +2879,12 @@ class _EditorScreenState extends State<EditorScreen>
     }
     if (!mounted || gen != _transitionPreviewGen) return;
     final length = previewUntil - clampedStart;
+    debugPrint(
+      '[TL] panel.play controller cut=$cutIndex '
+      'effect=${outgoing.transitionId} '
+      'from=${clampedStart.inMilliseconds}ms '
+      'until=${previewUntil.inMilliseconds}ms',
+    );
     await controller.seekTo(clampedStart);
     if (!mounted || gen != _transitionPreviewGen) return;
     _scrubPlayhead = null;

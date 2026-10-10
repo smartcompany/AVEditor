@@ -40,7 +40,22 @@ final class NativeVideoEnginePlugin: NSObject, FlutterPlugin {
         result(FlutterError(code: "bad_args", message: "prepareTimeline", details: nil))
         return
       }
-      session?.dispose()
+      if let session {
+        do {
+          let built = try makeTimelinePreviewItem(args: args)
+          session.replaceItem(built.item)
+          let durationMs = Int((CMTimeGetSeconds(built.item.duration) * 1000).rounded())
+          result([
+            "textureId": session.textureId,
+            "width": session.renderWidth,
+            "height": session.renderHeight,
+            "durationMs": max(0, durationMs),
+          ])
+        } catch {
+          result(FlutterError(code: "prepare_failed", message: error.localizedDescription, details: nil))
+        }
+        return
+      }
       do {
         let built = try makeTimelinePreviewItem(args: args)
         let session = NativeVideoEngineSession(
@@ -217,7 +232,7 @@ final class NativeVideoEngineSession: NSObject {
   private let player: AVPlayer
   private let videoOutput: AVPlayerItemVideoOutput
   private var displayLink: CADisplayLink?
-  private let duration: CMTime
+  private var duration: CMTime
   private let preferredTransform: CGAffineTransform
   private let onEvent: ([String: Any]) -> Void
   private var didComplete = false
@@ -424,6 +439,31 @@ final class NativeVideoEngineSession: NSObject {
     }
     link.add(to: .main, forMode: .common)
     displayLink = link
+  }
+
+  func replaceItem(_ item: AVPlayerItem) {
+    let time = player.currentTime()
+    let wasPlaying = player.timeControlStatus == .playing
+    player.pause()
+    if let current = player.currentItem {
+      NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: current)
+      current.remove(videoOutput)
+    }
+    item.add(videoOutput)
+    duration = item.duration
+    didComplete = false
+    player.replaceCurrentItem(with: item)
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(itemDidEnd),
+      name: .AVPlayerItemDidPlayToEndTime,
+      object: item
+    )
+    let target = CMTIME_IS_NUMERIC(time) ? time : CMTime.zero
+    player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
+    if wasPlaying {
+      player.play()
+    }
   }
 
   func play() {

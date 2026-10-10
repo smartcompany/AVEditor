@@ -8,12 +8,12 @@ import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/video_project.dart';
 import 'package:aveditor/models/applied_transition.dart';
 import 'package:aveditor/models/transition_item.dart';
+import 'package:aveditor/services/composition_segments.dart';
 import 'package:aveditor/services/export_save_service.dart';
 import 'package:aveditor/services/native_video_engine.dart';
 import 'package:aveditor/services/overlay_raster_service.dart';
 import 'package:aveditor/models/transition_role_effect.dart';
 import 'package:aveditor/services/transition_catalog_service.dart';
-import 'package:aveditor/services/transition_engine.dart';
 import 'package:aveditor/services/video_probe_service.dart';
 import 'package:aveditor/utils/clip_rotation.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
@@ -143,46 +143,15 @@ class ExportService {
     required bool hasVideoAudio,
     required bool streamCopy,
   }) {
+    final visual = encodeCompositionSegments(project.segments);
     final segments = <Map<String, dynamic>>[];
     for (var i = 0; i < project.segments.length; i++) {
       final segment = project.segments[i];
-      final next = i < project.segments.length - 1
-          ? project.segments[i + 1]
-          : null;
-      final td = next == null
-          ? Duration.zero
-          : clampedTransitionDuration(segment, next: next);
-      final effect = segment.hasTransition && td > Duration.zero
-          ? transitionEffectNameFor(segment.transition)
-          : null;
-      final motion = segment.hasTransition && td > Duration.zero
-          ? transitionMotionFor(segment.transition)
-          : const <Map<String, Object>>[];
-      final role = segment.hasTransition
-          ? TransitionEngine.instance.plan(segment.transition).definition?.roleEffect
-          : null;
       segments.add({
-        'startMs': segment.start.inMilliseconds,
-        'endMs': segment.end.inMilliseconds,
+        ...visual[i],
         'volume': segment.volume,
         'fadeInMs': segment.fadeIn.inMilliseconds,
         'fadeOutMs': segment.fadeOut.inMilliseconds,
-        if (effect != null) ...{
-          'transitionEffect': effect,
-          'transitionDurationMs': td.inMilliseconds,
-          if (motion.isNotEmpty) 'transitionLayers': motion,
-          if (role != null) ...{
-            'transitionKind': role.kind,
-            'transitionReverse': role.reverse,
-            'transitionParams': {
-              for (final entry in role.params.entries)
-                if (entry.value is num ||
-                    entry.value is bool ||
-                    entry.value is String)
-                  entry.key: entry.value,
-            },
-          },
-        },
       });
     }
 
@@ -275,9 +244,7 @@ class ExportService {
   /// Native compositor / GPU effect id (slideleft, dissolve, …).
   @visibleForTesting
   static String transitionEffectNameFor(AppliedTransition? applied) {
-    final name = TransitionEngine.instance.effectNameFor(applied);
-    if (name == null || name.isEmpty) return 'fade';
-    return name;
+    return compositionEffectName(applied);
   }
 
   /// Catalog motion the exporter replays. Not limited to scale/rotation —
@@ -286,29 +253,7 @@ class ExportService {
   static List<Map<String, Object>> transitionMotionFor(
     AppliedTransition? applied,
   ) {
-    final layers =
-        TransitionEngine.instance.plan(applied).definition?.layers ?? const [];
-    return [
-      for (final layer in layers)
-        {
-          'property': layer.property.name,
-          'from': layer.from,
-          'to': layer.to,
-          'easing': layer.easing.name,
-          'target': layer.target.toJson(),
-          'start': layer.start,
-          'end': layer.end,
-          if (layer.param != null) 'param': layer.param!,
-          if (layer.mode != null) 'mode': layer.mode!,
-          if (layer.grid != null)
-            'grid': {
-              'columns': layer.grid!.columns,
-              'rows': layer.grid!.rows,
-              'gap': layer.grid!.gap,
-              'stagger': layer.grid!.stagger,
-            },
-        },
-    ];
+    return compositionMotion(applied);
   }
 
   /// How album export should draw [item]. Empty means the effect would be dropped.

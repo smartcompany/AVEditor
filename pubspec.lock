@@ -502,13 +502,13 @@ packages:
     source: hosted
     version: "0.3.3+1"
   google_mobile_ads:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
       name: google_mobile_ads
-      sha256: "0d4a3744b5e8ed1b8be6a1b452d309f811688855a497c6113fc4400f922db603"
+      sha256: "8094e1ace8b0da33fe79027ca6959763c96a28855025cb7c8ec60838e1d56ed8"
       url: "https://pub.dev"
     source: hosted
-    version: "5.3.1"
+    version: "9.1.0"
   google_sign_in:
     dependency: "direct main"
     description:
@@ -582,12 +582,11 @@ packages:
     source: hosted
     version: "1.2.3"
   image_picker_android:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      name: image_picker_android
-      sha256: "0a55d645a670d6ae11efa948f955ae904afa472f1344fc15a7ddacc20c1e7219"
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/image_picker_android"
+      relative: true
+    source: path
     version: "0.8.13+23"
   image_picker_for_web:
     dependency: transitive
@@ -1348,10 +1347,9 @@ packages:
   video_thumbnail:
     dependency: "direct main"
     description:
-      name: video_thumbnail
-      sha256: "181a0c205b353918954a881f53a3441476b9e301641688a581e0c13f00dc588b"
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/video_thumbnail"
+      relative: true
+    source: path
     version: "0.5.6"
   vm_service:
     dependency: transitive

@@ -3,27 +3,19 @@ import 'dart:io';
 
 import 'package:aveditor/models/applied_transition.dart';
 import 'package:aveditor/models/clip_segment.dart';
-import 'package:aveditor/models/transition_role_effect.dart';
+import 'package:aveditor/services/composition_segments.dart';
 import 'package:aveditor/services/export_service.dart';
 import 'package:aveditor/services/transition_engine.dart';
-import 'package:aveditor/utils/clip_segment_ops.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
-/// Flutter ↔ platform [Native Video Engine] bridge.
+/// Flutter ↔ platform video engine.
 ///
-/// ```
-/// Flutter
-///   ├── Timeline UI
-///   ├── Clip / Transition data
-///   └── Native Bridge  (this class)
-///          ├── iOS: AVPlayer + AVVideoCompositing (Metal)
-///          └── Android: MediaCodec + GLES slide/push
-/// ```
-///
-/// iOS preview and album export share [ExportFrameCompositor].
-/// Android preview still only composites slide / push / cover.
+/// Timeline playback and album export share [encodeCompositionSegments].
+/// This class only transports that plan. iOS draws it with
+/// AVVideoCompositing, Android with the Media3 composition player.
+/// The editor does not keep a second transition implementation per platform.
 class NativeVideoEngine {
   NativeVideoEngine._();
 
@@ -95,67 +87,32 @@ class NativeVideoEngine {
     return !_opacityOnlyXfades.contains(name);
   }
 
-  /// Native compositor preview. iOS uses the same compositor as album export.
+  /// True when the shared composition plan can draw [applied].
+  /// Same rule on iOS and Android. Playback uses [prepareTimeline].
   static bool supports(AppliedTransition? applied) {
     if (!instance.isPlatformSupported) return false;
     if (applied == null || applied.isNone) return false;
-    if (Platform.isIOS) {
-      final item = TransitionEngine.instance.plan(applied).definition;
-      return item != null && ExportService.exportVisualFor(item) != null;
-    }
-    if (!isSpatialPreview(applied)) return false;
-    final name = TransitionEngine.instance
-        .effectNameFor(applied)
-        ?.toLowerCase();
-    if (name == null || name.isEmpty) return false;
-    return supportedEffects.contains(name);
+    final item = TransitionEngine.instance.plan(applied).definition;
+    return item != null && ExportService.exportVisualFor(item) != null;
   }
 
   Future<int?> prepareTimeline({
     required String sourcePath,
     required List<ClipSegment> segments,
   }) async {
-    if (!Platform.isIOS) return null;
-    final encoded = <Map<String, dynamic>>[];
-    for (var i = 0; i < segments.length; i++) {
-      final segment = segments[i];
-      final next = i < segments.length - 1 ? segments[i + 1] : null;
-      final td = next == null
-          ? Duration.zero
-          : clampedTransitionDuration(segment, next: next);
-      final plan = segment.hasTransition
-          ? TransitionEngine.instance.plan(segment.transition)
-          : null;
-      // Every non-cut transition shares duration-preserving A+B packing
-      // (centered td on the cut, handles, no rewind).
-      // effectName only selects the compositor blend; layout is identical.
-      final effect = plan?.effectName?.toLowerCase();
-      final role = plan?.definition?.roleEffect;
-      final motion = segment.hasTransition && td > Duration.zero
-          ? ExportService.transitionMotionFor(segment.transition)
-          : const <Map<String, Object>>[];
-      encoded.add({
-        'startMs': segment.start.inMilliseconds,
-        'endMs': segment.end.inMilliseconds,
-        if (segment.hasTransition && td > Duration.zero) ...{
-          'transitionEffect': (effect == null || effect.isEmpty) ? 'fade' : effect,
-          'transitionDurationMs': td.inMilliseconds,
-          if (motion.isNotEmpty) 'transitionLayers': motion,
-          if (role != null) ...{
-            'transitionKind': role.kind,
-            'transitionReverse': role.reverse,
-            'transitionParams': {
-              for (final entry in role.params.entries)
-                if (entry.value is num ||
-                    entry.value is bool ||
-                    entry.value is String)
-                  entry.key: entry.value,
-            },
-          },
-        },
-      });
+    if (!isPlatformSupported) return null;
+    final encoded = encodeCompositionSegments(segments);
+    if (kDebugMode) {
+      final brief = encoded
+          .map(
+            (s) =>
+                '${s['startMs']}-${s['endMs']} td=${s['transitionDurationMs']} ${s['transitionEffect']}',
+          )
+          .join(' | ');
+      debugPrint('prepareTimeline segments: $brief');
     }
-    await dispose();
+    final keepPlayer = _timelineActive && _textureId != null;
+    if (!keepPlayer) await dispose();
     try {
       final result = await _channel.invokeMapMethod<String, dynamic>(
         'prepareTimeline',
@@ -163,9 +120,8 @@ class NativeVideoEngine {
       );
       final textureId = result?['textureId'] as int?;
       if (textureId == null) return null;
-      _textureId = textureId;
-      _previewWidth = result?['width'] as int? ?? 720;
-      _previewHeight = result?['height'] as int? ?? 1280;
+      _previewWidth = result?['width'] as int? ?? _previewWidth;
+      _previewHeight = result?['height'] as int? ?? _previewHeight;
       final durationMs = result?['durationMs'] as int?;
       if (durationMs != null && durationMs > 0) {
         _duration = Duration(milliseconds: durationMs);
@@ -178,109 +134,40 @@ class NativeVideoEngine {
         }
         _duration = Duration(milliseconds: endMs);
       }
-      _position = Duration.zero;
       _active = true;
       _timelineActive = true;
+      _ensureEventListening();
+      if (keepPlayer && textureId == _textureId) return _textureId;
+      _textureId = textureId;
+      _position = Duration.zero;
       _playing = false;
       _hasFrame = false;
-      _ensureEventListening();
       return textureId;
     } on PlatformException catch (e, st) {
       if (kDebugMode) {
         debugPrint('NativeVideoEngine.prepareTimeline failed: $e\n$st');
       }
-      await dispose();
-      return null;
-    }
-  }
-
-  Future<int?> prepareTransition({
-    required String sourcePath,
-    required ClipSegment outgoing,
-    required ClipSegment incoming,
-    required AppliedTransition transition,
-  }) async {
-    if (!supports(transition)) return null;
-
-    final td = clampedTransitionDuration(outgoing, next: incoming);
-    if (td <= Duration.zero) return null;
-
-    final plan = TransitionEngine.instance.plan(transition);
-    final effect = plan.effectName?.toLowerCase();
-    if (effect == null || effect.isEmpty) return null;
-    final role = plan.definition?.roleEffect;
-    final motion = ExportService.transitionMotionFor(transition);
-
-    await dispose();
-
-    try {
-      final result = await _channel.invokeMapMethod<String, dynamic>(
-        'prepareTransition',
-        {
-          'sourcePath': sourcePath,
-          'outgoingStartMs':
-              (outgoing.end -
-                      Duration(milliseconds: transitionHalfMs(td).before))
-                  .inMilliseconds,
-          'outgoingEndMs': outgoing.end.inMilliseconds,
-          'incomingStartMs': incoming.start.inMilliseconds,
-          'incomingEndMs':
-              (incoming.start +
-                      Duration(milliseconds: transitionHalfMs(td).after))
-                  .inMilliseconds,
-          'durationMs': td.inMilliseconds,
-          'effect': effect,
-          if (motion.isNotEmpty) 'transitionLayers': motion,
-          if (role != null) ...{
-            'transitionKind': role.kind,
-            'transitionReverse': role.reverse,
-            'transitionParams': {
-              for (final entry in role.params.entries)
-                if (entry.value is num ||
-                    entry.value is bool ||
-                    entry.value is String)
-                  entry.key: entry.value,
-            },
-          },
-        },
-      );
-      debugPrint(
-        '[TL] prepareTransition td=${td.inMilliseconds}ms '
-        'half=${transitionHalfMs(td).before}+${transitionHalfMs(td).after} '
-        'effect=$effect',
-      );
-      if (result == null) return null;
-
-      final textureId = result['textureId'] as int?;
-      final durationMs = result['durationMs'] as int? ?? td.inMilliseconds;
-      if (textureId == null) return null;
-
-      _textureId = textureId;
-      _duration = Duration(milliseconds: durationMs);
-      _previewWidth = result['width'] as int? ?? 720;
-      _previewHeight = result['height'] as int? ?? 1280;
-      _position = Duration.zero;
-      _active = true;
-      _timelineActive = false;
-      _playing = false;
-      _hasFrame = false;
-      _ensureEventListening();
-      return textureId;
-    } on PlatformException catch (e, st) {
-      if (kDebugMode) {
-        debugPrint('NativeVideoEngine.prepareTransition failed: $e\n$st');
-      }
-      await dispose();
+      if (!keepPlayer) await dispose();
       return null;
     }
   }
 
   Future<void> play() async {
-    if (!_active) return;
+    if (!_active) {
+      debugPrint('NativeVideoEngine.play skipped inactive');
+      return;
+    }
     // Optimistic so the transport icon flips before the platform round-trip.
     _playing = true;
     if (!_playingController.isClosed) _playingController.add(true);
-    await _channel.invokeMethod<void>('play');
+    try {
+      final result = await _channel.invokeMapMethod<String, dynamic>('play');
+      debugPrint('NativeVideoEngine.play result $result');
+    } on PlatformException catch (e, st) {
+      _playing = false;
+      if (!_playingController.isClosed) _playingController.add(false);
+      debugPrint('NativeVideoEngine.play failed: ${e.code} ${e.message}\n$st');
+    }
   }
 
   Future<void> pause() async {
