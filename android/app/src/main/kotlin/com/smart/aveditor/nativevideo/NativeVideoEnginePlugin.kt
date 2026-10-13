@@ -36,7 +36,7 @@ class NativeVideoEnginePlugin :
   private var eventSink: EventChannel.EventSink? = null
   private var textureRegistry: TextureRegistry? = null
   private var appContext: Context? = null
-  private var timeline: TimelineCompositionSession? = null
+  private var timeline: TimelineSession? = null
 
   companion object {
     const val CHANNEL = "com.smart.aveditor/native_video_engine"
@@ -96,16 +96,22 @@ class NativeVideoEnginePlugin :
           result.error("bad_args", "prepareTimeline", null)
           return
         }
+        val ffmpegPlayer = args["ffmpegPlayer"] as? Boolean ?: false
         val existing = timeline
-        if (existing != null) {
+        if (existing != null && existing.usesFfmpeg != ffmpegPlayer) {
+          existing.release()
+          timeline = null
+        }
+        val current = timeline
+        if (current != null) {
           try {
-            existing.update(sourcePath, segments)
+            current.update(sourcePath, segments)
             result.success(
               mapOf(
-                "textureId" to existing.textureId,
-                "durationMs" to existing.durationMs,
-                "width" to existing.width,
-                "height" to existing.height,
+                "textureId" to current.textureId,
+                "durationMs" to current.durationMs,
+                "width" to current.width,
+                "height" to current.height,
               ),
             )
           } catch (e: Exception) {
@@ -118,14 +124,29 @@ class NativeVideoEnginePlugin :
           val preview = NativeVideoEngineMedia.buildTimelinePreview(sourcePath, segments)
           val created = registry.createSurfaceTexture()
           try {
-            val playing = TimelineCompositionSession(
-              context = context,
-              surfaceTextureEntry = created,
-              preview = preview,
-              onEvent = { event ->
-                Handler(Looper.getMainLooper()).post { eventSink?.success(event) }
-              },
-            )
+            val playing: TimelineSession = if (ffmpegPlayer) {
+              Log.i("NativeVideoEngine", "timeline player=ffmpeg")
+              FfmpegTimelineSession(
+                surfaceTextureEntry = created,
+                sourcePath = sourcePath,
+                segments = segments,
+                previewWidth = preview.width,
+                previewHeight = preview.height,
+                onEvent = { event ->
+                  Handler(Looper.getMainLooper()).post { eventSink?.success(event) }
+                },
+              )
+            } else {
+              Log.i("NativeVideoEngine", "timeline player=exoplayer")
+              TimelineCompositionSession(
+                context = context,
+                surfaceTextureEntry = created,
+                preview = preview,
+                onEvent = { event ->
+                  Handler(Looper.getMainLooper()).post { eventSink?.success(event) }
+                },
+              )
+            }
             timeline = playing
             playing.start()
           } catch (e: Exception) {
@@ -301,7 +322,8 @@ private class TimelineCompositionSession(
   private val surfaceTextureEntry: TextureRegistry.SurfaceTextureEntry,
   preview: TimelinePreview,
   private val onEvent: (Map<String, Any>) -> Unit,
-) {
+) : TimelineSession {
+  override val usesFfmpeg: Boolean = false
   private val handler = Handler(Looper.getMainLooper())
   private val appContext = context.applicationContext
   private val mix = preview.mix ?: TimelineMix()
@@ -434,19 +456,19 @@ private class TimelineCompositionSession(
     }
   }
 
-  val textureId: Long
+  override val textureId: Long
     get() = surfaceTextureEntry.id()
 
-  val durationMs: Int
+  override val durationMs: Int
     get() = preview.durationMs
 
-  val width: Int
+  override val width: Int
     get() = preview.width
 
-  val height: Int
+  override val height: Int
     get() = preview.height
 
-  fun update(sourcePath: String, segments: List<*>) {
+  override fun update(sourcePath: String, segments: List<*>) {
     if (released) return
     val layoutChanged = !NativeVideoEngineMedia.sameMixerLayout(mix, segments)
     val next = NativeVideoEngineMedia.buildTimelinePreview(sourcePath, segments, mix)
@@ -528,7 +550,7 @@ private class TimelineCompositionSession(
     }
   }
 
-  fun start() {
+  override fun start() {
     val texture = surfaceTextureEntry.surfaceTexture()
     texture.setDefaultBufferSize(preview.width, preview.height)
     val output = Surface(texture)
@@ -759,7 +781,7 @@ private class TimelineCompositionSession(
     }
   }
 
-  fun play(): String? {
+  override fun play(): String? {
     Log.i(
       "NativeVideoEngine",
       "timeline play released=$released state=${stateName(player.playbackState)} " +
@@ -802,7 +824,7 @@ private class TimelineCompositionSession(
     return null
   }
 
-  fun playbackSnapshot(): Map<String, Any> {
+  override fun playbackSnapshot(): Map<String, Any> {
     return mapOf(
       "state" to stateName(player.playbackState),
       "pos" to player.currentPosition,
@@ -838,7 +860,7 @@ private class TimelineCompositionSession(
     )
   }
 
-  fun pause() {
+  override fun pause() {
     Log.i(
       "NativeVideoEngine",
       "timeline pause state=${stateName(player.playbackState)} " +
@@ -859,7 +881,7 @@ private class TimelineCompositionSession(
     onEvent(mapOf("type" to "playing", "playing" to false))
   }
 
-  fun seekToMs(ms: Long) {
+  override fun seekToMs(ms: Long) {
     if (released) return
     val landed = ms.coerceIn(0L, preview.durationMs.toLong())
     if (kotlin.math.abs(player.currentPosition - landed) <= 40L) {
@@ -879,7 +901,7 @@ private class TimelineCompositionSession(
     onEvent(mapOf("type" to "position", "positionMs" to landed.toInt()))
   }
 
-  fun prerollToMs(ms: Long, done: (Boolean) -> Unit) {
+  override fun prerollToMs(ms: Long, done: (Boolean) -> Unit) {
     if (released) {
       done(false)
       return
@@ -926,7 +948,7 @@ private class TimelineCompositionSession(
     handler.postDelayed(timeout, 1500L)
   }
 
-  fun release() {
+  override fun release() {
     if (released) return
     released = true
     playbackRequested = false

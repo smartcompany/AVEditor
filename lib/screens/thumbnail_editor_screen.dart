@@ -8,9 +8,9 @@ import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/video_project.dart';
 import 'package:aveditor/widgets/basic_text_edit_toolbar.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
+import 'package:aveditor/services/video_frame_grab.dart';
 import 'package:aveditor/widgets/video_preview.dart';
 import 'package:flutter/material.dart';
-import 'package:video_thumbnail/video_thumbnail.dart';
 
 /// Full-screen still picker. Returns the composed thumbnail file path.
 class ThumbnailEditorScreen extends StatefulWidget {
@@ -181,9 +181,8 @@ class _ThumbnailEditorScreenState extends State<ThumbnailEditorScreen> {
     final request = ++_heroRequest;
     final timelineMs = _scrubMs;
     try {
-      final bytes = await VideoThumbnail.thumbnailData(
+      final bytes = await const VideoFrameGrab().jpegBytes(
         video: widget.project.sourcePath,
-        imageFormat: ImageFormat.JPEG,
         timeMs: _sourceMs(timelineMs),
         maxHeight: 1280,
         maxWidth: 1280,
@@ -204,9 +203,8 @@ class _ThumbnailEditorScreenState extends State<ThumbnailEditorScreen> {
     setState(() => _frameMs = times);
     try {
       for (var i = 0; i < times.length; i++) {
-        final bytes = await VideoThumbnail.thumbnailData(
+        final bytes = await const VideoFrameGrab().jpegBytes(
           video: widget.project.sourcePath,
-          imageFormat: ImageFormat.JPEG,
           timeMs: _sourceMs(times[i]),
           maxHeight: 360,
           maxWidth: 360,
@@ -302,9 +300,8 @@ class _ThumbnailEditorScreenState extends State<ThumbnailEditorScreen> {
     setState(() => _saving = true);
     try {
       final timelineMs = _scrubMs;
-      final bytes = await VideoThumbnail.thumbnailData(
+      final bytes = await const VideoFrameGrab().jpegBytes(
         video: widget.project.sourcePath,
-        imageFormat: ImageFormat.JPEG,
         timeMs: _sourceMs(timelineMs),
         maxHeight: 1920,
         maxWidth: 1920,

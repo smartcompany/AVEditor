@@ -3,8 +3,11 @@ package com.smart.aveditor.nativevideo
 import android.content.Context
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
+import android.opengl.EGL14
+import android.opengl.EGLConfig
 import android.opengl.GLES20
 import android.opengl.GLUtils
+import android.view.Surface
 import android.util.Log
 import androidx.media3.common.VideoFrameProcessingException
 import androidx.media3.common.util.GlUtil
@@ -226,7 +229,7 @@ private class TransitionBlendProgram(
     GLES20.glUniform2f(loc(name), x, y)
   }
 
-  private companion object {
+  companion object {
     const val MODE_COPY = 0
     const val MODE_POSE = 1
     const val MODE_WIPE = 2
@@ -793,5 +796,265 @@ private class IncomingFrameSource {
         }
       }
     }
+  }
+}
+
+/**
+ * Draws ffmpeg frames with the same transition shader CompositionPlayer uses.
+ * The outgoing picture is the ffmpeg frame. The incoming picture is sampled
+ * from the source file.
+ */
+internal class FfmpegTransitionPresenter(
+  private val mix: TimelineMix,
+) {
+  private var surface: Surface? = null
+  private var display = EGL14.EGL_NO_DISPLAY
+  private var context = EGL14.EGL_NO_CONTEXT
+  private var eglSurface = EGL14.EGL_NO_SURFACE
+  private var program = 0
+  private var position = 0
+  private var outgoingTex = 0
+  private var incoming = IncomingFrameSource()
+  private var flip: java.nio.ByteBuffer? = null
+  private var viewW = 0
+  private var viewH = 0
+  private var released = false
+  private val quad = java.nio.ByteBuffer.allocateDirect(8 * 4)
+    .order(java.nio.ByteOrder.nativeOrder())
+    .asFloatBuffer()
+    .apply {
+      put(floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f))
+      position(0)
+    }
+
+  fun setSurface(surface: Surface?) {
+    this.surface = surface
+  }
+
+  fun draw(rgba: java.nio.ByteBuffer, width: Int, height: Int, packedMs: Long) {
+    if (released || width < 2 || height < 2) return
+    val target = surface ?: return
+    if (!ensureGl(target, width, height)) return
+    uploadOutgoing(rgba, width, height)
+    val blend = mix.blends.firstOrNull {
+      packedMs >= it.startMs && packedMs < it.startMs + it.durationMs
+    }
+    val t = if (blend == null || blend.durationMs <= 0L) {
+      0f
+    } else {
+      ((packedMs - blend.startMs).toFloat() / blend.durationMs.toFloat()).coerceIn(0f, 1f)
+    }
+    val draw = if (blend == null) BlendDraw() else resolveBlend(blend, t)
+    val incomingTex = if (blend != null && mix.sourcePath.isNotEmpty()) {
+      incoming.texture(mix.sourcePath, mix.incomingSourceUs(packedMs))
+    } else {
+      0
+    }
+    val split = incomingTex != 0
+    val mode = if (blend != null && (mix.sourcePath.isEmpty() || split)) draw.mode else 0
+    GLES20.glViewport(0, 0, width, height)
+    GLES20.glClearColor(0f, 0f, 0f, 1f)
+    GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+    GLES20.glUseProgram(program)
+    GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+    GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, outgoingTex)
+    uniform1i("uTex", 0)
+    if (split) {
+      GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
+      GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, incomingTex)
+      uniform1i("uIncoming", 1)
+    }
+    uniform1f("uPacked", if (blend != null && mix.sourcePath.isEmpty()) 1f else 0f)
+    uniform1f("uSplit", if (split) 1f else 0f)
+    uniform1i("uMode", mode)
+    uniform1f("uT", draw.t)
+    uniform1i("uEdge", draw.edge)
+    uniform1f("uAlphaA", draw.alphaA)
+    uniform1f("uAlphaB", draw.alphaB)
+    uniform1f("uScaleA", draw.scaleA)
+    uniform1f("uScaleB", draw.scaleB)
+    uniform1f("uRotA", draw.rotA)
+    uniform1f("uRotB", draw.rotB)
+    uniform2f("uTransA", draw.txA, draw.tyA)
+    uniform2f("uTransB", draw.txB, draw.tyB)
+    uniform1f("uBlurA", draw.blurA)
+    uniform1f("uBlurB", draw.blurB)
+    uniform1f("uZoomA", if (draw.zoomA) 1f else 0f)
+    uniform1f("uZoomB", if (draw.zoomB) 1f else 0f)
+    uniform1f("uWipeA", draw.wipeA)
+    uniform1f("uWipeB", draw.wipeB)
+    uniform1i("uWipeEdgeA", draw.wipeEdgeA)
+    uniform1i("uWipeEdgeB", draw.wipeEdgeB)
+    uniform1f("uBright", draw.bright)
+    uniform1f("uWhite", if (draw.white) 1f else 0f)
+    uniform1f("uRipple", draw.ripple)
+    uniform1f("uAOnTop", if (draw.aOnTop) 1f else 0f)
+    uniform1f("uCircleIncoming", if (draw.circleIncoming) 1f else 0f)
+    uniform1f("uCols", draw.cols)
+    uniform1f("uRows", draw.rows)
+    uniform1f("uGap", draw.gap)
+    uniform1f("uStagger", draw.stagger)
+    uniform1f("uRotYFrom", draw.rotYFrom)
+    uniform1f("uRotYTo", draw.rotYTo)
+    uniform1f("uHasFlip", if (draw.hasFlip) 1f else 0f)
+    uniform1f("uFlipFront", draw.flipFront)
+    uniform1i("uEase", draw.ease)
+    uniform1f("uReverse", if (draw.reverse) 1f else 0f)
+    uniform1f("uScaleFrom", draw.scaleFrom)
+    uniform1f("uScaleTo", draw.scaleTo)
+    uniform2f("uOffA", draw.offAx, draw.offAy)
+    uniform2f("uOffB", draw.offBx, draw.offBy)
+    quad.position(0)
+    GLES20.glEnableVertexAttribArray(position)
+    GLES20.glVertexAttribPointer(position, 2, GLES20.GL_FLOAT, false, 0, quad)
+    GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+    GLES20.glDisableVertexAttribArray(position)
+    EGL14.eglSwapBuffers(display, eglSurface)
+  }
+
+  fun close() {
+    released = true
+  }
+
+  fun releaseGl() {
+    incoming.release()
+    incoming = IncomingFrameSource()
+    if (outgoingTex != 0) {
+      GLES20.glDeleteTextures(1, intArrayOf(outgoingTex), 0)
+      outgoingTex = 0
+    }
+    if (program != 0) {
+      GLES20.glDeleteProgram(program)
+      program = 0
+    }
+    if (display != EGL14.EGL_NO_DISPLAY) {
+      EGL14.eglMakeCurrent(
+        display,
+        EGL14.EGL_NO_SURFACE,
+        EGL14.EGL_NO_SURFACE,
+        EGL14.EGL_NO_CONTEXT,
+      )
+      if (eglSurface != EGL14.EGL_NO_SURFACE) EGL14.eglDestroySurface(display, eglSurface)
+      if (context != EGL14.EGL_NO_CONTEXT) EGL14.eglDestroyContext(display, context)
+      EGL14.eglTerminate(display)
+    }
+    display = EGL14.EGL_NO_DISPLAY
+    context = EGL14.EGL_NO_CONTEXT
+    eglSurface = EGL14.EGL_NO_SURFACE
+    surface = null
+  }
+
+  private fun ensureGl(target: Surface, width: Int, height: Int): Boolean {
+    if (display != EGL14.EGL_NO_DISPLAY && program != 0) {
+      GLES20.glViewport(0, 0, width, height)
+      viewW = width
+      viewH = height
+      return true
+    }
+    display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
+    if (display == EGL14.EGL_NO_DISPLAY) return false
+    val version = IntArray(2)
+    if (!EGL14.eglInitialize(display, version, 0, version, 1)) return false
+    val attribs = intArrayOf(
+      EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
+      EGL14.EGL_SURFACE_TYPE, EGL14.EGL_WINDOW_BIT,
+      EGL14.EGL_RED_SIZE, 8,
+      EGL14.EGL_GREEN_SIZE, 8,
+      EGL14.EGL_BLUE_SIZE, 8,
+      EGL14.EGL_ALPHA_SIZE, 8,
+      EGL14.EGL_NONE,
+    )
+    val configs = arrayOfNulls<EGLConfig>(1)
+    val count = IntArray(1)
+    if (!EGL14.eglChooseConfig(display, attribs, 0, configs, 0, 1, count, 0) || count[0] == 0) {
+      return false
+    }
+    val config = configs[0] ?: return false
+    val contextAttribs = intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL14.EGL_NONE)
+    context = EGL14.eglCreateContext(display, config, EGL14.EGL_NO_CONTEXT, contextAttribs, 0)
+    eglSurface = EGL14.eglCreateWindowSurface(display, config, target, intArrayOf(EGL14.EGL_NONE), 0)
+    if (context == EGL14.EGL_NO_CONTEXT || eglSurface == EGL14.EGL_NO_SURFACE) return false
+    if (!EGL14.eglMakeCurrent(display, eglSurface, eglSurface, context)) return false
+    val vertex = compile(GLES20.GL_VERTEX_SHADER, TransitionBlendProgram.VERTEX)
+    val fragment = compile(GLES20.GL_FRAGMENT_SHADER, TransitionBlendProgram.FRAGMENT)
+    val linked = GLES20.glCreateProgram()
+    GLES20.glAttachShader(linked, vertex)
+    GLES20.glAttachShader(linked, fragment)
+    GLES20.glLinkProgram(linked)
+    val status = IntArray(1)
+    GLES20.glGetProgramiv(linked, GLES20.GL_LINK_STATUS, status, 0)
+    GLES20.glDeleteShader(vertex)
+    GLES20.glDeleteShader(fragment)
+    if (status[0] != GLES20.GL_TRUE) {
+      Log.e("NativeVideoEngine", "ffmpeg blend link ${GLES20.glGetProgramInfoLog(linked)}")
+      return false
+    }
+    program = linked
+    position = GLES20.glGetAttribLocation(program, "aFramePosition")
+    val ids = IntArray(1)
+    GLES20.glGenTextures(1, ids, 0)
+    outgoingTex = ids[0]
+    GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, outgoingTex)
+    GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
+    GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
+    GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
+    GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+    viewW = width
+    viewH = height
+    Log.i("NativeVideoEngine", "ffmpeg blend presenter ${width}x$height")
+    return true
+  }
+
+  private fun uploadOutgoing(rgba: java.nio.ByteBuffer, width: Int, height: Int) {
+    val row = width * 4
+    val bytes = row * height
+    var dst = flip
+    if (dst == null || dst.capacity() < bytes) {
+      dst = java.nio.ByteBuffer.allocateDirect(bytes)
+      flip = dst
+    }
+    dst.clear()
+    val src = rgba.duplicate()
+    for (y in 0 until height) {
+      val start = (height - 1 - y) * row
+      src.position(start)
+      src.limit(start + row)
+      dst.put(src)
+    }
+    dst.position(0)
+    GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, outgoingTex)
+    GLES20.glPixelStorei(GLES20.GL_UNPACK_ALIGNMENT, 1)
+    GLES20.glTexImage2D(
+      GLES20.GL_TEXTURE_2D,
+      0,
+      GLES20.GL_RGBA,
+      width,
+      height,
+      0,
+      GLES20.GL_RGBA,
+      GLES20.GL_UNSIGNED_BYTE,
+      dst,
+    )
+  }
+
+  private fun compile(type: Int, source: String): Int {
+    val shader = GLES20.glCreateShader(type)
+    GLES20.glShaderSource(shader, source)
+    GLES20.glCompileShader(shader)
+    return shader
+  }
+
+  private fun loc(name: String): Int = GLES20.glGetUniformLocation(program, name)
+
+  private fun uniform1f(name: String, value: Float) {
+    GLES20.glUniform1f(loc(name), value)
+  }
+
+  private fun uniform1i(name: String, value: Int) {
+    GLES20.glUniform1i(loc(name), value)
+  }
+
+  private fun uniform2f(name: String, x: Float, y: Float) {
+    GLES20.glUniform2f(loc(name), x, y)
   }
 }

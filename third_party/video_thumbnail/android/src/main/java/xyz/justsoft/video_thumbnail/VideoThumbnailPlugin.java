@@ -65,29 +65,29 @@ public class VideoThumbnailPlugin implements FlutterPlugin, MethodCallHandler {
         final int timeMs = (int) args.get("timeMs");
         final int quality = (int) args.get("quality");
         final String method = call.method;
+        if (!"file".equals(method) && !"data".equals(method)) {
+            result.notImplemented();
+            return;
+        }
 
         executor.execute(new Runnable() {
             @Override
             public void run() {
                 Object thumbnail = null;
-                boolean handled = false;
                 Exception exc = null;
 
                 try {
                     if (method.equals("file")) {
                         final String path = (String) args.get("path");
                         thumbnail = buildThumbnailFile(video, headers, path, format, maxh, maxw, timeMs, quality);
-                        handled = true;
-
-                    } else if (method.equals("data")) {
+                    } else {
                         thumbnail = buildThumbnailData(video, headers, format, maxh, maxw, timeMs, quality);
-                        handled = true;
                     }
                 } catch (Exception e) {
                     exc = e;
                 }
 
-                onResult(result, thumbnail, handled, exc);
+                onResult(result, thumbnail, true, exc);
             }
         });
     }
@@ -121,8 +121,7 @@ public class VideoThumbnailPlugin implements FlutterPlugin, MethodCallHandler {
         // Log.d(TAG, String.format("buildThumbnailData( format:%d, maxh:%d, maxw:%d,
         // timeMs:%d, quality:%d )", format, maxh, maxw, timeMs, quality));
         Bitmap bitmap = createVideoThumbnail(vidPath, headers, maxh, maxw, timeMs);
-        if (bitmap == null)
-            throw new NullPointerException();
+        if (bitmap == null) return null;
 
         ByteArrayOutputStream stream = new ByteArrayOutputStream();
         bitmap.compress(intToFormat(format), quality, stream);
@@ -138,6 +137,7 @@ public class VideoThumbnailPlugin implements FlutterPlugin, MethodCallHandler {
         // Log.d(TAG, String.format("buildThumbnailFile( format:%d, maxh:%d, maxw:%d,
         // timeMs:%d, quality:%d )", format, maxh, maxw, timeMs, quality));
         final byte bytes[] = buildThumbnailData(vidPath, headers, format, maxh, maxw, timeMs, quality);
+        if (bytes == null) return null;
         final String ext = formatExt(format);
         final int i = vidPath.lastIndexOf(".");
         String fullpath = vidPath.substring(0, i + 1) + ext;

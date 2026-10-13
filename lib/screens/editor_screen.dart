@@ -17,9 +17,11 @@ import 'package:aveditor/screens/music_picker_screen.dart';
 import 'package:aveditor/services/editor_history.dart';
 import 'package:aveditor/services/audio_waveform_service.dart';
 import 'package:aveditor/services/music_storage_service.dart';
+import 'package:aveditor/services/playback_fallback_transcoder.dart';
 import 'package:aveditor/services/project_storage_service.dart';
 import 'package:aveditor/services/timeline_thumbnail_service.dart';
 import 'package:aveditor/services/video_probe_service.dart';
+import 'package:aveditor/utils/av_editor_log.dart';
 import 'package:aveditor/utils/clip_rotation.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
 import 'package:aveditor/utils/music_timeline_ops.dart';
@@ -74,6 +76,17 @@ class _EditorScreenState extends State<EditorScreen>
       _slotsSwapped ? _slotAux : _slotMain;
   VideoPlayerController? get _auxController =>
       _slotsSwapped ? _slotMain : _slotAux;
+
+  /// Android HEVC / ProRes. The original file stays, and ffmpeg plays it.
+  var _ffmpegPlayback = false;
+  var _sourceAspect = 9 / 16;
+
+  bool get _transportPlaying {
+    if (NativeVideoEngine.instance.isTimelineActive) {
+      return NativeVideoEngine.instance.isPlaying;
+    }
+    return _controller?.value.isPlaying ?? false;
+  }
 
   /// Aux opacity while a fade is active; null when not fading.
   double? _fadeProgress;
@@ -685,21 +698,54 @@ class _EditorScreenState extends State<EditorScreen>
         return;
       }
 
-      final controller = VideoPlayerController.file(File(stored.sourcePath));
-      await controller.initialize();
-      controller.setLooping(false);
-      controller.addListener(_onVideoTick);
+      final sourcePath = stored.sourcePath;
+      final codec = await const PlaybackFallbackTranscoder().videoCodec(
+        sourcePath,
+      );
+      final ffmpegPlayer = PlaybackFallbackTranscoder.needsFfmpegPlayer(codec);
+      avEditorLog(
+        'load: codec=$codec ffmpegPlayer=$ffmpegPlayer path=$sourcePath',
+      );
+      VideoPlayerController? controller;
+      var duration = stored.duration;
+      var sourceAspect = 9 / 16;
+      if (ffmpegPlayer) {
+        final probed = await NativeVideoEngine.instance.probe(sourcePath);
+        if (probed.duration != null && probed.duration! > Duration.zero) {
+          duration = probed.duration!;
+        }
+        if (probed.height > 0) {
+          sourceAspect = probed.width / probed.height;
+        }
+        avEditorLog(
+          'load: ffmpeg player ${probed.width}x${probed.height} '
+          'duration=${duration.inMilliseconds}ms',
+        );
+      } else {
+        controller = await _openPlayableController(sourcePath);
+        if (controller == null) {
+          throw StateError('video open failed');
+        }
+        controller.setLooping(false);
+        controller.addListener(_onVideoTick);
+        if (duration == Duration.zero) {
+          duration = controller.value.duration;
+        }
+        if (controller.value.aspectRatio != 0) {
+          sourceAspect = controller.value.aspectRatio;
+        }
+        avEditorLog('load: exoplayer');
+      }
 
       if (!mounted) {
-        await controller.dispose();
+        await controller?.dispose();
         return;
       }
 
-      final duration = controller.value.duration;
       final project = stored.duration == Duration.zero
           ? VideoProject(
               id: stored.id,
-              sourcePath: stored.sourcePath,
+              sourcePath: sourcePath,
               duration: duration,
               trim: ClipTrim(start: Duration.zero, end: duration),
               // Keep any cuts already saved before duration was known.
@@ -730,6 +776,8 @@ class _EditorScreenState extends State<EditorScreen>
       setState(() {
         _slotMain = controller;
         _slotsSwapped = false;
+        _ffmpegPlayback = ffmpegPlayer;
+        _sourceAspect = sourceAspect;
         _project = project;
         _ready = true;
         _errorMessage = null;
@@ -752,11 +800,32 @@ class _EditorScreenState extends State<EditorScreen>
     }
   }
 
+  Future<VideoPlayerController?> _openPlayableController(String path) async {
+    final controller = VideoPlayerController.file(File(path));
+    try {
+      await controller.initialize();
+      if (controller.value.hasError) {
+        throw StateError(controller.value.errorDescription ?? 'video open failed');
+      }
+      return controller;
+    } catch (error, stack) {
+      avEditorLog('video open failed: $error\n$stack');
+      await controller.dispose();
+      return null;
+    }
+  }
+
   Future<void> _loadFilmstrip(String sourcePath, Duration duration) async {
-    final frames = await _thumbnailService.loadFilmstrip(
-      videoPath: sourcePath,
-      duration: duration,
-    );
+    late final List<TimelineFilmstripFrame> frames;
+    try {
+      frames = await _thumbnailService.loadFilmstrip(
+        videoPath: sourcePath,
+        duration: duration,
+      );
+    } catch (error, stack) {
+      avEditorLog('filmstrip failed: $error\n$stack');
+      return;
+    }
     if (!mounted) {
       for (final frame in frames) {
         frame.image.dispose();
@@ -1170,6 +1239,7 @@ class _EditorScreenState extends State<EditorScreen>
     final id = await NativeVideoEngine.instance.prepareTimeline(
       sourcePath: project.sourcePath,
       segments: project.segments,
+      ffmpegPlayer: _ffmpegPlayback,
     );
     if (!mounted) return;
     await _timelinePositionSub?.cancel();
@@ -1907,7 +1977,7 @@ class _EditorScreenState extends State<EditorScreen>
     if (mounted) setState(() {});
   }
 
-  Widget _buildPreviewVideoChild(VideoPlayerController _) {
+  Widget _buildPreviewVideoChild(VideoPlayerController? _) {
     if (NativeVideoEngine.instance.isTimelineActive &&
         NativeVideoEngine.instance.hasFrame) {
       return NativeVideoEngine.instance.buildPreview();
@@ -2164,7 +2234,7 @@ class _EditorScreenState extends State<EditorScreen>
   void _seek(Duration position, {bool seekVideo = true}) {
     final controller = _controller;
     final project = _project;
-    if (controller == null || project == null) return;
+    if (project == null || (controller == null && !_ffmpegPlayback)) return;
 
     // Allow scrubbing through the full packed sequence (video ∪ music ∪ text).
     // Restricting to [project.duration] parked the centre playhead at EOF and
@@ -2188,11 +2258,14 @@ class _EditorScreenState extends State<EditorScreen>
       final videoSeek = clampDuration(clamped, Duration.zero, project.duration);
       final packed = _sourceToNativePacked(videoSeek);
       unawaited(NativeVideoEngine.instance.seek(packed));
-      unawaited(NativeVideoEngine.instance.preroll(packed));
+      if (!_ffmpegPlayback) {
+        unawaited(NativeVideoEngine.instance.preroll(packed));
+      }
       unawaited(_syncMusicPlayback());
       setState(() {});
       return;
     }
+    if (controller == null) return;
     // Scrubbing while playing used to fight the decoder every tick (clear scrub
     // → play continues → seek again) and the play/pause icon thrashed.
     if (controller.value.isPlaying) {
@@ -2230,7 +2303,7 @@ class _EditorScreenState extends State<EditorScreen>
   void _onEdgeFramePreview(Duration? sourceTime) {
     final controller = _controller;
     final project = _project;
-    if (controller == null || project == null) return;
+    if (project == null || (controller == null && !_ffmpegPlayback)) return;
 
     if (sourceTime == null) {
       _edgeFramePreviewActive = false;
@@ -2242,8 +2315,12 @@ class _EditorScreenState extends State<EditorScreen>
       _edgeFramePreviewActive = true;
       // Freeze the timeline on the current centre; only the decoder moves.
       _scrubPlayhead = _playhead;
-      if (controller.value.isPlaying) {
-        unawaited(controller.pause());
+      if (_transportPlaying) {
+        if (NativeVideoEngine.instance.isTimelineActive) {
+          unawaited(NativeVideoEngine.instance.pause());
+        } else {
+          unawaited(controller?.pause());
+        }
         unawaited(_syncMusicPlayback());
       }
       unawaited(_tearDownFadePreview());
@@ -2259,6 +2336,14 @@ class _EditorScreenState extends State<EditorScreen>
       return;
     }
     _lastEdgePreviewSeek = videoSeek;
+    if (NativeVideoEngine.instance.isTimelineActive || controller == null) {
+      final packed = _sourceToNativePacked(videoSeek);
+      unawaited(NativeVideoEngine.instance.seek(packed));
+      if (!_ffmpegPlayback) {
+        unawaited(NativeVideoEngine.instance.preroll(packed));
+      }
+      return;
+    }
     unawaited(controller.seekTo(videoSeek));
   }
 
@@ -2277,7 +2362,7 @@ class _EditorScreenState extends State<EditorScreen>
     final gen = ++_musicSyncGen;
     final project = _project;
     final controller = _controller;
-    if (project == null || controller == null) {
+    if (project == null || (controller == null && !_ffmpegPlayback)) {
       _syncedMusicId = null;
       await _musicSafe(_musicPlayer.pause);
       return;
@@ -2325,7 +2410,7 @@ class _EditorScreenState extends State<EditorScreen>
 
     await _musicSafe(() => _musicPlayer.seek(musicPosition));
     if (gen != _musicSyncGen) return;
-    if (controller.value.isPlaying) {
+    if (_transportPlaying) {
       await _musicSafe(_musicPlayer.resume);
     } else {
       await _musicSafe(_musicPlayer.pause);
@@ -2337,7 +2422,7 @@ class _EditorScreenState extends State<EditorScreen>
   Future<void> _syncMusicOnTick() async {
     final project = _project;
     final controller = _controller;
-    if (project == null || controller == null) return;
+    if (project == null || (controller == null && !_ffmpegPlayback)) return;
 
     final playhead = _playhead;
     final music = musicClipAtTime(project.musicTracks, playhead);
@@ -2350,7 +2435,7 @@ class _EditorScreenState extends State<EditorScreen>
     final localOffset = playhead - music.timelineStart;
     await _musicPlayer.setVolume(music.volumeAt(localOffset));
 
-    if (!controller.value.isPlaying) return;
+    if (!_transportPlaying) return;
     if (_musicPlayer.state != PlayerState.playing) {
       await _syncMusicPlayback();
     }
@@ -2359,7 +2444,7 @@ class _EditorScreenState extends State<EditorScreen>
   void _togglePlay() {
     final controller = _controller;
     final project = _project;
-    if (controller == null || project == null) return;
+    if (project == null || (controller == null && !_ffmpegPlayback)) return;
 
     // Manual transport cancels a bounded transition preview.
     _transitionPreviewUntil = null;
@@ -2401,6 +2486,7 @@ class _EditorScreenState extends State<EditorScreen>
       }());
       return;
     }
+    if (controller == null) return;
     if (controller.value.isPlaying) {
       controller.pause();
       unawaited(_auxController?.pause() ?? Future<void>.value());
@@ -2777,7 +2863,7 @@ class _EditorScreenState extends State<EditorScreen>
   Future<void> _previewTransitionAtCut(int cutIndex) async {
     final controller = _controller;
     final project = _project;
-    if (controller == null || project == null) return;
+    if (project == null || (controller == null && !_ffmpegPlayback)) return;
     if (cutIndex < 0 || cutIndex >= project.segments.length - 1) return;
 
     final gen = ++_transitionPreviewGen;
@@ -2883,7 +2969,7 @@ class _EditorScreenState extends State<EditorScreen>
         } catch (_) {}
       }
     }
-    if (!mounted || gen != _transitionPreviewGen) return;
+    if (!mounted || gen != _transitionPreviewGen || controller == null) return;
     final length = previewUntil - clampedStart;
     debugPrint(
       '[TL] panel.play controller cut=$cutIndex '
@@ -3014,10 +3100,14 @@ class _EditorScreenState extends State<EditorScreen>
   void _placeNewTextOverlay() {
     final project = _project;
     final controller = _controller;
-    if (project == null || controller == null) return;
+    if (project == null || (controller == null && !_ffmpegPlayback)) return;
 
-    if (controller.value.isPlaying) {
-      unawaited(controller.pause());
+    if (_transportPlaying) {
+      if (NativeVideoEngine.instance.isTimelineActive) {
+        unawaited(NativeVideoEngine.instance.pause());
+      } else {
+        unawaited(controller?.pause());
+      }
     }
 
     final start = _textPlacementSourceTime(project);
@@ -3453,7 +3543,9 @@ class _EditorScreenState extends State<EditorScreen>
       );
     }
 
-    if (_errorMessage != null || project == null || controller == null) {
+    if (_errorMessage != null ||
+        project == null ||
+        (controller == null && !_ffmpegPlayback)) {
       return Scaffold(
         appBar: AppBar(title: Text(l10n.editorTitle)),
         body: Center(
@@ -3470,9 +3562,9 @@ class _EditorScreenState extends State<EditorScreen>
       );
     }
 
-    final sourceAspect = controller.value.aspectRatio == 0
-        ? 9 / 16
-        : controller.value.aspectRatio;
+    final sourceAspect = controller != null && controller.value.aspectRatio != 0
+        ? controller.value.aspectRatio
+        : _sourceAspect;
     final canvasAspect = project.canvas.frameAspect(sourceAspect);
     final inTextStudio = _inTextStudio;
     final studioOverlay = _textStudioOverlay;
@@ -3618,7 +3710,7 @@ class _EditorScreenState extends State<EditorScreen>
                                                 ? NativeVideoEngine
                                                       .instance
                                                       .isPlaying
-                                                : controller.value.isPlaying,
+                                                : _transportPlaying,
                                             clipRotation: project.rotation,
                                             hostViewportSize: Size(
                                               constraints.maxWidth,
@@ -3818,7 +3910,7 @@ class _EditorScreenState extends State<EditorScreen>
   Widget _buildBottomDock({
     required AppLocalizations l10n,
     required VideoProject project,
-    required VideoPlayerController controller,
+    required VideoPlayerController? controller,
     required bool inTextStudio,
     required TextOverlay? studioOverlay,
     required double bodyH,
@@ -3958,7 +4050,7 @@ class _EditorScreenState extends State<EditorScreen>
   Widget _buildCollapsibleChrome({
     required AppLocalizations l10n,
     required VideoProject project,
-    required VideoPlayerController controller,
+    required VideoPlayerController? controller,
     required bool isInlineEditing,
     required double? dockHeight,
     required double entryHeight,
@@ -4005,7 +4097,7 @@ class _EditorScreenState extends State<EditorScreen>
 
   Widget _buildTimeline({
     required VideoProject project,
-    required VideoPlayerController controller,
+    required VideoPlayerController? controller,
     bool expandToFill = false,
   }) {
     return TimelineWidget(
@@ -4023,7 +4115,7 @@ class _EditorScreenState extends State<EditorScreen>
       playhead: _timelinePlayhead,
       isPlaying: NativeVideoEngine.instance.isTimelineActive
           ? NativeVideoEngine.instance.isPlaying
-          : controller.value.isPlaying,
+          : (controller?.value.isPlaying ?? false),
       onTogglePlay: _togglePlay,
       onHandleDragUpdate: _onChromeDragUpdate,
       onHandleDragEnd: _onChromeDragEnd,

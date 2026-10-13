@@ -34,6 +34,8 @@ dependencies:
   video_thumbnail: ^0.5.6
   lottie: ^3.5.1
   characters: ^1.4.0
+  # Used only when the platform player cannot open a picked file.
+  ffmpeg_kit_flutter_new_min_gpl: ^2.6.7
 
 dev_dependencies:
   flutter_test:
@@ -46,8 +48,8 @@ dependency_overrides:
   # Published 0.5.6 calls jcenter() and pins AGP 4.1.0, both rejected by Gradle 9.
   video_thumbnail:
     path: third_party/video_thumbnail
-  # Stock picker sends no media capabilities, so Google Photos returns the original
-  # Dolby Vision file. This copy asks the picker to transcode HDR the device cannot decode.
+  # Gallery pick stays on the photo picker. Do not attach media capabilities:
+  # the system then transcodes on open and drops the file when the format differs.
   image_picker_android:
     path: third_party/image_picker_android
 

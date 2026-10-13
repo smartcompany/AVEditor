@@ -12,9 +12,6 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.hardware.camera2.CameraCharacteristics;
-import android.media.ApplicationMediaCapabilities;
-import android.media.MediaCodecInfo;
-import android.media.MediaCodecList;
 import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.Build;
@@ -307,72 +304,14 @@ public class ImagePickerDelegate
     launchPickMediaFromGalleryIntent(generalOptions);
   }
 
-  /**
-   * The stock picker request always advertises HEVC support, so a cloud video comes back as the
-   * original 10-bit file. Ask for H.264 when this device cannot decode 10-bit HEVC.
-   */
+  private static void avLog(String message) {
+    StackTraceElement here = new Throwable().getStackTrace()[1];
+    Log.i("AVEditor", message + " (" + here.getFileName() + ":" + here.getLineNumber() + ")");
+  }
+
   private PickVisualMediaRequest videoPickRequest(
       ActivityResultContracts.PickVisualMedia.VisualMediaType mediaType) {
     return new PickVisualMediaRequest.Builder().setMediaType(mediaType).build();
-  }
-
-  private void applyPlaybackCapabilities(Intent intent) {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-      return;
-    }
-    ApplicationMediaCapabilities.Builder capabilities =
-        new ApplicationMediaCapabilities.Builder().addSupportedVideoMimeType("video/avc");
-    if (deviceSupportsHevcMain10()) {
-      capabilities
-          .addSupportedVideoMimeType("video/hevc")
-          .addSupportedHdrType("android.media.feature.hdr.hlg")
-          .addSupportedHdrType("android.media.feature.hdr.hdr10")
-          .addSupportedHdrType("android.media.feature.hdr.hdr10_plus");
-      if (deviceSupportsMime("video/dolby-vision")) {
-        capabilities.addSupportedHdrType("android.media.feature.hdr.dolby_vision");
-      }
-    } else {
-      capabilities.addUnsupportedVideoMimeType("video/hevc");
-    }
-    intent.putExtra("android.provider.extra.MEDIA_CAPABILITIES", capabilities.build());
-  }
-
-  private static boolean deviceSupportsMime(String mime) {
-    MediaCodecList codecs = new MediaCodecList(MediaCodecList.REGULAR_CODECS);
-    for (MediaCodecInfo info : codecs.getCodecInfos()) {
-      if (info.isEncoder()) {
-        continue;
-      }
-      for (String type : info.getSupportedTypes()) {
-        if (mime.equalsIgnoreCase(type)) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  private static boolean deviceSupportsHevcMain10() {
-    MediaCodecList codecs = new MediaCodecList(MediaCodecList.REGULAR_CODECS);
-    for (MediaCodecInfo info : codecs.getCodecInfos()) {
-      if (info.isEncoder()) {
-        continue;
-      }
-      for (String type : info.getSupportedTypes()) {
-        if (!"video/hevc".equalsIgnoreCase(type)) {
-          continue;
-        }
-        MediaCodecInfo.CodecCapabilities codecCapabilities = info.getCapabilitiesForType(type);
-        for (MediaCodecInfo.CodecProfileLevel level : codecCapabilities.profileLevels) {
-          if (level.profile == MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10
-              || level.profile == MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10HDR10
-              || level.profile == MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10HDR10Plus) {
-            return true;
-          }
-        }
-      }
-    }
-    return false;
   }
 
   private void launchPickMediaFromGalleryIntent(GeneralOptions generalOptions) {
@@ -387,7 +326,6 @@ public class ImagePickerDelegate
                     activity,
                     videoPickRequest(
                         ActivityResultContracts.PickVisualMedia.ImageAndVideo.INSTANCE));
-        applyPlaybackCapabilities(pickMediaIntent);
       } else {
         pickMediaIntent =
             new ActivityResultContracts.PickVisualMedia()
@@ -395,7 +333,6 @@ public class ImagePickerDelegate
                     activity,
                     videoPickRequest(
                         ActivityResultContracts.PickVisualMedia.ImageAndVideo.INSTANCE));
-        applyPlaybackCapabilities(pickMediaIntent);
       }
     } else {
       pickMediaIntent = new Intent(Intent.ACTION_GET_CONTENT);
@@ -430,12 +367,12 @@ public class ImagePickerDelegate
               .createIntent(
                   activity,
                   videoPickRequest(ActivityResultContracts.PickVisualMedia.VideoOnly.INSTANCE));
-      applyPlaybackCapabilities(pickVideoIntent);
+      avLog("갤러리 영상을 구글 사진 선택기로 염. 코덱 선언 없음");
     } else {
       pickVideoIntent = new Intent(Intent.ACTION_GET_CONTENT);
       pickVideoIntent.setType("video/*");
+      avLog("갤러리 영상을 문서 선택기로 염");
     }
-
     activity.startActivityForResult(pickVideoIntent, REQUEST_CODE_CHOOSE_VIDEO_FROM_GALLERY);
   }
 
@@ -590,7 +527,6 @@ public class ImagePickerDelegate
               .createIntent(
                   activity,
                   videoPickRequest(ActivityResultContracts.PickVisualMedia.VideoOnly.INSTANCE));
-      applyPlaybackCapabilities(pickMultiVideoIntent);
     } else {
       pickMultiVideoIntent = new Intent(Intent.ACTION_GET_CONTENT);
       pickMultiVideoIntent.setType("video/*");
@@ -768,6 +704,11 @@ public class ImagePickerDelegate
         handlerRunnable = () -> handleChooseMediaResult(resultCode, data);
         break;
       case REQUEST_CODE_CHOOSE_VIDEO_FROM_GALLERY:
+        avLog(
+            "문서 선택 결과 code="
+                + resultCode
+                + " uri="
+                + (data == null ? null : data.getData()));
         handlerRunnable = () -> handleChooseVideoResult(resultCode, data);
         break;
       case REQUEST_CODE_TAKE_VIDEO_WITH_CAMERA:
@@ -916,14 +857,17 @@ public class ImagePickerDelegate
       ArrayList<MediaPath> paths = getPathsFromIntent(data, false);
       // If there's no valid Uri, return an error
       if (paths == null || paths.size() < 1) {
+        avLog("선택 결과는 왔지만 파일 주소가 없음");
         finishWithError("no_valid_video_uri", "Cannot find the selected video.");
         return;
       }
 
+      avLog("고른 파일을 앱 저장소로 복사함 " + paths.get(0).path);
       finishWithSuccess(paths.get(0).path);
       return;
     }
 
+    avLog("영상 선택이 취소됨 result=" + resultCode);
     // User cancelled choosing a picture.
     finishWithSuccess(null);
   }

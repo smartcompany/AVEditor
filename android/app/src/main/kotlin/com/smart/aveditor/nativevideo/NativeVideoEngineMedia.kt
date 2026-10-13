@@ -219,6 +219,29 @@ object NativeVideoEngineMedia {
     )
   }
 
+  /**
+   * Blend windows for a player that is not CompositionPlayer.
+   * [TimelineMix.incomingSourceUs] reads the full plan. The outgoing picture
+   * stays the frame the player is already decoding.
+   */
+  internal fun fillPlaybackMix(mix: TimelineMix, sourcePath: String, segments: List<*>) {
+    val parsed = parseSegments(segments)
+    if (parsed.isEmpty()) {
+      mix.sourcePath = ""
+      mix.set(ExportPlan(arrayOf(ArrayList(), ArrayList()), emptyList(), 0L))
+      return
+    }
+    val plan = packSegments(parsed)
+    mix.setPlayback(playbackLayout(segments))
+    if (plan.blends.isEmpty()) {
+      mix.sourcePath = ""
+      mix.set(ExportPlan(arrayOf(ArrayList(), ArrayList()), emptyList(), plan.totalMs))
+    } else {
+      mix.sourcePath = sourcePath
+      mix.set(plan)
+    }
+  }
+
   /** Clips played when the preview has no transition. */
   private fun previewPlan(segments: List<*>): ExportPlan {
     val clips = coalesceHardCuts(parseSegments(segments))

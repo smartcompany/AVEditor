@@ -99,6 +99,7 @@ class NativeVideoEngine {
   Future<int?> prepareTimeline({
     required String sourcePath,
     required List<ClipSegment> segments,
+    bool ffmpegPlayer = false,
   }) async {
     if (!isPlatformSupported) return null;
     final encoded = encodeCompositionSegments(segments);
@@ -116,7 +117,11 @@ class NativeVideoEngine {
     try {
       final result = await _channel.invokeMapMethod<String, dynamic>(
         'prepareTimeline',
-        {'sourcePath': sourcePath, 'segments': encoded},
+        {
+          'sourcePath': sourcePath,
+          'segments': encoded,
+          'ffmpegPlayer': ffmpegPlayer,
+        },
       );
       final textureId = result?['textureId'] as int?;
       if (textureId == null) return null;

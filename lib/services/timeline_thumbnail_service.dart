@@ -2,9 +2,9 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:aveditor/models/timeline_filmstrip_frame.dart';
+import 'package:aveditor/services/video_frame_grab.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:video_thumbnail/video_thumbnail.dart';
 
 /// Builds and caches a filmstrip of frames for the timeline clip track.
 class TimelineThumbnailService {
@@ -37,14 +37,15 @@ class TimelineThumbnailService {
       );
 
       if (!await cacheFile.exists()) {
-        final generated = await VideoThumbnail.thumbnailFile(
+        final generated = await const VideoFrameGrab().jpegFile(
           video: videoPath,
-          imageFormat: ImageFormat.JPEG,
+          thumbnailPath: cacheFile.path,
           timeMs: clampedMs,
           maxHeight: _thumbHeight,
           quality: 65,
         );
-        if (generated != null) {
+        if (generated != null &&
+            p.normalize(generated) != p.normalize(cacheFile.path)) {
           await File(generated).copy(cacheFile.path);
         }
       }

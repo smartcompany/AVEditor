@@ -13,8 +13,8 @@ import 'package:aveditor/services/export_share_service.dart';
 import 'package:aveditor/services/share_catalog_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
 import 'package:flutter/material.dart';
+import 'package:aveditor/services/video_frame_grab.dart';
 import 'package:video_player/video_player.dart';
-import 'package:video_thumbnail/video_thumbnail.dart';
 
 /// Presented after Export. Shows encode progress, then the video and the
 /// server-ordered share row. The photo album is updated only when a share
@@ -64,9 +64,8 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
         : segments.first.start.inMilliseconds +
               segments.first.duration.inMilliseconds ~/ 2;
     try {
-      final path = await VideoThumbnail.thumbnailFile(
+      final path = await const VideoFrameGrab().jpegFile(
         video: widget.project.sourcePath,
-        imageFormat: ImageFormat.JPEG,
         timeMs: timeMs,
         maxHeight: 1280,
         quality: 85,
