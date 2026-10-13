@@ -182,5 +182,7 @@
   "shareToYouTube": "YouTubeにシェア",
   "shareMore": "その他",
   "shareAppMissing": "そのアプリはインストールされていません。",
-  "uploadPartialFailure": "動画はアップロードされました ({videoId})。その後の処理に失敗しました: {message}"
+  "uploadPartialFailure": "動画はアップロードされました ({videoId})。その後の処理に失敗しました: {message}",
+  "canvasRatio": "比率",
+  "canvasRatioOriginal": "オリジナル"
 }

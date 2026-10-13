@@ -75,13 +75,25 @@ object NativeVideoEngineMedia {
       val height =
         retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull()
           ?: 1920
+      val rotation =
+        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull()
+          ?: 0
+      val orientedWidth: Int
+      val orientedHeight: Int
+      if (rotation == 90 || rotation == 270) {
+        orientedWidth = height
+        orientedHeight = width
+      } else {
+        orientedWidth = width
+        orientedHeight = height
+      }
       val hasAudio =
         retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO) == "yes"
       return mapOf(
         "hasAudio" to hasAudio,
         "durationMs" to durationMs.toInt(),
-        "width" to max(1, width),
-        "height" to max(1, height),
+        "width" to max(1, orientedWidth),
+        "height" to max(1, orientedHeight),
       )
     } finally {
       retriever.release()
@@ -506,7 +518,7 @@ object NativeVideoEngineMedia {
       Presentation.createForWidthAndHeight(
         width,
         height,
-        Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP,
+        Presentation.LAYOUT_SCALE_TO_FIT,
       ),
     )
     if (rotationDegrees != 0f) {

@@ -596,4 +596,10 @@ class AppLocalizationsKo extends AppLocalizations {
   String uploadPartialFailure(String videoId, String message) {
     return '영상은 업로드되었습니다 ($videoId). 다음 단계가 실패했습니다: $message';
   }
+
+  @override
+  String get canvasRatio => '비율';
+
+  @override
+  String get canvasRatioOriginal => '원본';
 }

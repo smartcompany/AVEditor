@@ -594,4 +594,10 @@ class AppLocalizationsJa extends AppLocalizations {
   String uploadPartialFailure(String videoId, String message) {
     return '動画はアップロードされました ($videoId)。その後の処理に失敗しました: $message';
   }
+
+  @override
+  String get canvasRatio => '比率';
+
+  @override
+  String get canvasRatioOriginal => 'オリジナル';
 }

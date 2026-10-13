@@ -7,7 +7,8 @@ plugins {
 
 android {
     namespace = "com.smart.aveditor"
-    compileSdk = flutter.compileSdkVersion
+    // Flutter's default is still 36. share_lib compiles against 37, and AGP 9.4 accepts it.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

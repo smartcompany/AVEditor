@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:aveditor/l10n/app_localizations.dart';
 import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/models/applied_transition.dart';
+import 'package:aveditor/models/canvas_ratio.dart';
 import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/clip_trim.dart';
 import 'package:aveditor/models/project_music.dart';
@@ -26,6 +27,7 @@ import 'package:aveditor/utils/duration_format.dart';
 import 'package:aveditor/utils/editor_sheet_metrics.dart';
 import 'package:aveditor/utils/overlay_event_log.dart';
 import 'package:aveditor/utils/timeline_math.dart';
+import 'package:aveditor/widgets/canvas_ratio_sheet.dart';
 import 'package:aveditor/widgets/basic_text_edit_toolbar.dart';
 import 'package:aveditor/widgets/text_studio_panel.dart';
 import 'package:aveditor/widgets/timeline_widget.dart';
@@ -153,6 +155,7 @@ class _EditorScreenState extends State<EditorScreen>
   String? _textStudioOverlayId;
   bool _ready = false;
   final bool _exporting = false;
+  var _canvasRatioOpen = false;
   bool _applyingHistory = false;
   String? _errorMessage;
 
@@ -704,6 +707,7 @@ class _EditorScreenState extends State<EditorScreen>
               overlays: stored.overlays,
               musicTracks: List<ProjectMusic>.from(stored.musicTracks),
               preset: stored.preset,
+              canvas: stored.canvas,
               rotation: stored.rotation,
               updatedAt: stored.updatedAt,
             )
@@ -2094,6 +2098,7 @@ class _EditorScreenState extends State<EditorScreen>
     required double previewSlotW,
     required double previewSlotH,
     required double keyboard,
+    required double canvasAspect,
     required TextOverlay overlay,
   }) {
     if (keyboard <= 0 || previewSlotH <= 0 || previewSlotW <= 0) return 0;
@@ -2103,7 +2108,7 @@ class _EditorScreenState extends State<EditorScreen>
     const previewPadTop = 4.0;
 
     final canvasW = previewSlotW;
-    final canvasH = canvasW * 16 / 9;
+    final canvasH = canvasW / canvasAspect;
     final scale = math.min(previewSlotW / canvasW, previewSlotH / canvasH);
 
     final box = overlayBoxForFrame(overlay, frameWidth: canvasW);
@@ -2112,8 +2117,9 @@ class _EditorScreenState extends State<EditorScreen>
       previewH: canvasH,
       box: box,
     );
-    // FittedBox(alignment: topCenter) — scaled canvas sits at the slot top.
-    final overlayBottomInBody = previewPadTop + body.bottom * scale;
+    final canvasTop = (previewSlotH - canvasH * scale) / 2;
+    final overlayBottomInBody =
+        previewPadTop + canvasTop + body.bottom * scale;
     final clearBottom = bodyH - keyboard - toolbarH - margin;
     final overflow = overlayBottomInBody - clearBottom;
     if (overflow <= 0) return 0;
@@ -3166,6 +3172,21 @@ class _EditorScreenState extends State<EditorScreen>
     _setClipRotation(project.rotation + quarterTurn);
   }
 
+  void _openCanvasRatioMenu() {
+    if (_exporting) return;
+    setState(() => _canvasRatioOpen = true);
+  }
+
+  void _closeCanvasRatioMenu() {
+    setState(() => _canvasRatioOpen = false);
+  }
+
+  void _selectCanvasRatio(CanvasRatio ratio) {
+    final project = _project;
+    if (project == null || ratio == project.canvas) return;
+    _mutate((p) => p.canvas = ratio);
+  }
+
   /// Copy of [overlay], nudged clear of the original so both stay grabbable.
   void _duplicateOverlay(TextOverlay overlay) {
     final project = _project;
@@ -3449,9 +3470,10 @@ class _EditorScreenState extends State<EditorScreen>
       );
     }
 
-    final aspectRatio = controller.value.aspectRatio == 0
+    final sourceAspect = controller.value.aspectRatio == 0
         ? 9 / 16
         : controller.value.aspectRatio;
+    final canvasAspect = project.canvas.frameAspect(sourceAspect);
     final inTextStudio = _inTextStudio;
     final studioOverlay = _textStudioOverlay;
     final editingOverlay = _editingOverlay;
@@ -3502,12 +3524,24 @@ class _EditorScreenState extends State<EditorScreen>
               Column(
                 children: [
                   Expanded(
-                    child: Padding(
+                    child: ColoredBox(
+                      color: const Color(0xFF243044),
+                      child: Padding(
                       padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
                       child: LayoutBuilder(
                         builder: (context, constraints) {
                           final targetWidth = constraints.maxWidth;
-                          final targetHeight = targetWidth * 16 / 9;
+                          final targetHeight = targetWidth / canvasAspect;
+                          final frameScale = math.min(
+                            1.0,
+                            constraints.maxHeight / targetHeight,
+                          );
+                          final frameRight =
+                              (constraints.maxWidth - targetWidth * frameScale) /
+                              2;
+                          final frameTop =
+                              (constraints.maxHeight - targetHeight * frameScale) /
+                              2;
                           final keyboard = MediaQueryData.fromView(
                             View.of(context),
                           ).viewInsets.bottom;
@@ -3518,6 +3552,7 @@ class _EditorScreenState extends State<EditorScreen>
                                   previewSlotW: constraints.maxWidth,
                                   previewSlotH: constraints.maxHeight,
                                   keyboard: keyboard,
+                                  canvasAspect: canvasAspect,
                                   overlay: editingOverlay,
                                 );
                           return Stack(
@@ -3562,13 +3597,14 @@ class _EditorScreenState extends State<EditorScreen>
                                       child: FittedBox(
                                         fit: BoxFit.contain,
                                         clipBehavior: Clip.none,
-                                        alignment: Alignment.topCenter,
+                                        alignment: Alignment.center,
                                         child: OverflowSizedBox(
                                           width: targetWidth,
                                           height: targetHeight,
                                           child: VideoPreviewWithOverlays(
                                             key: _previewKey,
-                                            videoAspectRatio: aspectRatio,
+                                            videoAspectRatio: sourceAspect,
+                                            canvasAspectRatio: canvasAspect,
                                             videoChild: _buildPreviewVideoChild(
                                               controller,
                                             ),
@@ -3683,15 +3719,65 @@ class _EditorScreenState extends State<EditorScreen>
                                   ),
                                 ),
                               ),
+                              if (!_canvasRatioOpen)
+                                Positioned(
+                                  top: frameTop + 8,
+                                  right: frameRight + 8,
+                                  child: TweenAnimationBuilder<double>(
+                                    tween: Tween<double>(end: lift),
+                                    duration: const Duration(milliseconds: 220),
+                                    curve: Curves.easeOutCubic,
+                                    builder: (context, value, child) {
+                                      return Transform.translate(
+                                        offset: Offset(0, -value),
+                                        child: child,
+                                      );
+                                    },
+                                    child: _CanvasRatioButton(
+                                      label:
+                                          project.canvas == CanvasRatio.original
+                                          ? l10n.canvasRatioOriginal
+                                          : project.canvas.ratioLabel,
+                                      onPressed: _exporting
+                                          ? null
+                                          : _openCanvasRatioMenu,
+                                    ),
+                                  ),
+                                ),
                               if (editingOverlay == null)
                                 _buildPreviewDockDragEdge(
                                   zoneHeight: constraints.maxHeight * 0.2,
+                                ),
+                              if (_canvasRatioOpen)
+                                Positioned(
+                                  top: frameTop,
+                                  left: 0,
+                                  right: 0,
+                                  child: TweenAnimationBuilder<double>(
+                                    tween: Tween<double>(end: lift),
+                                    duration: const Duration(milliseconds: 220),
+                                    curve: Curves.easeOutCubic,
+                                    builder: (context, value, child) {
+                                      return Transform.translate(
+                                        offset: Offset(0, -value),
+                                        child: child,
+                                      );
+                                    },
+                                    child: CanvasRatioBar(
+                                      selected: project.canvas,
+                                      sourceAspect: sourceAspect,
+                                      originalLabel: l10n.canvasRatioOriginal,
+                                      onSelected: _selectCanvasRatio,
+                                      onClose: _closeCanvasRatioMenu,
+                                    ),
+                                  ),
                                 ),
                             ],
                           );
                         },
                       ),
                     ),
+                  ),
                   ),
                   _buildDockResizeHandle(enabled: editingOverlay == null),
                   _buildBottomDock(
@@ -4081,6 +4167,36 @@ class _EditorScreenState extends State<EditorScreen>
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CanvasRatioButton extends StatelessWidget {
+  const _CanvasRatioButton({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.black54,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
       ),
     );
   }

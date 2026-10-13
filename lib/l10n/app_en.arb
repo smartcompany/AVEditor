@@ -231,5 +231,7 @@
       "videoId": {"type": "String"},
       "message": {"type": "String"}
     }
-  }
+  },
+  "canvasRatio": "Ratio",
+  "canvasRatioOriginal": "Original"
 }

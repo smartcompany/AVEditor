@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:aveditor/models/canvas_ratio.dart';
 import 'package:aveditor/models/export_preset.dart';
 import 'package:aveditor/models/export_quality_profile.dart';
 import 'package:aveditor/models/clip_segment.dart';
@@ -22,7 +23,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-/// Exports trimmed video with 9:16 crop and burned-in text overlays via the
+/// Exports the project frame with burned-in text overlays via the
 /// native OS encoder (VideoToolbox / MediaCodec).
 ///
 /// When the edit is trim-only, [ExportQualityProfile.allowsStreamCopy] profiles
@@ -64,11 +65,12 @@ class ExportService {
     }
 
     final sourceSize = await probeService.readFrameSize(project.sourcePath);
-    final frame = computeExportFrameSize(
+    final frame = computeCanvasFrameSize(
       sourceWidth: sourceSize.width,
       sourceHeight: sourceSize.height,
-      maxWidth: project.preset.width,
-      maxHeight: project.preset.height,
+      canvasAspect: project.canvas.frameAspect(
+        sourceSize.width / sourceSize.height,
+      ),
       allowUpscale: quality.allowUpscale,
     );
 
@@ -233,6 +235,7 @@ class ExportService {
     String? musicPath,
   }) {
     if (!quality.allowsStreamCopy) return false;
+    if (project.canvas != CanvasRatio.original) return false;
     if (project.rotation != 0) return false;
     if (rasters.isNotEmpty) return false;
     if (musicPath != null) return false;

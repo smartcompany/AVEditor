@@ -474,7 +474,7 @@ func exportFitTransform(
   let natural = track.naturalSize.applying(track.preferredTransform)
   let srcW = abs(natural.width)
   let srcH = abs(natural.height)
-  let scale = max(renderSize.width / max(srcW, 1), renderSize.height / max(srcH, 1))
+  let scale = min(renderSize.width / max(srcW, 1), renderSize.height / max(srcH, 1))
   var transform = track.preferredTransform
   transform = transform.concatenating(CGAffineTransform(scaleX: scale, y: scale))
   let scaledW = srcW * scale

@@ -1,3 +1,4 @@
+import 'package:aveditor/models/canvas_ratio.dart';
 import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/clip_trim.dart';
 import 'package:aveditor/models/export_preset.dart';
@@ -13,6 +14,14 @@ const int kProjectFileVersion = 1;
 /// Relative name of the source video inside a project folder.
 const String kProjectSourceFileName = 'source.mp4';
 
+CanvasRatio _canvasFromJson(Object? raw) {
+  if (raw is! String) return CanvasRatio.original;
+  for (final ratio in CanvasRatio.values) {
+    if (ratio.name == raw) return ratio;
+  }
+  return CanvasRatio.original;
+}
+
 /// A saved edit session backed by files on disk.
 class VideoProject {
   VideoProject({
@@ -25,6 +34,7 @@ class VideoProject {
     List<ProjectMusic>? musicTracks,
     ProjectMusic? backgroundMusic,
     this.preset = ExportPreset.youtubeShorts,
+    this.canvas = CanvasRatio.original,
     this.rotation = 0,
     DateTime? updatedAt,
   })  : segments = segments ??
@@ -46,6 +56,9 @@ class VideoProject {
   /// CapCut-style audio clips on a dedicated music track.
   final List<ProjectMusic> musicTracks;
   ExportPreset preset;
+
+  /// Preview and export frame. [CanvasRatio.original] uses the source picture.
+  CanvasRatio canvas;
 
   /// Clockwise rotation of the video frame about its centre, in radians.
   double rotation;
@@ -94,6 +107,7 @@ class VideoProject {
     List<TextOverlay>? overlays,
     List<ProjectMusic>? musicTracks,
     ExportPreset? preset,
+    CanvasRatio? canvas,
     double? rotation,
     DateTime? updatedAt,
   }) {
@@ -106,6 +120,7 @@ class VideoProject {
       musicTracks: musicTracks ??
           this.musicTracks.map((m) => m.copyWith()).toList(),
       preset: preset ?? this.preset,
+      canvas: canvas ?? this.canvas,
       rotation: rotation ?? this.rotation,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -121,6 +136,7 @@ class VideoProject {
     'segments': segments.map((segment) => segment.toJson()).toList(),
     'rotation': rotation,
     'preset': preset.name,
+    'canvas': canvas.name,
     'overlays': overlays.map((overlay) => overlay.toJson()).toList(),
     'musicTracks': musicTracks.map((m) => m.toJson()).toList(),
   };
@@ -177,6 +193,7 @@ class VideoProject {
       ),
       musicTracks: musicTracks,
       preset: ExportPreset.values.byName(json['preset'] as String),
+      canvas: _canvasFromJson(json['canvas']),
       rotation: (json['rotation'] as num?)?.toDouble() ?? 0,
       updatedAt: DateTime.parse(json['updatedAt'] as String),
     );

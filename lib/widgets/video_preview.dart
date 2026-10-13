@@ -54,6 +54,7 @@ class VideoPreviewWithOverlays extends StatefulWidget {
     super.key,
     required this.videoChild,
     required this.videoAspectRatio,
+    this.canvasAspectRatio = 9 / 16,
     required this.overlays,
     required this.position,
     this.isPlaying = false,
@@ -78,6 +79,9 @@ class VideoPreviewWithOverlays extends StatefulWidget {
 
   final Widget videoChild;
   final double videoAspectRatio;
+
+  /// Project frame. The video is fitted inside this shape.
+  final double canvasAspectRatio;
   final List<TextOverlay> overlays;
   final Duration position;
 
@@ -115,7 +119,7 @@ class VideoPreviewWithOverlays extends StatefulWidget {
   /// Top-right corner handle — opens the style / text editor sheet.
   final ValueChanged<TextOverlay>? onOverlayEdit;
 
-  /// Editor slot size that letterboxes this 9:16 canvas ([FittedBox] host).
+  /// Editor slot size that letterboxes this canvas ([FittedBox] host).
   ///
   /// Knob chrome clamps to this viewport (video + gutters), not just the frame.
   final Size? hostViewportSize;
@@ -911,7 +915,7 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
 
     return OverflowHitBox(
       child: AspectRatio(
-        aspectRatio: 9 / 16,
+        aspectRatio: widget.canvasAspectRatio,
         child: LayoutBuilder(
           builder: (context, constraints) {
             _previewW = constraints.maxWidth;
@@ -1451,11 +1455,10 @@ class _VideoCanvasBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Cover, not contain: the export scales up and centre-crops to fill the
-    // preset frame, so showing the video letterboxed here would promise bars
-    // that the exported file does not have.
+    // The picture sits in a black frame. The preview well behind it is a
+    // different gray, and the frame has a light edge, so the bars stay visible.
     Widget video = FittedBox(
-      fit: BoxFit.cover,
+      fit: BoxFit.contain,
       clipBehavior: Clip.hardEdge,
       child: SizedBox(
         width: videoAspectRatio * 1000,
@@ -1468,9 +1471,17 @@ class _VideoCanvasBackground extends StatelessWidget {
       video = Transform.rotate(angle: rotation, child: video);
     }
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: ColoredBox(color: Colors.black, child: video),
+    return Container(
+      foregroundDecoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFB7C2D0)),
+      ),
+      decoration: const BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.all(Radius.circular(12)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: video,
     );
   }
 }

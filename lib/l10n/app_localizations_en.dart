@@ -606,4 +606,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String uploadPartialFailure(String videoId, String message) {
     return 'The video was uploaded ($videoId). A later step failed: $message';
   }
+
+  @override
+  String get canvasRatio => 'Ratio';
+
+  @override
+  String get canvasRatioOriginal => 'Original';
 }

@@ -1,3 +1,4 @@
+import 'package:aveditor/models/canvas_ratio.dart';
 import 'package:aveditor/services/export_service.dart';
 import 'package:aveditor/models/export_quality_profile.dart';
 import 'package:aveditor/models/video_project.dart';
@@ -52,6 +53,44 @@ void main() {
     });
   });
 
+  group('computeCanvasFrameSize', () {
+    test('original portrait keeps the source ratio under the 1080 cap', () {
+      final frame = computeCanvasFrameSize(
+        sourceWidth: 720,
+        sourceHeight: 1280,
+        canvasAspect: 720 / 1280,
+        allowUpscale: false,
+      );
+
+      expect(frame.width, 720);
+      expect(frame.height, 1280);
+    });
+
+    test('original landscape is 16:9 at 1080 on the short side', () {
+      final frame = computeCanvasFrameSize(
+        sourceWidth: 3840,
+        sourceHeight: 2160,
+        canvasAspect: 16 / 9,
+        allowUpscale: false,
+      );
+
+      expect(frame.width, 1920);
+      expect(frame.height, 1080);
+    });
+
+    test('9:16 canvas letterboxes a landscape source into 1080x1920', () {
+      final frame = computeCanvasFrameSize(
+        sourceWidth: 1920,
+        sourceHeight: 1080,
+        canvasAspect: 9 / 16,
+        allowUpscale: false,
+      );
+
+      expect(frame.width, 1080);
+      expect(frame.height, 1920);
+    });
+  });
+
   group('canStreamCopy', () {
     VideoProject trimOnlyProject({double rotation = 0}) => VideoProject(
           id: 'p',
@@ -86,6 +125,18 @@ void main() {
       expect(
         ExportService.canStreamCopy(
           project: trimOnlyProject(rotation: 1.57),
+          rasters: const [],
+          quality: ExportQualityProfile.recommended,
+        ),
+        isFalse,
+      );
+    });
+
+    test('a chosen canvas ratio blocks stream copy', () {
+      final project = trimOnlyProject()..canvas = CanvasRatio.vertical;
+      expect(
+        ExportService.canStreamCopy(
+          project: project,
           rasters: const [],
           quality: ExportQualityProfile.recommended,
         ),

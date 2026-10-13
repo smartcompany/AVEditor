@@ -182,5 +182,7 @@
   "shareToYouTube": "分享到 YouTube",
   "shareMore": "更多",
   "shareAppMissing": "未安装该应用。",
-  "uploadPartialFailure": "视频已上传 ({videoId})。后续步骤失败: {message}"
+  "uploadPartialFailure": "视频已上传 ({videoId})。后续步骤失败: {message}",
+  "canvasRatio": "比例",
+  "canvasRatioOriginal": "原始"
 }

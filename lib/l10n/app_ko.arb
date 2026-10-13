@@ -182,5 +182,7 @@
   "shareToYouTube": "YouTube에 공유",
   "shareMore": "기타",
   "shareAppMissing": "해당 앱이 설치되어 있지 않습니다.",
-  "uploadPartialFailure": "영상은 업로드되었습니다 ({videoId}). 다음 단계가 실패했습니다: {message}"
+  "uploadPartialFailure": "영상은 업로드되었습니다 ({videoId}). 다음 단계가 실패했습니다: {message}",
+  "canvasRatio": "비율",
+  "canvasRatioOriginal": "원본"
 }

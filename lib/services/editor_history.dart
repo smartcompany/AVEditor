@@ -1,3 +1,4 @@
+import 'package:aveditor/models/canvas_ratio.dart';
 import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/project_music.dart';
 import 'package:aveditor/models/text_overlay.dart';
@@ -9,6 +10,7 @@ class EditorSnapshot {
     required this.segments,
     required this.overlays,
     required this.rotation,
+    required this.canvas,
     required this.musicTracks,
     this.selectedSegmentId,
     this.selectedOverlayId,
@@ -18,6 +20,7 @@ class EditorSnapshot {
   final List<ClipSegment> segments;
   final List<TextOverlay> overlays;
   final double rotation;
+  final CanvasRatio canvas;
   final List<ProjectMusic> musicTracks;
   final String? selectedSegmentId;
   final String? selectedOverlayId;
@@ -35,6 +38,7 @@ class EditorSnapshot {
           .toList(growable: false),
       overlays: _cloneOverlays(project.overlays),
       rotation: project.rotation,
+      canvas: project.canvas,
       musicTracks: project.musicTracks
           .map((m) => m.copyWith())
           .toList(growable: false),
@@ -55,6 +59,7 @@ class EditorSnapshot {
       ..clear()
       ..addAll(musicTracks.map((m) => m.copyWith()));
     project.rotation = rotation;
+    project.canvas = canvas;
     project.touch();
   }
 

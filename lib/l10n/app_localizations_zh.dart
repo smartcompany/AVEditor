@@ -589,4 +589,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String uploadPartialFailure(String videoId, String message) {
     return '视频已上传 ($videoId)。后续步骤失败: $message';
   }
+
+  @override
+  String get canvasRatio => '比例';
+
+  @override
+  String get canvasRatioOriginal => '原始';
 }

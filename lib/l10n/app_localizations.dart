@@ -1199,6 +1199,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The video was uploaded ({videoId}). A later step failed: {message}'**
   String uploadPartialFailure(String videoId, String message);
+
+  /// No description provided for @canvasRatio.
+  ///
+  /// In en, this message translates to:
+  /// **'Ratio'**
+  String get canvasRatio;
+
+  /// No description provided for @canvasRatioOriginal.
+  ///
+  /// In en, this message translates to:
+  /// **'Original'**
+  String get canvasRatioOriginal;
 }
 
 class _AppLocalizationsDelegate
