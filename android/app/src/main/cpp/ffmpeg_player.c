@@ -69,6 +69,8 @@ typedef struct FfPlayer {
   int present_gen;
   int present_wait;
   int64_t position_ms;
+  int64_t demux_ms;
+  int demux_ready;
   int ended;
   int64_t clock_origin_ms;
   int64_t clock_origin_mono;
@@ -344,14 +346,20 @@ static void decode_audio_packet(FfPlayer *player, AVPacket *packet) {
   }
 }
 
-static int seek_pending(FfPlayer *player) {
+static int take_seek(FfPlayer *player, int64_t *ms) {
   pthread_mutex_lock(&player->mu);
-  int pending = player->stop || player->seek_req;
+  int stop = player->stop;
+  int pending = player->seek_req;
+  if (pending) {
+    *ms = player->seek_ms;
+    player->seek_req = 0;
+  }
   pthread_mutex_unlock(&player->mu);
-  return pending;
+  if (stop) return -1;
+  return pending ? 1 : 0;
 }
 
-static void perform_seek(FfPlayer *player, int64_t ms, int exact) {
+static void reposition(FfPlayer *player, int64_t ms) {
   int64_t target = av_rescale_q(ms, (AVRational){1, 1000}, AV_TIME_BASE_Q);
   if (avformat_seek_file(
           player->fmt, -1, INT64_MIN, target, target, AVSEEK_FLAG_BACKWARD) < 0) {
@@ -363,37 +371,82 @@ static void perform_seek(FfPlayer *player, int64_t ms, int exact) {
   pthread_mutex_lock(&player->mu);
   player->clock_ready = 0;
   player->ended = 0;
-  player->position_ms = ms;
   pthread_mutex_unlock(&player->mu);
+  player->demux_ms = -1;
+  player->demux_ready = 1;
+}
 
-  int presented = 0;
-  int reads = 0;
-  int limit = exact ? 480 : 32;
-  while (reads < limit) {
-    if (seek_pending(player)) return;
-    int read = av_read_frame(player->fmt, player->packet);
-    if (read < 0) break;
-    reads += 1;
-    if (player->packet->stream_index == player->video_index &&
-        avcodec_send_packet(player->video, player->packet) == 0) {
-      while (avcodec_receive_frame(player->video, player->vframe) == 0) {
-        int64_t pts = frame_ms(player, player->vframe);
-        pthread_mutex_lock(&player->mu);
-        player->position_ms = pts;
-        pthread_mutex_unlock(&player->mu);
-        int at_target = pts + 40 >= ms;
-        if (!presented || (exact && at_target)) {
-          present_frame(player, player->vframe);
-          presented = 1;
-        }
-        av_frame_unref(player->vframe);
-        if (seek_pending(player) || !exact || at_target) {
-          av_packet_unref(player->packet);
-          return;
-        }
+static int target_moved(int64_t target, int64_t shown) {
+  if (shown < 0) return 0;
+  if (target + 80 < shown) return 1;
+  if (target > shown + 2500) return 1;
+  return 0;
+}
+
+static void perform_seek(FfPlayer *player, int64_t ms, int exact) {
+  (void)exact;
+  int64_t target = ms;
+  for (int hop = 0; hop < 6; hop++) {
+    int near = player->demux_ready && player->demux_ms >= 0 &&
+               target + 80 >= player->demux_ms &&
+               target <= player->demux_ms + 2500;
+    if (!near) reposition(player, target);
+
+    int reads = 0;
+    int restart = 0;
+    while (reads < 2000) {
+      int pulled = take_seek(player, &target);
+      if (pulled < 0) return;
+      if (pulled && target_moved(target, player->demux_ms)) {
+        restart = 1;
+        break;
       }
+      int read = av_read_frame(player->fmt, player->packet);
+      if (read < 0) return;
+      reads += 1;
+      if (player->packet->stream_index == player->video_index &&
+          avcodec_send_packet(player->video, player->packet) == 0) {
+        while (avcodec_receive_frame(player->video, player->vframe) == 0) {
+          int64_t pts = frame_ms(player, player->vframe);
+          pthread_mutex_lock(&player->mu);
+          player->position_ms = pts;
+          pthread_mutex_unlock(&player->mu);
+          pulled = take_seek(player, &target);
+          if (pulled < 0) {
+            av_frame_unref(player->vframe);
+            av_packet_unref(player->packet);
+            return;
+          }
+          if (pulled && target_moved(target, pts)) {
+            av_frame_unref(player->vframe);
+            av_packet_unref(player->packet);
+            restart = 1;
+            break;
+          }
+          present_frame(player, player->vframe);
+          player->demux_ms = pts;
+          av_frame_unref(player->vframe);
+          if (pts + 40 >= target) {
+            pulled = take_seek(player, &target);
+            if (pulled < 0) {
+              av_packet_unref(player->packet);
+              return;
+            }
+            if (!pulled || !target_moved(target, pts)) {
+              if (pulled && target > pts + 40) continue;
+              av_packet_unref(player->packet);
+              return;
+            }
+            av_packet_unref(player->packet);
+            restart = 1;
+            break;
+          }
+        }
+        if (restart) break;
+      }
+      if (!restart) av_packet_unref(player->packet);
     }
-    av_packet_unref(player->packet);
+    if (!restart) return;
   }
 }
 
@@ -734,4 +787,283 @@ Java_com_smart_aveditor_nativevideo_FfmpegPlayer_nativeSampleRate(
   FfPlayer *player = (FfPlayer *)handle;
   if (player == NULL || player->audio == NULL) return 0;
   return player->sample_rate;
+}
+
+typedef struct FfGrab {
+  AVFormatContext *fmt;
+  AVCodecContext *video;
+  int video_index;
+  AVRational video_tb;
+  int rotation;
+  SwsContext *sws;
+  int sws_w;
+  int sws_h;
+  int sws_src_w;
+  int sws_src_h;
+  int sws_fmt;
+  uint8_t *scaled;
+  int scaled_stride;
+  AVFrame *frame;
+  AVPacket *packet;
+} FfGrab;
+
+static void grab_close(FfGrab *grab) {
+  if (grab == NULL) return;
+  sws_freeContext(grab->sws);
+  free(grab->scaled);
+  avcodec_free_context(&grab->video);
+  avformat_close_input(&grab->fmt);
+  av_frame_free(&grab->frame);
+  av_packet_free(&grab->packet);
+  free(grab);
+}
+
+static void copy_rotated(
+    const uint8_t *src, int src_stride, int sw, int sh, int rot,
+    uint8_t *dst, int dw, int dh) {
+  if (rot == 0) {
+    int copy_w = sw < dw ? sw : dw;
+    int copy_h = sh < dh ? sh : dh;
+    for (int y = 0; y < copy_h; y++) {
+      memcpy(
+          dst + (size_t)y * (size_t)dw * 4,
+          src + (size_t)y * (size_t)src_stride,
+          (size_t)copy_w * 4);
+    }
+    return;
+  }
+  for (int sy = 0; sy < sh; sy++) {
+    for (int sx = 0; sx < sw; sx++) {
+      int dx = sx;
+      int dy = sy;
+      if (rot == 90) {
+        dx = sh - 1 - sy;
+        dy = sx;
+      } else if (rot == 180) {
+        dx = sw - 1 - sx;
+        dy = sh - 1 - sy;
+      } else if (rot == 270) {
+        dx = sy;
+        dy = sw - 1 - sx;
+      }
+      if (dx < 0 || dy < 0 || dx >= dw || dy >= dh) continue;
+      put_pixel(
+          dst, dw, dx, dy,
+          src + (size_t)sy * (size_t)src_stride + (size_t)sx * 4);
+    }
+  }
+}
+
+static int grab_fit(const AVFrame *frame, int rot, int max_side, int *out_w, int *out_h) {
+  int sw = frame->width;
+  int sh = frame->height;
+  int upright_w = (rot == 90 || rot == 270) ? sh : sw;
+  int upright_h = (rot == 90 || rot == 270) ? sw : sh;
+  if (upright_w < 2) upright_w = 2;
+  if (upright_h < 2) upright_h = 2;
+  int long_side = upright_w > upright_h ? upright_w : upright_h;
+  if (max_side > 0 && long_side > max_side) {
+    upright_w = upright_w * max_side / long_side;
+    upright_h = upright_h * max_side / long_side;
+  }
+  upright_w &= ~1;
+  upright_h &= ~1;
+  if (upright_w < 2) upright_w = 2;
+  if (upright_h < 2) upright_h = 2;
+  *out_w = upright_w;
+  *out_h = upright_h;
+  return 0;
+}
+
+static uint8_t *grab_rgba(FfGrab *grab, const AVFrame *frame, int max_side, int *out_w, int *out_h) {
+  int dw = 0;
+  int dh = 0;
+  grab_fit(frame, grab->rotation, max_side, &dw, &dh);
+  int sws_w = (grab->rotation == 90 || grab->rotation == 270) ? dh : dw;
+  int sws_h = (grab->rotation == 90 || grab->rotation == 270) ? dw : dh;
+  if (grab->sws == NULL || grab->sws_src_w != frame->width || grab->sws_src_h != frame->height ||
+      grab->sws_fmt != frame->format || grab->sws_w != sws_w || grab->sws_h != sws_h) {
+    sws_freeContext(grab->sws);
+    free(grab->scaled);
+    grab->scaled = NULL;
+    grab->sws = sws_getContext(
+        frame->width, frame->height, (enum AVPixelFormat)frame->format,
+        sws_w, sws_h, AV_PIX_FMT_RGBA,
+        SWS_BILINEAR, NULL, NULL, NULL);
+    if (grab->sws == NULL) return NULL;
+    grab->sws_src_w = frame->width;
+    grab->sws_src_h = frame->height;
+    grab->sws_fmt = frame->format;
+    grab->sws_w = sws_w;
+    grab->sws_h = sws_h;
+    grab->scaled_stride = sws_w * 4;
+    grab->scaled = (uint8_t *)malloc((size_t)grab->scaled_stride * (size_t)sws_h);
+    if (grab->scaled == NULL) return NULL;
+  }
+  uint8_t *planes[4] = {grab->scaled, NULL, NULL, NULL};
+  int strides[4] = {grab->scaled_stride, 0, 0, 0};
+  sws_scale(
+      grab->sws, (const uint8_t *const *)frame->data, frame->linesize,
+      0, frame->height, planes, strides);
+  uint8_t *rgba = (uint8_t *)malloc((size_t)dw * (size_t)dh * 4);
+  if (rgba == NULL) return NULL;
+  memset(rgba, 0, (size_t)dw * (size_t)dh * 4);
+  copy_rotated(grab->scaled, grab->scaled_stride, sws_w, sws_h, grab->rotation, rgba, dw, dh);
+  *out_w = dw;
+  *out_h = dh;
+  return rgba;
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_smart_aveditor_nativevideo_FfmpegStill_nativeOpen(
+    JNIEnv *env, jobject thiz, jstring path) {
+  (void)thiz;
+  const char *utf = (*env)->GetStringUTFChars(env, path, NULL);
+  if (utf == NULL) return 0;
+  FfGrab *grab = (FfGrab *)calloc(1, sizeof(FfGrab));
+  if (grab == NULL) {
+    (*env)->ReleaseStringUTFChars(env, path, utf);
+    return 0;
+  }
+  grab->video_index = -1;
+  if (avformat_open_input(&grab->fmt, utf, NULL, NULL) < 0 ||
+      avformat_find_stream_info(grab->fmt, NULL) < 0) {
+    (*env)->ReleaseStringUTFChars(env, path, utf);
+    grab_close(grab);
+    return 0;
+  }
+  (*env)->ReleaseStringUTFChars(env, path, utf);
+  grab->video_index = av_find_best_stream(grab->fmt, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
+  if (grab->video_index < 0) {
+    grab_close(grab);
+    return 0;
+  }
+  AVStream *video = grab->fmt->streams[grab->video_index];
+  grab->video_tb = video->time_base;
+  grab->rotation = display_rotation(video);
+  if (open_decoder(&grab->video, video) != 0) {
+    grab_close(grab);
+    return 0;
+  }
+  grab->frame = av_frame_alloc();
+  grab->packet = av_packet_alloc();
+  if (grab->frame == NULL || grab->packet == NULL) {
+    grab_close(grab);
+    return 0;
+  }
+  return (jlong)grab;
+}
+
+JNIEXPORT void JNICALL
+Java_com_smart_aveditor_nativevideo_FfmpegStill_nativeClose(
+    JNIEnv *env, jobject thiz, jlong handle) {
+  (void)env;
+  (void)thiz;
+  grab_close((FfGrab *)handle);
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_com_smart_aveditor_nativevideo_FfmpegStill_nativeFrame(
+    JNIEnv *env, jobject thiz, jlong handle, jlong time_ms, jint max_side, jintArray wh) {
+  (void)thiz;
+  FfGrab *grab = (FfGrab *)handle;
+  if (grab == NULL || grab->video == NULL) return NULL;
+  int64_t target = av_rescale_q(time_ms, (AVRational){1, 1000}, grab->video_tb);
+  if (av_seek_frame(grab->fmt, grab->video_index, target, AVSEEK_FLAG_BACKWARD) < 0) {
+    avformat_seek_file(grab->fmt, grab->video_index, INT64_MIN, target, target, AVSEEK_FLAG_BACKWARD);
+  }
+  avcodec_flush_buffers(grab->video);
+  uint8_t *rgba = NULL;
+  int dw = 0;
+  int dh = 0;
+  int reads = 0;
+  while (rgba == NULL && reads < 240) {
+    if (av_read_frame(grab->fmt, grab->packet) < 0) break;
+    reads += 1;
+    if (grab->packet->stream_index == grab->video_index &&
+        avcodec_send_packet(grab->video, grab->packet) == 0) {
+      while (avcodec_receive_frame(grab->video, grab->frame) == 0) {
+        int64_t pts = grab->frame->best_effort_timestamp;
+        if (pts == AV_NOPTS_VALUE) pts = grab->frame->pts;
+        int64_t ms = pts == AV_NOPTS_VALUE
+            ? time_ms
+            : av_rescale_q(pts, grab->video_tb, (AVRational){1, 1000});
+        int show = ms + 40 >= time_ms;
+        if (show) rgba = grab_rgba(grab, grab->frame, max_side, &dw, &dh);
+        av_frame_unref(grab->frame);
+        if (rgba != NULL) break;
+      }
+    }
+    av_packet_unref(grab->packet);
+  }
+  if (rgba == NULL) return NULL;
+  jsize bytes = (jsize)dw * dh * 4;
+  jbyteArray array = (*env)->NewByteArray(env, bytes);
+  if (array != NULL) {
+    (*env)->SetByteArrayRegion(env, array, 0, bytes, (const jbyte *)rgba);
+    jint size[2] = {dw, dh};
+    (*env)->SetIntArrayRegion(env, wh, 0, 2, size);
+  }
+  free(rgba);
+  return array;
+}
+
+static void grab_seek(FfGrab *grab, int64_t time_ms) {
+  int64_t target = av_rescale_q(time_ms, (AVRational){1, 1000}, grab->video_tb);
+  if (av_seek_frame(grab->fmt, grab->video_index, target, AVSEEK_FLAG_BACKWARD) < 0) {
+    avformat_seek_file(
+        grab->fmt, grab->video_index, INT64_MIN, target, target, AVSEEK_FLAG_BACKWARD);
+  }
+  avcodec_flush_buffers(grab->video);
+}
+
+JNIEXPORT void JNICALL
+Java_com_smart_aveditor_nativevideo_FfmpegStill_nativeSeek(
+    JNIEnv *env, jobject thiz, jlong handle, jlong time_ms) {
+  (void)env;
+  (void)thiz;
+  FfGrab *grab = (FfGrab *)handle;
+  if (grab == NULL || grab->video == NULL) return;
+  grab_seek(grab, time_ms);
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_com_smart_aveditor_nativevideo_FfmpegStill_nativePull(
+    JNIEnv *env, jobject thiz, jlong handle, jint max_side, jintArray info) {
+  (void)thiz;
+  FfGrab *grab = (FfGrab *)handle;
+  if (grab == NULL || grab->video == NULL) return NULL;
+  int reads = 0;
+  while (reads < 64) {
+    if (av_read_frame(grab->fmt, grab->packet) < 0) return NULL;
+    reads += 1;
+    int got = 0;
+    uint8_t *rgba = NULL;
+    int dw = 0;
+    int dh = 0;
+    int64_t ms = 0;
+    if (grab->packet->stream_index == grab->video_index &&
+        avcodec_send_packet(grab->video, grab->packet) == 0) {
+      if (avcodec_receive_frame(grab->video, grab->frame) == 0) {
+        int64_t pts = grab->frame->best_effort_timestamp;
+        if (pts == AV_NOPTS_VALUE) pts = grab->frame->pts;
+        ms = pts == AV_NOPTS_VALUE ? 0 : av_rescale_q(pts, grab->video_tb, (AVRational){1, 1000});
+        rgba = grab_rgba(grab, grab->frame, max_side, &dw, &dh);
+        av_frame_unref(grab->frame);
+        got = rgba != NULL;
+      }
+    }
+    av_packet_unref(grab->packet);
+    if (!got) continue;
+    jsize bytes = (jsize)dw * dh * 4;
+    jbyteArray array = (*env)->NewByteArray(env, bytes);
+    if (array != NULL) {
+      (*env)->SetByteArrayRegion(env, array, 0, bytes, (const jbyte *)rgba);
+      jint packed[3] = {dw, dh, (jint)ms};
+      (*env)->SetIntArrayRegion(env, info, 0, 3, packed);
+    }
+    free(rgba);
+    return array;
+  }
+  return NULL;
 }

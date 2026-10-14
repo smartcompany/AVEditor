@@ -691,8 +691,12 @@ private fun easeId(name: String): Int {
  * Decodes one source time from the playing file for the frame callback.
  * The player frame is the outgoing picture. This is the incoming picture.
  */
-private class IncomingFrameSource {
+private class IncomingFrameSource(
+  private val ffmpegStills: Boolean = false,
+) {
   private val worker = Executors.newSingleThreadExecutor()
+  private val stills = if (ffmpegStills) FfmpegStill() else null
+  @Volatile private var closed = false
   private val lock = Any()
   private var retriever: MediaMetadataRetriever? = null
   private var openPath = ""
@@ -700,11 +704,64 @@ private class IncomingFrameSource {
   private var frameUs = Long.MIN_VALUE
   @Volatile private var wantedUs = Long.MIN_VALUE
   private var running = false
+  private var memory = emptyList<Pair<Long, Bitmap>>()
+  private var memoryGen = 0
   private var texture = 0
   private var uploadedUs = Long.MIN_VALUE
 
+  fun remember(path: String, rangesUs: List<Pair<Long, Long>>) {
+    val still = stills ?: return
+    val gen = synchronized(lock) {
+      memoryGen += 1
+      memoryGen
+    }
+    worker.execute {
+      if (closed || gen != memoryGen) return@execute
+      val next = ArrayList<Pair<Long, Bitmap>>()
+      for ((startUs, endUs) in rangesUs) {
+        if (closed || gen != memoryGen) {
+          next.forEach { it.second.recycle() }
+          return@execute
+        }
+        val frames = still.frames(
+          path,
+          startUs / 1000L,
+          endUs / 1000L,
+          40L,
+          720,
+        )
+        for ((timeMs, bitmap) in frames) {
+          next.add(timeMs * 1000L to bitmap)
+        }
+      }
+      synchronized(lock) {
+        if (closed || gen != memoryGen) {
+          next.forEach { it.second.recycle() }
+          return@synchronized
+        }
+        memory.forEach { it.second.recycle() }
+        memory = next
+        Log.i("NativeVideoEngine", "blendIncoming memory frames=${next.size}")
+      }
+    }
+  }
+
+  fun clearMemory() {
+    synchronized(lock) {
+      memoryGen += 1
+      memory.forEach { it.second.recycle() }
+      memory = emptyList()
+    }
+  }
+
   fun texture(path: String, timeUs: Long): Int {
     if (path.isEmpty() || !File(path).exists()) return 0
+    if (stills != null) {
+      synchronized(lock) {
+        val cached = nearestMemory(timeUs) ?: return 0
+        return upload(cached, frameUs)
+      }
+    }
     ensureOpen(path)
     if (kotlin.math.abs(frameUs - timeUs) > 120_000L) request(timeUs)
     synchronized(lock) {
@@ -730,8 +787,16 @@ private class IncomingFrameSource {
   }
 
   fun release() {
-    worker.shutdownNow()
+    closed = true
+    worker.shutdown()
+    try {
+      worker.awaitTermination(3, java.util.concurrent.TimeUnit.SECONDS)
+    } catch (_: InterruptedException) {
+    }
+    stills?.close()
     synchronized(lock) {
+      memory.forEach { it.second.recycle() }
+      memory = emptyList()
       frame?.recycle()
       frame = null
       retriever?.release()
@@ -744,6 +809,13 @@ private class IncomingFrameSource {
   }
 
   private fun ensureOpen(path: String) {
+    if (stills != null) {
+      if (openPath != path) {
+        openPath = path
+        frameUs = Long.MIN_VALUE
+      }
+      return
+    }
     if (openPath == path && retriever != null) return
     synchronized(lock) {
       retriever?.release()
@@ -756,6 +828,39 @@ private class IncomingFrameSource {
     }
   }
 
+  private fun nearestMemory(timeUs: Long): Bitmap? {
+    var best: Bitmap? = null
+    var bestDistance = Long.MAX_VALUE
+    for ((us, bitmap) in memory) {
+      val distance = kotlin.math.abs(us - timeUs)
+      if (distance < bestDistance) {
+        bestDistance = distance
+        best = bitmap
+        frameUs = us
+      }
+    }
+    return best
+  }
+
+  private fun upload(bmp: Bitmap, us: Long): Int {
+    if (texture != 0 && uploadedUs == us) return texture
+    if (texture == 0) {
+      val ids = IntArray(1)
+      GLES20.glGenTextures(1, ids, 0)
+      texture = ids[0]
+      GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
+      GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
+      GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
+      GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
+      GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+    } else {
+      GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
+    }
+    GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bmp, 0)
+    uploadedUs = us
+    return texture
+  }
+
   private fun request(timeUs: Long) {
     wantedUs = timeUs
     synchronized(lock) {
@@ -764,11 +869,15 @@ private class IncomingFrameSource {
     }
     Log.i("NativeVideoEngine", "blendIncoming request us=$timeUs")
     worker.execute {
-      while (true) {
+      while (!closed) {
         val target = wantedUs
         val started = android.os.SystemClock.uptimeMillis()
         val bmp = try {
-          retriever?.getFrameAtTime(target, MediaMetadataRetriever.OPTION_CLOSEST)
+          if (stills != null) {
+            stills.frame(openPath, target / 1000L, 720)
+          } else {
+            retriever?.getFrameAtTime(target, MediaMetadataRetriever.OPTION_CLOSEST)
+          }
         } catch (e: RuntimeException) {
           Log.i(
             "NativeVideoEngine",
@@ -789,7 +898,7 @@ private class IncomingFrameSource {
             frame = bmp
             frameUs = target
           }
-          if (wantedUs == target) {
+          if (closed || wantedUs == target) {
             running = false
             return@execute
           }
@@ -814,7 +923,7 @@ internal class FfmpegTransitionPresenter(
   private var program = 0
   private var position = 0
   private var outgoingTex = 0
-  private var incoming = IncomingFrameSource()
+  private var incoming = IncomingFrameSource(ffmpegStills = true)
   private var flip: java.nio.ByteBuffer? = null
   private var viewW = 0
   private var viewH = 0
@@ -829,6 +938,19 @@ internal class FfmpegTransitionPresenter(
 
   fun setSurface(surface: Surface?) {
     this.surface = surface
+  }
+
+  fun prefetchIncoming() {
+    val path = mix.sourcePath
+    if (path.isEmpty() || mix.blends.isEmpty()) {
+      incoming.clearMemory()
+      return
+    }
+    val ranges = mix.blends.map { blend ->
+      val endMs = (blend.startMs + blend.durationMs - 1L).coerceAtLeast(blend.startMs)
+      mix.incomingSourceUs(blend.startMs) to mix.incomingSourceUs(endMs)
+    }
+    incoming.remember(path, ranges)
   }
 
   fun draw(rgba: java.nio.ByteBuffer, width: Int, height: Int, packedMs: Long) {
@@ -918,7 +1040,7 @@ internal class FfmpegTransitionPresenter(
 
   fun releaseGl() {
     incoming.release()
-    incoming = IncomingFrameSource()
+    incoming = IncomingFrameSource(ffmpegStills = true)
     if (outgoingTex != 0) {
       GLES20.glDeleteTextures(1, intArrayOf(outgoingTex), 0)
       outgoingTex = 0

@@ -53,6 +53,8 @@ class NativeVideoEngine {
 
   int? _textureId;
   StreamSubscription<dynamic>? _eventSub;
+  int _generation = 0;
+  Future<void> _gate = Future<void>.value();
   final _positionController = StreamController<Duration>.broadcast();
   final _playingController = StreamController<bool>.broadcast();
   var _active = false;
@@ -65,6 +67,27 @@ class NativeVideoEngine {
   Duration _duration = Duration.zero;
 
   int? get textureId => _textureId;
+  int get generation => _generation;
+
+  /// Invalidates any editor that still holds the previous generation.
+  int claim() {
+    _generation += 1;
+    return _generation;
+  }
+
+  Future<T> _exclusive<T>(Future<T> Function() action) {
+    final run = _gate.then((_) => action());
+    _gate = run.then((_) {}, onError: (_, _) {});
+    return run;
+  }
+
+  /// Drops the current player only when [generation] is still the owner.
+  Future<void> release(int generation) {
+    return _exclusive(() async {
+      if (generation != _generation) return;
+      await _disposePlayer();
+    });
+  }
   bool get isActive => _active;
   bool get isTimelineActive => _timelineActive && _active;
   bool get isPlaying => _playing;
@@ -100,6 +123,20 @@ class NativeVideoEngine {
     required String sourcePath,
     required List<ClipSegment> segments,
     bool ffmpegPlayer = false,
+  }) {
+    return _exclusive(
+      () => _prepareTimeline(
+        sourcePath: sourcePath,
+        segments: segments,
+        ffmpegPlayer: ffmpegPlayer,
+      ),
+    );
+  }
+
+  Future<int?> _prepareTimeline({
+    required String sourcePath,
+    required List<ClipSegment> segments,
+    bool ffmpegPlayer = false,
   }) async {
     if (!isPlatformSupported) return null;
     final encoded = encodeCompositionSegments(segments);
@@ -113,7 +150,7 @@ class NativeVideoEngine {
       debugPrint('prepareTimeline segments: $brief');
     }
     final keepPlayer = _timelineActive && _textureId != null;
-    if (!keepPlayer) await dispose();
+    if (!keepPlayer) await _disposePlayer();
     try {
       final result = await _channel.invokeMapMethod<String, dynamic>(
         'prepareTimeline',
@@ -152,7 +189,7 @@ class NativeVideoEngine {
       if (kDebugMode) {
         debugPrint('NativeVideoEngine.prepareTimeline failed: $e\n$st');
       }
-      if (!keepPlayer) await dispose();
+      if (!keepPlayer) await _disposePlayer();
       return null;
     }
   }
@@ -221,7 +258,11 @@ class NativeVideoEngine {
     return ms.clamp(0, _duration.inMilliseconds);
   }
 
-  Future<void> dispose() async {
+  Future<void> dispose() {
+    return _exclusive(_disposePlayer);
+  }
+
+  Future<void> _disposePlayer() async {
     if (_active || _textureId != null) {
       try {
         await _channel.invokeMethod<void>('dispose');

@@ -27,13 +27,6 @@ internal class FfmpegTimelineSession(
   private var released = false
   private var playing = false
   private var endedSent = false
-  private var refineMs = 0L
-  private var refinePending = false
-  private val refine = Runnable {
-    refinePending = false
-    if (released || playing) return@Runnable
-    player.seekExact(refineMs, wait = false)
-  }
 
   override val usesFfmpeg: Boolean = true
   override val textureId: Long
@@ -45,6 +38,7 @@ internal class FfmpegTimelineSession(
   init {
     NativeVideoEngineMedia.fillPlaybackMix(mix, sourcePath, segments)
     bindPlayer()
+    presenter.prefetchIncoming()
   }
 
   private val tick = object : Runnable {
@@ -69,6 +63,7 @@ internal class FfmpegTimelineSession(
     pieces = piecesOf(segments)
     durationMs = packedDuration(pieces)
     NativeVideoEngineMedia.fillPlaybackMix(mix, sourcePath, segments)
+    presenter.prefetchIncoming()
     if (sourcePath != this.sourcePath) {
       this.sourcePath = sourcePath
       player.release()
@@ -103,14 +98,9 @@ internal class FfmpegTimelineSession(
 
   override fun play(): String? {
     if (released) return "released"
-    handler.removeCallbacks(refine)
     if (player.ended()) {
       val start = pieces.firstOrNull()?.sourceStart ?: 0L
-      refinePending = false
       player.seekExact(start, wait = false)
-    } else if (refinePending) {
-      refinePending = false
-      player.seekExact(refineMs, wait = false)
     }
     endedSent = false
     playing = true
@@ -145,11 +135,7 @@ internal class FfmpegTimelineSession(
     playing = false
     player.pause()
     handler.removeCallbacks(tick)
-    handler.removeCallbacks(refine)
-    refineMs = sourceOf(landed)
-    refinePending = true
-    player.seek(refineMs)
-    handler.postDelayed(refine, 160L)
+    player.seek(sourceOf(landed))
     onEvent(mapOf("type" to "playing", "playing" to false))
     onEvent(mapOf("type" to "position", "positionMs" to landed.toInt()))
   }
@@ -160,8 +146,6 @@ internal class FfmpegTimelineSession(
       return
     }
     val landed = ms.coerceIn(0L, durationMs.toLong())
-    handler.removeCallbacks(refine)
-    refinePending = false
     player.seekExact(sourceOf(landed), wait = true)
     onEvent(mapOf("type" to "position", "positionMs" to landed.toInt()))
     done(true)
@@ -172,7 +156,6 @@ internal class FfmpegTimelineSession(
     released = true
     playing = false
     handler.removeCallbacks(tick)
-    handler.removeCallbacks(refine)
     presenter.close()
     player.release()
     surface?.release()

@@ -326,10 +326,13 @@ class _EditorScreenState extends State<EditorScreen>
     );
   }
 
+  int _engineClaim = 0;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _engineClaim = NativeVideoEngine.instance.claim();
     _initVideo();
   }
 
@@ -686,8 +689,13 @@ class _EditorScreenState extends State<EditorScreen>
     );
   }
 
+  bool get _ownsEngine =>
+      NativeVideoEngine.instance.generation == _engineClaim;
+
   Future<void> _initVideo() async {
     try {
+      await NativeVideoEngine.instance.release(_engineClaim);
+      if (!mounted || !_ownsEngine) return;
       final stored = await _projectStorage.load(widget.projectId);
       if (stored == null) {
         if (!mounted) return;
@@ -773,12 +781,17 @@ class _EditorScreenState extends State<EditorScreen>
               : normalized,
         );
 
+      _slotMain = controller;
+      _slotsSwapped = false;
+      _ffmpegPlayback = ffmpegPlayer;
+      _sourceAspect = sourceAspect;
+      _project = project;
+      await _attachTimelineCompositor();
+      if (!mounted || !_ownsEngine) {
+        await controller?.dispose();
+        return;
+      }
       setState(() {
-        _slotMain = controller;
-        _slotsSwapped = false;
-        _ffmpegPlayback = ffmpegPlayer;
-        _sourceAspect = sourceAspect;
-        _project = project;
         _ready = true;
         _errorMessage = null;
       });
@@ -786,7 +799,6 @@ class _EditorScreenState extends State<EditorScreen>
       unawaited(_loadFilmstrip(project.sourcePath, project.duration));
       unawaited(_loadMusicWaveforms(project));
       unawaited(_loadSourceAudioWaveform(project.sourcePath));
-      unawaited(_attachTimelineCompositor());
 
       if (stored.duration == Duration.zero) {
         _scheduleSave();
@@ -1184,7 +1196,10 @@ class _EditorScreenState extends State<EditorScreen>
     Duration? seekTo,
   }) async {
     final project = _project;
-    if (project == null || !NativeVideoEngine.instance.isPlatformSupported) {
+    if (project == null ||
+        !mounted ||
+        !_ownsEngine ||
+        !NativeVideoEngine.instance.isPlatformSupported) {
       return;
     }
     // Panel selection uses a short transition session — do not replace it.
@@ -1244,9 +1259,10 @@ class _EditorScreenState extends State<EditorScreen>
     if (!mounted) return;
     await _timelinePositionSub?.cancel();
     _timelinePositionSub = null;
+    if (!mounted || !_ownsEngine) return;
     if (id == null) {
       debugPrint('timeline compositor failed; preview stays on the hard-cut player');
-      setState(() {});
+      if (mounted) setState(() {});
       return;
     }
     try {
@@ -1334,7 +1350,9 @@ class _EditorScreenState extends State<EditorScreen>
       unawaited(_syncMusicOnTick());
       setState(() {});
     });
+    if (!mounted || !_ownsEngine) return;
     await NativeVideoEngine.instance.preroll(_sourceToNativePacked(pos));
+    if (!mounted || !_ownsEngine) return;
     _logTimeline('attach.preroll', land: pos);
     if (wasPlaying) {
       await NativeVideoEngine.instance.play();
@@ -1688,6 +1706,7 @@ class _EditorScreenState extends State<EditorScreen>
     _spatialPlayingSub = null;
     // Timeline mode shares this engine — do not dispose it for dual-layer cleanup.
     if (NativeVideoEngine.instance.isTimelineActive) return;
+    if (!_ownsEngine) return;
     await NativeVideoEngine.instance.dispose();
   }
 
@@ -2154,6 +2173,7 @@ class _EditorScreenState extends State<EditorScreen>
     _slotAux = null;
     unawaited(main?.dispose() ?? Future<void>.value());
     unawaited(aux?.dispose() ?? Future<void>.value());
+    unawaited(NativeVideoEngine.instance.release(_engineClaim));
     unawaited(_tearDownSpatialPreview());
     unawaited(_musicPlayer.dispose());
     _stopDockSnapAnim();
