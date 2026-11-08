@@ -614,6 +614,14 @@ internal fun resolveBlend(blend: BlendWindow, t: Float): BlendDraw {
     layers.isNotEmpty() -> {
       draw.mode = 1
       applyPoseDraw(draw, layers, t)
+      if (motionLayersOverlap(layers)) {
+        // Cross-fade without a mid-blend dip (spec §4.4b).
+        if (draw.aOnTop) {
+          draw.alphaB = minOf(1f, draw.alphaB + draw.alphaA)
+        } else {
+          draw.alphaA = minOf(1f, draw.alphaA + draw.alphaB)
+        }
+      }
     }
     else -> applyNamed(draw, blend.effect, blend.edge, t)
   }
@@ -699,7 +707,8 @@ private fun applyNamed(draw: BlendDraw, effect: String, edge: String, t: Float) 
         draw.edge = edgeIndex(edge)
       } else {
         draw.mode = 1
-        draw.alphaA = 1f - t
+        // Incoming fades in over an opaque outgoing clip: (1-t)·A + t·B.
+        draw.alphaA = 1f
         draw.alphaB = t
         draw.aOnTop = false
       }

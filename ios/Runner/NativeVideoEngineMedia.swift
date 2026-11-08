@@ -1433,7 +1433,16 @@ private final class ExportFrameRenderer {
     if layers.contains(where: { $0.columns > 0 || $0.property == "rotationY" }) {
       return composeCells(outgoing, incoming, layers: layers, t: t, canvas: canvas)
     }
-    let (outPose, inPose, outgoingOnTop) = evaluateExportPoses(layers, t: t)
+    var (outPose, inPose, outgoingOnTop) = evaluateExportPoses(layers, t: t)
+    if exportLayersOverlap(layers) {
+      // Cross-fade without a mid-blend dip (spec §4.4b): the clip underneath
+      // is drawn at min(1, bottom + top), so the mix is (1-t)·A + t·B.
+      if outgoingOnTop {
+        inPose.opacity = min(1, inPose.opacity + outPose.opacity)
+      } else {
+        outPose.opacity = min(1, outPose.opacity + inPose.opacity)
+      }
+    }
     let outLayer = applyPose(outgoing, outPose, canvas: canvas)
     let inLayer = applyPose(incoming, inPose, canvas: canvas)
     let bottom = outgoingOnTop ? inLayer : outLayer
@@ -1645,8 +1654,9 @@ private final class ExportFrameRenderer {
     case "fadewhite":
       return dip(outgoing, incoming, t: t, white: true, canvas: canvas)
     default:
+      // Incoming fades in over an opaque outgoing clip: (1-t)·A + t·B.
       return applyPose(incoming, ExportPose(opacity: t), canvas: canvas)
-        .composited(over: applyPose(outgoing, ExportPose(opacity: 1 - t), canvas: canvas))
+        .composited(over: applyPose(outgoing, ExportPose(opacity: 1), canvas: canvas))
     }
   }
 
@@ -2120,6 +2130,14 @@ private func evaluateExportPoses(_ layers: [ExportMotion], t: CGFloat) -> (Expor
 }
 
 /// Last layer with target A or B paints on top (`both` ignored).
+/// Both clips stay stacked (no slide, wipe, flip, ripple or grid): the blend
+/// is a cross-fade. Same rule as Android and the Flutter preview.
+private func exportLayersOverlap(_ layers: [ExportMotion]) -> Bool {
+  !layers.contains {
+    $0.columns > 0 || ["translateX", "translateY", "wipe", "rotationY", "ripple"].contains($0.property)
+  }
+}
+
 private func exportAOnTop(_ layers: [ExportMotion]) -> Bool {
   var top: String?
   for layer in layers {

@@ -45,6 +45,10 @@ post_install do |installer|
         'PERMISSION_PHOTOS_ADD_ONLY=1',
         'PERMISSION_CAMERA=1',
       ]
+      # google_mobile_ads 9.1.0 (pinned in pubspec for Gradle 9) imports the
+      # SDK's private headers from its module; Xcode rejects that by default.
+      # Set for every pod target since dependents compile its module too.
+      config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
     end
   end
 end

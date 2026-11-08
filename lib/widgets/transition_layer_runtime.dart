@@ -432,8 +432,14 @@ class TransitionLayerCompositor extends StatelessWidget {
         }
         final veil = _sharedBrightnessVeil(eval);
         final outgoingOnTop = aShouldPaintOnTop(eval, layers: layers);
-        final bottomPose = outgoingOnTop ? eval.b : eval.a;
         final topPose = outgoingOnTop ? eval.a : eval.b;
+        var bottomPose = outgoingOnTop ? eval.b : eval.a;
+        if (transitionLayersOverlap(layers)) {
+          // Cross-fade without a mid-blend dip (spec §4.4b).
+          bottomPose = bottomPose.copyWith(
+            opacity: math.min(1.0, bottomPose.opacity + topPose.opacity),
+          );
+        }
         final bottomChild = outgoingOnTop ? incoming : outgoing;
         final topChild = outgoingOnTop ? outgoing : incoming;
         return Stack(
@@ -457,6 +463,22 @@ class TransitionLayerCompositor extends StatelessWidget {
       },
     );
   }
+}
+
+/// Both clips stay stacked on the same frame (no slide, wipe, flip, ripple or
+/// grid), so the blend is a cross-fade: the clip underneath is drawn at
+/// min(1, bottom + top) opacity and the mix never dips toward black.
+/// Same rule as the iOS and Android native compositors (spec §4.4b).
+bool transitionLayersOverlap(List<TransitionLayer> layers) {
+  return !layers.any(
+    (l) =>
+        l.grid != null ||
+        l.property == TransitionProperty.translateX ||
+        l.property == TransitionProperty.translateY ||
+        l.property == TransitionProperty.wipe ||
+        l.property == TransitionProperty.rotationY ||
+        l.property == TransitionProperty.ripple,
+  );
 }
 
 TransitionLayerPose _poseWithoutBrightness(TransitionLayerPose pose) {

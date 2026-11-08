@@ -1022,6 +1022,19 @@ internal fun motionEase(t: Float, name: String): Float {
 }
 
 /** Same pose evaluation as iOS [evaluateExportPoses], for fields OverlaySettings can draw. */
+/**
+ * True when both clips stay stacked on the same frame (no slide, wipe, flip,
+ * ripple or grid). Such blends cross-fade, and the clip underneath is drawn
+ * at min(1, bottom + top) opacity so the mix never dips toward black
+ * (spec §4.4b). Same rule as iOS and the Flutter preview.
+ */
+internal fun motionLayersOverlap(layers: List<MotionLayer>): Boolean {
+  return layers.none {
+    it.columns > 0 || it.property == "translateX" || it.property == "translateY" ||
+      it.property == "wipe" || it.property == "rotationY" || it.property == "ripple"
+  }
+}
+
 internal fun motionOutgoingOnTop(layers: List<MotionLayer>): Boolean {
   var top: String? = null
   for (layer in layers) {
