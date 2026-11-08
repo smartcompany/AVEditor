@@ -118,6 +118,7 @@ internal class EngineCompositor {
     u1i("uTex", 0)
     u1i("uIncoming", 1)
     u1i("uMode", if (dual) d.mode else 0)
+    u1f("uAspect", w[0].coerceAtLeast(1).toFloat() / h[0].coerceAtLeast(1).toFloat())
     u1f("uT", d.t.coerceIn(0f, 1f))
     u1i("uEdge", d.edge)
     u1f("uAlphaA", d.alphaA)

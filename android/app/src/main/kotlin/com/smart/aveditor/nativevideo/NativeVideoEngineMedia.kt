@@ -1087,8 +1087,12 @@ internal fun evaluateMotionPoses(layers: List<MotionLayer>, t: Float): Pair<Moti
     }
   }
   if (hasOpacity) {
-    if (outgoingOpacity && !incomingOpacity) incoming.opacity = 1f - outgoing.opacity
-    if (incomingOpacity && !outgoingOpacity) outgoing.opacity = 1f - incoming.opacity
+    // §4.4: only a side with no authored opacity layer mirrors the other.
+    // A side whose opacity layer has not started yet keeps its own value.
+    val authoredA = layers.any { it.property == "opacity" && (it.target == "A" || it.target == "both") }
+    val authoredB = layers.any { it.property == "opacity" && (it.target == "B" || it.target == "both") }
+    if (outgoingOpacity && !authoredB) incoming.opacity = 1f - outgoing.opacity
+    if (incomingOpacity && !authoredA) outgoing.opacity = 1f - incoming.opacity
   }
   return outgoing to incoming
 }

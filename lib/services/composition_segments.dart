@@ -3,6 +3,7 @@ import 'package:aveditor/models/transition_role_effect.dart';
 import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/services/transition_engine.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
+import 'package:aveditor/widgets/transition_layer_runtime.dart';
 
 /// Native compositor / GPU effect id (slideleft, dissolve, …).
 String compositionEffectName(AppliedTransition? applied) {
@@ -12,20 +13,26 @@ String compositionEffectName(AppliedTransition? applied) {
 }
 
 /// Catalog motion replayed by timeline playback and album export.
+///
+/// `param` endpoints are resolved here (catalog defaults, then the user's
+/// values) so iOS and Android draw the same strength the Flutter preview does.
 List<Map<String, Object>> compositionMotion(AppliedTransition? applied) {
-  final layers =
-      TransitionEngine.instance.plan(applied).definition?.layers ?? const [];
+  final definition = TransitionEngine.instance.plan(applied).definition;
+  final layers = definition?.layers ?? const [];
+  final parameters = <String, double>{
+    ...?definition?.defaultParameters(),
+    ...?applied?.parameters,
+  };
   return [
     for (final layer in layers)
       {
         'property': layer.property.name,
-        'from': layer.from,
-        'to': layer.to,
+        'from': resolveTransitionLayerEndpoint(layer.from, layer, parameters),
+        'to': resolveTransitionLayerEndpoint(layer.to, layer, parameters),
         'easing': layer.easing.name,
         'target': layer.target.toJson(),
         'start': layer.start,
         'end': layer.end,
-        if (layer.param != null) 'param': layer.param!,
         if (layer.mode != null) 'mode': layer.mode!,
         if (layer.grid != null)
           'grid': {

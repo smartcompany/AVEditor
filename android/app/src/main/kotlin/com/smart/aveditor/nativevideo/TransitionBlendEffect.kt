@@ -268,6 +268,7 @@ internal object TransitionBlendGlsl {
 """
 
   const val UNIFORMS = """      uniform float uPacked;
+      uniform float uAspect;
       uniform float uSplit;
       uniform float uIncomingFlip;
       uniform int uMode;
@@ -424,7 +425,13 @@ internal object TransitionBlendGlsl {
           color = showB ? take(uv, 1.0) : take(uv, 0.0);
           color.a = 1.0;
         } else if (uMode == 3) {
+          // Distance in pixels so the mask is a circle on any frame shape
+          // (iOS: radius = half the diagonal * t). uAspect = width / height.
           float r = distance(uv, vec2(0.5)) / 0.70710678;
+          if (uAspect > 0.0) {
+            vec2 d = (uv - 0.5) * vec2(uAspect, 1.0);
+            r = length(d) / (0.5 * length(vec2(uAspect, 1.0)));
+          }
           float radius = uCircleIncoming > 0.5 ? uT : 1.0 - uT;
           bool fgIn = uCircleIncoming > 0.5;
           color = r < radius ? (fgIn ? take(uv, 1.0) : take(uv, 0.0)) : (fgIn ? take(uv, 0.0) : take(uv, 1.0));

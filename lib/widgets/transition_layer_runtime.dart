@@ -272,6 +272,14 @@ double evaluateTransitionLayer(
   return from + (to - from) * u;
 }
 
+/// [authored] scaled toward the property identity by `parameters[layer.param]`
+/// (§4.3). Native playback/export receive endpoints already resolved this way.
+double resolveTransitionLayerEndpoint(
+  double authored,
+  TransitionLayer layer,
+  Map<String, double> parameters,
+) => _resolveEndpoint(authored, layer, parameters);
+
 double _resolveEndpoint(
   double authored,
   TransitionLayer layer,
