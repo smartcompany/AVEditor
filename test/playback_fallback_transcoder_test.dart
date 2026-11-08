@@ -4,7 +4,7 @@ import 'package:aveditor/services/playback_fallback_transcoder.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('hevc on Android goes straight to ffmpeg', () {
+  test('hevc and HDR on Android are stored as H.264 SDR', () {
     expect(
       PlaybackFallbackTranscoder.needsDirectTranscode('hevc', android: true),
       isTrue,
@@ -21,9 +21,25 @@ void main() {
       PlaybackFallbackTranscoder.needsDirectTranscode('hevc', android: false),
       isFalse,
     );
+    expect(
+      PlaybackFallbackTranscoder.needsStoredTranscode(
+        'h264',
+        'arib-std-b67',
+        android: true,
+      ),
+      isTrue,
+    );
+    expect(
+      PlaybackFallbackTranscoder.needsStoredTranscode(
+        'h264',
+        'bt709',
+        android: true,
+      ),
+      isFalse,
+    );
   });
 
-  test('arguments encode H.264 and keep an optional audio stream', () {
+  test('arguments encode H.264 SDR and keep an optional audio stream', () {
     final args = PlaybackFallbackTranscoder.arguments(
       '/clips/source.mov',
       '/clips/.source.transcode.mp4',
@@ -31,9 +47,21 @@ void main() {
 
     expect(args, contains('libx264'));
     expect(args, contains('yuv420p'));
+    expect(args, contains('bt709'));
     expect(args, contains('0:a:0?'));
+    expect(args, isNot(contains('colorspace=ispace')));
     expect(args.first, '-y');
     expect(args.last, '/clips/.source.transcode.mp4');
+  });
+
+  test('HLG files are tagged bt709 without the colorspace filter', () {
+    final args = PlaybackFallbackTranscoder.arguments(
+      '/clips/source.mov',
+      '/clips/.source.transcode.mp4',
+      colorTransfer: 'arib-std-b67',
+    );
+    expect(args, contains('bt709'));
+    expect(args.join(' '), isNot(contains('colorspace=')));
   });
 
   test('transcode replaces a mov source with source.mp4', () async {

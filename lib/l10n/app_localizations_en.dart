@@ -210,6 +210,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get exporting => 'Exporting video…';
 
   @override
+  String get convertingVideo => 'Converting video…';
+
+  @override
   String get exportSuccess => 'Saved to your library.';
 
   @override

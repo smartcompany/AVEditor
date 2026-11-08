@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.22.1)
-project(aveditor_ffmpeg C)
+project(aveditor_native LANGUAGES C CXX)
 
+# --- File-conversion FFmpeg player (unchanged; not used for timeline) ---
 set(FFMPEG_TAG n8.1.2)
 set(FFMPEG_SRC ${CMAKE_BINARY_DIR}/FFmpeg-${FFMPEG_TAG})
 if(NOT EXISTS ${FFMPEG_SRC}/libavcodec/avcodec.h)
@@ -55,3 +56,18 @@ target_include_directories(aveditor_ffmpeg PRIVATE ${FFMPEG_SRC})
 target_link_libraries(aveditor_ffmpeg
   avformat avcodec swscale swresample avutil android log)
 target_compile_options(aveditor_ffmpeg PRIVATE -Wall -Wextra -Wno-unused-parameter)
+
+# --- Timeline / export engine (MediaCodec + own clock) ---
+add_library(aveditor_engine SHARED
+  engine/aveditor_engine.cpp
+  engine/jni_bridge.cpp)
+target_include_directories(aveditor_engine PRIVATE engine)
+target_compile_features(aveditor_engine PRIVATE cxx_std_17)
+target_compile_options(aveditor_engine PRIVATE -Wall -Wextra -Wno-unused-parameter)
+find_library(MEDIANDK mediandk)
+find_library(ANDROID_LIB android)
+find_library(LOG_LIB log)
+target_link_libraries(aveditor_engine
+  ${MEDIANDK}
+  ${ANDROID_LIB}
+  ${LOG_LIB})

@@ -6,6 +6,7 @@ import 'package:aveditor/models/clip_trim.dart';
 import 'package:aveditor/models/export_preset.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/video_project.dart';
+import 'package:aveditor/services/playback_fallback_transcoder.dart';
 import 'package:aveditor/services/project_storage_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -152,6 +153,34 @@ void main() {
       ) as Map<String, dynamic>;
       expect(json['id'], projectId);
       expect(json['durationMs'], 0);
+    });
+
+    test('createFromImport replaces an unplayable source with source.mp4', () async {
+      final picked = File('${tempRoot.path}/picked.mov');
+      await picked.writeAsString('hevc-original');
+      final converting = ProjectStorageService(
+        rootOverride: Directory('${tempRoot.path}/aveditor'),
+        transcoder: PlaybackFallbackTranscoder(
+          shouldTranscode: (_) async => true,
+          run: (arguments) async {
+            await File(arguments.last).writeAsString('h264-sdr');
+            return true;
+          },
+        ),
+      );
+
+      final projectId = await converting.createFromImport(picked.path);
+      final loaded = await converting.load(projectId);
+
+      expect(loaded!.sourcePath, endsWith('/source.mp4'));
+      expect(await File(loaded.sourcePath).readAsString(), 'h264-sdr');
+      expect(
+        await File(
+          '${tempRoot.path}/aveditor/projects/$projectId/source.mov',
+        ).exists(),
+        isFalse,
+      );
+      expect(await picked.readAsString(), 'hevc-original');
     });
 
     test('listSummaries returns all projects newest first', () async {

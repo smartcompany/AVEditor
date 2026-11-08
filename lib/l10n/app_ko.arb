@@ -63,6 +63,7 @@
   "trimmedDuration": "클립 {duration}",
   "save": "저장",
   "exporting": "동영상 내보내는 중…",
+  "convertingVideo": "영상을 변환하는 중…",
   "exportSuccess": "갤러리에 저장했습니다.",
   "exportFailed": "내보내기에 실패했습니다.",
   "exportFailedWithMessage": "내보내기 실패: {message}",

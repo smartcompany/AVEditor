@@ -63,6 +63,7 @@
   "trimmedDuration": "片段 {duration}",
   "save": "保存",
   "exporting": "正在导出视频…",
+  "convertingVideo": "正在转换视频…",
   "exportSuccess": "已保存到相册。",
   "exportFailed": "导出失败。",
   "exportFailedWithMessage": "导出失败：{message}",

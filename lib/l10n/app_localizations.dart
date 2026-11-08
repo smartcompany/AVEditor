@@ -480,6 +480,12 @@ abstract class AppLocalizations {
   /// **'Exporting video…'**
   String get exporting;
 
+  /// No description provided for @convertingVideo.
+  ///
+  /// In en, this message translates to:
+  /// **'Converting video…'**
+  String get convertingVideo;
+
   /// No description provided for @exportSuccess.
   ///
   /// In en, this message translates to:

@@ -207,6 +207,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get exporting => '동영상 내보내는 중…';
 
   @override
+  String get convertingVideo => '영상을 변환하는 중…';
+
+  @override
   String get exportSuccess => '갤러리에 저장했습니다.';
 
   @override

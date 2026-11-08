@@ -6,16 +6,16 @@ import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/services/composition_segments.dart';
 import 'package:aveditor/services/export_service.dart';
 import 'package:aveditor/services/transition_engine.dart';
+import 'package:aveditor/utils/debug_agent_log.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 /// Flutter ↔ platform video engine.
 ///
-/// Timeline playback and album export share [encodeCompositionSegments].
-/// This class only transports that plan. iOS draws it with
-/// AVVideoCompositing, Android with the Media3 composition player.
-/// The editor does not keep a second transition implementation per platform.
+/// Timeline playback and album export share one packed segment plan.
+/// iOS draws it with AVVideoCompositing; Android with libaveditor_engine
+/// (MediaCodec + GLES + own clock). No second transition model per platform.
 class NativeVideoEngine {
   NativeVideoEngine._();
 
@@ -203,12 +203,48 @@ class NativeVideoEngine {
     _playing = true;
     if (!_playingController.isClosed) _playingController.add(true);
     try {
-      final result = await _channel.invokeMapMethod<String, dynamic>('play');
+      // Dual-seq CompositionPlayer on emulator can sit in BUFFERING >4s after scrub.
+      final result = await _channel
+          .invokeMapMethod<String, dynamic>('play')
+          .timeout(const Duration(seconds: 8));
       debugPrint('NativeVideoEngine.play result $result');
+      // #region agent log
+      debugAgentLog(
+        'native_video_engine.dart:play',
+        'play.snapshot',
+        hypothesisId: 'F,G',
+        data: {
+          'state': result?['state'],
+          'pos': result?['pos'],
+          'playWhenReady': result?['playWhenReady'],
+          'isPlaying': result?['isPlaying'],
+          'error': result?['error'],
+        },
+      );
+      // #endregion
     } on PlatformException catch (e, st) {
       _playing = false;
       if (!_playingController.isClosed) _playingController.add(false);
       debugPrint('NativeVideoEngine.play failed: ${e.code} ${e.message}\n$st');
+      // #region agent log
+      debugAgentLog(
+        'native_video_engine.dart:play',
+        'play.fail',
+        hypothesisId: 'B',
+        data: {'kind': 'platform', 'detail': '${e.code} ${e.message}'},
+      );
+      // #endregion
+    } on TimeoutException catch (e, st) {
+      debugPrint('NativeVideoEngine.play timeout: $e\n$st');
+      // #region agent log
+      debugAgentLog(
+        'native_video_engine.dart:play',
+        'play.fail',
+        hypothesisId: 'B',
+        data: {'kind': 'timeout', 'detail': e.toString()},
+      );
+      // #endregion
+      // Keep optimistic playing; native may still have started.
     }
   }
 
@@ -283,6 +319,23 @@ class NativeVideoEngine {
     if (event is! Map) return;
     final map = Map<String, dynamic>.from(event);
     final type = map['type'] as String?;
+    // #region agent log
+    if (type == 'debugAgent') {
+      final data = map['data'];
+      debugAgentLog(
+        map['location'] as String? ?? 'native',
+        map['message'] as String? ?? 'event',
+        hypothesisId: map['hypothesisId'] as String? ?? '',
+        runId: map['runId'] as String? ?? 'pre',
+        data: data is Map
+            ? Map<String, Object?>.from(
+                data.map((k, v) => MapEntry(k.toString(), v)),
+              )
+            : const {},
+      );
+      return;
+    }
+    // #endregion
     if (type == 'position') {
       final ms = map['positionMs'] as int? ?? 0;
       _position = Duration(milliseconds: ms);
@@ -409,7 +462,7 @@ class NativeVideoEngine {
 
   Widget buildPreview({BoxFit fit = BoxFit.contain}) {
     final id = _textureId;
-    if (!_active || id == null || !_hasFrame) {
+    if (!_active || id == null) {
       return const ColoredBox(color: Color(0xFF000000));
     }
     return FittedBox(

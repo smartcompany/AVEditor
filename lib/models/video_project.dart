@@ -102,6 +102,21 @@ class VideoProject {
 
   void touch() => updatedAt = DateTime.now();
 
+  VideoProject withSourcePath(String sourcePath) {
+    return VideoProject(
+      id: id,
+      sourcePath: sourcePath,
+      duration: duration,
+      segments: segments.map((segment) => segment.copyWith()).toList(),
+      overlays: List<TextOverlay>.from(overlays),
+      musicTracks: musicTracks.map((track) => track.copyWith()).toList(),
+      preset: preset,
+      canvas: canvas,
+      rotation: rotation,
+      updatedAt: updatedAt,
+    );
+  }
+
   VideoProject copyWith({
     List<ClipSegment>? segments,
     List<TextOverlay>? overlays,

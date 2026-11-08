@@ -46,20 +46,11 @@ internal data class TimelinePreview(
   val mix: TimelineMix? = null,
 )
 
-/** Probe / waveform / export helpers — Media3 + MediaCodec (no FFmpeg). */
+/** Probe / waveform / composition helpers. Timeline export uses [EngineExporter]. */
 @UnstableApi
 object NativeVideoEngineMedia {
-  private var activeTransformer: androidx.media3.transformer.Transformer? = null
-  private var activeOutput: File? = null
-  private var progressHandler: android.os.Handler? = null
-  private var progressTick: Runnable? = null
-  private var cancelRequested = false
-
   fun cancelExport() {
-    cancelRequested = true
-    progressTick?.let { progressHandler?.removeCallbacks(it) }
-    activeTransformer?.cancel()
-    activeOutput?.delete()
+    EngineExporter.cancel()
   }
 
   fun probe(path: String): Map<String, Any> {
@@ -98,6 +89,29 @@ object NativeVideoEngineMedia {
     } finally {
       retriever.release()
     }
+  }
+
+  internal data class OrientedMeta(
+    val width: Int,
+    val height: Int,
+    val hasAudio: Boolean,
+  )
+
+  /** Preview-sized orientation used by the native timeline engine. */
+  internal fun probeOriented(sourcePath: String): OrientedMeta {
+    val probed = probe(sourcePath)
+    val w = (probed["width"] as? Int) ?: 720
+    val h = (probed["height"] as? Int) ?: 1280
+    val longSide = max(w, h).coerceAtLeast(1)
+    val fit = min(1.0, 720.0 / longSide)
+    val outW = max(2, (kotlin.math.floor(w * fit / 2.0) * 2.0).toInt())
+    val outH = max(2, (kotlin.math.floor(h * fit / 2.0) * 2.0).toInt())
+    return OrientedMeta(outW, outH, probed["hasAudio"] as? Boolean ?: false)
+  }
+
+  /** Segment packing for the C++ engine (visible pieces only; no gap fillers). */
+  internal fun packSegmentsForEngine(segments: List<*>): ExportPlan {
+    return packSegments(parseSegments(segments))
   }
 
   fun decodeWaveform(path: String, peakCount: Int): Map<String, Any> {
@@ -149,9 +163,8 @@ object NativeVideoEngineMedia {
   }
 
   /**
-   * Preview composition. One [androidx.media3.transformer.CompositionPlayer] plays one
-   * video sequence. A transition is drawn in the frame effect from that frame plus the
-   * incoming picture.
+   * Preview composition. Matches export: two overlapping video sequences plus
+   * [TransitionCompositor] / [TransitionBlendEffect] when a blend exists.
    */
   internal fun buildTimelinePreview(
     sourcePath: String,
@@ -219,29 +232,6 @@ object NativeVideoEngineMedia {
     )
   }
 
-  /**
-   * Blend windows for a player that is not CompositionPlayer.
-   * [TimelineMix.incomingSourceUs] reads the full plan. The outgoing picture
-   * stays the frame the player is already decoding.
-   */
-  internal fun fillPlaybackMix(mix: TimelineMix, sourcePath: String, segments: List<*>) {
-    val parsed = parseSegments(segments)
-    if (parsed.isEmpty()) {
-      mix.sourcePath = ""
-      mix.set(ExportPlan(arrayOf(ArrayList(), ArrayList()), emptyList(), 0L))
-      return
-    }
-    val plan = packSegments(parsed)
-    mix.setPlayback(playbackLayout(segments))
-    if (plan.blends.isEmpty()) {
-      mix.sourcePath = ""
-      mix.set(ExportPlan(arrayOf(ArrayList(), ArrayList()), emptyList(), plan.totalMs))
-    } else {
-      mix.sourcePath = sourcePath
-      mix.set(plan)
-    }
-  }
-
   /** Clips played when the preview has no transition. */
   private fun previewPlan(segments: List<*>): ExportPlan {
     val clips = coalesceHardCuts(parseSegments(segments))
@@ -259,103 +249,24 @@ object NativeVideoEngineMedia {
     return mix.matchesPlayback(playbackLayout(segments))
   }
 
-  /** One sequence. Through a blend the player keeps showing the outgoing clip. */
+  /** Same track layout preview and export share for a segment list. */
   private fun playbackLayout(segments: List<*>): ExportPlan {
     val packed = packSegments(parseSegments(segments))
     if (packed.blends.isEmpty()) return previewPlan(segments)
-    return ExportPlan(
-      arrayOf(playbackPieces(packed), ArrayList()),
-      emptyList(),
-      packed.totalMs,
-    )
+    return fillDecoderGaps(packed)
   }
 
+  /**
+   * Album export. Delegates to [EngineExporter] (same native engine as preview).
+   * Media3 Transformer is no longer used on this path.
+   */
   fun export(
     context: Context,
     args: Map<*, *>,
     onProgress: (Double) -> Unit,
     onComplete: (Result<String>) -> Unit,
   ) {
-    val sourcePath = args["sourcePath"] as? String
-    val outputPath = args["outputPath"] as? String
-    if (sourcePath == null || outputPath == null) {
-      onComplete(Result.failure(IllegalArgumentException("Missing export paths")))
-      return
-    }
-    File(outputPath).delete()
-    cancelRequested = false
-    activeOutput = File(outputPath)
-
-    val width = (args["width"] as? Number)?.toInt() ?: 1080
-    val height = (args["height"] as? Number)?.toInt() ?: 1920
-    val rotation = (args["rotationDegrees"] as? Number)?.toFloat() ?: 0f
-    val segments = args["segments"] as? List<*> ?: emptyList<Any>()
-    val streamCopy = args["streamCopy"] as? Boolean ?: false
-
-    val hasVideoAudio = args["hasVideoAudio"] as? Boolean ?: true
-    val overlays = args["overlays"] as? List<*> ?: emptyList<Any>()
-    val music = args["music"] as? List<*> ?: emptyList<Any>()
-    val composition = buildExportComposition(
-      sourcePath = sourcePath,
-      width = width,
-      height = height,
-      rotationDegrees = rotation,
-      segments = segments,
-      streamCopy = streamCopy,
-      hasVideoAudio = hasVideoAudio,
-      overlays = overlays,
-      music = music,
-    )
-
-    val transformer = Transformer.Builder(context)
-      .setVideoMimeType(MimeTypes.VIDEO_H264)
-      .setAudioMimeType(MimeTypes.AUDIO_AAC)
-      .addListener(
-        object : Transformer.Listener {
-          override fun onCompleted(composition: Composition, result: ExportResult) {
-            progressTick?.let { progressHandler?.removeCallbacks(it) }
-            if (cancelRequested) {
-              File(outputPath).delete()
-              onComplete(Result.failure(IllegalStateException("export_cancelled")))
-              return
-            }
-            onProgress(1.0)
-            onComplete(Result.success(outputPath))
-          }
-
-          override fun onError(
-            composition: Composition,
-            result: ExportResult,
-            exception: ExportException,
-          ) {
-            progressTick?.let { progressHandler?.removeCallbacks(it) }
-            if (cancelRequested) {
-              File(outputPath).delete()
-              onComplete(Result.failure(IllegalStateException("export_cancelled")))
-              return
-            }
-            onComplete(Result.failure(exception))
-          }
-        },
-      )
-      .build()
-
-    // Progress polling — Transformer doesn't expose a continuous callback on all versions.
-    val handler = android.os.Handler(Looper.getMainLooper())
-    val tick = object : Runnable {
-      override fun run() {
-        onProgress(0.5)
-        handler.postDelayed(this, 250)
-      }
-    }
-    progressHandler = handler
-    progressTick = tick
-    handler.post(tick)
-
-    activeTransformer = transformer
-    transformer.start(composition, outputPath)
-    // Stop polling when complete/error via listener above; cancel after a grace.
-    handler.postDelayed({ handler.removeCallbacks(tick) }, 120_000)
+    EngineExporter.export(context, args, onProgress, onComplete)
   }
 
   private fun buildExportComposition(
@@ -389,22 +300,22 @@ object NativeVideoEngineMedia {
       ).build()
     }
 
-    val plan = packSegments(parsed)
-    val playbackBlend = forPlayback && plan.blends.isNotEmpty()
-    val played = if (playbackBlend) playbackPieces(plan) else ArrayList()
-    val drawPlan = if (playbackBlend) {
-      ExportPlan(arrayOf(played, ArrayList<VideoPiece>()), plan.blends, plan.totalMs)
-    } else {
-      plan
+    val packed = packSegments(parsed)
+    // Preview and export both need a frame on every compositor input.
+    val plan = when {
+      packed.blends.isEmpty() -> packed
+      else -> fillDecoderGaps(packed)
     }
     val videoEffects = videoEffects(width, height, rotationDegrees)
     val sequences = ArrayList<EditedMediaItemSequence>()
     val blends = plan.blends
     if (forPlayback && mix != null) {
-      mix.sourcePath = if (playbackBlend) sourcePath else ""
+      // Empty sourcePath → TransitionBlendEffect uses the packed compositor frame
+      // (same as export / iOS), not a bolt-on IncomingGpu decoder.
+      mix.sourcePath = ""
       mix.setPlayback(playbackLayout(segments))
       mix.set(
-        if (playbackBlend) {
+        if (blends.isNotEmpty()) {
           plan
         } else {
           ExportPlan(arrayOf(ArrayList(), ArrayList()), emptyList(), plan.totalMs)
@@ -421,46 +332,29 @@ object NativeVideoEngineMedia {
         it.set(plan)
       }
     }
-    if (forPlayback || blends.isEmpty()) {
-      if (playbackBlend) {
-        sequences.add(
-          playbackSequence(
-            sourcePath,
-            played,
-            plan.totalMs,
-            videoEffects,
-            removeAudio = !hasVideoAudio,
-          ),
-        )
-      } else {
-        // A split is a marker. Separate clipped items make the export join at a
-        // boundary that does not exist in the source.
-        val items = coalesceHardCuts(parsed).map { seg ->
-          clipItem(
-            sourcePath,
-            seg.startMs,
-            seg.endMs,
-            removeAudio = !hasVideoAudio,
-            effects = videoEffects,
-          )
-        }
-        sequences.add(
-          if (hasVideoAudio) {
-            EditedMediaItemSequence.withAudioAndVideoFrom(items)
-          } else {
-            EditedMediaItemSequence.withVideoFrom(items)
-          },
+    if (blends.isEmpty()) {
+      // A split is a marker. Separate clipped items make the export join at a
+      // boundary that does not exist in the source.
+      val items = coalesceHardCuts(parsed).map { seg ->
+        clipItem(
+          sourcePath,
+          seg.startMs,
+          seg.endMs,
+          removeAudio = !hasVideoAudio,
+          effects = videoEffects,
         )
       }
+      sequences.add(
+        if (hasVideoAudio) {
+          EditedMediaItemSequence.withAudioAndVideoFrom(items)
+        } else {
+          EditedMediaItemSequence.withVideoFrom(items)
+        },
+      )
     } else {
-      sequences.add(videoSequence(sourcePath, plan.tracks[0], plan.totalMs, videoEffects))
-      sequences.add(videoSequence(sourcePath, plan.tracks[1], plan.totalMs, videoEffects))
-      if (hasVideoAudio) {
-        val audioItems = parsed.map { seg ->
-          clipItem(sourcePath, seg.startMs, seg.endMs, removeVideo = true)
-        }
-        sequences.add(EditedMediaItemSequence.withAudioFrom(audioItems))
-      }
+      sequences.addAll(
+        transitionSequences(sourcePath, parsed, plan, videoEffects, hasVideoAudio),
+      )
     }
     for (clip in music) {
       val raw = clip as? Map<*, *> ?: continue
@@ -484,9 +378,9 @@ object NativeVideoEngineMedia {
       "compose segments=${parsed.size} totalMs=${plan.totalMs} " +
         "blends=${blends.size} overlays=${overlays.size} music=${music.size} " +
         "mode=${when {
-          forPlayback -> "playback"
-          blends.isEmpty() -> "reencode"
-          else -> "transition"
+          blends.isEmpty() -> "cut"
+          forPlayback -> "preview-transition"
+          else -> "export-transition"
         }} " +
         "size=${width}x$height",
     )
@@ -508,8 +402,8 @@ object NativeVideoEngineMedia {
           "out=${blend.outgoingTrack} in=${blend.incomingTrack}",
       )
     }
-    for (track in drawPlan.tracks.indices) {
-      for (piece in drawPlan.tracks[track]) {
+    for (track in plan.tracks.indices) {
+      for (piece in plan.tracks[track]) {
         val speed = piece.srcDurMs.toFloat() / piece.compDurMs.toFloat()
         Log.i(
           "NativeVideoEngine",
@@ -520,7 +414,7 @@ object NativeVideoEngineMedia {
       }
     }
     val builder = Composition.Builder(sequences)
-    if (holder != null && !forPlayback) {
+    if (holder != null) {
       builder.setVideoCompositorSettings(TransitionCompositor(width, height, holder))
     }
     val compositionEffects = ArrayList<androidx.media3.common.Effect>()
@@ -552,6 +446,29 @@ object NativeVideoEngineMedia {
       )
     }
     return Effects(emptyList(), video)
+  }
+
+  /**
+   * Transition graph shared by preview and export. Two video sequences overlap
+   * for the blend. Clip audio is its own sequence.
+   */
+  private fun transitionSequences(
+    sourcePath: String,
+    segments: List<ExportSegment>,
+    plan: ExportPlan,
+    effects: Effects,
+    hasVideoAudio: Boolean,
+  ): List<EditedMediaItemSequence> {
+    val sequences = ArrayList<EditedMediaItemSequence>()
+    sequences.add(videoSequence(sourcePath, plan.tracks[0], plan.totalMs, effects))
+    sequences.add(videoSequence(sourcePath, plan.tracks[1], plan.totalMs, effects))
+    if (hasVideoAudio) {
+      val audioItems = segments.map { seg ->
+        clipItem(sourcePath, seg.startMs, seg.endMs, removeVideo = true)
+      }
+      sequences.add(EditedMediaItemSequence.withAudioFrom(audioItems))
+    }
+    return sequences
   }
 
   private fun videoSequence(
@@ -597,8 +514,8 @@ object NativeVideoEngineMedia {
   }
 
   /**
-   * One media item for the whole preview. A new item at the end of a blend
-   * releases the decoder and the next period stays buffering.
+   * One media item per contiguous outgoing stretch. A new item at the end of a
+   * blend releases the decoder and the next period stays buffering.
    */
   private fun playbackSequence(
     sourcePath: String,
@@ -634,14 +551,7 @@ object NativeVideoEngineMedia {
       while (next < pieces.size) {
         val piece = pieces[next]
         if (piece.compStartMs != compEnd) break
-        if (piece.srcStartMs > srcEnd) {
-          val gapUs = (piece.srcStartMs - srcEnd) * 1000L
-          changes.add(inputUs to gapUs * 2f)
-          inputUs += gapUs
-          srcEnd = piece.srcStartMs
-        } else if (piece.srcStartMs != srcEnd) {
-          break
-        }
+        if (piece.srcStartMs != srcEnd) break
         val speed = pieceSpeed(piece)
         if (abs(speed - changes.last().second) > 0.01f) {
           changes.add(inputUs to speed)

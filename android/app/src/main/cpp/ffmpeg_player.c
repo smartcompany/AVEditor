@@ -58,9 +58,35 @@ typedef struct FfPlayer {
   JNIEnv *play_env;
   int play_attached;
   pthread_t thread;
+  pthread_t audio_thread;
+  pthread_t video_thread;
+  pthread_t present_thread;
+  int thread_started;
+  int audio_started;
+  int video_started;
+  int present_started;
+  int video_hold;
+  int video_idle;
+  int demux_eof;
+  int video_drained;
+  AVPacket *vq[8];
+  int vq_i;
+  int vq_n;
+  int vq_flush;
+  int vq_drop_key;
+  AVFrame *fq[3];
+  int fq_pace[3];
+  int fq_i;
+  int fq_n;
+  pthread_mutex_t pcm_mu;
+  pthread_cond_t pcm_cv;
+  uint8_t *pcm;
+  int pcm_cap;
+  int pcm_r;
+  int pcm_fill;
+  int pcm_reset;
   pthread_mutex_t mu;
   pthread_cond_t cv;
-  int thread_started;
   int stop;
   int playing;
   int seek_req;
@@ -210,7 +236,7 @@ static void present_frame(FfPlayer *player, const AVFrame *frame) {
   emit_frame(player, frame_ms(player, frame));
   pthread_mutex_lock(&player->mu);
   player->present_gen += 1;
-  if (player->present_wait) pthread_cond_broadcast(&player->cv);
+  pthread_cond_broadcast(&player->cv);
   pthread_mutex_unlock(&player->mu);
 }
 
@@ -221,17 +247,24 @@ static int64_t frame_ms(const FfPlayer *player, const AVFrame *frame) {
   return av_rescale_q(pts, player->video_tb, (AVRational){1, 1000});
 }
 
+static void attach_thread(FfPlayer *player, int *attached) {
+  *attached = 0;
+  if (player->vm == NULL) return;
+  JNIEnv *env = NULL;
+  if ((*player->vm)->GetEnv(player->vm, (void **)&env, JNI_VERSION_1_6) == JNI_OK) return;
+  if ((*player->vm)->AttachCurrentThread(player->vm, &env, NULL) == 0) *attached = 1;
+}
+
+static void detach_thread(FfPlayer *player, int attached) {
+  if (attached && player->vm != NULL) (*player->vm)->DetachCurrentThread(player->vm);
+}
+
 static JNIEnv *play_env(FfPlayer *player) {
-  if (player->play_env != NULL) return player->play_env;
   if (player->vm == NULL) return NULL;
   JNIEnv *env = NULL;
-  if ((*player->vm)->GetEnv(player->vm, (void **)&env, JNI_VERSION_1_6) == JNI_OK) {
-    player->play_env = env;
-    return env;
+  if ((*player->vm)->GetEnv(player->vm, (void **)&env, JNI_VERSION_1_6) != JNI_OK) {
+    return NULL;
   }
-  if ((*player->vm)->AttachCurrentThread(player->vm, &env, NULL) != 0) return NULL;
-  player->play_env = env;
-  player->play_attached = 1;
   return env;
 }
 
@@ -250,11 +283,70 @@ static void write_pcm(FfPlayer *player, const uint8_t *data, int bytes) {
 
 static void reset_audio(FfPlayer *player) {
   player->audio_samples = 0;
+  pthread_mutex_lock(&player->pcm_mu);
+  player->pcm_fill = 0;
+  player->pcm_r = 0;
+  player->pcm_reset = 1;
+  pthread_cond_broadcast(&player->pcm_cv);
+  pthread_mutex_unlock(&player->pcm_mu);
   if (player->self == NULL || player->on_audio_reset == NULL) return;
   JNIEnv *env = play_env(player);
   if (env == NULL) return;
   (*env)->CallVoidMethod(env, player->self, player->on_audio_reset);
   if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+}
+
+static void pcm_push(FfPlayer *player, const uint8_t *data, int bytes) {
+  int off = 0;
+  pthread_mutex_lock(&player->pcm_mu);
+  while (off < bytes && !player->stop && !player->pcm_reset) {
+    int space = player->pcm_cap - player->pcm_fill;
+    if (space <= 0) {
+      pthread_cond_wait(&player->pcm_cv, &player->pcm_mu);
+      continue;
+    }
+    int n = bytes - off;
+    if (n > space) n = space;
+    int at = (player->pcm_r + player->pcm_fill) % player->pcm_cap;
+    int first = player->pcm_cap - at;
+    if (first > n) first = n;
+    memcpy(player->pcm + at, data + off, (size_t)first);
+    if (n > first) memcpy(player->pcm, data + off + first, (size_t)(n - first));
+    player->pcm_fill += n;
+    off += n;
+    pthread_cond_signal(&player->pcm_cv);
+  }
+  pthread_mutex_unlock(&player->pcm_mu);
+}
+
+static int pcm_take(FfPlayer *player, uint8_t *dst, int cap) {
+  pthread_mutex_lock(&player->pcm_mu);
+  while (!player->stop && !player->pcm_reset && player->pcm_fill == 0) {
+    pthread_cond_wait(&player->pcm_cv, &player->pcm_mu);
+  }
+  if (player->stop) {
+    pthread_mutex_unlock(&player->pcm_mu);
+    return -1;
+  }
+  if (player->pcm_reset) {
+    player->pcm_fill = 0;
+    player->pcm_r = 0;
+    player->pcm_reset = 0;
+    pthread_cond_broadcast(&player->pcm_cv);
+    pthread_mutex_unlock(&player->pcm_mu);
+    return -2;
+  }
+  int n = player->pcm_fill;
+  if (n > cap) n = cap;
+  int first = player->pcm_cap - player->pcm_r;
+  if (first > n) first = n;
+  memcpy(dst, player->pcm + player->pcm_r, (size_t)first);
+  if (n > first) memcpy(dst + first, player->pcm, (size_t)(n - first));
+  player->pcm_r = (player->pcm_r + n) % player->pcm_cap;
+  player->pcm_fill -= n;
+  pthread_cond_signal(&player->pcm_cv);
+  pthread_mutex_unlock(&player->pcm_mu);
+  return n;
 }
 
 static void emit_frame(FfPlayer *player, int64_t pts_ms) {
@@ -295,7 +387,7 @@ static void emit_audio(FfPlayer *player, const AVFrame *frame) {
   if (converted > 0) {
     int bytes = converted * player->channels * (int)sizeof(int16_t);
     player->audio_samples += converted;
-    write_pcm(player, out, bytes);
+    pcm_push(player, out, bytes);
   }
   av_freep(&out);
 }
@@ -319,22 +411,6 @@ static void wait_until(FfPlayer *player, int64_t media_ms) {
     struct timespec ts = {0, 4 * 1000 * 1000};
     nanosleep(&ts, NULL);
   }
-}
-
-static int decode_video_packet(FfPlayer *player, AVPacket *packet, int present, int pace) {
-  if (avcodec_send_packet(player->video, packet) != 0) return 0;
-  int drew = 0;
-  while (avcodec_receive_frame(player->video, player->vframe) == 0) {
-    int64_t ms = frame_ms(player, player->vframe);
-    pthread_mutex_lock(&player->mu);
-    player->position_ms = ms;
-    pthread_mutex_unlock(&player->mu);
-    if (pace) wait_until(player, ms);
-    if (present) present_frame(player, player->vframe);
-    drew = 1;
-    av_frame_unref(player->vframe);
-  }
-  return drew;
 }
 
 static void decode_audio_packet(FfPlayer *player, AVPacket *packet) {
@@ -376,6 +452,7 @@ static void reposition(FfPlayer *player, int64_t ms) {
   player->demux_ready = 1;
 }
 
+
 static int target_moved(int64_t target, int64_t shown) {
   if (shown < 0) return 0;
   if (target + 80 < shown) return 1;
@@ -404,45 +481,60 @@ static void perform_seek(FfPlayer *player, int64_t ms, int exact) {
       int read = av_read_frame(player->fmt, player->packet);
       if (read < 0) return;
       reads += 1;
-      if (player->packet->stream_index == player->video_index &&
-          avcodec_send_packet(player->video, player->packet) == 0) {
-        while (avcodec_receive_frame(player->video, player->vframe) == 0) {
-          int64_t pts = frame_ms(player, player->vframe);
-          pthread_mutex_lock(&player->mu);
-          player->position_ms = pts;
-          pthread_mutex_unlock(&player->mu);
-          pulled = take_seek(player, &target);
-          if (pulled < 0) {
-            av_frame_unref(player->vframe);
-            av_packet_unref(player->packet);
-            return;
-          }
-          if (pulled && target_moved(target, pts)) {
-            av_frame_unref(player->vframe);
-            av_packet_unref(player->packet);
-            restart = 1;
+      if (player->packet->stream_index == player->video_index) {
+        int sent = 0;
+        while (!sent) {
+          int st = avcodec_send_packet(player->video, player->packet);
+          if (st == 0) {
+            sent = 1;
+          } else if (st == AVERROR(EAGAIN)) {
+            if (avcodec_receive_frame(player->video, player->vframe) != 0) break;
+          } else {
             break;
           }
-          present_frame(player, player->vframe);
-          player->demux_ms = pts;
-          av_frame_unref(player->vframe);
-          if (pts + 40 >= target) {
+          while (avcodec_receive_frame(player->video, player->vframe) == 0) {
+            int64_t pts = frame_ms(player, player->vframe);
+            pthread_mutex_lock(&player->mu);
+            player->position_ms = pts;
+            pthread_mutex_unlock(&player->mu);
             pulled = take_seek(player, &target);
             if (pulled < 0) {
+              av_frame_unref(player->vframe);
               av_packet_unref(player->packet);
               return;
             }
-            if (!pulled || !target_moved(target, pts)) {
-              if (pulled && target > pts + 40) continue;
+            if (pulled && target_moved(target, pts)) {
+              av_frame_unref(player->vframe);
               av_packet_unref(player->packet);
-              return;
+              restart = 1;
+              break;
             }
-            av_packet_unref(player->packet);
-            restart = 1;
-            break;
+            present_frame(player, player->vframe);
+            player->demux_ms = pts;
+            av_frame_unref(player->vframe);
+            if (pts + 40 >= target) {
+              pulled = take_seek(player, &target);
+              if (pulled < 0) {
+                av_packet_unref(player->packet);
+                return;
+              }
+              if (!pulled || !target_moved(target, pts)) {
+                if (pulled && target > pts + 40) continue;
+                av_packet_unref(player->packet);
+                return;
+              }
+              av_packet_unref(player->packet);
+              restart = 1;
+              break;
+            }
           }
+          if (restart) break;
         }
-        if (restart) break;
+      } else if (player->packet->stream_index == player->audio_index) {
+        pthread_mutex_lock(&player->mu);
+        int feed = player->playing;
+        pthread_mutex_unlock(&player->mu);
+        if (feed) decode_audio_packet(player, player->packet);
       }
       if (!restart) av_packet_unref(player->packet);
     }
@@ -450,8 +542,43 @@ static void perform_seek(FfPlayer *player, int64_t ms, int exact) {
   }
 }
 
+
+static void *audio_out_thread(void *arg) {
+  FfPlayer *player = (FfPlayer *)arg;
+  int attached = 0;
+  attach_thread(player, &attached);
+  uint8_t *chunk = (uint8_t *)malloc(8192);
+  if (chunk == NULL) {
+    detach_thread(player, attached);
+    return NULL;
+  }
+  for (;;) {
+    pthread_mutex_lock(&player->mu);
+    while (!player->stop && !player->playing) {
+      pthread_cond_wait(&player->cv, &player->mu);
+    }
+    int stop = player->stop;
+    pthread_mutex_unlock(&player->mu);
+    if (stop) break;
+    int n = pcm_take(player, chunk, 8192);
+    if (n < 0) {
+      if (n == -1) break;
+      continue;
+    }
+    pthread_mutex_lock(&player->mu);
+    int feed = player->playing && !player->stop;
+    pthread_mutex_unlock(&player->mu);
+    if (feed) write_pcm(player, chunk, n);
+  }
+  free(chunk);
+  detach_thread(player, attached);
+  return NULL;
+}
+
 static void *play_thread(void *arg) {
   FfPlayer *player = (FfPlayer *)arg;
+  int attached = 0;
+  attach_thread(player, &attached);
   for (;;) {
     pthread_mutex_lock(&player->mu);
     while (!player->stop && !player->seek_req && !player->playing) {
@@ -473,7 +600,14 @@ static void *play_thread(void *arg) {
 
     int read = av_read_frame(player->fmt, player->packet);
     if (read < 0) {
-      decode_video_packet(player, NULL, 1, 1);
+      if (avcodec_send_packet(player->video, NULL) == 0) {
+        while (avcodec_receive_frame(player->video, player->vframe) == 0) {
+          int64_t ms = frame_ms(player, player->vframe);
+          wait_until(player, ms);
+          present_frame(player, player->vframe);
+          av_frame_unref(player->vframe);
+        }
+      }
       pthread_mutex_lock(&player->mu);
       player->playing = 0;
       player->ended = 1;
@@ -482,18 +616,38 @@ static void *play_thread(void *arg) {
       continue;
     }
     if (player->packet->stream_index == player->video_index) {
-      decode_video_packet(player, player->packet, 1, 1);
+      int sent = 0;
+      while (!sent) {
+        int st = avcodec_send_packet(player->video, player->packet);
+        if (st == 0) {
+          sent = 1;
+        } else if (st == AVERROR(EAGAIN)) {
+          if (avcodec_receive_frame(player->video, player->vframe) != 0) break;
+        } else {
+          break;
+        }
+        while (avcodec_receive_frame(player->video, player->vframe) == 0) {
+          int64_t ms = frame_ms(player, player->vframe);
+          pthread_mutex_lock(&player->mu);
+          player->position_ms = ms;
+          int show = player->playing && !player->stop && !player->seek_req;
+          pthread_mutex_unlock(&player->mu);
+          if (!show) {
+            av_frame_unref(player->vframe);
+            break;
+          }
+          wait_until(player, ms);
+          present_frame(player, player->vframe);
+          av_frame_unref(player->vframe);
+        }
+      }
     } else if (player->packet->stream_index == player->audio_index) {
       decode_audio_packet(player, player->packet);
     }
     av_packet_unref(player->packet);
   }
   release_gl(player);
-  if (player->play_attached && player->vm != NULL) {
-    (*player->vm)->DetachCurrentThread(player->vm);
-  }
-  player->play_env = NULL;
-  player->play_attached = 0;
+  detach_thread(player, attached);
   return NULL;
 }
 
@@ -524,11 +678,24 @@ static FfPlayer *player_open(const char *path) {
   player->channels = 2;
   pthread_mutex_init(&player->mu, NULL);
   pthread_cond_init(&player->cv, NULL);
+  pthread_mutex_init(&player->pcm_mu, NULL);
+  pthread_cond_init(&player->pcm_cv, NULL);
+  player->pcm_cap = 256 * 1024;
+  player->pcm = (uint8_t *)malloc((size_t)player->pcm_cap);
   player->vframe = av_frame_alloc();
   player->aframe = av_frame_alloc();
   player->packet = av_packet_alloc();
-  if (player->vframe == NULL || player->aframe == NULL || player->packet == NULL) {
+  if (player->vframe == NULL || player->aframe == NULL || player->packet == NULL ||
+      player->pcm == NULL) {
     goto fail;
+  }
+  for (int i = 0; i < 8; i++) {
+    player->vq[i] = av_packet_alloc();
+    if (player->vq[i] == NULL) goto fail;
+  }
+  for (int i = 0; i < 3; i++) {
+    player->fq[i] = av_frame_alloc();
+    if (player->fq[i] == NULL) goto fail;
   }
   if (avformat_open_input(&player->fmt, path, NULL, NULL) < 0 ||
       avformat_find_stream_info(player->fmt, NULL) < 0) {
@@ -584,6 +751,8 @@ static FfPlayer *player_open(const char *path) {
       player->audio_index = -1;
     }
   }
+  if (pthread_create(&player->audio_thread, NULL, audio_out_thread, player) != 0) goto fail;
+  player->audio_started = 1;
   if (pthread_create(&player->thread, NULL, play_thread, player) != 0) goto fail;
   player->thread_started = 1;
   LOGI(
@@ -593,12 +762,17 @@ static FfPlayer *player_open(const char *path) {
   return player;
 
 fail:
-  if (player->thread_started) {
+  if (player->thread_started || player->audio_started || player->video_started ||
+      player->present_started) {
     pthread_mutex_lock(&player->mu);
     player->stop = 1;
     pthread_cond_broadcast(&player->cv);
     pthread_mutex_unlock(&player->mu);
-    pthread_join(player->thread, NULL);
+    pthread_mutex_lock(&player->pcm_mu);
+    pthread_cond_broadcast(&player->pcm_cv);
+    pthread_mutex_unlock(&player->pcm_mu);
+    if (player->thread_started) pthread_join(player->thread, NULL);
+    if (player->audio_started) pthread_join(player->audio_thread, NULL);
   }
   release_sws(player);
   swr_free(&player->swr);
@@ -608,6 +782,11 @@ fail:
   av_frame_free(&player->vframe);
   av_frame_free(&player->aframe);
   av_packet_free(&player->packet);
+  for (int i = 0; i < 8; i++) av_packet_free(&player->vq[i]);
+  for (int i = 0; i < 3; i++) av_frame_free(&player->fq[i]);
+  free(player->pcm);
+  pthread_mutex_destroy(&player->pcm_mu);
+  pthread_cond_destroy(&player->pcm_cv);
   pthread_mutex_destroy(&player->mu);
   pthread_cond_destroy(&player->cv);
   free(player);
@@ -621,7 +800,11 @@ static void player_close(FfPlayer *player) {
   player->playing = 0;
   pthread_cond_broadcast(&player->cv);
   pthread_mutex_unlock(&player->mu);
+  pthread_mutex_lock(&player->pcm_mu);
+  pthread_cond_broadcast(&player->pcm_cv);
+  pthread_mutex_unlock(&player->pcm_mu);
   if (player->thread_started) pthread_join(player->thread, NULL);
+  if (player->audio_started) pthread_join(player->audio_thread, NULL);
   if (player->window != NULL) ANativeWindow_release(player->window);
   release_sws(player);
   swr_free(&player->swr);
@@ -631,6 +814,11 @@ static void player_close(FfPlayer *player) {
   av_frame_free(&player->vframe);
   av_frame_free(&player->aframe);
   av_packet_free(&player->packet);
+  for (int i = 0; i < 8; i++) av_packet_free(&player->vq[i]);
+  for (int i = 0; i < 3; i++) av_frame_free(&player->fq[i]);
+  free(player->pcm);
+  pthread_mutex_destroy(&player->pcm_mu);
+  pthread_cond_destroy(&player->pcm_cv);
   pthread_mutex_destroy(&player->mu);
   pthread_cond_destroy(&player->cv);
   free(player);
@@ -976,10 +1164,8 @@ Java_com_smart_aveditor_nativevideo_FfmpegStill_nativeFrame(
   uint8_t *rgba = NULL;
   int dw = 0;
   int dh = 0;
-  int reads = 0;
-  while (rgba == NULL && reads < 240) {
+  while (rgba == NULL) {
     if (av_read_frame(grab->fmt, grab->packet) < 0) break;
-    reads += 1;
     if (grab->packet->stream_index == grab->video_index &&
         avcodec_send_packet(grab->video, grab->packet) == 0) {
       while (avcodec_receive_frame(grab->video, grab->frame) == 0) {
@@ -988,8 +1174,7 @@ Java_com_smart_aveditor_nativevideo_FfmpegStill_nativeFrame(
         int64_t ms = pts == AV_NOPTS_VALUE
             ? time_ms
             : av_rescale_q(pts, grab->video_tb, (AVRational){1, 1000});
-        int show = ms + 40 >= time_ms;
-        if (show) rgba = grab_rgba(grab, grab->frame, max_side, &dw, &dh);
+        if (ms >= time_ms) rgba = grab_rgba(grab, grab->frame, max_side, &dw, &dh);
         av_frame_unref(grab->frame);
         if (rgba != NULL) break;
       }
@@ -1027,43 +1212,54 @@ Java_com_smart_aveditor_nativevideo_FfmpegStill_nativeSeek(
   grab_seek(grab, time_ms);
 }
 
+static int grab_take_frame(FfGrab *grab) {
+  for (;;) {
+    int rec = avcodec_receive_frame(grab->video, grab->frame);
+    if (rec == 0) return 1;
+    if (rec != AVERROR(EAGAIN)) return 0;
+    if (av_read_frame(grab->fmt, grab->packet) < 0) {
+      avcodec_send_packet(grab->video, NULL);
+      return avcodec_receive_frame(grab->video, grab->frame) == 0;
+    }
+    if (grab->packet->stream_index != grab->video_index) {
+      av_packet_unref(grab->packet);
+      continue;
+    }
+    int send = avcodec_send_packet(grab->video, grab->packet);
+    if (send == AVERROR(EAGAIN)) {
+      rec = avcodec_receive_frame(grab->video, grab->frame);
+      if (rec == 0) {
+        avcodec_send_packet(grab->video, grab->packet);
+        av_packet_unref(grab->packet);
+        return 1;
+      }
+    }
+    av_packet_unref(grab->packet);
+  }
+}
+
 JNIEXPORT jbyteArray JNICALL
 Java_com_smart_aveditor_nativevideo_FfmpegStill_nativePull(
     JNIEnv *env, jobject thiz, jlong handle, jint max_side, jintArray info) {
   (void)thiz;
   FfGrab *grab = (FfGrab *)handle;
   if (grab == NULL || grab->video == NULL) return NULL;
-  int reads = 0;
-  while (reads < 64) {
-    if (av_read_frame(grab->fmt, grab->packet) < 0) return NULL;
-    reads += 1;
-    int got = 0;
-    uint8_t *rgba = NULL;
-    int dw = 0;
-    int dh = 0;
-    int64_t ms = 0;
-    if (grab->packet->stream_index == grab->video_index &&
-        avcodec_send_packet(grab->video, grab->packet) == 0) {
-      if (avcodec_receive_frame(grab->video, grab->frame) == 0) {
-        int64_t pts = grab->frame->best_effort_timestamp;
-        if (pts == AV_NOPTS_VALUE) pts = grab->frame->pts;
-        ms = pts == AV_NOPTS_VALUE ? 0 : av_rescale_q(pts, grab->video_tb, (AVRational){1, 1000});
-        rgba = grab_rgba(grab, grab->frame, max_side, &dw, &dh);
-        av_frame_unref(grab->frame);
-        got = rgba != NULL;
-      }
-    }
-    av_packet_unref(grab->packet);
-    if (!got) continue;
-    jsize bytes = (jsize)dw * dh * 4;
-    jbyteArray array = (*env)->NewByteArray(env, bytes);
-    if (array != NULL) {
-      (*env)->SetByteArrayRegion(env, array, 0, bytes, (const jbyte *)rgba);
-      jint packed[3] = {dw, dh, (jint)ms};
-      (*env)->SetIntArrayRegion(env, info, 0, 3, packed);
-    }
-    free(rgba);
-    return array;
+  if (!grab_take_frame(grab)) return NULL;
+  int64_t pts = grab->frame->best_effort_timestamp;
+  if (pts == AV_NOPTS_VALUE) pts = grab->frame->pts;
+  int64_t ms = pts == AV_NOPTS_VALUE ? 0 : av_rescale_q(pts, grab->video_tb, (AVRational){1, 1000});
+  int dw = 0;
+  int dh = 0;
+  uint8_t *rgba = grab_rgba(grab, grab->frame, max_side, &dw, &dh);
+  av_frame_unref(grab->frame);
+  if (rgba == NULL) return NULL;
+  jsize bytes = (jsize)dw * dh * 4;
+  jbyteArray array = (*env)->NewByteArray(env, bytes);
+  if (array != NULL) {
+    (*env)->SetByteArrayRegion(env, array, 0, bytes, (const jbyte *)rgba);
+    jint packed[3] = {dw, dh, (jint)ms};
+    (*env)->SetIntArrayRegion(env, info, 0, 3, packed);
   }
-  return NULL;
+  free(rgba);
+  return array;
 }

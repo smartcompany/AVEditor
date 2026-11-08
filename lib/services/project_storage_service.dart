@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:aveditor/models/clip_trim.dart';
 import 'package:aveditor/models/video_project.dart';
+import 'package:aveditor/services/playback_fallback_transcoder.dart';
+import 'package:aveditor/utils/av_editor_log.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -26,15 +28,19 @@ class ProjectSummary {
 
 /// Persists edit projects as JSON + a copied source video on disk.
 class ProjectStorageService {
-  const ProjectStorageService({this.rootOverride});
+  const ProjectStorageService({this.rootOverride, this.transcoder});
 
   final Directory? rootOverride;
+  final PlaybackFallbackTranscoder? transcoder;
 
   static const _rootDirName = 'aveditor';
   static const _indexFileName = 'index.json';
 
   /// Creates a new on-disk project from a picked video and returns its id.
-  Future<String> createFromImport(String pickedPath) async {
+  Future<String> createFromImport(
+    String pickedPath, {
+    void Function(double progress)? onProgress,
+  }) async {
     final id = const Uuid().v4();
     final dir = await _projectDir(id);
     await dir.create(recursive: true);
@@ -51,7 +57,26 @@ class ProjectStorageService {
       trim: ClipTrim(start: Duration.zero, end: Duration.zero),
     );
     await save(project);
-    return id;
+    final stored = await ensurePlayableSource(project, onProgress: onProgress);
+    return stored.id;
+  }
+
+  /// Replaces a stored HEVC, ProRes, or HDR file with H.264 SDR.
+  Future<VideoProject> ensurePlayableSource(
+    VideoProject project, {
+    void Function(double progress)? onProgress,
+  }) async {
+    final converter = transcoder ?? const PlaybackFallbackTranscoder();
+    if (!await converter.shouldReplace(project.sourcePath)) return project;
+    avEditorLog('store playable source ${project.sourcePath}');
+    final output = await converter.transcode(
+      project.sourcePath,
+      onProgress: onProgress,
+    );
+    if (output == project.sourcePath) return project;
+    final updated = project.withSourcePath(output);
+    await save(updated);
+    return updated;
   }
 
   Future<VideoProject?> load(String projectId) async {

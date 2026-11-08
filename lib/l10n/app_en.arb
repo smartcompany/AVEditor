@@ -78,6 +78,7 @@
   },
   "save": "Save",
   "exporting": "Exporting video…",
+  "convertingVideo": "Converting video…",
   "exportSuccess": "Saved to your library.",
   "exportFailed": "Export failed.",
   "exportFailedWithMessage": "Export failed: {message}",

@@ -11,32 +11,22 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Playback keeps one CompositionPlayer sequence. The transition is drawn in the
- * frame effect. Export still uses two video sequences plus the clip audio.
+ * Preview and export share two video sequences plus the compositor when a
+ * blend exists. Hard cuts stay on one sequence.
  */
 @OptIn(UnstableApi::class)
 class TransitionPlaybackCompositionTest {
   @Test
-  fun playbackWithTransitionStaysOneSequence() {
+  fun playbackWithTransitionMatchesExportGraph() {
     val composition = composition(forPlayback = true, withTransition = true)
 
-    assertEquals(1, composition.sequences.size)
-    assertEquals(1, videoSequences(composition))
-    assertEquals(0, audioOnlySequences(composition))
-    assertEquals(
+    assertEquals(2, videoSequences(composition))
+    assertEquals(1, audioOnlySequences(composition))
+    assertNotEquals(
       VideoCompositorSettings.DEFAULT,
       composition.videoCompositorSettings,
     )
     assertTrue(composition.effects.videoEffects.isNotEmpty())
-    val tracks = composition.sequences[0].trackTypes
-    assertTrue(tracks.contains(C.TRACK_TYPE_VIDEO))
-    assertTrue(tracks.contains(C.TRACK_TYPE_AUDIO))
-    assertEquals(1, composition.sequences[0].editedMediaItems.size)
-    var sum = 0L
-    for (item in composition.sequences[0].editedMediaItems) {
-      sum += item.getPresentationDurationUs()
-    }
-    assertEquals(4_000_000L, sum)
     assertDurationsSet(composition)
   }
 
@@ -46,6 +36,7 @@ class TransitionPlaybackCompositionTest {
 
     assertEquals(2, videoSequences(composition))
     assertEquals(1, audioOnlySequences(composition))
+    assertNotEquals(VideoCompositorSettings.DEFAULT, composition.videoCompositorSettings)
     assertDurationsSet(composition)
   }
 

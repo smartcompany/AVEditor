@@ -17,11 +17,11 @@ import 'package:aveditor/screens/music_picker_screen.dart';
 import 'package:aveditor/services/editor_history.dart';
 import 'package:aveditor/services/audio_waveform_service.dart';
 import 'package:aveditor/services/music_storage_service.dart';
-import 'package:aveditor/services/playback_fallback_transcoder.dart';
 import 'package:aveditor/services/project_storage_service.dart';
 import 'package:aveditor/services/timeline_thumbnail_service.dart';
 import 'package:aveditor/services/video_probe_service.dart';
 import 'package:aveditor/utils/av_editor_log.dart';
+import 'package:aveditor/utils/debug_agent_log.dart';
 import 'package:aveditor/utils/clip_rotation.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
 import 'package:aveditor/utils/music_timeline_ops.dart';
@@ -30,6 +30,7 @@ import 'package:aveditor/utils/editor_sheet_metrics.dart';
 import 'package:aveditor/utils/overlay_event_log.dart';
 import 'package:aveditor/utils/timeline_math.dart';
 import 'package:aveditor/widgets/canvas_ratio_sheet.dart';
+import 'package:aveditor/widgets/convert_progress_view.dart';
 import 'package:aveditor/widgets/basic_text_edit_toolbar.dart';
 import 'package:aveditor/widgets/text_studio_panel.dart';
 import 'package:aveditor/widgets/timeline_widget.dart';
@@ -167,6 +168,7 @@ class _EditorScreenState extends State<EditorScreen>
   /// CapCut-style text studio is open for this overlay id.
   String? _textStudioOverlayId;
   bool _ready = false;
+  double? _convertProgress;
   final bool _exporting = false;
   var _canvasRatioOpen = false;
   bool _applyingHistory = false;
@@ -706,66 +708,57 @@ class _EditorScreenState extends State<EditorScreen>
         return;
       }
 
-      final sourcePath = stored.sourcePath;
-      final codec = await const PlaybackFallbackTranscoder().videoCodec(
-        sourcePath,
+      final playable = await _projectStorage.ensurePlayableSource(
+        stored,
+        onProgress: (value) {
+          if (!mounted) return;
+          final next = value.clamp(0.0, 1.0);
+          final current = _convertProgress;
+          if (current != null && (next - current).abs() < 0.01 && next < 1) {
+            return;
+          }
+          setState(() => _convertProgress = next);
+        },
       );
-      final ffmpegPlayer = PlaybackFallbackTranscoder.needsFfmpegPlayer(codec);
-      avEditorLog(
-        'load: codec=$codec ffmpegPlayer=$ffmpegPlayer path=$sourcePath',
-      );
+      final sourcePath = playable.sourcePath;
       VideoPlayerController? controller;
-      var duration = stored.duration;
+      var duration = playable.duration;
       var sourceAspect = 9 / 16;
-      if (ffmpegPlayer) {
-        final probed = await NativeVideoEngine.instance.probe(sourcePath);
-        if (probed.duration != null && probed.duration! > Duration.zero) {
-          duration = probed.duration!;
-        }
-        if (probed.height > 0) {
-          sourceAspect = probed.width / probed.height;
-        }
-        avEditorLog(
-          'load: ffmpeg player ${probed.width}x${probed.height} '
-          'duration=${duration.inMilliseconds}ms',
-        );
-      } else {
-        controller = await _openPlayableController(sourcePath);
-        if (controller == null) {
-          throw StateError('video open failed');
-        }
-        controller.setLooping(false);
-        controller.addListener(_onVideoTick);
-        if (duration == Duration.zero) {
-          duration = controller.value.duration;
-        }
-        if (controller.value.aspectRatio != 0) {
-          sourceAspect = controller.value.aspectRatio;
-        }
-        avEditorLog('load: exoplayer');
+      controller = await _openPlayableController(sourcePath);
+      if (controller == null) {
+        throw StateError('video open failed');
       }
+      controller.setLooping(false);
+      controller.addListener(_onVideoTick);
+      if (duration == Duration.zero) {
+        duration = controller.value.duration;
+      }
+      if (controller.value.aspectRatio != 0) {
+        sourceAspect = controller.value.aspectRatio;
+      }
+      avEditorLog('load: exoplayer path=$sourcePath');
 
       if (!mounted) {
         await controller?.dispose();
         return;
       }
 
-      final project = stored.duration == Duration.zero
+      final project = playable.duration == Duration.zero
           ? VideoProject(
-              id: stored.id,
+              id: playable.id,
               sourcePath: sourcePath,
               duration: duration,
               trim: ClipTrim(start: Duration.zero, end: duration),
               // Keep any cuts already saved before duration was known.
-              segments: List<ClipSegment>.from(stored.segments),
-              overlays: stored.overlays,
-              musicTracks: List<ProjectMusic>.from(stored.musicTracks),
-              preset: stored.preset,
-              canvas: stored.canvas,
-              rotation: stored.rotation,
-              updatedAt: stored.updatedAt,
+              segments: List<ClipSegment>.from(playable.segments),
+              overlays: playable.overlays,
+              musicTracks: List<ProjectMusic>.from(playable.musicTracks),
+              preset: playable.preset,
+              canvas: playable.canvas,
+              rotation: playable.rotation,
+              updatedAt: playable.updatedAt,
             )
-          : stored;
+          : playable;
 
       // Normalize a copy first — clearing in place then reading the same list
       // would wipe cuts (empty → single full-length segment).
@@ -783,7 +776,7 @@ class _EditorScreenState extends State<EditorScreen>
 
       _slotMain = controller;
       _slotsSwapped = false;
-      _ffmpegPlayback = ffmpegPlayer;
+      _ffmpegPlayback = false;
       _sourceAspect = sourceAspect;
       _project = project;
       await _attachTimelineCompositor();
@@ -795,7 +788,6 @@ class _EditorScreenState extends State<EditorScreen>
         _ready = true;
         _errorMessage = null;
       });
-
       unawaited(_loadFilmstrip(project.sourcePath, project.duration));
       unawaited(_loadMusicWaveforms(project));
       unawaited(_loadSourceAudioWaveform(project.sourcePath));
@@ -1298,6 +1290,16 @@ class _EditorScreenState extends State<EditorScreen>
         _transitionPreviewSeekConfirmed = true;
       }
 
+      // A clock that leaps past the window is the previous playhead or the
+      // next piece after the blend. Stopping on it cuts the effect off.
+      if (_transitionPreviewArmed && _transitionPreviewSeekConfirmed) {
+        final furthest = _panelPreviewFurthestPos;
+        if (furthest != null &&
+            position > furthest + const Duration(milliseconds: 1000)) {
+          return;
+        }
+      }
+
       if (_transitionStudioCutIndex != null) {
         // Monotonic: a stale native sample after pause must not snap UI/frame
         // tracking back to the transition window start.
@@ -1325,6 +1327,21 @@ class _EditorScreenState extends State<EditorScreen>
           'nativePos=${packed.inMilliseconds}ms '
           'playing=${NativeVideoEngine.instance.isPlaying}',
         );
+        // #region agent log
+        debugAgentLog(
+          'editor_screen.dart:positionStream',
+          'panel.stop',
+          hypothesisId: 'D',
+          data: {
+            'positionMs': position.inMilliseconds,
+            'untilMs': until.inMilliseconds,
+            'packedMs': packed.inMilliseconds,
+            'playing': NativeVideoEngine.instance.isPlaying,
+            'windowStartMs': _transitionPreviewWindowStart?.inMilliseconds,
+            'seekConfirmed': _transitionPreviewSeekConfirmed,
+          },
+        );
+        // #endregion
         unawaited(_stopTransitionPreview(reason: 'position>=until'));
         return;
       }
@@ -1997,8 +2014,7 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   Widget _buildPreviewVideoChild(VideoPlayerController? _) {
-    if (NativeVideoEngine.instance.isTimelineActive &&
-        NativeVideoEngine.instance.hasFrame) {
+    if (NativeVideoEngine.instance.isTimelineActive) {
       return NativeVideoEngine.instance.buildPreview();
     }
     if (_spatialPreviewActive &&
@@ -2278,9 +2294,6 @@ class _EditorScreenState extends State<EditorScreen>
       final videoSeek = clampDuration(clamped, Duration.zero, project.duration);
       final packed = _sourceToNativePacked(videoSeek);
       unawaited(NativeVideoEngine.instance.seek(packed));
-      if (!_ffmpegPlayback) {
-        unawaited(NativeVideoEngine.instance.preroll(packed));
-      }
       unawaited(_syncMusicPlayback());
       setState(() {});
       return;
@@ -2359,9 +2372,6 @@ class _EditorScreenState extends State<EditorScreen>
     if (NativeVideoEngine.instance.isTimelineActive || controller == null) {
       final packed = _sourceToNativePacked(videoSeek);
       unawaited(NativeVideoEngine.instance.seek(packed));
-      if (!_ffmpegPlayback) {
-        unawaited(NativeVideoEngine.instance.preroll(packed));
-      }
       return;
     }
     unawaited(controller.seekTo(videoSeek));
@@ -2473,6 +2483,9 @@ class _EditorScreenState extends State<EditorScreen>
     _transitionPreviewWindowStart = null;
     _transitionPreviewTimer?.cancel();
     _transitionPreviewTimer = null;
+    // Scrub is the time under the finger. Clearing it first made play read
+    // the decoder clock, which was still at the previous position.
+    final parked = _scrubPlayhead;
     _scrubPlayhead = null;
     if (NativeVideoEngine.instance.isTimelineActive) {
       if (NativeVideoEngine.instance.isPlaying) {
@@ -2481,23 +2494,15 @@ class _EditorScreenState extends State<EditorScreen>
         setState(() {});
         return;
       }
-      final start = isInKeptRegion(project.segments, _playhead)
-          ? _playhead
-          : (segmentAt(project.segments, _playhead)?.start ??
+      final desired = parked ?? _playhead;
+      final start = isInKeptRegion(project.segments, desired)
+          ? desired
+          : (segmentAt(project.segments, desired)?.start ??
                 project.segments.first.start);
-      // Same frame: play() only. A seek here pauses the player and the
-      // picture never starts. A different frame is applied first, then play
-      // runs once — play() before that seek leaves the player stopped.
+      // Always seek to the scrubbed time, then play. The clock can already
+      // show that time while the decoder is still on the previous frame.
       final packed = _sourceToNativePacked(start);
-      final alreadyThere =
-          (NativeVideoEngine.instance.position - packed).inMilliseconds.abs() <=
-          40;
       setState(() {});
-      if (alreadyThere) {
-        unawaited(NativeVideoEngine.instance.play());
-        unawaited(_syncMusicPlayback());
-        return;
-      }
       unawaited(() async {
         await NativeVideoEngine.instance.seek(packed, resume: true);
         if (!mounted) return;
@@ -2727,6 +2732,22 @@ class _EditorScreenState extends State<EditorScreen>
       'appliedDur=${applied.duration.inMilliseconds}ms '
       'storedDur=${stored?.transitionDuration.inMilliseconds}ms',
     );
+    // #region agent log
+    debugAgentLog(
+      'editor_screen.dart:_applyTransitionAtCut',
+      'apply',
+      hypothesisId: 'C',
+      data: {
+        'cut': index,
+        'id': applied.id,
+        'durMs': applied.duration.inMilliseconds,
+        'storedMs': stored?.transitionDuration.inMilliseconds,
+        'isNone': applied.isNone,
+        'nativePosMs': NativeVideoEngine.instance.position.inMilliseconds,
+        'timelineActive': NativeVideoEngine.instance.isTimelineActive,
+      },
+    );
+    // #endregion
     _logTimeline('apply');
     setState(() {
       _selectedTransitionAfterIndex = applied.isNone ? null : index;
@@ -2925,6 +2946,22 @@ class _EditorScreenState extends State<EditorScreen>
       'until=${previewUntil.inMilliseconds}ms '
       'storedTd=${outgoing.transitionDuration.inMilliseconds}ms',
     );
+    // #region agent log
+    debugAgentLog(
+      'editor_screen.dart:_previewTransitionAtCut',
+      'panel.preview',
+      hypothesisId: 'A',
+      data: {
+        'cut': cutIndex,
+        'tdMs': td.inMilliseconds,
+        'startMs': clampedStart.inMilliseconds,
+        'untilMs': previewUntil.inMilliseconds,
+        'effect': outgoing.transitionId,
+        'hardCut': hardCut,
+        'beforeNativeMs': NativeVideoEngine.instance.position.inMilliseconds,
+      },
+    );
+    // #endregion
     _logTimeline('panel.start', land: clampedStart);
 
     _fadeSyncGen++;
@@ -2946,8 +2983,9 @@ class _EditorScreenState extends State<EditorScreen>
     if (!mounted || gen != _transitionPreviewGen) return;
 
     if (NativeVideoEngine.instance.isPlatformSupported) {
-      // Force rebuild when effect/duration changed, then play the cut window.
-      _timelineSig = '';
+      // Same composition signature → attach only prerolls. Effect/duration
+      // changes already change the signature; clearing it forced a native
+      // rebuild every panel pick and hid the real seek-back frame bug.
       await _attachTimelineCompositor(resume: false, seekTo: clampedStart);
       if (!mounted || gen != _transitionPreviewGen) return;
       if (NativeVideoEngine.instance.isTimelineActive) {
@@ -2960,7 +2998,57 @@ class _EditorScreenState extends State<EditorScreen>
           'until=${previewUntil.inMilliseconds}ms '
           'nativePos=${NativeVideoEngine.instance.position.inMilliseconds}ms',
         );
+        // #region agent log
+        debugAgentLog(
+          'editor_screen.dart:_previewTransitionAtCut',
+          'before.play',
+          hypothesisId: 'A,B',
+          data: {
+            'wantStartMs': clampedStart.inMilliseconds,
+            'nativePosMs': NativeVideoEngine.instance.position.inMilliseconds,
+            'playing': NativeVideoEngine.instance.isPlaying,
+            'deltaMs':
+                (NativeVideoEngine.instance.position - clampedStart)
+                    .inMilliseconds
+                    .abs(),
+          },
+        );
+        // #endregion
         await NativeVideoEngine.instance.play();
+        // #region agent log
+        debugAgentLog(
+          'editor_screen.dart:_previewTransitionAtCut',
+          'after.play',
+          hypothesisId: 'F,G',
+          data: {
+            'nativePosMs': NativeVideoEngine.instance.position.inMilliseconds,
+            'playing': NativeVideoEngine.instance.isPlaying,
+            'wantStartMs': clampedStart.inMilliseconds,
+            'untilMs': previewUntil.inMilliseconds,
+          },
+        );
+        for (final delayMs in <int>[350, 800, 1400]) {
+          unawaited(
+            Future<void>.delayed(Duration(milliseconds: delayMs), () {
+              if (!mounted || gen != _transitionPreviewGen) return;
+              debugAgentLog(
+                'editor_screen.dart:_previewTransitionAtCut',
+                'play.sample',
+                hypothesisId: 'G,I',
+                data: {
+                  'delayMs': delayMs,
+                  'nativePosMs':
+                      NativeVideoEngine.instance.position.inMilliseconds,
+                  'playing': NativeVideoEngine.instance.isPlaying,
+                  'wantStartMs': clampedStart.inMilliseconds,
+                  'untilMs': previewUntil.inMilliseconds,
+                  'armed': _transitionPreviewArmed,
+                },
+              );
+            }),
+          );
+        }
+        // #endregion
         if (!mounted || gen != _transitionPreviewGen) {
           debugPrint(
             '[TL] panel.play cancelled gen=$gen current=$_transitionPreviewGen pause',
@@ -3559,7 +3647,14 @@ class _EditorScreenState extends State<EditorScreen>
     if (!_ready) {
       return Scaffold(
         appBar: AppBar(title: Text(l10n.editorTitle)),
-        body: const Center(child: CircularProgressIndicator()),
+        body: Center(
+          child: _convertProgress == null
+              ? const CircularProgressIndicator()
+              : ConvertProgressView(
+                  label: l10n.convertingVideo,
+                  progress: _convertProgress!,
+                ),
+        ),
       );
     }
 

@@ -36,8 +36,11 @@ Future<void> main() async {
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
-  // Warm catalogs so text packs / transitions open instantly.
-  unawaited(TextTemplatePackService.instance.ensureInitialized());
-  unawaited(TransitionCatalogService.instance.ensureInitialized());
   runApp(const AveditorApp());
+  // Asset reads started before the first frame stay pending, and later
+  // opens of the transition panel wait on that same read.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(TextTemplatePackService.instance.ensureInitialized());
+    unawaited(TransitionCatalogService.instance.ensureInitialized());
+  });
 }

@@ -7,6 +7,7 @@ import 'package:aveditor/services/project_storage_service.dart';
 import 'package:aveditor/services/video_import_service.dart';
 import 'package:aveditor/services/youtube_auth_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
+import 'package:aveditor/widgets/convert_progress_view.dart';
 import 'package:aveditor/utils/platform_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -24,6 +25,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _projectStorage = const ProjectStorageService();
   final _youtubeAuth = YouTubeAuthService();
   bool _loading = false;
+  double? _convertProgress;
   bool _youtubeConnected = false;
   bool _projectsLoading = true;
   List<ProjectSummary> _projects = const [];
@@ -74,6 +76,14 @@ class _HomeScreenState extends State<HomeScreen> {
     await _runPick(_import.pickFromCamera);
   }
 
+  void _onConvertProgress(double value) {
+    if (!mounted) return;
+    final next = value.clamp(0.0, 1.0);
+    final current = _convertProgress;
+    if (current != null && (next - current).abs() < 0.01 && next < 1) return;
+    setState(() => _convertProgress = next);
+  }
+
   Future<void> _runPick(Future<String?> Function() pick) async {
     setState(() => _loading = true);
     try {
@@ -84,7 +94,10 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!File(path).existsSync()) {
         throw StateError('file not found');
       }
-      final projectId = await _projectStorage.createFromImport(path);
+      final projectId = await _projectStorage.createFromImport(
+        path,
+        onProgress: _onConvertProgress,
+      );
       await _openEditor(projectId);
     } catch (e) {
       if (!mounted) return;
@@ -95,7 +108,10 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     } finally {
       if (mounted) {
-        setState(() => _loading = false);
+        setState(() {
+          _loading = false;
+          _convertProgress = null;
+        });
       }
     }
   }
@@ -167,9 +183,14 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 20),
               if (_loading)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Center(child: CircularProgressIndicator()),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: _convertProgress == null
+                      ? const Center(child: CircularProgressIndicator())
+                      : ConvertProgressView(
+                          label: l10n.convertingVideo,
+                          progress: _convertProgress!,
+                        ),
                 )
               else ...[
                 if (PlatformHelper.supportsGallery)

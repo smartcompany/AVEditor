@@ -207,6 +207,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get exporting => '動画を書き出し中…';
 
   @override
+  String get convertingVideo => '動画を変換しています…';
+
+  @override
   String get exportSuccess => 'ライブラリに保存しました。';
 
   @override

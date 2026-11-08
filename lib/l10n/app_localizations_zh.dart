@@ -205,6 +205,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get exporting => '正在导出视频…';
 
   @override
+  String get convertingVideo => '正在转换视频…';
+
+  @override
   String get exportSuccess => '已保存到相册。';
 
   @override

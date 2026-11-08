@@ -5,11 +5,10 @@ internal interface TimelineSession {
   val durationMs: Int
   val width: Int
   val height: Int
-  val usesFfmpeg: Boolean
 
   fun update(sourcePath: String, segments: List<*>)
   fun start()
-  fun play(): String?
+  fun play(done: (String?) -> Unit)
   fun playbackSnapshot(): Map<String, Any>
   fun pause()
   fun seekToMs(ms: Long)
