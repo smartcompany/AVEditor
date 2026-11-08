@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:aveditor/models/text_entrance_animation.dart';
 import 'package:aveditor/models/text_style_template.dart';
 import 'package:aveditor/models/text_template_pack.dart';
 import 'package:aveditor/services/text_template_pack_service.dart';
@@ -20,15 +21,45 @@ void main() {
       jsonDecode(raw) as Map<String, dynamic>,
     );
 
-    expect(catalog.version, 6);
-    expect(catalog.allItems.map((e) => e.id).toList(), [
+    expect(catalog.version, 7);
+    final effects = catalog.allItems.where((e) => e.kind == 'effect').toList();
+    final templates =
+        catalog.allItems.where((e) => e.kind == 'template').toList();
+    expect(effects, hasLength(20));
+    expect(templates, hasLength(20));
+    // Original items stay first so existing projects keep their look.
+    expect(effects.take(3).map((e) => e.id), [
       'effect_pop_green',
       'effect_pastel',
       'effect_torn_label',
+    ]);
+    expect(templates.take(3).map((e) => e.id), [
       'pack_journal',
       'pack_neon_pulse',
       'pack_sticker',
     ]);
+    final ids = catalog.allItems.map((e) => e.id).toList();
+    expect(ids.toSet(), hasLength(ids.length), reason: 'ids are unique');
+    const fonts = {
+      'notoSansKr',
+      'gaegu',
+      'blackHanSans',
+      'doHyeon',
+      'gothicA1',
+      'roboto',
+    };
+    for (final item in catalog.allItems) {
+      expect(fonts, contains(item.style.preferredFontId), reason: item.id);
+      if (item.kind == 'effect') {
+        expect(item.animation.isNone, isTrue, reason: item.id);
+      } else {
+        expect(
+          TextEntranceIds.all,
+          contains(item.animation.id),
+          reason: item.id,
+        );
+      }
+    }
     final pop = catalog.itemById('effect_pop_green')!;
     expect(pop.kind, 'effect');
     expect(pop.animation.isNone, isTrue);
