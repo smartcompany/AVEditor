@@ -69,11 +69,18 @@ class OverlayFonts {
 
   static TextStyle resolve(String? id, TextStyle base) => byId(id).apply(base);
 
+  /// Never throws: offline (or a failed fetch) leaves the platform fallback
+  /// face in place, and callers such as pack selection carry on applying the
+  /// rest of the style instead of aborting.
   static Future<void> ensureLoaded(String? id) async {
     final option = byId(id);
     if (option.id == defaultId) return;
-    // Warm the Google Fonts registry so CustomPainter / export match preview.
-    option.apply(const TextStyle(fontSize: 16));
-    await GoogleFonts.pendingFonts();
+    try {
+      // Warm the Google Fonts registry so CustomPainter / export match preview.
+      option.apply(const TextStyle(fontSize: 16));
+      await GoogleFonts.pendingFonts();
+    } catch (error) {
+      debugPrint('OverlayFonts.ensureLoaded($id) failed: $error');
+    }
   }
 }

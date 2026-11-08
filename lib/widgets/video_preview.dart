@@ -625,6 +625,19 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
         box: _boxOf(editing),
       );
       if (insideChrome) return;
+      // Another text under the finger: finish editing, then select that text
+      // (and let the same press drag it). Otherwise the tap only dismissed.
+      final other = _topmostBodyAt(local);
+      if (other != null && other.id != editing.id) {
+        OverlayEventLog.log('PreviewCanvas', 'dismissEditingSelectOther', {
+          'local': local,
+          'id': other.id,
+        });
+        widget.onEditingComplete?.call('select_other_overlay');
+        widget.onOverlaySelected?.call(other);
+        _grabBody(other, event.pointer, local, editOnRelease: false);
+        return;
+      }
       OverlayEventLog.log('PreviewCanvas', 'dismissEditing', {'local': local});
       widget.onEditingComplete?.call('preview_outside');
       return;
@@ -673,23 +686,13 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
       'hit': tapped?.id,
     });
     if (tapped != null) {
-      if (tapped.id != widget.selectedOverlayId) {
+      // First tap on another text only selects it (chrome appears); a second
+      // tap on the now-selected text opens inline input.
+      final alreadySelected = tapped.id == widget.selectedOverlayId;
+      if (!alreadySelected) {
         widget.onOverlaySelected?.call(tapped);
       }
-      _activePointer = event.pointer;
-      _lastLocal = local;
-      _pointerMoved = false;
-      _pointerTravel = 0;
-      _moveLogCounter = 0;
-      _gestureOverlay = tapped;
-      // Body tap (no travel) opens inline text input on release.
-      _tapTarget = tapped;
-      OverlayEventLog.log('PreviewCanvas', 'dragStart', {
-        'local': local,
-        'drag': 'move',
-        'id': tapped.id,
-      });
-      _beginDrag(tapped, OverlayDrag.move, local);
+      _grabBody(tapped, event.pointer, local, editOnRelease: alreadySelected);
       return;
     }
 
@@ -699,6 +702,30 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
     _pointerMoved = false;
     _pointerTravel = 0;
     _tapTarget = null;
+  }
+
+  /// Press on a text body: drag it as it moves; release without travel either
+  /// opens inline input ([editOnRelease]) or just keeps it selected.
+  void _grabBody(
+    TextOverlay overlay,
+    int pointer,
+    Offset local, {
+    required bool editOnRelease,
+  }) {
+    _activePointer = pointer;
+    _lastLocal = local;
+    _pointerMoved = false;
+    _pointerTravel = 0;
+    _moveLogCounter = 0;
+    _gestureOverlay = overlay;
+    _tapTarget = overlay;
+    _suppressEditOnRelease = !editOnRelease;
+    OverlayEventLog.log('PreviewCanvas', 'dragStart', {
+      'local': local,
+      'drag': 'move',
+      'id': overlay.id,
+    });
+    _beginDrag(overlay, OverlayDrag.move, local);
   }
 
   void handlePointerMove(PointerMoveEvent event) {

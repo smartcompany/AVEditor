@@ -571,6 +571,79 @@ void main() {
     expect(selected?.id, overlay.id);
   });
 
+  testWidgets('tap on an unselected overlay does not open the editor',
+      (tester) async {
+    final first = buildOverlay().copyWith(offset: const Offset(0, -0.3));
+    final second = TextOverlay(
+      id: 'overlay-2',
+      text: 'world',
+      start: Duration.zero,
+      end: const Duration(seconds: 5),
+      fontSize: 84,
+      offset: const Offset(0, 0.3),
+    );
+    TextOverlay? selected;
+    TextOverlay? edited;
+
+    await tester.pumpWidget(
+      _PreviewHarness(
+        overlays: [first, second],
+        selectedId: first.id,
+        onSelected: (o) => selected = o,
+        onRequestEdit: (o) => edited = o,
+      ),
+    );
+
+    final previewBox = tester.renderObject<RenderBox>(
+      find.byType(VideoPreviewWithOverlays),
+    );
+    final anchors = chromeAnchors(second, previewBox);
+    await tester.tapAt(previewMapper(tester)(anchors.centre));
+    await tester.pump();
+
+    expect(selected?.id, second.id);
+    expect(edited, isNull, reason: 'the first tap only selects');
+  });
+
+  testWidgets('tap on another overlay while editing selects it',
+      (tester) async {
+    final first = buildOverlay().copyWith(offset: const Offset(0, -0.3));
+    final second = TextOverlay(
+      id: 'overlay-2',
+      text: 'world',
+      start: Duration.zero,
+      end: const Duration(seconds: 5),
+      fontSize: 84,
+      offset: const Offset(0, 0.3),
+    );
+    TextOverlay? selected;
+    TextOverlay? edited;
+    String? source;
+
+    await tester.pumpWidget(
+      _PreviewHarness(
+        overlays: [first, second],
+        selectedId: second.id,
+        editingId: second.id,
+        onSelected: (o) => selected = o,
+        onRequestEdit: (o) => edited = o,
+        onEditingComplete: (s) => source ??= s,
+      ),
+    );
+    await tester.pump();
+
+    final previewBox = tester.renderObject<RenderBox>(
+      find.byType(VideoPreviewWithOverlays),
+    );
+    final anchors = chromeAnchors(first, previewBox);
+    await tester.tapAt(previewMapper(tester)(anchors.centre));
+    await tester.pump();
+
+    expect(source, isNotNull, reason: 'editing the other text ends');
+    expect(selected?.id, first.id);
+    expect(edited, isNull);
+  });
+
   testWidgets('letterbox tap while editing dismisses the editor',
       (tester) async {
     final overlay = buildOverlay();

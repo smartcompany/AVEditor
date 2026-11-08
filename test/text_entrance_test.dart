@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:aveditor/models/text_entrance_animation.dart';
 import 'package:aveditor/models/text_overlay.dart';
@@ -177,6 +179,69 @@ void main() {
 
       final forcedFade = fromPack.copyWith(animationId: TextEntranceIds.fade);
       expect(resolveOverlayAnimation(forcedFade).id, 'fade');
+    });
+  });
+
+  group('typewriter torn paper', () {
+    Future<Uint8List> rgba(Uint8List png) async {
+      final codec = await ui.instantiateImageCodec(png);
+      final frame = await codec.getNextFrame();
+      final data =
+          await frame.image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      frame.image.dispose();
+      return data!.buffer.asUint8List();
+    }
+
+    test('revealed paper keeps the finished shape (it does not stretch)',
+        () async {
+      await TextTemplatePackService.instance.ensureInitialized();
+      const width = 360;
+      const height = 640;
+      final overlay = TextOverlay(
+        text: 'abcdefghijkl',
+        start: Duration.zero,
+        end: const Duration(seconds: 3),
+        animationId: TextEntranceIds.typewriter,
+        animationDurationMs: 1000,
+        packItemId: 'pack_journal',
+      );
+      const service = OverlayRasterService();
+      final done = await rgba(await service.renderToPng(
+        overlay,
+        width: width,
+        height: height,
+        entrance: TextEntranceState.fullyVisible,
+      ));
+      final typing = await rgba(await service.renderToPng(
+        overlay,
+        width: width,
+        height: height,
+        entrance: evaluateTextEntrance(
+          animationId: TextEntranceIds.typewriter,
+          text: overlay.text,
+          progress: 0.7,
+        ),
+      ));
+
+      // Left third of the frame: paper and glyphs there are already revealed
+      // mid-typing, so they must match the finished frame (up to edge anti-aliasing).
+      var painted = 0;
+      var differing = 0;
+      for (var y = 0; y < height; y++) {
+        for (var x = 0; x < width ~/ 3; x++) {
+          final i = (y * width + x) * 4;
+          if (done[i + 3] > 0) painted++;
+          for (var c = 0; c < 4; c++) {
+            // ±few levels: blur anti-aliasing inside the reveal clip.
+            if ((done[i + c] - typing[i + c]).abs() > 6) {
+              differing++;
+              break;
+            }
+          }
+        }
+      }
+      expect(painted, greaterThan(0), reason: 'paper reaches the left third');
+      expect(differing, 0);
     });
   });
 

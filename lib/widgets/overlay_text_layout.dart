@@ -892,14 +892,36 @@ void _paintGrowingLineBackgrounds({
       line.ascent + line.descent + padV * 2,
     );
     if (shape == TextStyleLineShape.brush) {
+      // Torn paper is one fixed piece: lay it out for the whole line (same
+      // rect as the finished look) and reveal it up to the typed glyphs.
+      // Regrowing the rect re-spread the torn edge, so the paper stretched.
+      final fullRect = Rect.fromLTWH(
+        origin.dx + line.left - padH,
+        rect.top,
+        line.width + padH * 2,
+        rect.height,
+      );
+      final revealRight = origin.dx + right + padH;
+      final clipped = revealRight < fullRect.right - 0.5;
+      if (clipped) {
+        canvas.save();
+        canvas.clipPath(
+          _tornRevealClip(
+            fullRect: fullRect,
+            revealRight: revealRight,
+            fontSize: fontSize,
+          ),
+        );
+      }
       _paintBrushLineBackground(
         canvas: canvas,
-        rect: rect,
+        rect: fullRect,
         color: background,
         fontSize: fontSize,
         shadowOpacity: shadowOpacity,
         shadowBlurFactor: shadowBlurFactor,
       );
+      if (clipped) canvas.restore();
     } else {
       final radius = Radius.circular((fontSize * radiusFactor).clamp(4.0, 12.0));
       if (shadowOpacity > 0) {
@@ -919,6 +941,35 @@ void _paintGrowingLineBackgrounds({
       );
     }
   }
+}
+
+/// Everything left of [revealRight], with a small torn (zig-zag) cut so the
+/// growing end of the paper reads as ripped, not sliced. The teeth depend only
+/// on y, so they stay put while the cut moves right.
+Path _tornRevealClip({
+  required Rect fullRect,
+  required double revealRight,
+  required double fontSize,
+}) {
+  final margin = fontSize * 2;
+  final top = fullRect.top - margin;
+  final bottom = fullRect.bottom + margin;
+  final amp = fullRect.height * 0.07;
+  const teeth = 7;
+  final path = Path()
+    ..moveTo(fullRect.left - margin, top)
+    ..lineTo(revealRight, top)
+    ..lineTo(revealRight, fullRect.top);
+  for (var i = 1; i <= teeth; i++) {
+    final y = fullRect.top + fullRect.height * i / teeth;
+    final x = revealRight + (i.isOdd ? amp : -amp * 0.6);
+    path.lineTo(x, y);
+  }
+  path
+    ..lineTo(revealRight, bottom)
+    ..lineTo(fullRect.left - margin, bottom)
+    ..close();
+  return path;
 }
 
 void _paintStyledGrapheme({
