@@ -2620,10 +2620,11 @@ class _EditorScreenState extends State<EditorScreen>
     }
 
     final sequenceTime = _sequenceTimeForSplit(project.segments, _playhead);
-    final index =
-        cutIndex ??
-        _selectedTransitionAfterIndex ??
-        nearestCutIndex(project.segments, sequenceTime);
+    // A tapped transition marker passes its cut. The toolbar button always
+    // targets the cut nearest the playhead: the cut edited last stays
+    // selected after the studio closes, and reusing it sent the second
+    // transition onto the first cut (replacing it) instead of the new one.
+    final index = cutIndex ?? nearestCutIndex(project.segments, sequenceTime);
     if (index < 0 || index >= project.segments.length - 1) {
       return;
     }
@@ -2685,6 +2686,7 @@ class _EditorScreenState extends State<EditorScreen>
       if (!mounted) return;
       setState(() {
         _transitionStudioCutIndex = null;
+        _selectedTransitionAfterIndex = null;
       });
     });
 

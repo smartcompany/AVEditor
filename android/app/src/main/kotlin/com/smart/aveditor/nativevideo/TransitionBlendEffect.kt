@@ -577,6 +577,9 @@ internal class BlendDraw(
   var offAy: Float = 0f,
   var offBx: Float = 0f,
   var offBy: Float = 0f,
+  /** Decoder track (0/1) of the outgoing clip. Clips alternate tracks, so every
+   *  second transition runs track 1 → track 0. */
+  var outgoingTrack: Int = 0,
 )
 
 internal fun resolveBlend(blend: BlendWindow, t: Float): BlendDraw {

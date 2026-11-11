@@ -28,7 +28,7 @@ internal object EnginePlanBuilder {
       } ?: return null
       val t = if (blend.durationMs <= 0L) 1f
       else ((positionMs - blend.startMs).toFloat() / blend.durationMs.toFloat()).coerceIn(0f, 1f)
-      return resolveBlend(blend, t)
+      return resolveBlend(blend, t).also { it.outgoingTrack = blend.outgoingTrack }
     }
   }
 

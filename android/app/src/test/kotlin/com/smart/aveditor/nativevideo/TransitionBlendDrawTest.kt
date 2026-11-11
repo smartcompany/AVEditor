@@ -60,4 +60,29 @@ class TransitionBlendDrawTest {
     assertEquals(0.5f, draw.alphaA, 1e-4f)
     assertEquals(0.5f, draw.alphaB, 1e-4f)
   }
+
+  @Test
+  fun secondTransition_outgoingIsTrack1() {
+    // Three clips alternate tracks 0 → 1 → 0, so the 2nd blend runs 1 → 0.
+    val packed = NativeVideoEngineMedia.packSegmentsForEngine(
+      listOf(
+        mapOf("startMs" to 0, "endMs" to 4000, "transitionDurationMs" to 700, "transitionEffect" to "dissolve"),
+        mapOf("startMs" to 4000, "endMs" to 7000, "transitionDurationMs" to 700, "transitionEffect" to "dissolve"),
+        mapOf("startMs" to 7000, "endMs" to 10000),
+      ),
+    )
+    val timeline = EnginePlanBuilder.EngineTimeline(
+      json = "",
+      durationMs = 10000,
+      width = 720,
+      height = 1280,
+      sourcePath = "",
+      hasAudio = false,
+      blends = packed.blends.toList(),
+    )
+    val first = timeline.blendDrawAt(packed.blends[0].startMs + 100, 3)!!
+    val second = timeline.blendDrawAt(packed.blends[1].startMs + 100, 3)!!
+    assertEquals(0, first.outgoingTrack)
+    assertEquals(1, second.outgoingTrack)
+  }
 }

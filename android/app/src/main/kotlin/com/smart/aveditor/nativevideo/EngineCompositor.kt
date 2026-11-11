@@ -109,12 +109,15 @@ internal class EngineCompositor {
 
     val dual = mask and 1 != 0 && mask and 2 != 0
     // Solo incoming track: swap units so mode 0 (copy side 0) shows track B.
+    // Side 0 of the shader is always the outgoing clip. Solo track 1, and a
+    // blend whose outgoing clip sits on track 1 (2nd, 4th… transition), swap units.
     val soloB = !dual && mask and 2 != 0
+    val swap = soloB || (dual && blend?.outgoingTrack == 1)
     val d = if (dual) blend ?: BlendDraw(mode = 1, alphaA = 1f, alphaB = 1f) else BlendDraw()
     GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
-    GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, if (soloB) texB else texA)
+    GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, if (swap) texB else texA)
     GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
-    GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, if (soloB) texA else texB)
+    GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, if (swap) texA else texB)
     u1i("uTex", 0)
     u1i("uIncoming", 1)
     u1i("uMode", if (dual) d.mode else 0)
