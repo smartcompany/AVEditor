@@ -1501,7 +1501,9 @@ class _VideoCanvasBackground extends StatelessWidget {
     return Container(
       foregroundDecoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFB7C2D0)),
+        border: Border.all(
+          color: AppTheme.accentCyan.withValues(alpha: 0.45),
+        ),
       ),
       decoration: const BoxDecoration(
         color: Colors.black,

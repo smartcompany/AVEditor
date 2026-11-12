@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.smart.aveditor"
+    namespace = "com.smartcompany.aveditor"
     // Flutter's default is still 36. share_lib compiles against 37, and AGP 9.4 accepts it.
     compileSdk = 37
     ndkVersion = flutter.ndkVersion
@@ -18,7 +18,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.smart.aveditor"
+        applicationId = "com.smartcompany.aveditor"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

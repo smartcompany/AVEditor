@@ -22,7 +22,7 @@ class CanvasRatioBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xE6121922),
+      color: AppTheme.surface.withValues(alpha: 0.9),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(8, 6, 0, 6),
         child: Row(

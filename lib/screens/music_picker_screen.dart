@@ -693,7 +693,7 @@ class _Cover extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final placeholder = ColoredBox(
-      color: const Color(0xFF1C1F28),
+      color: AppTheme.surfaceElevated,
       child: Icon(
         isSfx ? Icons.graphic_eq : Icons.music_note,
         color: Colors.white54,

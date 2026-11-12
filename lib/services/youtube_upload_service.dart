@@ -281,7 +281,7 @@ class YouTubeUploadService {
             'format': 'jsonv2',
             'limit': '1',
           }),
-          headers: const {'User-Agent': 'AVEditor/1.0 (com.smart.aveditor)'},
+          headers: const {'User-Agent': 'AVEditor/1.0 (com.smartcompany.aveditor)'},
         )
         .timeout(const Duration(seconds: 8));
     if (response.statusCode != 200) {

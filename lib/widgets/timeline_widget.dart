@@ -14,15 +14,15 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 
-/// CapCut-style music / source-audio waveform colors.
-const _capCutAudioBg = Color(0xFF0B2342);
-const _capCutAudioBar = Color(0xFF4BA3D9);
-const _capCutAudioPeakTip = Color(0xFFE07A3A);
+/// Music / source-audio waveform colors (icon cyan ↔ warm palette).
+const _capCutAudioBg = Color(0xFF1A1230);
+const _capCutAudioBar = Color(0xFF5B9DFF);
+const _capCutAudioPeakTip = Color(0xFFFF8A3D);
 const _capCutAudioBaseline = Color(0x66FFFFFF);
 const _capCutAudioTitleBg = Color(0x99000000);
 
-/// Text-lane clip fill — distinct from music navy; white label sits on top.
-const _textClipFill = Color(0xFF2A5F7A);
+/// Text-lane clip fill — distinct from music; white label sits on top.
+const _textClipFill = Color(0xFF5A2A6E);
 
 /// Height of the fixed clip track at the top; it never scrolls away.
 /// Filmstrip on top, source-audio waveform + envelope along the bottom.
@@ -2788,7 +2788,7 @@ class _TimelinePainter extends CustomPainter {
           Rect.fromLTRB(0, top, size.width, top + _musicTrackHeight),
           const Radius.circular(4),
         ),
-        Paint()..color = const Color(0xFF1A2330),
+        Paint()..color = const Color(0xFF1A1230),
       );
     }
 
@@ -2980,7 +2980,7 @@ class _TimelinePainter extends CustomPainter {
     canvas.drawCircle(
       center,
       _audioFadeKnobRadius,
-      Paint()..color = const Color(0xFFFFCC66),
+      Paint()..color = AppTheme.accentWarm,
     );
     canvas.drawCircle(
       center,
@@ -3255,7 +3255,7 @@ class _TimelinePainter extends CustomPainter {
           canvas.drawRRect(
             RRect.fromRectAndRadius(band, const Radius.circular(3)),
             Paint()
-              ..color = const Color(0xFFE6B422).withValues(
+              ..color = AppTheme.accentWarm.withValues(
                 alpha: selected ? 0.38 : 0.28,
               ),
           );
@@ -3312,7 +3312,7 @@ class _TimelinePainter extends CustomPainter {
     // Selected: warm amber so the cut chip alone reads as focused.
     final paint = Paint()
       ..color = selected
-          ? const Color(0xFFE6B422)
+          ? AppTheme.accentWarm
           : const Color(0xFF1F1F1F).withValues(alpha: 0.88)
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
@@ -3478,7 +3478,7 @@ class _TimelinePainter extends CustomPainter {
           Rect.fromLTRB(0, laneTop, size.width, laneTop + _laneHeight),
           const Radius.circular(4),
         ),
-        Paint()..color = const Color(0xFF1A1F2A),
+        Paint()..color = const Color(0xFF1E1628),
       );
     }
 
@@ -3594,7 +3594,7 @@ class _TimelinePainter extends CustomPainter {
       end: atStart ? Alignment.centerRight : Alignment.centerLeft,
       colors: [
         Colors.white.withValues(alpha: 0.72 * strength),
-        const Color(0xFF4CC9F0).withValues(alpha: 0.38 * strength),
+        AppTheme.accentCyan.withValues(alpha: 0.38 * strength),
         Colors.transparent,
       ],
       stops: const [0.0, 0.4, 1.0],

@@ -844,7 +844,7 @@ static void request_seek(FfPlayer *player, int64_t ms, int exact, int wait) {
 }
 
 JNIEXPORT jlong JNICALL
-Java_com_smart_aveditor_nativevideo_FfmpegPlayer_nativeOpen(
+Java_com_smartcompany_aveditor_nativevideo_FfmpegPlayer_nativeOpen(
     JNIEnv *env, jobject thiz, jstring path) {
   const char *utf = (*env)->GetStringUTFChars(env, path, NULL);
   if (utf == NULL) return 0;
@@ -863,7 +863,7 @@ Java_com_smart_aveditor_nativevideo_FfmpegPlayer_nativeOpen(
 }
 
 JNIEXPORT void JNICALL
-Java_com_smart_aveditor_nativevideo_FfmpegPlayer_nativeClose(
+Java_com_smartcompany_aveditor_nativevideo_FfmpegPlayer_nativeClose(
     JNIEnv *env, jobject thiz, jlong handle) {
   (void)thiz;
   FfPlayer *player = (FfPlayer *)handle;
@@ -875,7 +875,7 @@ Java_com_smart_aveditor_nativevideo_FfmpegPlayer_nativeClose(
 }
 
 JNIEXPORT void JNICALL
-Java_com_smart_aveditor_nativevideo_FfmpegPlayer_nativeSetSurface(
+Java_com_smartcompany_aveditor_nativevideo_FfmpegPlayer_nativeSetSurface(
     JNIEnv *env, jobject thiz, jlong handle, jobject surface, jint width, jint height) {
   (void)thiz;
   FfPlayer *player = (FfPlayer *)handle;
@@ -894,7 +894,7 @@ Java_com_smart_aveditor_nativevideo_FfmpegPlayer_nativeSetSurface(
 }
 
 JNIEXPORT void JNICALL
-Java_com_smart_aveditor_nativevideo_FfmpegPlayer_nativeSeek(
+Java_com_smartcompany_aveditor_nativevideo_FfmpegPlayer_nativeSeek(
     JNIEnv *env, jobject thiz, jlong handle, jlong ms) {
   (void)env;
   (void)thiz;
@@ -904,7 +904,7 @@ Java_com_smart_aveditor_nativevideo_FfmpegPlayer_nativeSeek(
 }
 
 JNIEXPORT void JNICALL
-Java_com_smart_aveditor_nativevideo_FfmpegPlayer_nativeSeekExact(
+Java_com_smartcompany_aveditor_nativevideo_FfmpegPlayer_nativeSeekExact(
     JNIEnv *env, jobject thiz, jlong handle, jlong ms, jboolean wait) {
   (void)env;
   (void)thiz;
@@ -914,7 +914,7 @@ Java_com_smart_aveditor_nativevideo_FfmpegPlayer_nativeSeekExact(
 }
 
 JNIEXPORT void JNICALL
-Java_com_smart_aveditor_nativevideo_FfmpegPlayer_nativePlay(
+Java_com_smartcompany_aveditor_nativevideo_FfmpegPlayer_nativePlay(
     JNIEnv *env, jobject thiz, jlong handle) {
   (void)env;
   (void)thiz;
@@ -929,7 +929,7 @@ Java_com_smart_aveditor_nativevideo_FfmpegPlayer_nativePlay(
 }
 
 JNIEXPORT void JNICALL
-Java_com_smart_aveditor_nativevideo_FfmpegPlayer_nativePause(
+Java_com_smartcompany_aveditor_nativevideo_FfmpegPlayer_nativePause(
     JNIEnv *env, jobject thiz, jlong handle) {
   (void)env;
   (void)thiz;
@@ -942,7 +942,7 @@ Java_com_smart_aveditor_nativevideo_FfmpegPlayer_nativePause(
 }
 
 JNIEXPORT jlong JNICALL
-Java_com_smart_aveditor_nativevideo_FfmpegPlayer_nativePosition(
+Java_com_smartcompany_aveditor_nativevideo_FfmpegPlayer_nativePosition(
     JNIEnv *env, jobject thiz, jlong handle) {
   (void)env;
   (void)thiz;
@@ -955,7 +955,7 @@ Java_com_smart_aveditor_nativevideo_FfmpegPlayer_nativePosition(
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_smart_aveditor_nativevideo_FfmpegPlayer_nativeEnded(
+Java_com_smartcompany_aveditor_nativevideo_FfmpegPlayer_nativeEnded(
     JNIEnv *env, jobject thiz, jlong handle) {
   (void)env;
   (void)thiz;
@@ -968,7 +968,7 @@ Java_com_smart_aveditor_nativevideo_FfmpegPlayer_nativeEnded(
 }
 
 JNIEXPORT jint JNICALL
-Java_com_smart_aveditor_nativevideo_FfmpegPlayer_nativeSampleRate(
+Java_com_smartcompany_aveditor_nativevideo_FfmpegPlayer_nativeSampleRate(
     JNIEnv *env, jobject thiz, jlong handle) {
   (void)env;
   (void)thiz;
@@ -1103,7 +1103,7 @@ static uint8_t *grab_rgba(FfGrab *grab, const AVFrame *frame, int max_side, int 
 }
 
 JNIEXPORT jlong JNICALL
-Java_com_smart_aveditor_nativevideo_FfmpegStill_nativeOpen(
+Java_com_smartcompany_aveditor_nativevideo_FfmpegStill_nativeOpen(
     JNIEnv *env, jobject thiz, jstring path) {
   (void)thiz;
   const char *utf = (*env)->GetStringUTFChars(env, path, NULL);
@@ -1143,7 +1143,7 @@ Java_com_smart_aveditor_nativevideo_FfmpegStill_nativeOpen(
 }
 
 JNIEXPORT void JNICALL
-Java_com_smart_aveditor_nativevideo_FfmpegStill_nativeClose(
+Java_com_smartcompany_aveditor_nativevideo_FfmpegStill_nativeClose(
     JNIEnv *env, jobject thiz, jlong handle) {
   (void)env;
   (void)thiz;
@@ -1151,7 +1151,7 @@ Java_com_smart_aveditor_nativevideo_FfmpegStill_nativeClose(
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_com_smart_aveditor_nativevideo_FfmpegStill_nativeFrame(
+Java_com_smartcompany_aveditor_nativevideo_FfmpegStill_nativeFrame(
     JNIEnv *env, jobject thiz, jlong handle, jlong time_ms, jint max_side, jintArray wh) {
   (void)thiz;
   FfGrab *grab = (FfGrab *)handle;
@@ -1203,7 +1203,7 @@ static void grab_seek(FfGrab *grab, int64_t time_ms) {
 }
 
 JNIEXPORT void JNICALL
-Java_com_smart_aveditor_nativevideo_FfmpegStill_nativeSeek(
+Java_com_smartcompany_aveditor_nativevideo_FfmpegStill_nativeSeek(
     JNIEnv *env, jobject thiz, jlong handle, jlong time_ms) {
   (void)env;
   (void)thiz;
@@ -1239,7 +1239,7 @@ static int grab_take_frame(FfGrab *grab) {
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_com_smart_aveditor_nativevideo_FfmpegStill_nativePull(
+Java_com_smartcompany_aveditor_nativevideo_FfmpegStill_nativePull(
     JNIEnv *env, jobject thiz, jlong handle, jint max_side, jintArray info) {
   (void)thiz;
   FfGrab *grab = (FfGrab *)handle;

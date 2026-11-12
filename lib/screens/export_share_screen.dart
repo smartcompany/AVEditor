@@ -210,9 +210,9 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
         _cancelExportWork();
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFF161616),
+        backgroundColor: AppTheme.background,
         appBar: AppBar(
-          backgroundColor: const Color(0xFF161616),
+          backgroundColor: AppTheme.background,
           title: Text(
             ready
                 ? (_savedToAlbum ? l10n.savedToDevice : l10n.exportComplete)
@@ -283,7 +283,7 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: const Color(0xFF2A2A2A),
+          color: AppTheme.surface,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Padding(
@@ -404,7 +404,7 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
               height: 48,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: const Color(0xFF3A3A3A),
+                color: AppTheme.surfaceElevated,
                 borderRadius: BorderRadius.circular(14),
               ),
               child: glyph,
@@ -414,7 +414,7 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 11, color: Color(0xFFBDBDBD)),
+              style: TextStyle(fontSize: 11, color: AppTheme.muted),
             ),
           ],
         ),
@@ -581,7 +581,12 @@ class _ConversionStageState extends State<_ConversionStage>
                                     colors: [
                                       Colors.transparent,
                                       Colors.white.withValues(alpha: 0.95),
-                                      AppTheme.accent.withValues(alpha: 0.85),
+                                      AppTheme.gradientMagenta.withValues(
+                                        alpha: 0.85,
+                                      ),
+                                      AppTheme.gradientCyan.withValues(
+                                        alpha: 0.55,
+                                      ),
                                       Colors.transparent,
                                     ],
                                   ),
@@ -602,7 +607,7 @@ class _ConversionStageState extends State<_ConversionStage>
                       style: const TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.w700,
-                        color: Colors.white,
+                        color: AppTheme.ink,
                         shadows: [
                           Shadow(color: Colors.black87, blurRadius: 12),
                         ],
@@ -620,7 +625,7 @@ class _ConversionStageState extends State<_ConversionStage>
 
   Widget _still(String? path, {required bool dim}) {
     final image = path == null
-        ? const ColoredBox(color: Color(0xFF1C1C1C))
+        ? const ColoredBox(color: AppTheme.surfaceElevated)
         : Image.file(
             File(path),
             fit: BoxFit.cover,

@@ -5,8 +5,8 @@ import 'package:google_sign_in/google_sign_in.dart';
 /// Google OAuth for YouTube Data API (`youtube.upload`).
 ///
 /// The iOS client id belongs to Firebase project `aveditor-shorts`
-/// (bundle `com.smart.aveditor`). Android matches package
-/// `com.smart.aveditor` plus the debug SHA registered on that app.
+/// (bundle `com.smartcompany.aveditor`). Android matches package
+/// `com.smartcompany.aveditor` plus the debug SHA registered on that app.
 class YouTubeAuthService {
   YouTubeAuthService({FlutterSecureStorage? storage, GoogleSignIn? google})
     : _storage = storage ?? const FlutterSecureStorage(),

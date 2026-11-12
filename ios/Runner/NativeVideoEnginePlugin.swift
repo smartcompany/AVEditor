@@ -7,8 +7,8 @@ import UIKit
 
 /// Native Bridge entry — iOS Native Video Engine (AVFoundation + Metal).
 final class NativeVideoEnginePlugin: NSObject, FlutterPlugin {
-  static let channelName = "com.smart.aveditor/native_video_engine"
-  static let eventName = "com.smart.aveditor/native_video_engine/events"
+  static let channelName = "com.smartcompany.aveditor/native_video_engine"
+  static let eventName = "com.smartcompany.aveditor/native_video_engine/events"
 
   private let registrar: FlutterPluginRegistrar
   private var session: NativeVideoEngineSession?

@@ -9,6 +9,7 @@ import 'package:aveditor/models/video_project.dart';
 import 'package:aveditor/widgets/basic_text_edit_toolbar.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/services/video_frame_grab.dart';
+import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/widgets/video_preview.dart';
 import 'package:flutter/material.dart';
 
@@ -656,7 +657,7 @@ class _ThumbnailEditorScreenState extends State<ThumbnailEditorScreen> {
                                 fit: BoxFit.cover,
                                 gaplessPlayback: true,
                               )
-                            : const ColoredBox(color: Color(0xFF2A2A2A)),
+                            : const ColoredBox(color: AppTheme.surfaceElevated),
                       ),
                   ],
                 ),

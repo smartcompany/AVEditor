@@ -22,10 +22,10 @@ class NativeVideoEngine {
   static final NativeVideoEngine instance = NativeVideoEngine._();
 
   static const _channel = MethodChannel(
-    'com.smart.aveditor/native_video_engine',
+    'com.smartcompany.aveditor/native_video_engine',
   );
   static const _events = EventChannel(
-    'com.smart.aveditor/native_video_engine/events',
+    'com.smartcompany.aveditor/native_video_engine/events',
   );
 
   static const _opacityOnlyXfades = {

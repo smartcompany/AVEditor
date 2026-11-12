@@ -166,117 +166,120 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 8),
-              Text(
-                l10n.homeTagline,
-                style: GoogleFonts.dmSans(
-                  fontSize: 15,
-                  height: 1.5,
-                  color: AppTheme.muted,
+      body: DecoratedBox(
+        decoration: AppTheme.ambientBackgroundDecoration(),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 8),
+                Text(
+                  l10n.homeTagline,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 15,
+                    height: 1.5,
+                    color: AppTheme.muted,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 20),
-              if (_loading)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: _convertProgress == null
-                      ? const Center(child: CircularProgressIndicator())
-                      : ConvertProgressView(
-                          label: l10n.convertingVideo,
-                          progress: _convertProgress!,
-                        ),
-                )
-              else ...[
-                if (PlatformHelper.supportsGallery)
-                  _ActionButton(
-                    icon: Icons.photo_library_outlined,
-                    label: l10n.pickFromGallery,
-                    onPressed: _pickGallery,
-                  ),
-                if (PlatformHelper.supportsFilePicker) ...[
-                  const SizedBox(height: 12),
-                  _ActionButton(
-                    icon: Icons.folder_open_outlined,
-                    label: l10n.pickFromFiles,
-                    onPressed: _pickFiles,
-                    outlined: true,
-                  ),
-                ],
-                if (PlatformHelper.supportsCamera) ...[
-                  const SizedBox(height: 12),
-                  _ActionButton(
-                    icon: Icons.videocam_outlined,
-                    label: l10n.recordVideo,
-                    onPressed: _pickCamera,
-                    outlined: true,
-                  ),
-                ],
-              ],
-              const SizedBox(height: 28),
-              Text(
-                l10n.projectsSection,
-                style: GoogleFonts.dmSans(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Expanded(
-                child: _projectsLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _projects.isEmpty
-                        ? Align(
-                            alignment: Alignment.topLeft,
-                            child: Text(
-                              l10n.noProjectsYet,
-                              style: GoogleFonts.dmSans(
-                                fontSize: 14,
-                                height: 1.45,
-                                color: AppTheme.muted,
-                              ),
-                            ),
-                          )
-                        : ListView.separated(
-                            itemCount: _projects.length,
-                            separatorBuilder: (_, _) =>
-                                const SizedBox(height: 10),
-                            itemBuilder: (context, index) {
-                              final project = _projects[index];
-                              return _ProjectTile(
-                                title: _projectTitle(project),
-                                subtitle: l10n.projectListSubtitle(
-                                  project.overlayCount,
-                                ),
-                                enabled: !_loading,
-                                onOpen: () => _openEditor(project.id),
-                                onDelete: () => _deleteProject(project),
-                                deleteTooltip: l10n.deleteProject,
-                              );
-                            },
+                const SizedBox(height: 20),
+                if (_loading)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: _convertProgress == null
+                        ? const Center(child: CircularProgressIndicator())
+                        : ConvertProgressView(
+                            label: l10n.convertingVideo,
+                            progress: _convertProgress!,
                           ),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: _toggleYouTube,
-                icon: Icon(
-                  _youtubeConnected
-                      ? Icons.check_circle_outline
-                      : Icons.play_circle_outline,
+                  )
+                else ...[
+                  if (PlatformHelper.supportsGallery)
+                    _ActionButton(
+                      icon: Icons.photo_library_outlined,
+                      label: l10n.pickFromGallery,
+                      onPressed: _pickGallery,
+                    ),
+                  if (PlatformHelper.supportsFilePicker) ...[
+                    const SizedBox(height: 12),
+                    _ActionButton(
+                      icon: Icons.folder_open_outlined,
+                      label: l10n.pickFromFiles,
+                      onPressed: _pickFiles,
+                      outlined: true,
+                    ),
+                  ],
+                  if (PlatformHelper.supportsCamera) ...[
+                    const SizedBox(height: 12),
+                    _ActionButton(
+                      icon: Icons.videocam_outlined,
+                      label: l10n.recordVideo,
+                      onPressed: _pickCamera,
+                      outlined: true,
+                    ),
+                  ],
+                ],
+                const SizedBox(height: 28),
+                Text(
+                  l10n.projectsSection,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.ink,
+                  ),
                 ),
-                label: Text(
-                  _youtubeConnected
-                      ? l10n.youtubeSignedIn
-                      : l10n.youtubeSignIn,
+                const SizedBox(height: 10),
+                Expanded(
+                  child: _projectsLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _projects.isEmpty
+                          ? Align(
+                              alignment: Alignment.topLeft,
+                              child: Text(
+                                l10n.noProjectsYet,
+                                style: GoogleFonts.dmSans(
+                                  fontSize: 14,
+                                  height: 1.45,
+                                  color: AppTheme.muted,
+                                ),
+                              ),
+                            )
+                          : ListView.separated(
+                              itemCount: _projects.length,
+                              separatorBuilder: (_, _) =>
+                                  const SizedBox(height: 10),
+                              itemBuilder: (context, index) {
+                                final project = _projects[index];
+                                return _ProjectTile(
+                                  title: _projectTitle(project),
+                                  subtitle: l10n.projectListSubtitle(
+                                    project.overlayCount,
+                                  ),
+                                  enabled: !_loading,
+                                  onOpen: () => _openEditor(project.id),
+                                  onDelete: () => _deleteProject(project),
+                                  deleteTooltip: l10n.deleteProject,
+                                );
+                              },
+                            ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _toggleYouTube,
+                  icon: Icon(
+                    _youtubeConnected
+                        ? Icons.check_circle_outline
+                        : Icons.play_circle_outline,
+                  ),
+                  label: Text(
+                    _youtubeConnected
+                        ? l10n.youtubeSignedIn
+                        : l10n.youtubeSignIn,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -303,33 +306,61 @@ class _ProjectTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      color: AppTheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: AppTheme.muted.withValues(alpha: 0.25)),
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 6,
-        ),
-        leading: const Icon(Icons.movie_outlined),
-        title: Text(title),
-        subtitle: Text(subtitle),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              onPressed: enabled ? onDelete : null,
-              icon: const Icon(Icons.delete_outline),
-              tooltip: deleteTooltip,
-            ),
-            const Icon(Icons.chevron_right),
-          ],
-        ),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         onTap: enabled ? onOpen : null,
+        borderRadius: BorderRadius.circular(16),
+        child: Ink(
+          decoration: BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: AppTheme.accent.withValues(alpha: 0.18),
+            ),
+          ),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  width: 4,
+                  decoration: BoxDecoration(
+                    borderRadius: const BorderRadius.horizontal(
+                      left: Radius.circular(16),
+                    ),
+                    gradient: AppTheme.brandGradient,
+                  ),
+                ),
+                Expanded(
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    leading: Icon(
+                      Icons.movie_outlined,
+                      color: AppTheme.accentCyan.withValues(alpha: 0.9),
+                    ),
+                    title: Text(title),
+                    subtitle: Text(subtitle),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          onPressed: enabled ? onDelete : null,
+                          icon: const Icon(Icons.delete_outline),
+                          tooltip: deleteTooltip,
+                        ),
+                        const Icon(Icons.chevron_right),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -360,8 +391,43 @@ class _ActionButton extends StatelessWidget {
     );
 
     if (outlined) {
-      return OutlinedButton(onPressed: onPressed, child: child);
+      return OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppTheme.ink,
+          side: BorderSide(color: AppTheme.accentCyan.withValues(alpha: 0.45)),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        child: child,
+      );
     }
-    return FilledButton(onPressed: onPressed, child: child);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(12),
+        child: Ink(
+          decoration: AppTheme.brandGradientDecoration(borderRadius: 12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: DefaultTextStyle(
+              style: GoogleFonts.dmSans(
+                color: AppTheme.ink,
+                fontWeight: FontWeight.w600,
+                fontSize: 15,
+              ),
+              child: IconTheme(
+                data: const IconThemeData(color: AppTheme.ink, size: 22),
+                child: child,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

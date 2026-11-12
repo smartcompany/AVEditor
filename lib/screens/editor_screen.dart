@@ -38,6 +38,7 @@ import 'package:aveditor/widgets/transition_picker_sheet.dart';
 import 'package:aveditor/widgets/transition_preview_compositor.dart';
 import 'package:aveditor/widgets/overflow_hit_stack.dart';
 import 'package:aveditor/services/transition_engine.dart';
+import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/services/composition_segments.dart';
 import 'package:aveditor/services/native_video_engine.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
@@ -3734,7 +3735,7 @@ class _EditorScreenState extends State<EditorScreen>
                 children: [
                   Expanded(
                     child: ColoredBox(
-                      color: const Color(0xFF243044),
+                      color: AppTheme.surfaceElevated,
                       child: Padding(
                       padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
                       child: LayoutBuilder(
@@ -4420,10 +4421,10 @@ class _TextAddIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = enabled ? Colors.white : Colors.white38;
+    final color = enabled ? AppTheme.ink : AppTheme.ink.withValues(alpha: 0.38);
     final accent = enabled
-        ? const Color(0xFF4CC9F0)
-        : const Color(0xFF4CC9F0).withValues(alpha: 0.4);
+        ? AppTheme.accentCyan
+        : AppTheme.accentCyan.withValues(alpha: 0.4);
 
     return SizedBox(
       width: 26,
