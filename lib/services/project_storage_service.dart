@@ -18,12 +18,16 @@ class ProjectSummary {
     required this.updatedAt,
     required this.overlayCount,
     required this.sourceExists,
+    this.name,
   });
 
   final String id;
   final DateTime updatedAt;
   final int overlayCount;
   final bool sourceExists;
+
+  /// User-given name, or null for a project that was never named.
+  final String? name;
 }
 
 /// Persists edit projects as JSON + a copied source video on disk.
@@ -126,6 +130,7 @@ class ProjectStorageService {
       updatedAt: project.updatedAt,
       overlayCount: project.overlays.length,
       sourceExists: await File(project.sourcePath).exists(),
+      name: project.name,
     );
   }
 

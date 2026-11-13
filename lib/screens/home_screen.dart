@@ -140,6 +140,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String _projectTitle(ProjectSummary summary) {
+    final name = summary.name?.trim();
+    if (name != null && name.isNotEmpty) return name;
     return DateFormat.yMMMd().add_jm().format(summary.updatedAt.toLocal());
   }
 
@@ -342,7 +344,11 @@ class _ProjectTile extends StatelessWidget {
                       Icons.movie_outlined,
                       color: AppTheme.accentCyan.withValues(alpha: 0.9),
                     ),
-                    title: Text(title),
+                    title: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     subtitle: Text(subtitle),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,

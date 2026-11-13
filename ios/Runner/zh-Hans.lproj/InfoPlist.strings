@@ -1,5 +1,5 @@
 /* Localized Info.plist strings — Simplified Chinese */
-"CFBundleDisplayName" = "AVEditor";
+"CFBundleDisplayName" = "ClipGo";
 "NSCameraUsageDescription" = "编辑 Shorts 需要访问相机以拍摄视频。";
 "NSMicrophoneUsageDescription" = "拍摄视频时需要访问麦克风以录制音频。";
 "NSPhotoLibraryUsageDescription" = "需要访问照片库以选择要编辑的视频。";

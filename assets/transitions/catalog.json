@@ -1,5 +1,5 @@
 {
-  "version": 40,
+  "version": 41,
   "baseUrl": "",
   "categories": [
     {
@@ -264,7 +264,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#65A30D",
-          "premium": false,
+          "premium": true,
           "thumbnailUrl": "transitions/thumbs/spinin.webp",
           "layers": [
             {
@@ -309,7 +309,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#4D7C0F",
-          "premium": false,
+          "premium": true,
           "thumbnailUrl": "transitions/thumbs/spinout.webp",
           "layers": [
             {
@@ -400,7 +400,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#84CC16",
-          "premium": false,
+          "premium": true,
           "thumbnailUrl": "transitions/thumbs/doorway.webp",
           "layers": [],
           "customId": "doorway",
@@ -430,7 +430,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#A3E635",
-          "premium": false,
+          "premium": true,
           "thumbnailUrl": "transitions/thumbs/swap.webp",
           "layers": [
             {
@@ -499,7 +499,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#38BDF8",
-          "premium": false,
+          "premium": true,
           "thumbnailUrl": "transitions/thumbs/cube.webp",
           "layers": [
             {
@@ -566,7 +566,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#F97316",
-          "premium": false,
+          "premium": true,
           "thumbnailUrl": "transitions/thumbs/mosaic.webp",
           "layers": [
             {
@@ -862,7 +862,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#FB923C",
-          "premium": false,
+          "premium": true,
           "thumbnailUrl": "transitions/thumbs/puzzleleft.webp",
           "layers": [],
           "customId": "puzzle",
@@ -891,7 +891,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#F97316",
-          "premium": false,
+          "premium": true,
           "thumbnailUrl": "transitions/thumbs/puzzleright.webp",
           "layers": [],
           "customId": "puzzle",
@@ -920,7 +920,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#22D3EE",
-          "premium": false,
+          "premium": true,
           "thumbnailUrl": "transitions/thumbs/crosszoom.webp",
           "layers": [
             {
@@ -1049,7 +1049,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#06B6D4",
-          "premium": false,
+          "premium": true,
           "thumbnailUrl": "transitions/thumbs/ripple.webp",
           "layers": [
             {
@@ -1335,7 +1335,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#65A30D",
-      "premium": false,
+      "premium": true,
       "thumbnailUrl": "transitions/thumbs/spinin.webp",
       "layers": [
         {
@@ -1380,7 +1380,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#4D7C0F",
-      "premium": false,
+      "premium": true,
       "thumbnailUrl": "transitions/thumbs/spinout.webp",
       "layers": [
         {
@@ -1471,7 +1471,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#84CC16",
-      "premium": false,
+      "premium": true,
       "thumbnailUrl": "transitions/thumbs/doorway.webp",
       "layers": [],
       "customId": "doorway",
@@ -1501,7 +1501,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#A3E635",
-      "premium": false,
+      "premium": true,
       "thumbnailUrl": "transitions/thumbs/swap.webp",
       "layers": [
         {
@@ -1570,7 +1570,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#38BDF8",
-      "premium": false,
+      "premium": true,
       "thumbnailUrl": "transitions/thumbs/cube.webp",
       "layers": [
         {
@@ -1637,7 +1637,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#F97316",
-      "premium": false,
+      "premium": true,
       "thumbnailUrl": "transitions/thumbs/mosaic.webp",
       "layers": [
         {
@@ -1933,7 +1933,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#FB923C",
-      "premium": false,
+      "premium": true,
       "thumbnailUrl": "transitions/thumbs/puzzleleft.webp",
       "layers": [],
       "customId": "puzzle",
@@ -1962,7 +1962,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#F97316",
-      "premium": false,
+      "premium": true,
       "thumbnailUrl": "transitions/thumbs/puzzleright.webp",
       "layers": [],
       "customId": "puzzle",
@@ -1991,7 +1991,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#22D3EE",
-      "premium": false,
+      "premium": true,
       "thumbnailUrl": "transitions/thumbs/crosszoom.webp",
       "layers": [
         {
@@ -2120,7 +2120,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#06B6D4",
-      "premium": false,
+      "premium": true,
       "thumbnailUrl": "transitions/thumbs/ripple.webp",
       "layers": [
         {

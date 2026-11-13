@@ -9,7 +9,7 @@ class AppLocalizationsJa extends AppLocalizations {
   AppLocalizationsJa([String locale = 'ja']) : super(locale);
 
   @override
-  String get appTitle => 'AVEditor';
+  String get appTitle => 'ClipGo';
 
   @override
   String get homeTagline => 'テキストは指定区間だけ — Shorts投稿までこのアプリで。';
@@ -603,4 +603,89 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get canvasRatioOriginal => 'オリジナル';
+
+  @override
+  String get textColorCustom => 'カスタム';
+
+  @override
+  String get textColorDone => '完了';
+
+  @override
+  String projectDefaultName(int n) {
+    return 'プロジェクト $n';
+  }
+
+  @override
+  String get projectNameTitle => 'プロジェクト名';
+
+  @override
+  String get projectNameHint => 'プロジェクト名を入力';
+
+  @override
+  String proTitle(String appName) {
+    return '$appName Pro';
+  }
+
+  @override
+  String get proSubtitle => 'すべてのエフェクトを解放して、ショートを際立たせましょう。';
+
+  @override
+  String get proBenefitEffects => 'すべてのProトランジションとテキスト効果';
+
+  @override
+  String get proBenefitNoAds => '広告なしで書き出し';
+
+  @override
+  String get proBenefitFuture => '今後追加されるPro機能';
+
+  @override
+  String get proSubscribe => 'Proを始める';
+
+  @override
+  String get proRestore => '購入を復元';
+
+  @override
+  String get proAnnualBadge => 'お得';
+
+  @override
+  String get proLegal => 'サブスクリプションは自動更新されます。ストアのアカウント設定からいつでも解約できます。';
+
+  @override
+  String get proStoreUnavailable => 'ストアがまだ接続されていません。';
+
+  @override
+  String get proDebugToggle => 'テスト用Pro（デバッグのみ）';
+
+  @override
+  String get proActive => 'Pro利用中';
+
+  @override
+  String get proInactive => '無料プラン';
+
+  @override
+  String get proPurchaseFailed => '購入を完了できませんでした。もう一度お試しください。';
+
+  @override
+  String get proRestoreNone => '復元できる購入はありません。';
+
+  @override
+  String get proSection => 'サブスクリプション';
+
+  @override
+  String get premiumExportTitle => 'Proエフェクトが含まれています';
+
+  @override
+  String get premiumExportBody => '保存方法を選んでください。';
+
+  @override
+  String get premiumExportWithPro => 'Proで保存';
+
+  @override
+  String get premiumExportWatchAd => '広告を見て今回だけ保存';
+
+  @override
+  String get premiumExportStrip => 'Proエフェクトを外して保存';
+
+  @override
+  String get premiumAdNotFinished => '広告を最後まで見ると保存できます。';
 }

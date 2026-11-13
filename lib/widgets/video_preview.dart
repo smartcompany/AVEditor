@@ -142,9 +142,11 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
   OverlayDrag? _activeDrag;
   int? _activePointer;
   TextOverlay? _tapTarget;
+
   /// Overlay under the active pointer — may differ from [widget.selectedOverlayId]
   /// until the parent rebuilds after a fresh select-on-down.
   TextOverlay? _gestureOverlay;
+
   /// True when this press selected a new overlay; release must not open edit.
   bool _suppressEditOnRelease = false;
   Offset? _lastLocal;
@@ -358,10 +360,7 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
     final to = local - centre;
     if (from == null || from.distance < 1 || to.distance < 1) return;
 
-    final scale = math.max(
-      to.distance / from.distance,
-      _minResizeScale(start),
-    );
+    final scale = math.max(to.distance / from.distance, _minResizeScale(start));
     final rawRotation = start.rotation + (to.direction - from.direction);
     final scaled = start.scaled(scale);
     final snapped = snapOverlayGuides(
@@ -410,7 +409,8 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
       _resizeAccumulated = Offset.zero;
       // Anchored on the press, not the first move, so a single large move
       // still rotates by the angle the finger actually swept.
-      _rotateStartVector = local -
+      _rotateStartVector =
+          local -
           OverlayGeometry.boxCenter(
             previewW: _previewW,
             previewH: _previewH,
@@ -971,7 +971,8 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
                     knobClampRect: _knobClampRect,
                     selected: overlay.id == widget.selectedOverlayId,
                     editing: overlay.id == widget.editingOverlayId,
-                    selectAllOnEdit: widget.selectAllOnEdit &&
+                    selectAllOnEdit:
+                        widget.selectAllOnEdit &&
                         overlay.id == widget.editingOverlayId,
                     textHint: widget.textHint,
                     onTextChanged: (text) =>
@@ -1041,6 +1042,96 @@ class _DraggableOverlayLabel extends StatefulWidget {
 class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
   late final TextEditingController _controller;
   late final FocusNode _focusNode;
+
+  /// Wraps the inline [TextField] so caret drags can reach its editable.
+  final GlobalKey _fieldKey = GlobalKey();
+
+  /// On-screen pixels per layout pixel. The editor shrinks the video-sized
+  /// canvas with a FittedBox, so a 2px caret would draw well under 1px.
+  double _screenScale = 1;
+
+  static const _caretScreenWidth = 2.5;
+  static const _caretDragSlop = 6.0;
+
+  double get _cursorWidth =>
+      (_caretScreenWidth / _screenScale).clamp(2.0, 16.0);
+
+  int? _caretPointer;
+  Offset? _caretDownGlobal;
+  bool _caretDragging = false;
+
+  EditableTextState? _editableState() {
+    EditableTextState? found;
+    void visit(Element e) {
+      if (found != null) return;
+      if (e is StatefulElement && e.state is EditableTextState) {
+        found = e.state as EditableTextState;
+        return;
+      }
+      e.visitChildren(visit);
+    }
+
+    _fieldKey.currentContext?.visitChildElements(visit);
+    return found;
+  }
+
+  void _syncScreenScale() {
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.attached) return;
+    // Measure with two mapped points: Matrix4.getMaxScaleOnAxis also counts
+    // the untouched Z axis (1.0), so it never reports a FittedBox shrink.
+    final scale =
+        (box.localToGlobal(const Offset(100, 0)) -
+                box.localToGlobal(Offset.zero))
+            .distance /
+        100;
+    if (scale > 0 && (scale - _screenScale).abs() > 0.01) {
+      setState(() => _screenScale = scale);
+    }
+  }
+
+  // Drag anywhere in the text to move the caret. iOS ignores touch drags on
+  // a field (only long-press moves it, then pops the Select All / Scan Text
+  // menu on release); this gives both platforms a direct caret drag.
+  void _onCaretPointerDown(PointerDownEvent e) {
+    if (_caretPointer != null) return;
+    _caretPointer = e.pointer;
+    _caretDownGlobal = e.position;
+    _caretDragging = false;
+  }
+
+  void _onCaretPointerMove(PointerMoveEvent e) {
+    if (e.pointer != _caretPointer) return;
+    final start = _caretDownGlobal;
+    if (start == null) return;
+    if (!_caretDragging) {
+      if ((e.position - start).distance < _caretDragSlop) return;
+      _caretDragging = true;
+      _log('caretDragStart');
+    }
+    final editable = _editableState();
+    if (editable == null) return;
+    editable.renderEditable.selectPositionAt(
+      from: e.position,
+      cause: SelectionChangedCause.drag,
+    );
+    editable.hideToolbar(false);
+  }
+
+  void _onCaretPointerEnd(PointerEvent e) {
+    if (e.pointer != _caretPointer) return;
+    final dragged = _caretDragging;
+    _caretPointer = null;
+    _caretDownGlobal = null;
+    _caretDragging = false;
+    if (!dragged) return;
+    _log('caretDragEnd', {'offset': _controller.selection.baseOffset});
+    // A drag that also tripped iOS's long-press shows its menu on release.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _editableState()?.hideToolbar(false);
+    });
+  }
 
   static const _logTag = 'OverlayLabel';
 
@@ -1130,8 +1221,8 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
     return overlayTextFillStyle(
       color: widget.overlay.color,
       fontSize: widget.box.fontSize,
-      style: widget.overlay.templateId == null &&
-              widget.overlay.packItemId == null
+      style:
+          widget.overlay.templateId == null && widget.overlay.packItemId == null
           ? widget.overlay.style
           : TextOverlayStyle.plain,
       fontFamily: widget.overlay.fontFamily,
@@ -1144,8 +1235,6 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
 
   Widget _buildBody() {
     final template = resolveOverlayTemplate(widget.overlay);
-    final fill = template.resolveFill(widget.overlay.color);
-    final hintColor = fill.withValues(alpha: 0.45);
     final anim = resolveOverlayAnimation(widget.overlay);
     // Paused / scrubbing / editing: show the finished look so Journal paper etc.
     // stay visible while picking templates. Entrance only runs during playback.
@@ -1165,9 +1254,14 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
           );
 
     // Layout width = box minus pads so wrap matches fitOverlayBoxToText.
-    final padH = overlayTextPadH(fontSize: widget.box.fontSize, template: template);
-    final contentMaxWidth =
-        (widget.box.width - padH * 2).clamp(1.0, widget.box.width);
+    final padH = overlayTextPadH(
+      fontSize: widget.box.fontSize,
+      template: template,
+    );
+    final contentMaxWidth = (widget.box.width - padH * 2).clamp(
+      1.0,
+      widget.box.width,
+    );
 
     double layoutMaxWidth(String displayText) {
       if (displayText.isEmpty) {
@@ -1214,22 +1308,37 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
           template: template,
           fontFamily: widget.overlay.fontFamily,
           textAlign: widget.overlay.textAlign,
-          hintColor: isHint ? hintColor : null,
+          // Hint uses the full text style (opaque, with outline/shadow) so it
+          // stays readable on bright video.
+          hintColor: null,
           entrance: TextEntranceState.fullyVisible,
         ),
       );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _syncScreenScale();
+      });
       final field = MediaQuery.withNoTextScaling(
         child: TextField(
+          key: _fieldKey,
           controller: _controller,
           focusNode: _focusNode,
           autofocus: true,
           maxLines: null,
           textAlign: widget.overlay.textAlign,
+          // TextField merges the theme's bodyLarge into this style, and M3
+          // bodyLarge carries letterSpacing 0.5. Pin spacing to the painted
+          // style or the hidden field runs wider than the visible text and
+          // taps / caret land on the wrong letter.
           style: _fillStyle.copyWith(
             color: Colors.transparent,
             shadows: const [],
+            letterSpacing: _fillStyle.letterSpacing ?? 0,
+            wordSpacing: _fillStyle.wordSpacing ?? 0,
           ),
           cursorColor: AppTheme.accent,
+          cursorWidth: _cursorWidth,
+          cursorRadius: Radius.circular((1.5 / _screenScale).clamp(1.0, 8.0)),
+          cursorOpacityAnimates: false,
           strutStyle: StrutStyle(
             fontSize: _fillStyle.fontSize,
             height: _fillStyle.height,
@@ -1257,10 +1366,25 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
         clipBehavior: Clip.none,
         children: [
           painted,
-          SizedBox(
-            width: maxW,
-            height: widget.box.height,
-            child: field,
+          // EditableText lays text out in (width - caret margin), where the
+          // margin is cursorWidth + 1. Without the extra room the hidden
+          // field wrapped ("hello" / "world") while the painted copy stayed
+          // on one line, so taps and caret drags landed on the wrong letter.
+          // Widen by the margin and shift right by half so the field's text
+          // sits exactly on the painted text.
+          Transform.translate(
+            offset: Offset((_cursorWidth + 1) / 2, 0),
+            child: SizedBox(
+              width: maxW + _cursorWidth + 1,
+              height: widget.box.height,
+              child: Listener(
+                onPointerDown: _onCaretPointerDown,
+                onPointerMove: _onCaretPointerMove,
+                onPointerUp: _onCaretPointerEnd,
+                onPointerCancel: _onCaretPointerEnd,
+                child: field,
+              ),
+            ),
           ),
         ],
       );
@@ -1285,8 +1409,7 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
     }
 
     final isHint = widget.overlay.text.isEmpty;
-    final displayText =
-        isHint ? (widget.textHint ?? '') : widget.overlay.text;
+    final displayText = isHint ? (widget.textHint ?? '') : widget.overlay.text;
     final maxW = layoutMaxWidth(displayText);
     final text = OverlayTextDisplay(
       text: displayText,
@@ -1296,7 +1419,9 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
       template: template,
       fontFamily: widget.overlay.fontFamily,
       textAlign: widget.overlay.textAlign,
-      hintColor: isHint ? hintColor : null,
+      // Hint uses the full text style (opaque, with outline/shadow) so it
+      // stays readable on bright video.
+      hintColor: null,
       entrance: entrance,
     );
 
@@ -1346,11 +1471,7 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
         shape: BoxShape.circle,
         border: Border.all(color: iconColor, width: 2),
         boxShadow: const [
-          BoxShadow(
-            blurRadius: 6,
-            offset: Offset(0, 1),
-            color: Colors.black54,
-          ),
+          BoxShadow(blurRadius: 6, offset: Offset(0, 1), color: Colors.black54),
         ],
       ),
       child: Center(
@@ -1423,14 +1544,8 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
                 iconColor: const Color(0xFFE53935),
               ),
             ),
-            _knobAt(
-              corners.edit,
-              _buildIconKnob(Icons.edit_rounded),
-            ),
-            _knobAt(
-              corners.duplicate,
-              _buildIconKnob(Icons.copy_all_rounded),
-            ),
+            _knobAt(corners.edit, _buildIconKnob(Icons.edit_rounded)),
+            _knobAt(corners.duplicate, _buildIconKnob(Icons.copy_all_rounded)),
             _knobAt(
               corners.resizeRotate,
               _buildIconKnob(Icons.open_in_full_rounded),
@@ -1501,9 +1616,7 @@ class _VideoCanvasBackground extends StatelessWidget {
     return Container(
       foregroundDecoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppTheme.accentCyan.withValues(alpha: 0.45),
-        ),
+        border: Border.all(color: AppTheme.accentCyan.withValues(alpha: 0.45)),
       ),
       decoration: const BoxDecoration(
         color: Colors.black,

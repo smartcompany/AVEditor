@@ -6,6 +6,7 @@ import 'package:aveditor/widgets/overlay_geometry.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/widgets/video_preview.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _PreviewHarness extends StatefulWidget {
@@ -825,6 +826,77 @@ void main() {
     await tester.pump();
 
     expect(source, isNull);
+  });
+
+  testWidgets('dragging inside the field moves the caret on iOS',
+      (tester) async {
+    final overlay = buildOverlay();
+    String? source;
+
+    await tester.pumpWidget(
+      _PreviewHarness(
+        overlays: [overlay],
+        selectedId: overlay.id,
+        editingId: overlay.id,
+        onEditingComplete: (s) => source ??= s,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final field = find.byType(EditableText);
+    final controller = tester.widget<EditableText>(field).controller;
+    controller.selection = const TextSelection.collapsed(offset: 5);
+    await tester.pump();
+
+    // Finger lands mid-text (not on the caret) and slides to the far left.
+    final rect = tester.getRect(field);
+    final gesture = await tester.startGesture(rect.center);
+    await gesture.moveBy(const Offset(-12, 0));
+    await gesture.moveTo(Offset(rect.left + 1, rect.center.dy));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+
+    expect(controller.selection.isCollapsed, isTrue);
+    expect(controller.selection.baseOffset, 0);
+    expect(source, isNull, reason: 'caret drag must not end editing');
+  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+  testWidgets('inline field text matches the painted text width',
+      (tester) async {
+    final overlay = TextOverlay(
+      id: 'overlay-1',
+      text: 'hello wonderful world',
+      start: Duration.zero,
+      end: const Duration(seconds: 5),
+      fontSize: 84,
+    );
+    await tester.pumpWidget(
+      _PreviewHarness(
+        overlays: [overlay],
+        selectedId: overlay.id,
+        editingId: overlay.id,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // Theme letter spacing used to widen the hidden field so it wrapped onto
+    // two lines while the painted copy stayed on one.
+    final editable = tester.renderObject<RenderEditable>(
+      find.descendant(
+        of: find.byType(EditableText),
+        matching: find.byWidgetPredicate(
+          (w) => w.runtimeType.toString() == '_Editable',
+        ),
+      ),
+    );
+    final lines = editable.getBoxesForSelection(
+      TextSelection(baseOffset: 0, extentOffset: overlay.text.length),
+    );
+    final tops = lines.map((b) => b.top.round()).toSet();
+    expect(tops.length, 1, reason: 'field wrapped: $tops');
   });
 
   testWidgets('two-finger pinch does not rotate the clip', (tester) async {

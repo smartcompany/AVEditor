@@ -36,6 +36,7 @@ class VideoProject {
     this.preset = ExportPreset.youtubeShorts,
     this.canvas = CanvasRatio.original,
     this.rotation = 0,
+    this.name,
     DateTime? updatedAt,
   })  : segments = segments ??
             segmentsFromTrim(
@@ -64,6 +65,10 @@ class VideoProject {
   double rotation;
 
   DateTime updatedAt;
+
+  /// User-given project name. Null until the user names it (asked on the
+  /// first back press out of the editor).
+  String? name;
 
   /// Basename of the source clip inside the project folder.
   String get sourceFileName => p.basename(sourcePath);
@@ -113,6 +118,7 @@ class VideoProject {
       preset: preset,
       canvas: canvas,
       rotation: rotation,
+      name: name,
       updatedAt: updatedAt,
     );
   }
@@ -124,6 +130,7 @@ class VideoProject {
     ExportPreset? preset,
     CanvasRatio? canvas,
     double? rotation,
+    String? name,
     DateTime? updatedAt,
   }) {
     return VideoProject(
@@ -137,6 +144,7 @@ class VideoProject {
       preset: preset ?? this.preset,
       canvas: canvas ?? this.canvas,
       rotation: rotation ?? this.rotation,
+      name: name ?? this.name,
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
@@ -144,6 +152,7 @@ class VideoProject {
   Map<String, dynamic> toJson() => {
     'version': kProjectFileVersion,
     'id': id,
+    if (name != null) 'name': name,
     'updatedAt': updatedAt.toIso8601String(),
     'sourceFileName': sourceFileName,
     'durationMs': duration.inMilliseconds,
@@ -210,6 +219,7 @@ class VideoProject {
       preset: ExportPreset.values.byName(json['preset'] as String),
       canvas: _canvasFromJson(json['canvas']),
       rotation: (json['rotation'] as num?)?.toDouble() ?? 0,
+      name: json['name'] as String?,
       updatedAt: DateTime.parse(json['updatedAt'] as String),
     );
   }

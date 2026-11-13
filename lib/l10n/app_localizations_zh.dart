@@ -9,7 +9,7 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
-  String get appTitle => 'AVEditor';
+  String get appTitle => 'ClipGo';
 
   @override
   String get homeTagline => '文字只在指定时段出现 — 一个应用完成 Shorts 上传。';
@@ -598,4 +598,89 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get canvasRatioOriginal => '原始';
+
+  @override
+  String get textColorCustom => '自定义';
+
+  @override
+  String get textColorDone => '完成';
+
+  @override
+  String projectDefaultName(int n) {
+    return '项目 $n';
+  }
+
+  @override
+  String get projectNameTitle => '项目名称';
+
+  @override
+  String get projectNameHint => '输入项目名称';
+
+  @override
+  String proTitle(String appName) {
+    return '$appName Pro';
+  }
+
+  @override
+  String get proSubtitle => '解锁全部特效，让你的短视频更出彩。';
+
+  @override
+  String get proBenefitEffects => '全部 Pro 转场与文字特效';
+
+  @override
+  String get proBenefitNoAds => '无广告导出';
+
+  @override
+  String get proBenefitFuture => '后续新增的 Pro 功能';
+
+  @override
+  String get proSubscribe => '开始 Pro';
+
+  @override
+  String get proRestore => '恢复购买';
+
+  @override
+  String get proAnnualBadge => '最划算';
+
+  @override
+  String get proLegal => '订阅将自动续订，可随时在商店账户设置中取消。';
+
+  @override
+  String get proStoreUnavailable => '尚未连接应用商店。';
+
+  @override
+  String get proDebugToggle => '测试 Pro（仅调试）';
+
+  @override
+  String get proActive => 'Pro 已开通';
+
+  @override
+  String get proInactive => '免费版';
+
+  @override
+  String get proPurchaseFailed => '购买未完成，请重试。';
+
+  @override
+  String get proRestoreNone => '没有可恢复的购买。';
+
+  @override
+  String get proSection => '订阅';
+
+  @override
+  String get premiumExportTitle => '此视频包含 Pro 特效';
+
+  @override
+  String get premiumExportBody => '请选择保存方式。';
+
+  @override
+  String get premiumExportWithPro => '用 Pro 保存';
+
+  @override
+  String get premiumExportWatchAd => '观看广告，本次保存';
+
+  @override
+  String get premiumExportStrip => '去除 Pro 特效后保存';
+
+  @override
+  String get premiumAdNotFinished => '完整观看广告后即可保存。';
 }

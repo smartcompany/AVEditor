@@ -21,7 +21,7 @@ void main() {
       jsonDecode(raw) as Map<String, dynamic>,
     );
 
-    expect(catalog.version, 7);
+    expect(catalog.version, 8);
     final effects = catalog.allItems.where((e) => e.kind == 'effect').toList();
     final templates =
         catalog.allItems.where((e) => e.kind == 'template').toList();

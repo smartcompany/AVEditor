@@ -1,3 +1,6 @@
+import 'package:aveditor/screens/paywall_screen.dart';
+import 'package:aveditor/services/pro_service.dart';
+import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/models/export_quality_profile.dart';
 import 'package:aveditor/services/app_settings_service.dart';
@@ -37,8 +40,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     setState(() {
       _selected = profile;
-      _packUrlController.text =
-          TextTemplatePackService.instance.remoteBaseUrl;
+      _packUrlController.text = TextTemplatePackService.instance.remoteBaseUrl;
       _loading = false;
     });
   }
@@ -85,6 +87,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
               children: [
+                Text(
+                  l10n.proSection,
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const SizedBox(height: 8),
+                ListenableBuilder(
+                  listenable: ProService.instance,
+                  builder: (context, _) {
+                    final pro = ProService.instance;
+                    return Card(
+                      child: ListTile(
+                        leading: Icon(
+                          Icons.workspace_premium,
+                          color: pro.isPro ? AppTheme.accent : null,
+                        ),
+                        title: Text(
+                          pro.isPro ? l10n.proActive : l10n.proInactive,
+                        ),
+                        subtitle: Text(l10n.proTitle(l10n.appTitle)),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => PaywallScreen.open(context),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 24),
                 Text(
                   l10n.exportQualitySection,
                   style: Theme.of(context).textTheme.titleSmall,

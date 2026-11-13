@@ -105,7 +105,7 @@ abstract class AppLocalizations {
   /// No description provided for @appTitle.
   ///
   /// In en, this message translates to:
-  /// **'AVEditor'**
+  /// **'ClipGo'**
   String get appTitle;
 
   /// No description provided for @homeTagline.
@@ -1217,6 +1217,168 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Original'**
   String get canvasRatioOriginal;
+
+  /// No description provided for @textColorCustom.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom color'**
+  String get textColorCustom;
+
+  /// No description provided for @textColorDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get textColorDone;
+
+  /// No description provided for @projectDefaultName.
+  ///
+  /// In en, this message translates to:
+  /// **'Project {n}'**
+  String projectDefaultName(int n);
+
+  /// No description provided for @projectNameTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Project name'**
+  String get projectNameTitle;
+
+  /// No description provided for @projectNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a project name'**
+  String get projectNameHint;
+
+  /// No description provided for @proTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{appName} Pro'**
+  String proTitle(String appName);
+
+  /// No description provided for @proSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock every effect and make your Shorts stand out.'**
+  String get proSubtitle;
+
+  /// No description provided for @proBenefitEffects.
+  ///
+  /// In en, this message translates to:
+  /// **'All Pro transitions and text effects'**
+  String get proBenefitEffects;
+
+  /// No description provided for @proBenefitNoAds.
+  ///
+  /// In en, this message translates to:
+  /// **'Export without ads'**
+  String get proBenefitNoAds;
+
+  /// No description provided for @proBenefitFuture.
+  ///
+  /// In en, this message translates to:
+  /// **'New Pro features as they arrive'**
+  String get proBenefitFuture;
+
+  /// No description provided for @proSubscribe.
+  ///
+  /// In en, this message translates to:
+  /// **'Start Pro'**
+  String get proSubscribe;
+
+  /// No description provided for @proRestore.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore purchases'**
+  String get proRestore;
+
+  /// No description provided for @proAnnualBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Best value'**
+  String get proAnnualBadge;
+
+  /// No description provided for @proLegal.
+  ///
+  /// In en, this message translates to:
+  /// **'Subscriptions renew automatically. Cancel anytime in your store account settings.'**
+  String get proLegal;
+
+  /// No description provided for @proStoreUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'The store isn\'t connected yet.'**
+  String get proStoreUnavailable;
+
+  /// No description provided for @proDebugToggle.
+  ///
+  /// In en, this message translates to:
+  /// **'Test Pro (debug only)'**
+  String get proDebugToggle;
+
+  /// No description provided for @proActive.
+  ///
+  /// In en, this message translates to:
+  /// **'Pro is active'**
+  String get proActive;
+
+  /// No description provided for @proInactive.
+  ///
+  /// In en, this message translates to:
+  /// **'Free plan'**
+  String get proInactive;
+
+  /// No description provided for @proPurchaseFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The purchase didn\'t go through. Please try again.'**
+  String get proPurchaseFailed;
+
+  /// No description provided for @proRestoreNone.
+  ///
+  /// In en, this message translates to:
+  /// **'No purchases to restore.'**
+  String get proRestoreNone;
+
+  /// No description provided for @proSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Subscription'**
+  String get proSection;
+
+  /// No description provided for @premiumExportTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Pro effects are in this video'**
+  String get premiumExportTitle;
+
+  /// No description provided for @premiumExportBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose how to save it.'**
+  String get premiumExportBody;
+
+  /// No description provided for @premiumExportWithPro.
+  ///
+  /// In en, this message translates to:
+  /// **'Save with Pro'**
+  String get premiumExportWithPro;
+
+  /// No description provided for @premiumExportWatchAd.
+  ///
+  /// In en, this message translates to:
+  /// **'Watch an ad to save this once'**
+  String get premiumExportWatchAd;
+
+  /// No description provided for @premiumExportStrip.
+  ///
+  /// In en, this message translates to:
+  /// **'Save without Pro effects'**
+  String get premiumExportStrip;
+
+  /// No description provided for @premiumAdNotFinished.
+  ///
+  /// In en, this message translates to:
+  /// **'Watch the whole ad to unlock this save.'**
+  String get premiumAdNotFinished;
 }
 
 class _AppLocalizationsDelegate

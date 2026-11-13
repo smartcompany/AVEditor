@@ -12,6 +12,10 @@ import 'package:aveditor/models/project_music.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/timeline_filmstrip_frame.dart';
 import 'package:aveditor/models/video_project.dart';
+import 'package:aveditor/screens/paywall_screen.dart';
+import 'package:aveditor/services/premium_usage.dart';
+import 'package:aveditor/services/pro_service.dart';
+import 'package:aveditor/widgets/premium_export_sheet.dart';
 import 'package:aveditor/screens/export_share_screen.dart';
 import 'package:aveditor/screens/music_picker_screen.dart';
 import 'package:aveditor/services/editor_history.dart';
@@ -22,7 +26,6 @@ import 'package:aveditor/services/timeline_thumbnail_service.dart';
 import 'package:aveditor/services/video_probe_service.dart';
 import 'package:aveditor/utils/av_editor_log.dart';
 import 'package:aveditor/utils/debug_agent_log.dart';
-import 'package:aveditor/utils/clip_rotation.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
 import 'package:aveditor/utils/music_timeline_ops.dart';
 import 'package:aveditor/utils/duration_format.dart';
@@ -692,8 +695,7 @@ class _EditorScreenState extends State<EditorScreen>
     );
   }
 
-  bool get _ownsEngine =>
-      NativeVideoEngine.instance.generation == _engineClaim;
+  bool get _ownsEngine => NativeVideoEngine.instance.generation == _engineClaim;
 
   Future<void> _initVideo() async {
     try {
@@ -757,6 +759,7 @@ class _EditorScreenState extends State<EditorScreen>
               preset: playable.preset,
               canvas: playable.canvas,
               rotation: playable.rotation,
+              name: playable.name,
               updatedAt: playable.updatedAt,
             )
           : playable;
@@ -810,7 +813,9 @@ class _EditorScreenState extends State<EditorScreen>
     try {
       await controller.initialize();
       if (controller.value.hasError) {
-        throw StateError(controller.value.errorDescription ?? 'video open failed');
+        throw StateError(
+          controller.value.errorDescription ?? 'video open failed',
+        );
       }
       return controller;
     } catch (error, stack) {
@@ -1221,8 +1226,9 @@ class _EditorScreenState extends State<EditorScreen>
         // Save runs while paused. Seeking the frame already on screen clears
         // the texture and the preview flashes black.
         final packed = _sourceToNativePacked(desired);
-        final delta =
-            (NativeVideoEngine.instance.position - packed).inMilliseconds.abs();
+        final delta = (NativeVideoEngine.instance.position - packed)
+            .inMilliseconds
+            .abs();
         if (delta > 40) {
           await NativeVideoEngine.instance.preroll(packed);
         }
@@ -1254,7 +1260,9 @@ class _EditorScreenState extends State<EditorScreen>
     _timelinePositionSub = null;
     if (!mounted || !_ownsEngine) return;
     if (id == null) {
-      debugPrint('timeline compositor failed; preview stays on the hard-cut player');
+      debugPrint(
+        'timeline compositor failed; preview stays on the hard-cut player',
+      );
       if (mounted) setState(() {});
       return;
     }
@@ -1578,7 +1586,8 @@ class _EditorScreenState extends State<EditorScreen>
     // the same composition plan timeline preview and export already share.
     if (NativeVideoEngine.instance.isPlatformSupported &&
         NativeVideoEngine.supports(transition)) {
-      final at = fade.windowStart +
+      final at =
+          fade.windowStart +
           Duration(milliseconds: (fade.t * fade.td.inMilliseconds).round());
       await _tearDownSpatialPreview();
       await _attachTimelineCompositor(resume: playing, seekTo: at);
@@ -2225,8 +2234,7 @@ class _EditorScreenState extends State<EditorScreen>
       box: box,
     );
     final canvasTop = (previewSlotH - canvasH * scale) / 2;
-    final overlayBottomInBody =
-        previewPadTop + canvasTop + body.bottom * scale;
+    final overlayBottomInBody = previewPadTop + canvasTop + body.bottom * scale;
     final clearBottom = bodyH - keyboard - toolbarH - margin;
     final overflow = overlayBottomInBody - clearBottom;
     if (overflow <= 0) return 0;
@@ -3010,10 +3018,9 @@ class _EditorScreenState extends State<EditorScreen>
             'wantStartMs': clampedStart.inMilliseconds,
             'nativePosMs': NativeVideoEngine.instance.position.inMilliseconds,
             'playing': NativeVideoEngine.instance.isPlaying,
-            'deltaMs':
-                (NativeVideoEngine.instance.position - clampedStart)
-                    .inMilliseconds
-                    .abs(),
+            'deltaMs': (NativeVideoEngine.instance.position - clampedStart)
+                .inMilliseconds
+                .abs(),
           },
         );
         // #endregion
@@ -3361,18 +3368,6 @@ class _EditorScreenState extends State<EditorScreen>
     );
   }
 
-  void _setClipRotation(double radians) {
-    final project = _project;
-    if (project == null) return;
-    _mutate((p) => p.rotation = normalizeClipRotation(radians));
-  }
-
-  void _rotateClipQuarterTurn() {
-    final project = _project;
-    if (project == null) return;
-    _setClipRotation(project.rotation + quarterTurn);
-  }
-
   void _openCanvasRatioMenu() {
     if (_exporting) return;
     setState(() => _canvasRatioOpen = true);
@@ -3630,14 +3625,125 @@ class _EditorScreenState extends State<EditorScreen>
     _openTextStudio(overlay);
   }
 
-  Future<void> _presentExport() {
+  Future<void> _presentExport() async {
     final project = _project;
-    if (project == null || _exporting) return Future.value();
-    return Navigator.of(context).push(
+    if (project == null || _exporting) return;
+    final exportProject = await _resolvePremiumForExport(project);
+    if (exportProject == null || !mounted) return;
+    await Navigator.of(context).push(
       MaterialPageRoute<void>(
         fullscreenDialog: true,
-        builder: (_) => ExportShareScreen(project: project),
+        builder: (_) => ExportShareScreen(project: exportProject),
       ),
+    );
+  }
+
+  /// Free users may edit with Pro items but must choose how to export them:
+  /// subscribe, watch an ad for this one export, or drop the Pro items.
+  /// Returns the project to export, or null when the user backed out.
+  Future<VideoProject?> _resolvePremiumForExport(VideoProject project) async {
+    final pro = ProService.instance;
+    await pro.ensureInitialized();
+    if (pro.isPro) return project;
+    final catalog = PremiumCatalog.live();
+    final uses = premiumUsesIn(project, catalog);
+    if (uses.isEmpty || !mounted) return project;
+
+    final choice = await showPremiumExportSheet(context, uses);
+    if (!mounted || choice == null) return null;
+    switch (choice) {
+      case PremiumExportChoice.pro:
+        final active = await PaywallScreen.open(context);
+        return active ? project : null;
+      case PremiumExportChoice.watchAd:
+        final unlocked = await watchAdToUnlockExport();
+        if (!mounted) return null;
+        if (!unlocked) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.l10n.premiumAdNotFinished)),
+          );
+          return null;
+        }
+        return project;
+      case PremiumExportChoice.strip:
+        return withoutPremium(project, catalog);
+    }
+  }
+
+  bool _namingProject = false;
+
+  /// "Project N" with the first N not already used by a saved project.
+  Future<String> _nextDefaultProjectName() async {
+    final l10n = context.l10n;
+    final summaries = await _projectStorage.listSummaries();
+    final used = summaries
+        .map((s) => s.name?.trim())
+        .whereType<String>()
+        .toSet();
+    var n = 1;
+    while (used.contains(l10n.projectDefaultName(n))) {
+      n++;
+    }
+    return l10n.projectDefaultName(n);
+  }
+
+  /// Name dialog with the field pre-filled and fully selected, so typing
+  /// replaces the suggestion in one go. Returns null when cancelled.
+  Future<String?> _askProjectName({required String initial}) {
+    return showDialog<String>(
+      context: context,
+      builder: (_) => _ProjectNameDialog(initial: initial),
+    );
+  }
+
+  Future<void> _setProjectName(String name) async {
+    final project = _project;
+    if (project == null) return;
+    setState(() => project.name = name);
+    await _persistProject();
+  }
+
+  /// Back out of the editor. An unnamed project asks for a name first;
+  /// cancelling the dialog keeps the user in the editor.
+  Future<void> _handleBack() async {
+    if (_namingProject) return;
+    final project = _project;
+    if (project != null && (project.name?.trim().isEmpty ?? true)) {
+      _namingProject = true;
+      try {
+        final suggestion = await _nextDefaultProjectName();
+        if (!mounted) return;
+        final name = await _askProjectName(initial: suggestion);
+        if (!mounted || name == null) return;
+        await _setProjectName(name);
+      } finally {
+        _namingProject = false;
+      }
+    }
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  Future<void> _renameProject() async {
+    final project = _project;
+    if (project == null) return;
+    final current = project.name?.trim();
+    final name = await _askProjectName(
+      initial: (current == null || current.isEmpty)
+          ? await _nextDefaultProjectName()
+          : current,
+    );
+    if (!mounted || name == null) return;
+    await _setProjectName(name);
+  }
+
+  Widget _buildEditorTitle(AppLocalizations l10n, VideoProject project) {
+    final name = project.name?.trim();
+    if (name == null || name.isEmpty) return Text(l10n.editorTitle);
+    // Tap to rename. Long names stay on one line, left-aligned, with "…".
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _renameProject,
+      child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
     );
   }
 
@@ -3688,335 +3794,360 @@ class _EditorScreenState extends State<EditorScreen>
     final studioOverlay = _textStudioOverlay;
     final editingOverlay = _editingOverlay;
 
-    return Scaffold(
-      // Text studio is a Stack overlay — preview/timeline layout never reflows.
-      resizeToAvoidBottomInset: false,
-      appBar: AppBar(
-        title: Text(l10n.editorTitle),
-        actions: [
-          if (inTextStudio)
-            TextButton(
-              onPressed: () => _closeTextStudio('save_button'),
-              child: Text(l10n.save),
-            )
-          else ...[
-            IconButton(
-              onPressed: _history.canUndo ? _undo : null,
-              icon: const Icon(Icons.undo),
-              tooltip: l10n.undo,
-            ),
-            IconButton(
-              onPressed: _history.canRedo ? _redo : null,
-              icon: const Icon(Icons.redo),
-              tooltip: l10n.redo,
-            ),
-            IconButton(
-              onPressed: _exporting ? null : _presentExport,
-              icon: const Icon(Icons.upload_outlined),
-              tooltip: l10n.export,
-            ),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) unawaited(_handleBack());
+      },
+      child: Scaffold(
+        // Text studio is a Stack overlay — preview/timeline layout never reflows.
+        resizeToAvoidBottomInset: false,
+        appBar: AppBar(
+          centerTitle: false,
+          titleSpacing: 0,
+          title: _buildEditorTitle(l10n, project),
+          actions: [
+            if (inTextStudio)
+              TextButton(
+                onPressed: () => _closeTextStudio('save_button'),
+                child: Text(l10n.save),
+              )
+            else ...[
+              IconButton(
+                onPressed: _history.canUndo ? _undo : null,
+                icon: const Icon(Icons.undo),
+                tooltip: l10n.undo,
+              ),
+              IconButton(
+                onPressed: _history.canRedo ? _redo : null,
+                icon: const Icon(Icons.redo),
+                tooltip: l10n.redo,
+              ),
+              IconButton(
+                onPressed: _exporting ? null : _presentExport,
+                icon: const Icon(Icons.upload_outlined),
+                tooltip: l10n.export,
+              ),
+            ],
           ],
-        ],
-      ),
-      body: LayoutBuilder(
-        builder: (context, bodyConstraints) {
-          final metrics = EditorSheetMetrics.of(context);
-          final bodyH = bodyConstraints.maxHeight;
-          final maxH = metrics.maxHeight.clamp(0.0, bodyH);
-          final entryH = metrics.entryHeight.clamp(0.0, maxH);
+        ),
+        body: LayoutBuilder(
+          builder: (context, bodyConstraints) {
+            final metrics = EditorSheetMetrics.of(context);
+            final bodyH = bodyConstraints.maxHeight;
+            final maxH = metrics.maxHeight.clamp(0.0, bodyH);
+            final entryH = metrics.entryHeight.clamp(0.0, maxH);
 
-          return Stack(
-            key: _editorBodyKey,
-            clipBehavior: Clip.none,
-            children: [
-              // Preview + timeline stay laid out exactly as usual — the text
-              // sheet only paints on top and never reflows this column.
-              Column(
-                children: [
-                  Expanded(
-                    child: ColoredBox(
-                      color: AppTheme.surfaceElevated,
-                      child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final targetWidth = constraints.maxWidth;
-                          final targetHeight = targetWidth / canvasAspect;
-                          final frameScale = math.min(
-                            1.0,
-                            constraints.maxHeight / targetHeight,
-                          );
-                          final frameRight =
-                              (constraints.maxWidth - targetWidth * frameScale) /
-                              2;
-                          final frameTop =
-                              (constraints.maxHeight - targetHeight * frameScale) /
-                              2;
-                          final keyboard = MediaQueryData.fromView(
-                            View.of(context),
-                          ).viewInsets.bottom;
-                          final lift = editingOverlay == null
-                              ? 0.0
-                              : _previewLiftForEditing(
-                                  bodyH: bodyH,
-                                  previewSlotW: constraints.maxWidth,
-                                  previewSlotH: constraints.maxHeight,
-                                  keyboard: keyboard,
-                                  canvasAspect: canvasAspect,
-                                  overlay: editingOverlay,
-                                );
-                          return Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              Listener(
-                                behavior: HitTestBehavior.opaque,
-                                onPointerDown: (e) {
-                                  OverlayEventLog.log(
-                                    'EditorShell',
-                                    'pointerDown',
-                                    {
-                                      'global': e.position,
-                                      'hasPreviewState':
-                                          _previewKey.currentState != null,
+            return Stack(
+              key: _editorBodyKey,
+              clipBehavior: Clip.none,
+              children: [
+                // Preview + timeline stay laid out exactly as usual — the text
+                // sheet only paints on top and never reflows this column.
+                Column(
+                  children: [
+                    Expanded(
+                      child: ColoredBox(
+                        color: AppTheme.surfaceElevated,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              final targetWidth = constraints.maxWidth;
+                              final targetHeight = targetWidth / canvasAspect;
+                              final keyboard = MediaQueryData.fromView(
+                                View.of(context),
+                              ).viewInsets.bottom;
+                              final lift = editingOverlay == null
+                                  ? 0.0
+                                  : _previewLiftForEditing(
+                                      bodyH: bodyH,
+                                      previewSlotW: constraints.maxWidth,
+                                      previewSlotH: constraints.maxHeight,
+                                      keyboard: keyboard,
+                                      canvasAspect: canvasAspect,
+                                      overlay: editingOverlay,
+                                    );
+                              return Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  Listener(
+                                    behavior: HitTestBehavior.opaque,
+                                    onPointerDown: (e) {
+                                      OverlayEventLog.log(
+                                        'EditorShell',
+                                        'pointerDown',
+                                        {
+                                          'global': e.position,
+                                          'hasPreviewState':
+                                              _previewKey.currentState != null,
+                                        },
+                                      );
+                                      _previewKey.currentState
+                                          ?.handlePointerDown(e);
                                     },
-                                  );
-                                  _previewKey.currentState?.handlePointerDown(
-                                    e,
-                                  );
-                                },
-                                onPointerMove: (e) => _previewKey.currentState
-                                    ?.handlePointerMove(e),
-                                onPointerUp: (e) => _previewKey.currentState
-                                    ?.handlePointerUp(e.pointer),
-                                onPointerCancel: (e) => _previewKey.currentState
-                                    ?.handlePointerCancel(e.pointer),
-                                child: SizedBox.expand(
-                                  child: ClipRect(
-                                    child: TweenAnimationBuilder<double>(
-                                      tween: Tween<double>(end: lift),
-                                      duration: const Duration(
-                                        milliseconds: 220,
-                                      ),
-                                      curve: Curves.easeOutCubic,
-                                      builder: (context, value, child) {
-                                        return Transform.translate(
-                                          offset: Offset(0, -value),
-                                          child: child,
-                                        );
-                                      },
-                                      child: FittedBox(
-                                        fit: BoxFit.contain,
-                                        clipBehavior: Clip.none,
-                                        alignment: Alignment.center,
-                                        child: OverflowSizedBox(
-                                          width: targetWidth,
-                                          height: targetHeight,
-                                          child: VideoPreviewWithOverlays(
-                                            key: _previewKey,
-                                            videoAspectRatio: sourceAspect,
-                                            canvasAspectRatio: canvasAspect,
-                                            videoChild: _buildPreviewVideoChild(
-                                              controller,
-                                            ),
-                                            overlays: project.overlays,
-                                            segments: project.segments,
-                                            position: _playhead,
-                                            isPlaying:
-                                                NativeVideoEngine
-                                                    .instance
-                                                    .isTimelineActive
-                                                ? NativeVideoEngine
-                                                      .instance
-                                                      .isPlaying
-                                                : _transportPlaying,
-                                            clipRotation: project.rotation,
-                                            hostViewportSize: Size(
-                                              constraints.maxWidth,
-                                              constraints.maxHeight,
-                                            ),
-                                            selectedOverlayId:
-                                                _selectedOverlayId,
-                                            editingOverlayId: _editingOverlayId,
-                                            selectAllOnEdit:
-                                                _inlineEditSelectAll,
-                                            textHint: l10n.textOverlayHint,
-                                            onOverlaySelected: (overlay) {
-                                              if (_editingOverlayId != null &&
-                                                  _editingOverlayId !=
-                                                      overlay.id) {
-                                                _finishInlineEditing(
-                                                  'select_other_overlay',
-                                                );
-                                              }
-                                              setState(() {
-                                                _selectedOverlayId = overlay.id;
-                                                // Keep the studio open; retarget it.
-                                                if (_textStudioOverlayId !=
-                                                    null) {
-                                                  _textStudioOverlayId =
-                                                      overlay.id;
-                                                }
-                                              });
-                                            },
-                                            onRequestEdit: _startInlineEditing,
-                                            onBackgroundTap:
-                                                _onPreviewBackgroundTap,
-                                            onOverlayTextChanged:
-                                                _onOverlayTextChanged,
-                                            onEditingComplete:
-                                                _finishInlineEditing,
-                                            onOverlayOffsetChanged:
-                                                (overlay, offset) {
-                                                  _patchOverlay(
-                                                    overlay.id,
-                                                    (current) =>
-                                                        current.copyWith(
-                                                          offset: offset,
-                                                        ),
-                                                  );
-                                                },
-                                            onOverlayDeleted:
-                                                _deleteOverlayByOverlay,
-                                            onOverlayDuplicated:
-                                                _duplicateOverlay,
-                                            onOverlayEdit: (overlay) {
-                                              setState(
-                                                () => _selectedOverlayId =
-                                                    overlay.id,
-                                              );
-                                              _editSelectedOverlay();
-                                            },
-                                            onOverlayBoxChanged:
-                                                (overlay, transform) {
-                                                  OverlayEventLog.log(
-                                                    'Editor',
-                                                    'overlayBoxChanged',
-                                                    {
-                                                      'id': overlay.id,
-                                                      'width': transform.width
-                                                          .toStringAsFixed(1),
-                                                      'height': transform.height
-                                                          .toStringAsFixed(1),
-                                                      'font': transform.fontSize
-                                                          .toStringAsFixed(1),
-                                                      'offset':
-                                                          transform.offset,
-                                                      'rotation': transform
-                                                          .rotation
-                                                          .toStringAsFixed(3),
-                                                    },
-                                                  );
-                                                  _patchOverlay(
-                                                    overlay.id,
-                                                    (
-                                                      current,
-                                                    ) => current.copyWith(
-                                                      boxWidth: transform.width,
-                                                      boxHeight:
-                                                          transform.height,
-                                                      fontSize:
-                                                          transform.fontSize,
-                                                      offset: transform.offset,
-                                                      rotation:
-                                                          transform.rotation,
+                                    onPointerMove: (e) => _previewKey
+                                        .currentState
+                                        ?.handlePointerMove(e),
+                                    onPointerUp: (e) => _previewKey.currentState
+                                        ?.handlePointerUp(e.pointer),
+                                    onPointerCancel: (e) => _previewKey
+                                        .currentState
+                                        ?.handlePointerCancel(e.pointer),
+                                    child: SizedBox.expand(
+                                      child: ClipRect(
+                                        child: TweenAnimationBuilder<double>(
+                                          tween: Tween<double>(end: lift),
+                                          duration: const Duration(
+                                            milliseconds: 220,
+                                          ),
+                                          curve: Curves.easeOutCubic,
+                                          builder: (context, value, child) {
+                                            return Transform.translate(
+                                              offset: Offset(0, -value),
+                                              child: child,
+                                            );
+                                          },
+                                          child: FittedBox(
+                                            fit: BoxFit.contain,
+                                            clipBehavior: Clip.none,
+                                            alignment: Alignment.center,
+                                            child: OverflowSizedBox(
+                                              width: targetWidth,
+                                              height: targetHeight,
+                                              child: VideoPreviewWithOverlays(
+                                                key: _previewKey,
+                                                videoAspectRatio: sourceAspect,
+                                                canvasAspectRatio: canvasAspect,
+                                                videoChild:
+                                                    _buildPreviewVideoChild(
+                                                      controller,
                                                     ),
-                                                  );
+                                                overlays: project.overlays,
+                                                segments: project.segments,
+                                                position: _playhead,
+                                                isPlaying:
+                                                    NativeVideoEngine
+                                                        .instance
+                                                        .isTimelineActive
+                                                    ? NativeVideoEngine
+                                                          .instance
+                                                          .isPlaying
+                                                    : _transportPlaying,
+                                                clipRotation: project.rotation,
+                                                hostViewportSize: Size(
+                                                  constraints.maxWidth,
+                                                  constraints.maxHeight,
+                                                ),
+                                                selectedOverlayId:
+                                                    _selectedOverlayId,
+                                                editingOverlayId:
+                                                    _editingOverlayId,
+                                                selectAllOnEdit:
+                                                    _inlineEditSelectAll,
+                                                textHint: l10n.textOverlayHint,
+                                                onOverlaySelected: (overlay) {
+                                                  if (_editingOverlayId !=
+                                                          null &&
+                                                      _editingOverlayId !=
+                                                          overlay.id) {
+                                                    _finishInlineEditing(
+                                                      'select_other_overlay',
+                                                    );
+                                                  }
+                                                  setState(() {
+                                                    _selectedOverlayId =
+                                                        overlay.id;
+                                                    // Keep the studio open; retarget it.
+                                                    if (_textStudioOverlayId !=
+                                                        null) {
+                                                      _textStudioOverlayId =
+                                                          overlay.id;
+                                                    }
+                                                  });
                                                 },
+                                                onRequestEdit:
+                                                    _startInlineEditing,
+                                                onBackgroundTap:
+                                                    _onPreviewBackgroundTap,
+                                                onOverlayTextChanged:
+                                                    _onOverlayTextChanged,
+                                                onEditingComplete:
+                                                    _finishInlineEditing,
+                                                onOverlayOffsetChanged:
+                                                    (overlay, offset) {
+                                                      _patchOverlay(
+                                                        overlay.id,
+                                                        (current) =>
+                                                            current.copyWith(
+                                                              offset: offset,
+                                                            ),
+                                                      );
+                                                    },
+                                                onOverlayDeleted:
+                                                    _deleteOverlayByOverlay,
+                                                onOverlayDuplicated:
+                                                    _duplicateOverlay,
+                                                onOverlayEdit: (overlay) {
+                                                  setState(
+                                                    () => _selectedOverlayId =
+                                                        overlay.id,
+                                                  );
+                                                  _editSelectedOverlay();
+                                                },
+                                                onOverlayBoxChanged:
+                                                    (overlay, transform) {
+                                                      OverlayEventLog.log(
+                                                        'Editor',
+                                                        'overlayBoxChanged',
+                                                        {
+                                                          'id': overlay.id,
+                                                          'width': transform
+                                                              .width
+                                                              .toStringAsFixed(
+                                                                1,
+                                                              ),
+                                                          'height': transform
+                                                              .height
+                                                              .toStringAsFixed(
+                                                                1,
+                                                              ),
+                                                          'font': transform
+                                                              .fontSize
+                                                              .toStringAsFixed(
+                                                                1,
+                                                              ),
+                                                          'offset':
+                                                              transform.offset,
+                                                          'rotation': transform
+                                                              .rotation
+                                                              .toStringAsFixed(
+                                                                3,
+                                                              ),
+                                                        },
+                                                      );
+                                                      _patchOverlay(
+                                                        overlay.id,
+                                                        (
+                                                          current,
+                                                        ) => current.copyWith(
+                                                          boxWidth:
+                                                              transform.width,
+                                                          boxHeight:
+                                                              transform.height,
+                                                          fontSize: transform
+                                                              .fontSize,
+                                                          offset:
+                                                              transform.offset,
+                                                          rotation: transform
+                                                              .rotation,
+                                                        ),
+                                                      );
+                                                    },
+                                              ),
+                                            ),
                                           ),
                                         ),
                                       ),
                                     ),
                                   ),
-                                ),
-                              ),
-                              if (!_canvasRatioOpen)
-                                Positioned(
-                                  top: frameTop + 8,
-                                  right: frameRight + 8,
-                                  child: TweenAnimationBuilder<double>(
-                                    tween: Tween<double>(end: lift),
-                                    duration: const Duration(milliseconds: 220),
-                                    curve: Curves.easeOutCubic,
-                                    builder: (context, value, child) {
-                                      return Transform.translate(
-                                        offset: Offset(0, -value),
-                                        child: child,
-                                      );
-                                    },
-                                    child: _CanvasRatioButton(
-                                      label:
-                                          project.canvas == CanvasRatio.original
-                                          ? l10n.canvasRatioOriginal
-                                          : project.canvas.ratioLabel,
-                                      onPressed: _exporting
-                                          ? null
-                                          : _openCanvasRatioMenu,
+                                  // Sit on the preview slot (not the video frame) so
+                                  // letterboxing never covers the control.
+                                  if (!_canvasRatioOpen)
+                                    Positioned(
+                                      top: 8,
+                                      right: 8,
+                                      child: TweenAnimationBuilder<double>(
+                                        tween: Tween<double>(end: lift),
+                                        duration: const Duration(
+                                          milliseconds: 220,
+                                        ),
+                                        curve: Curves.easeOutCubic,
+                                        builder: (context, value, child) {
+                                          return Transform.translate(
+                                            offset: Offset(0, -value),
+                                            child: child,
+                                          );
+                                        },
+                                        child: _CanvasRatioButton(
+                                          label:
+                                              project.canvas ==
+                                                  CanvasRatio.original
+                                              ? l10n.canvasRatioOriginal
+                                              : project.canvas.ratioLabel,
+                                          onPressed: _exporting
+                                              ? null
+                                              : _openCanvasRatioMenu,
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                ),
-                              if (editingOverlay == null)
-                                _buildPreviewDockDragEdge(
-                                  zoneHeight: constraints.maxHeight * 0.2,
-                                ),
-                              if (_canvasRatioOpen)
-                                Positioned(
-                                  top: frameTop,
-                                  left: 0,
-                                  right: 0,
-                                  child: TweenAnimationBuilder<double>(
-                                    tween: Tween<double>(end: lift),
-                                    duration: const Duration(milliseconds: 220),
-                                    curve: Curves.easeOutCubic,
-                                    builder: (context, value, child) {
-                                      return Transform.translate(
-                                        offset: Offset(0, -value),
-                                        child: child,
-                                      );
-                                    },
-                                    child: CanvasRatioBar(
-                                      selected: project.canvas,
-                                      sourceAspect: sourceAspect,
-                                      originalLabel: l10n.canvasRatioOriginal,
-                                      onSelected: _selectCanvasRatio,
-                                      onClose: _closeCanvasRatioMenu,
+                                  if (editingOverlay == null)
+                                    _buildPreviewDockDragEdge(
+                                      zoneHeight: constraints.maxHeight * 0.2,
                                     ),
-                                  ),
-                                ),
-                            ],
-                          );
-                        },
+                                  if (_canvasRatioOpen)
+                                    Positioned(
+                                      top: 0,
+                                      left: 0,
+                                      right: 0,
+                                      child: TweenAnimationBuilder<double>(
+                                        tween: Tween<double>(end: lift),
+                                        duration: const Duration(
+                                          milliseconds: 220,
+                                        ),
+                                        curve: Curves.easeOutCubic,
+                                        builder: (context, value, child) {
+                                          return Transform.translate(
+                                            offset: Offset(0, -value),
+                                            child: child,
+                                          );
+                                        },
+                                        child: CanvasRatioBar(
+                                          selected: project.canvas,
+                                          sourceAspect: sourceAspect,
+                                          originalLabel:
+                                              l10n.canvasRatioOriginal,
+                                          onSelected: _selectCanvasRatio,
+                                          onClose: _closeCanvasRatioMenu,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                  ),
-                  _buildDockResizeHandle(enabled: editingOverlay == null),
-                  _buildBottomDock(
-                    l10n: l10n,
-                    project: project,
-                    controller: controller,
-                    inTextStudio: inTextStudio,
-                    studioOverlay: studioOverlay,
-                    bodyH: bodyH,
-                    maxH: maxH,
-                    entryH: entryH,
-                    editingOverlay: editingOverlay,
-                  ),
-                ],
-              ),
-              // Keyboard tray — same strip for basic text and effect/template edit.
-              if (editingOverlay != null)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: BasicTextEditKeyboardTray(
-                    overlay: editingOverlay,
-                    onChanged: _updateOverlay,
-                  ),
+                    _buildDockResizeHandle(enabled: editingOverlay == null),
+                    _buildBottomDock(
+                      l10n: l10n,
+                      project: project,
+                      controller: controller,
+                      inTextStudio: inTextStudio,
+                      studioOverlay: studioOverlay,
+                      bodyH: bodyH,
+                      maxH: maxH,
+                      entryH: entryH,
+                      editingOverlay: editingOverlay,
+                    ),
+                  ],
                 ),
-            ],
-          );
-        },
+                // Keyboard tray — same strip for basic text and effect/template edit.
+                if (editingOverlay != null)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: BasicTextEditKeyboardTray(
+                      overlay: editingOverlay,
+                      onChanged: _updateOverlay,
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -4326,6 +4457,14 @@ class _EditorScreenState extends State<EditorScreen>
                 ),
                 const SizedBox(width: 8),
                 IconButton.outlined(
+                  onPressed: _exporting || _selectedOverlay == null
+                      ? null
+                      : _editSelectedOverlay,
+                  icon: const Icon(Icons.edit_outlined),
+                  tooltip: l10n.editText,
+                ),
+                const SizedBox(width: 8),
+                IconButton.outlined(
                   onPressed: _exporting ? null : _splitAtPlayhead,
                   icon: const Icon(Icons.content_cut),
                   tooltip: l10n.splitVideo,
@@ -4364,14 +4503,8 @@ class _EditorScreenState extends State<EditorScreen>
                 const SizedBox(width: 8),
                 IconButton.outlined(
                   onPressed: _exporting ? null : _openMusicPicker,
-                  icon: const Icon(Icons.library_music_outlined),
+                  icon: const Icon(Icons.music_note),
                   tooltip: l10n.addMusic,
-                ),
-                const SizedBox(width: 8),
-                IconButton.outlined(
-                  onPressed: _exporting ? null : _rotateClipQuarterTurn,
-                  icon: const Icon(Icons.rotate_90_degrees_cw_outlined),
-                  tooltip: l10n.rotateVideo,
                 ),
               ],
             ),
@@ -4474,6 +4607,61 @@ class _TextAddIcon extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// Owns its [TextEditingController] so the field stays valid through the
+/// dialog's closing animation; disposing it right after `showDialog`
+/// returned crashed the fading TextField (red error screen on back).
+class _ProjectNameDialog extends StatefulWidget {
+  const _ProjectNameDialog({required this.initial});
+
+  final String initial;
+
+  @override
+  State<_ProjectNameDialog> createState() => _ProjectNameDialogState();
+}
+
+class _ProjectNameDialogState extends State<_ProjectNameDialog> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initial)
+        ..selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: widget.initial.length,
+        );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final value = _controller.text.trim();
+    Navigator.pop(context, value.isEmpty ? widget.initial : value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    return AlertDialog(
+      title: Text(l10n.projectNameTitle),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        maxLength: 40,
+        textInputAction: TextInputAction.done,
+        decoration: InputDecoration(hintText: l10n.projectNameHint),
+        onSubmitted: (_) => _submit(),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(l10n.cancel),
+        ),
+        FilledButton(onPressed: _submit, child: Text(l10n.save)),
+      ],
     );
   }
 }

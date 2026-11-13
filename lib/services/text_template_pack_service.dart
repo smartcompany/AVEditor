@@ -196,6 +196,11 @@ class TextTemplatePackService extends ChangeNotifier {
     TextTemplatePackCatalog bundled,
     TextTemplatePackCatalog remote,
   ) {
+    // An older server copy (not yet redeployed) must not roll back items the
+    // newer bundled catalog already has (e.g. new premium flags); it may
+    // still add items that only exist on the server.
+    final remoteIsOlder = remote.version < bundled.version;
+
     final seen = <String>{};
     final categories = <TextTemplatePackCategory>[];
 
@@ -217,15 +222,19 @@ class TextTemplatePackService extends ChangeNotifier {
 
     // Remote first so catalog updates ship without an app release.
     // Bundled fills gaps when the network is unavailable or incomplete.
-    for (final category in remote.categories) {
+    final first = remoteIsOlder ? bundled : remote;
+    final second = remoteIsOlder ? remote : bundled;
+    for (final category in first.categories) {
       addCategory(category);
     }
-    for (final category in bundled.categories) {
+    for (final category in second.categories) {
       addCategory(category);
     }
 
     return TextTemplatePackCatalog(
-      version: remote.version >= bundled.version ? remote.version : bundled.version,
+      version: remote.version >= bundled.version
+          ? remote.version
+          : bundled.version,
       baseUrl: remote.baseUrl.isNotEmpty ? remote.baseUrl : bundled.baseUrl,
       categories: categories,
     );
@@ -234,9 +243,7 @@ class TextTemplatePackService extends ChangeNotifier {
   Uri _resolveUrl(String pathOrUrl) {
     final parsed = Uri.parse(pathOrUrl);
     if (parsed.hasScheme) return parsed;
-    final base = _remoteBaseUrl.isNotEmpty
-        ? _remoteBaseUrl
-        : _catalog.baseUrl;
+    final base = _remoteBaseUrl.isNotEmpty ? _remoteBaseUrl : _catalog.baseUrl;
     if (base.isEmpty) {
       throw StateError('pack_base_url_missing');
     }

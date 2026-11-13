@@ -1,0 +1,26 @@
+App Review Notes — ClipGo
+Bundle ID: com.smartcompany.aveditor
+
+1) CORE FLOW
+• Launch → Home.
+• Import a video (Gallery / Files / Camera). Allow Photos / Camera / Mic if prompted.
+• Editor: scrub timeline, split/cut, add text overlay, optional music.
+• Export → save to album and/or share. YouTube Shorts upload is optional (sign-in).
+
+2) ACCESS
+• No account required for basic edit/export.
+• YouTube Sign-In is only needed for Shorts upload.
+• Demo account: N/A for local editing.
+
+3) PERMISSIONS
+• Photo Library: pick videos / save exports.
+• Camera & Microphone: record video.
+• Network: YouTube upload and optional online catalogs.
+
+4) DEVICES TESTED
+• Current iPhone / iOS SDK used for this binary.
+
+Privacy: https://smartcompany.github.io/privacy
+Support: https://smartcompany.github.io
+
+Thank you for reviewing ClipGo.

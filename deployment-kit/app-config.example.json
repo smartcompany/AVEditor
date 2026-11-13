@@ -1,0 +1,23 @@
+{
+  "appName": "ClipGo",
+  "bundleId": "com.smartcompany.aveditor",
+  "sku": "clipgo",
+  "packageName": "com.smartcompany.aveditor",
+  "serverBaseUrl": "https://your-app-server.vercel.app",
+  "privacyPath": "/privacy",
+  "supportUrl": "https://smartcompany.github.io",
+  "marketingUrl": "https://smartcompany.github.io",
+  "copyright": "2026 Yong Geon Kim. All rights reserved.",
+  "supportEmail": "you@example.com",
+  "reviewContactFirstName": "Yong Geon",
+  "reviewContactLastName": "Kim",
+  "reviewContactEmail": "you@example.com",
+  "reviewContactPhone": "+821000000000",
+  "appleId": "you@example.com",
+  "itcTeamId": "YOUR_ITC_TEAM_ID",
+  "developerTeamId": "YOUR_APPLE_TEAM_ID",
+  "ascKeyId": "YOUR_ASC_KEY_ID",
+  "ascKeyPath": "/absolute/path/to/AuthKey_XXXXXX.p8",
+  "androidKeystorePath": "/absolute/path/to/your-release-key.jks",
+  "androidKeyAlias": "your-key-alias"
+}

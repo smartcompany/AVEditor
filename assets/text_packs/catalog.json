@@ -1,5 +1,5 @@
 {
-  "version": 7,
+  "version": 8,
   "baseUrl": "",
   "categories": [
     {
@@ -180,7 +180,7 @@
           "id": "effect_neon_pink",
           "title": "Neon Pink",
           "kind": "effect",
-          "premium": false,
+          "premium": true,
           "downloadSizeBytes": 0,
           "style": {
             "id": "effect_neon_pink",
@@ -208,7 +208,7 @@
           "id": "effect_neon_blue",
           "title": "Neon Blue",
           "kind": "effect",
-          "premium": false,
+          "premium": true,
           "downloadSizeBytes": 0,
           "style": {
             "id": "effect_neon_blue",
@@ -236,7 +236,7 @@
           "id": "effect_gold",
           "title": "Gold",
           "kind": "effect",
-          "premium": false,
+          "premium": true,
           "downloadSizeBytes": 0,
           "style": {
             "id": "effect_gold",
@@ -272,7 +272,7 @@
           "id": "effect_fire",
           "title": "Fire",
           "kind": "effect",
-          "premium": false,
+          "premium": true,
           "downloadSizeBytes": 0,
           "style": {
             "id": "effect_fire",
@@ -307,7 +307,7 @@
           "id": "effect_ice",
           "title": "Ice",
           "kind": "effect",
-          "premium": false,
+          "premium": true,
           "downloadSizeBytes": 0,
           "style": {
             "id": "effect_ice",
@@ -400,7 +400,7 @@
           "id": "effect_candy",
           "title": "Candy",
           "kind": "effect",
-          "premium": false,
+          "premium": true,
           "downloadSizeBytes": 0,
           "style": {
             "id": "effect_candy",
@@ -513,7 +513,7 @@
           "id": "effect_glow",
           "title": "Glow",
           "kind": "effect",
-          "premium": false,
+          "premium": true,
           "downloadSizeBytes": 0,
           "style": {
             "id": "effect_glow",
@@ -534,7 +534,7 @@
           "id": "effect_color_pop",
           "title": "Color Pop",
           "kind": "effect",
-          "premium": false,
+          "premium": true,
           "downloadSizeBytes": 0,
           "style": {
             "id": "effect_color_pop",
@@ -728,7 +728,7 @@
           "id": "pack_breaking",
           "title": "Breaking",
           "kind": "template",
-          "premium": false,
+          "premium": true,
           "downloadSizeBytes": 0,
           "animation": {
             "id": "slide_up",
@@ -811,7 +811,7 @@
           "id": "pack_neon_pink",
           "title": "Neon Pink",
           "kind": "template",
-          "premium": false,
+          "premium": true,
           "downloadSizeBytes": 0,
           "animation": {
             "id": "fade",
@@ -843,7 +843,7 @@
           "id": "pack_cyber",
           "title": "Cyber",
           "kind": "template",
-          "premium": false,
+          "premium": true,
           "downloadSizeBytes": 0,
           "animation": {
             "id": "typewriter",
@@ -875,7 +875,7 @@
           "id": "pack_gold_title",
           "title": "Gold Title",
           "kind": "template",
-          "premium": false,
+          "premium": true,
           "downloadSizeBytes": 0,
           "animation": {
             "id": "slide_up",
@@ -915,7 +915,7 @@
           "id": "pack_hot",
           "title": "Hot",
           "kind": "template",
-          "premium": false,
+          "premium": true,
           "downloadSizeBytes": 0,
           "animation": {
             "id": "slide_up",
@@ -954,7 +954,7 @@
           "id": "pack_frost",
           "title": "Frost",
           "kind": "template",
-          "premium": false,
+          "premium": true,
           "downloadSizeBytes": 0,
           "animation": {
             "id": "fade",
@@ -1059,7 +1059,7 @@
           "id": "pack_candy",
           "title": "Candy",
           "kind": "template",
-          "premium": false,
+          "premium": true,
           "downloadSizeBytes": 0,
           "animation": {
             "id": "slide_up",
@@ -1097,7 +1097,7 @@
           "id": "pack_sunset",
           "title": "Sunset",
           "kind": "template",
-          "premium": false,
+          "premium": true,
           "downloadSizeBytes": 0,
           "animation": {
             "id": "fade",

@@ -1,0 +1,28 @@
+{
+  "appName": "ClipGo",
+  "bundleId": "com.smartcompany.aveditor",
+  "sku": "clipgo",
+  "packageName": "com.smartcompany.aveditor",
+  "serverBaseUrl": "https://smartcompany.github.io",
+  "privacyPath": "/privacy",
+  "supportUrl": "https://smartcompany.github.io",
+  "marketingUrl": "https://smartcompany.github.io",
+  "copyright": "2026 Yong Geon Kim. All rights reserved.",
+  "supportEmail": "gunnylove@gmail.com",
+  "reviewContactFirstName": "Yong Geon",
+  "reviewContactLastName": "Kim",
+  "reviewContactEmail": "gunnylove@gmail.com",
+  "reviewContactPhone": "+821065912052",
+  "appleId": "gunnylove@gmail.com",
+  "itcTeamId": "117828562",
+  "developerTeamId": "NTCK5U8AWD",
+  "ascKeyId": "7FN57R567Z",
+  "ascKeyPath": "/Users/smart/Projects/auth/fastlaneAuthKeys/AuthKey_7FN57R567Z.p8",
+  "androidKeystorePath": "/Users/smart/Projects/auth/androidKey/my-release-key.jks",
+  "androidKeyAlias": "my-key-alias",
+  "notes": [
+    "Display name: ClipGo",
+    "Bundle / package: com.smartcompany.aveditor",
+    "Update serverBaseUrl / privacyPath when a ClipGo privacy page is hosted."
+  ]
+}

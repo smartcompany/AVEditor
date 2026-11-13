@@ -36,6 +36,7 @@ dependencies:
   characters: ^1.4.0
   # Used only when the platform player cannot open a picked file.
   ffmpeg_kit_flutter_new_min_gpl: ^2.6.7
+  purchases_flutter: ^11.0.1
 
 dev_dependencies:
   flutter_test:

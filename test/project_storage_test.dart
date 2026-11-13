@@ -55,6 +55,31 @@ void main() {
       expect(restored.overlays.first.offset, const Offset(0.2, -0.1));
     });
 
+    test('round-trips the project name and leaves it null when unset', () {
+      VideoProject build({String? name}) => VideoProject(
+        id: 'project-name',
+        sourcePath: '/tmp/projects/project-name/source.mp4',
+        duration: const Duration(seconds: 5),
+        name: name,
+        updatedAt: DateTime.utc(2026, 3, 1, 12),
+      );
+
+      final named = VideoProject.fromJson(
+        build(name: '여행 브이로그').toJson(),
+        sourcePath: '/tmp/x.mp4',
+      );
+      expect(named.name, '여행 브이로그');
+      expect(named.copyWith(rotation: 1).name, '여행 브이로그');
+      expect(named.withSourcePath('/tmp/y.mp4').name, '여행 브이로그');
+
+      final unnamed = build().toJson();
+      expect(unnamed.containsKey('name'), isFalse);
+      expect(
+        VideoProject.fromJson(unnamed, sourcePath: '/tmp/x.mp4').name,
+        isNull,
+      );
+    });
+
     test('round-trips multi-segment cuts', () {
       final project = VideoProject(
         id: 'project-cuts',
@@ -147,41 +172,47 @@ void main() {
       expect(await File(loaded!.sourcePath).exists(), isTrue);
       expect(await File(loaded.sourcePath).length(), greaterThan(1024));
 
-      final json = jsonDecode(
-        await File('${tempRoot.path}/aveditor/projects/$projectId/project.json')
-            .readAsString(),
-      ) as Map<String, dynamic>;
+      final json =
+          jsonDecode(
+                await File(
+                  '${tempRoot.path}/aveditor/projects/$projectId/project.json',
+                ).readAsString(),
+              )
+              as Map<String, dynamic>;
       expect(json['id'], projectId);
       expect(json['durationMs'], 0);
     });
 
-    test('createFromImport replaces an unplayable source with source.mp4', () async {
-      final picked = File('${tempRoot.path}/picked.mov');
-      await picked.writeAsString('hevc-original');
-      final converting = ProjectStorageService(
-        rootOverride: Directory('${tempRoot.path}/aveditor'),
-        transcoder: PlaybackFallbackTranscoder(
-          shouldTranscode: (_) async => true,
-          run: (arguments) async {
-            await File(arguments.last).writeAsString('h264-sdr');
-            return true;
-          },
-        ),
-      );
+    test(
+      'createFromImport replaces an unplayable source with source.mp4',
+      () async {
+        final picked = File('${tempRoot.path}/picked.mov');
+        await picked.writeAsString('hevc-original');
+        final converting = ProjectStorageService(
+          rootOverride: Directory('${tempRoot.path}/aveditor'),
+          transcoder: PlaybackFallbackTranscoder(
+            shouldTranscode: (_) async => true,
+            run: (arguments) async {
+              await File(arguments.last).writeAsString('h264-sdr');
+              return true;
+            },
+          ),
+        );
 
-      final projectId = await converting.createFromImport(picked.path);
-      final loaded = await converting.load(projectId);
+        final projectId = await converting.createFromImport(picked.path);
+        final loaded = await converting.load(projectId);
 
-      expect(loaded!.sourcePath, endsWith('/source.mp4'));
-      expect(await File(loaded.sourcePath).readAsString(), 'h264-sdr');
-      expect(
-        await File(
-          '${tempRoot.path}/aveditor/projects/$projectId/source.mov',
-        ).exists(),
-        isFalse,
-      );
-      expect(await picked.readAsString(), 'hevc-original');
-    });
+        expect(loaded!.sourcePath, endsWith('/source.mp4'));
+        expect(await File(loaded.sourcePath).readAsString(), 'h264-sdr');
+        expect(
+          await File(
+            '${tempRoot.path}/aveditor/projects/$projectId/source.mov',
+          ).exists(),
+          isFalse,
+        );
+        expect(await picked.readAsString(), 'hevc-original');
+      },
+    );
 
     test('listSummaries returns all projects newest first', () async {
       final first = File('${tempRoot.path}/a.mp4');

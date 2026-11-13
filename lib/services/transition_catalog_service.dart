@@ -14,8 +14,8 @@ class TransitionCatalogService extends ChangeNotifier {
     http.Client? httpClient,
     TransitionRepository? repository,
     this.bundledCatalogAsset = 'assets/transitions/catalog.json',
-  })  : _http = httpClient ?? http.Client(),
-        _repository = repository;
+  }) : _http = httpClient ?? http.Client(),
+       _repository = repository;
 
   static final TransitionCatalogService instance = TransitionCatalogService();
 
@@ -52,8 +52,8 @@ class TransitionCatalogService extends ChangeNotifier {
 
       final base =
           TextTemplatePackService.instance.remoteBaseUrl.trim().isNotEmpty
-              ? TextTemplatePackService.instance.remoteBaseUrl.trim()
-              : TextTemplatePackService.defaultRemoteBaseUrl;
+          ? TextTemplatePackService.instance.remoteBaseUrl.trim()
+          : TextTemplatePackService.defaultRemoteBaseUrl;
 
       // Do not await remote by default — a hung network must not keep the
       // picker spinner up when the caller awaits [ensureInitialized]/refresh.
@@ -143,20 +143,28 @@ class TransitionCatalogService extends ChangeNotifier {
 
   Future<TransitionCatalog> _loadBundled() async {
     final raw = await rootBundle.loadString(bundledCatalogAsset);
-    return TransitionCatalog.fromJson(
-      jsonDecode(raw) as Map<String, dynamic>,
-    );
+    return TransitionCatalog.fromJson(jsonDecode(raw) as Map<String, dynamic>);
   }
 
   /// Remote ids win; remote category order preferred when present.
-  TransitionCatalog _merge(TransitionCatalog bundled, TransitionCatalog remote) {
+  TransitionCatalog _merge(
+    TransitionCatalog bundled,
+    TransitionCatalog remote,
+  ) {
     if (remote.items.isEmpty && remote.categories.isEmpty) return bundled;
-
+    // An older server copy (not yet redeployed) must not roll back items the
+    // newer bundled catalog already has (e.g. new premium flags); it may
+    // still add items that only exist on the server.
+    final remoteIsOlder = remote.version < bundled.version;
     final byId = <String, TransitionItem>{
       for (final item in bundled.items) item.id: item,
     };
     for (final item in _allItems(remote)) {
-      byId[item.id] = item;
+      if (remoteIsOlder) {
+        byId.putIfAbsent(item.id, () => item);
+      } else {
+        byId[item.id] = item;
+      }
     }
 
     final categories = <TransitionCategory>[];
@@ -176,9 +184,7 @@ class TransitionCatalogService extends ChangeNotifier {
         categories[index] = TransitionCategory(
           id: existing.id,
           title: remoteFirst ? existing.title : category.title,
-          items: [
-            for (final item in merged) byId[item.id] ?? item,
-          ],
+          items: [for (final item in merged) byId[item.id] ?? item],
         );
         return;
       }
@@ -187,9 +193,7 @@ class TransitionCatalogService extends ChangeNotifier {
         TransitionCategory(
           id: category.id,
           title: category.title,
-          items: [
-            for (final item in category.items) byId[item.id] ?? item,
-          ],
+          items: [for (final item in category.items) byId[item.id] ?? item],
         ),
       );
     }
@@ -212,8 +216,9 @@ class TransitionCatalogService extends ChangeNotifier {
     }
 
     return TransitionCatalog(
-      version:
-          remote.version >= bundled.version ? remote.version : bundled.version,
+      version: remote.version >= bundled.version
+          ? remote.version
+          : bundled.version,
       baseUrl: remote.baseUrl.isNotEmpty ? remote.baseUrl : bundled.baseUrl,
       items: ordered,
       categories: categories,

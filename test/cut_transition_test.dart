@@ -266,7 +266,7 @@ void main() {
         jsonDecode(raw) as Map<String, dynamic>,
       );
 
-      expect(catalog.version, 40);
+      expect(catalog.version, 41);
       expect(catalog.displayCategories.length, 1);
       expect(catalog.displayCategories.single.id, 'basic');
       expect(catalog.byId('fade'), isNull);

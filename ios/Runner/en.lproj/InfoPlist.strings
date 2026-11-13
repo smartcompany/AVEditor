@@ -1,5 +1,5 @@
 /* Localized Info.plist strings — English */
-"CFBundleDisplayName" = "AVEditor";
+"CFBundleDisplayName" = "ClipGo";
 "NSCameraUsageDescription" = "Camera access is needed to record videos for Shorts editing.";
 "NSMicrophoneUsageDescription" = "Microphone access is needed to record audio when capturing video.";
 "NSPhotoLibraryUsageDescription" = "Photo library access is needed to choose videos for editing.";

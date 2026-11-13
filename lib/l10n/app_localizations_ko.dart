@@ -9,7 +9,7 @@ class AppLocalizationsKo extends AppLocalizations {
   AppLocalizationsKo([String locale = 'ko']) : super(locale);
 
   @override
-  String get appTitle => 'AVEditor';
+  String get appTitle => 'ClipGo';
 
   @override
   String get homeTagline => '텍스트는 원하는 구간에만 — Shorts 업로드까지 한 앱에서.';
@@ -605,4 +605,89 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get canvasRatioOriginal => '원본';
+
+  @override
+  String get textColorCustom => '직접 선택';
+
+  @override
+  String get textColorDone => '완료';
+
+  @override
+  String projectDefaultName(int n) {
+    return '프로젝트 $n';
+  }
+
+  @override
+  String get projectNameTitle => '프로젝트 이름';
+
+  @override
+  String get projectNameHint => '프로젝트 이름을 입력하세요';
+
+  @override
+  String proTitle(String appName) {
+    return '$appName Pro';
+  }
+
+  @override
+  String get proSubtitle => '모든 효과를 풀고 더 돋보이는 쇼츠를 만드세요.';
+
+  @override
+  String get proBenefitEffects => '모든 Pro 전환·텍스트 효과';
+
+  @override
+  String get proBenefitNoAds => '광고 없이 저장';
+
+  @override
+  String get proBenefitFuture => '새로 추가되는 Pro 기능';
+
+  @override
+  String get proSubscribe => 'Pro 시작하기';
+
+  @override
+  String get proRestore => '구매 복원';
+
+  @override
+  String get proAnnualBadge => '가장 저렴';
+
+  @override
+  String get proLegal => '구독은 자동으로 갱신되며, 스토어 계정 설정에서 언제든 해지할 수 있어요.';
+
+  @override
+  String get proStoreUnavailable => '아직 스토어가 연결되지 않았어요.';
+
+  @override
+  String get proDebugToggle => '테스트용 Pro (디버그 전용)';
+
+  @override
+  String get proActive => 'Pro 사용 중';
+
+  @override
+  String get proInactive => '무료 플랜';
+
+  @override
+  String get proPurchaseFailed => '결제가 완료되지 않았어요. 다시 시도해 주세요.';
+
+  @override
+  String get proRestoreNone => '복원할 구매 내역이 없어요.';
+
+  @override
+  String get proSection => '구독';
+
+  @override
+  String get premiumExportTitle => 'Pro 효과가 들어 있어요';
+
+  @override
+  String get premiumExportBody => '어떻게 저장할지 골라 주세요.';
+
+  @override
+  String get premiumExportWithPro => 'Pro로 저장하기';
+
+  @override
+  String get premiumExportWatchAd => '광고 보고 이번만 저장';
+
+  @override
+  String get premiumExportStrip => 'Pro 효과 빼고 저장';
+
+  @override
+  String get premiumAdNotFinished => '광고를 끝까지 봐야 저장할 수 있어요.';
 }

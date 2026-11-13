@@ -9,7 +9,7 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
-  String get appTitle => 'AVEditor';
+  String get appTitle => 'ClipGo';
 
   @override
   String get homeTagline => 'Text on your timeline — upload Shorts in one app.';
@@ -615,4 +615,92 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get canvasRatioOriginal => 'Original';
+
+  @override
+  String get textColorCustom => 'Custom color';
+
+  @override
+  String get textColorDone => 'Done';
+
+  @override
+  String projectDefaultName(int n) {
+    return 'Project $n';
+  }
+
+  @override
+  String get projectNameTitle => 'Project name';
+
+  @override
+  String get projectNameHint => 'Enter a project name';
+
+  @override
+  String proTitle(String appName) {
+    return '$appName Pro';
+  }
+
+  @override
+  String get proSubtitle =>
+      'Unlock every effect and make your Shorts stand out.';
+
+  @override
+  String get proBenefitEffects => 'All Pro transitions and text effects';
+
+  @override
+  String get proBenefitNoAds => 'Export without ads';
+
+  @override
+  String get proBenefitFuture => 'New Pro features as they arrive';
+
+  @override
+  String get proSubscribe => 'Start Pro';
+
+  @override
+  String get proRestore => 'Restore purchases';
+
+  @override
+  String get proAnnualBadge => 'Best value';
+
+  @override
+  String get proLegal =>
+      'Subscriptions renew automatically. Cancel anytime in your store account settings.';
+
+  @override
+  String get proStoreUnavailable => 'The store isn\'t connected yet.';
+
+  @override
+  String get proDebugToggle => 'Test Pro (debug only)';
+
+  @override
+  String get proActive => 'Pro is active';
+
+  @override
+  String get proInactive => 'Free plan';
+
+  @override
+  String get proPurchaseFailed =>
+      'The purchase didn\'t go through. Please try again.';
+
+  @override
+  String get proRestoreNone => 'No purchases to restore.';
+
+  @override
+  String get proSection => 'Subscription';
+
+  @override
+  String get premiumExportTitle => 'Pro effects are in this video';
+
+  @override
+  String get premiumExportBody => 'Choose how to save it.';
+
+  @override
+  String get premiumExportWithPro => 'Save with Pro';
+
+  @override
+  String get premiumExportWatchAd => 'Watch an ad to save this once';
+
+  @override
+  String get premiumExportStrip => 'Save without Pro effects';
+
+  @override
+  String get premiumAdNotFinished => 'Watch the whole ad to unlock this save.';
 }
