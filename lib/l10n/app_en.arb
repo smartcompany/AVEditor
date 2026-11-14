@@ -1,7 +1,6 @@
 {
   "@@locale": "en",
   "appTitle": "EasyClip",
-  "homeTagline": "Text on your timeline — upload Shorts in one app.",
   "pickFromGallery": "Choose from gallery",
   "pickFromFiles": "Choose video file",
   "recordVideo": "Record video",
@@ -243,9 +242,9 @@
   "shareMore": "More",
   "shareAppMissing": "That app is not installed.",
   "shareFacebookOpened": "Choose Facebook in the list to finish posting.",
-  "shareFacebookPosted": "Posted to Facebook.",
+  "shareFacebookPosted": "Posted to Facebook",
   "shareFacebookCancelled": "Facebook post cancelled.",
-  "shareFacebookFailed": "Facebook post failed: {message}",
+  "shareFacebookFailed": "Facebook couldn't post the video. {message}",
   "@shareFacebookFailed": {
     "placeholders": {
       "message": {

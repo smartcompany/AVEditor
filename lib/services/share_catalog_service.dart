@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
-enum ShareTargetKind { youtube, instagram, facebook, whatsapp }
+enum ShareTargetKind { youtube, instagram, facebook, tiktok }
 
 class ShareTarget {
   const ShareTarget({required this.kind, required this.labels});
@@ -62,8 +62,8 @@ class ShareCatalogService {
       },
     ),
     ShareTarget(kind: ShareTargetKind.instagram, labels: {'en': 'Instagram'}),
-    ShareTarget(kind: ShareTargetKind.whatsapp, labels: {'en': 'WhatsApp'}),
     ShareTarget(kind: ShareTargetKind.facebook, labels: {'en': 'Facebook'}),
+    ShareTarget(kind: ShareTargetKind.tiktok, labels: {'en': 'TikTok'}),
   ];
 
   List<ShareTarget> _parse(String body) {
@@ -87,7 +87,7 @@ class ShareCatalogService {
       'youtube' => ShareTargetKind.youtube,
       'instagram' => ShareTargetKind.instagram,
       'facebook' => ShareTargetKind.facebook,
-      'whatsapp' => ShareTargetKind.whatsapp,
+      'tiktok' => ShareTargetKind.tiktok,
       _ => null,
     };
   }

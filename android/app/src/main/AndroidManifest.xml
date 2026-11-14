@@ -59,10 +59,15 @@
         </intent>
         <intent>
             <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="whatsapp" />
+            <data android:scheme="snssdk1233" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="snssdk1180" />
         </intent>
         <package android:name="com.instagram.android" />
         <package android:name="com.facebook.katana" />
-        <package android:name="com.whatsapp" />
+        <package android:name="com.zhiliaoapp.musically" />
+        <package android:name="com.ss.android.ugc.trill" />
     </queries>
 </manifest>

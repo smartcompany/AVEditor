@@ -171,6 +171,14 @@ PODS:
     - FlutterMacOS
   - sign_in_with_apple (0.0.1):
     - Flutter
+  - TikTokOpenSDKCore (2.5.0):
+    - TikTokOpenSDKCore/Core (= 2.5.0)
+  - TikTokOpenSDKCore/Core (2.5.0)
+  - TikTokOpenShareSDK (2.5.0):
+    - TikTokOpenSDKCore (= 2.5.0)
+    - TikTokOpenShareSDK/Share (= 2.5.0)
+  - TikTokOpenShareSDK/Share (2.5.0):
+    - TikTokOpenSDKCore (= 2.5.0)
   - url_launcher_ios (0.0.1):
     - Flutter
   - video_player_avfoundation (0.0.1):
@@ -207,6 +215,8 @@ DEPENDENCIES:
   - share_plus (from `.symlinks/plugins/share_plus/ios`)
   - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
   - sign_in_with_apple (from `.symlinks/plugins/sign_in_with_apple/ios`)
+  - TikTokOpenSDKCore
+  - TikTokOpenShareSDK
   - url_launcher_ios (from `.symlinks/plugins/url_launcher_ios/ios`)
   - video_player_avfoundation (from `.symlinks/plugins/video_player_avfoundation/darwin`)
   - video_thumbnail (from `.symlinks/plugins/video_thumbnail/ios`)
@@ -241,6 +251,8 @@ SPEC REPOS:
     - RevenueCat
     - SDWebImage
     - SDWebImageWebPCoder
+    - TikTokOpenSDKCore
+    - TikTokOpenShareSDK
 
 EXTERNAL SOURCES:
   audioplayers_darwin:
@@ -346,11 +358,13 @@ SPEC CHECKSUMS:
   share_plus: de6030e33b4e106470e09322d87cf2a4258d2d1d
   shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
   sign_in_with_apple: c5dcc141574c8c54d5ac99dd2163c0c72ad22418
+  TikTokOpenSDKCore: e6f34e48bd6e85e4d94f9c04782c13d5defafb55
+  TikTokOpenShareSDK: a7da017bc66c28d0aefea9342c0cfcc7e52ea2b7
   url_launcher_ios: 7a95fa5b60cc718a708b8f2966718e93db0cef1b
   video_player_avfoundation: 3453f792138786248960ca029747fcd9f318ef52
   video_thumbnail: b637e0ad5f588ca9945f6e2c927f73a69a661140
   webview_flutter_wkwebview: 8ebf4fded22593026f7dbff1fbff31ea98573c8d
 
-PODFILE CHECKSUM: f626dffcafea06f0c31d534819845a3821beebe1
+PODFILE CHECKSUM: 5a29dfd0994fb16ccb748bf47f88dfe150b6eb8b
 
 COCOAPODS: 1.16.2

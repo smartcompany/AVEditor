@@ -9,14 +9,15 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
-/// Sends an exported video straight to Instagram, WhatsApp or Facebook. Each
+/// Sends an exported video straight to Instagram, TikTok or Facebook. Each
 /// app then opens its own post/chat picker with the video already attached.
 object MediaShareChannel {
   private const val CHANNEL = "aveditor/media_share"
   /// Only these apps may be targeted from Dart.
   private val ALLOWED = setOf(
     "com.instagram.android",
-    "com.whatsapp",
+    "com.zhiliaoapp.musically",
+    "com.ss.android.ugc.trill",
     "com.facebook.katana",
   )
 
@@ -44,8 +45,13 @@ object MediaShareChannel {
       "${activity.packageName}.media_share",
       file,
     )
+    activity.grantUriPermission(
+      pkg,
+      uri,
+      Intent.FLAG_GRANT_READ_URI_PERMISSION,
+    )
     val intent = Intent(Intent.ACTION_SEND).apply {
-      type = "video/*"
+      type = "video/mp4"
       putExtra(Intent.EXTRA_STREAM, uri)
       clipData = ClipData.newRawUri("", uri)
       setPackage(pkg)

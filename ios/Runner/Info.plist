@@ -48,11 +48,24 @@
 				<string>fb$(FACEBOOK_APP_ID)</string>
 			</array>
 		</dict>
+		<!-- TikTok Share Kit callback scheme (client key from TikTok.xcconfig). -->
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>$(TIKTOK_CLIENT_KEY)</string>
+			</array>
+		</dict>
 	</array>
 	<key>FacebookAppID</key>
 	<string>$(FACEBOOK_APP_ID)</string>
 	<key>FacebookClientToken</key>
 	<string>$(FACEBOOK_CLIENT_TOKEN)</string>
+	<key>TikTokClientKey</key>
+	<string>$(TIKTOK_CLIENT_KEY)</string>
+	<key>TikTokRedirectURI</key>
+	<string>$(TIKTOK_REDIRECT_URI)</string>
 	<key>FacebookDisplayName</key>
 	<string>EasyClip</string>
 	<key>FacebookAutoLogAppEventsEnabled</key>
@@ -69,7 +82,10 @@
 	<array>
 		<string>instagram</string>
 		<string>fb</string>
-		<string>whatsapp</string>
+		<string>snssdk1233</string>
+		<string>snssdk1180</string>
+		<string>tiktoksharesdk</string>
+		<string>tiktokopensdk</string>
 		<string>fbapi</string>
 		<string>fb-messenger-share-api</string>
 		<string>fbauth2</string>

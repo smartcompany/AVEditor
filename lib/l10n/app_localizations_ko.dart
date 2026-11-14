@@ -12,9 +12,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get appTitle => 'EasyClip';
 
   @override
-  String get homeTagline => '텍스트는 원하는 구간에만 — Shorts 업로드까지 한 앱에서.';
-
-  @override
   String get pickFromGallery => '갤러리에서 선택';
 
   @override
@@ -599,14 +596,14 @@ class AppLocalizationsKo extends AppLocalizations {
   String get shareFacebookOpened => '목록에서 Facebook을 선택해 게시를 완료하세요.';
 
   @override
-  String get shareFacebookPosted => 'Facebook에 게시되었습니다.';
+  String get shareFacebookPosted => 'Facebook에 게시했어요';
 
   @override
   String get shareFacebookCancelled => 'Facebook 게시를 취소했습니다.';
 
   @override
   String shareFacebookFailed(String message) {
-    return 'Facebook 게시에 실패했습니다: $message';
+    return 'Facebook에 게시하지 못했어요. $message';
   }
 
   @override

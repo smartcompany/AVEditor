@@ -1,7 +1,6 @@
 {
   "@@locale": "ja",
   "appTitle": "EasyClip",
-  "homeTagline": "テキストは指定区間だけ — Shorts投稿までこのアプリで。",
   "pickFromGallery": "ギャラリーから選択",
   "pickFromFiles": "動画ファイルを選択",
   "recordVideo": "動画を撮影",
@@ -184,9 +183,9 @@
   "shareMore": "その他",
   "shareAppMissing": "そのアプリはインストールされていません。",
   "shareFacebookOpened": "一覧からFacebookを選んで投稿を完了してください。",
-  "shareFacebookPosted": "Facebookに投稿しました。",
+  "shareFacebookPosted": "Facebookに投稿しました",
   "shareFacebookCancelled": "Facebookへの投稿をキャンセルしました。",
-  "shareFacebookFailed": "Facebookへの投稿に失敗しました: {message}",
+  "shareFacebookFailed": "Facebookに投稿できませんでした。{message}",
   "@shareFacebookFailed": {
     "placeholders": {
       "message": {

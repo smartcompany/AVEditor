@@ -108,12 +108,6 @@ abstract class AppLocalizations {
   /// **'EasyClip'**
   String get appTitle;
 
-  /// No description provided for @homeTagline.
-  ///
-  /// In en, this message translates to:
-  /// **'Text on your timeline — upload Shorts in one app.'**
-  String get homeTagline;
-
   /// No description provided for @pickFromGallery.
   ///
   /// In en, this message translates to:
@@ -1209,7 +1203,7 @@ abstract class AppLocalizations {
   /// No description provided for @shareFacebookPosted.
   ///
   /// In en, this message translates to:
-  /// **'Posted to Facebook.'**
+  /// **'Posted to Facebook'**
   String get shareFacebookPosted;
 
   /// No description provided for @shareFacebookCancelled.
@@ -1221,7 +1215,7 @@ abstract class AppLocalizations {
   /// No description provided for @shareFacebookFailed.
   ///
   /// In en, this message translates to:
-  /// **'Facebook post failed: {message}'**
+  /// **'Facebook couldn\'t post the video. {message}'**
   String shareFacebookFailed(String message);
 
   /// No description provided for @uploadPartialFailure.

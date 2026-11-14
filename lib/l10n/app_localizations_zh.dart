@@ -12,9 +12,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get appTitle => 'EasyClip';
 
   @override
-  String get homeTagline => '文字只在指定时段出现 — 一个应用完成 Shorts 上传。';
-
-  @override
   String get pickFromGallery => '从相册选择';
 
   @override
@@ -592,14 +589,14 @@ class AppLocalizationsZh extends AppLocalizations {
   String get shareFacebookOpened => '请在列表中选择 Facebook 以完成发布。';
 
   @override
-  String get shareFacebookPosted => '已发布到 Facebook。';
+  String get shareFacebookPosted => '已发布到 Facebook';
 
   @override
   String get shareFacebookCancelled => '已取消 Facebook 发布。';
 
   @override
   String shareFacebookFailed(String message) {
-    return 'Facebook 发布失败：$message';
+    return '无法发布到 Facebook。$message';
   }
 
   @override

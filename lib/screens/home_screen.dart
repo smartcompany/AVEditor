@@ -189,15 +189,6 @@ class _HomeScreenState extends State<HomeScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const SizedBox(height: 8),
-                Text(
-                  l10n.homeTagline,
-                  style: GoogleFonts.dmSans(
-                    fontSize: 15,
-                    height: 1.5,
-                    color: AppTheme.muted,
-                  ),
-                ),
-                const SizedBox(height: 20),
                 if (_loading)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 12),

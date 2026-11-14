@@ -31,6 +31,9 @@ target 'Runner' do
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   # Facebook share dialog (video straight into the Facebook composer).
   pod 'FBSDKShareKit'
+  # TikTok Share Kit (video into TikTok's upload editor).
+  pod 'TikTokOpenSDKCore'
+  pod 'TikTokOpenShareSDK'
   target 'RunnerTests' do
     inherit! :search_paths
   end

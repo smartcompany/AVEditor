@@ -2476,14 +2476,14 @@ class TimelineWidgetState extends State<TimelineWidget>
                   visualDensity: VisualDensity.compact,
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(
-                    minWidth: 32,
-                    minHeight: 32,
+                    minWidth: 44,
+                    minHeight: 44,
                   ),
                   tooltip: widget.isPlaying ? 'Pause' : 'Play',
                   onPressed: widget.onTogglePlay,
                   icon: Icon(
                     widget.isPlaying ? Icons.pause : Icons.play_arrow,
-                    size: 26,
+                    size: 36,
                     color: AppTheme.accent,
                   ),
                 ),

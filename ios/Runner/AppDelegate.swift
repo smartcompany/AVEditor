@@ -2,6 +2,8 @@ import FBSDKCoreKit
 import FBSDKShareKit
 import Flutter
 import Photos
+import TikTokOpenSDKCore
+import TikTokOpenShareSDK
 import UIKit
 
 @main
@@ -19,7 +21,7 @@ import UIKit
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
-  /// Non-scene / fallback path for `fb<appId>://` return URLs.
+  /// Non-scene / fallback path for Facebook + TikTok return URLs.
   override func application(
     _ app: UIApplication,
     open url: URL,
@@ -28,7 +30,25 @@ import UIKit
     if url.scheme?.hasPrefix("fb") == true {
       return ApplicationDelegate.shared.application(app, open: url, options: options)
     }
+    if TikTokURLHandler.handleOpenURL(url) {
+      return true
+    }
     return super.application(app, open: url, options: options)
+  }
+
+  override func application(
+    _ application: UIApplication,
+    continue userActivity: NSUserActivity,
+    restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void
+  ) -> Bool {
+    if TikTokURLHandler.handleOpenURL(userActivity.webpageURL) {
+      return true
+    }
+    return super.application(
+      application,
+      continue: userActivity,
+      restorationHandler: restorationHandler
+    )
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
@@ -83,12 +103,16 @@ enum MediaShareChannel {
           localIdentifier: args?["localIdentifier"] as? String,
           result: result
         )
-      case "shareToWhatsApp":
+      case "shareToTikTok":
         guard let path = args?["path"] as? String else {
           result(FlutterError(code: "bad_args", message: "path", details: nil))
           return
         }
-        result(shareToWhatsApp(path: path))
+        shareToTikTok(
+          path: path,
+          localIdentifier: args?["localIdentifier"] as? String,
+          result: result
+        )
       case "openInstagram":
         guard let id = args?["localIdentifier"] as? String else {
           result(FlutterError(code: "bad_args", message: "localIdentifier", details: nil))
@@ -139,8 +163,17 @@ enum MediaShareChannel {
     return !id.isEmpty && id != "0" && !token.isEmpty
   }
 
+  /// True once TIKTOK_CLIENT_KEY is filled in (ios/Flutter/TikTok.xcconfig).
+  static var tiktokConfigured: Bool {
+    let key = Bundle.main.object(forInfoDictionaryKey: "TikTokClientKey") as? String ?? ""
+    let redirect = Bundle.main.object(forInfoDictionaryKey: "TikTokRedirectURI") as? String ?? ""
+    return !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      && !redirect.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  }
+
   private static var facebookDialog: ShareDialog?
   private static var facebookDelegate: FacebookShareDelegate?
+  private static var tiktokShareRequest: TikTokShareRequest?
 
   /// Opens the Facebook app's composer with the video attached. Uses the
   /// Photos asset when readable, otherwise the file data.
@@ -196,33 +229,31 @@ enum MediaShareChannel {
     }
   }
 
-  /// Held while the "Open in" menu is up; UIKit does not retain it.
-  private static var documentController: UIDocumentInteractionController?
-
-  /// WhatsApp's documented hand-off: a `.wam` copy with the
-  /// `net.whatsapp.movie` type shows a menu with only WhatsApp in it, which
-  /// then opens its chat picker with the video attached.
-  private static func shareToWhatsApp(path: String) -> Bool {
-    guard let whatsapp = URL(string: "whatsapp://app"),
-          UIApplication.shared.canOpenURL(whatsapp),
-          let view = topViewController()?.view
-    else {
-      return false
+  /// Opens TikTok's upload editor with the video attached via Share Kit when
+  /// configured. Without a client key, shares the file so the user can pick
+  /// TikTok (empty `snssdk://` open cannot attach media).
+  private static func shareToTikTok(
+    path: String,
+    localIdentifier: String?,
+    result: @escaping FlutterResult
+  ) {
+    if tiktokConfigured,
+       let id = localIdentifier, !id.isEmpty,
+       let redirect = Bundle.main.object(forInfoDictionaryKey: "TikTokRedirectURI") as? String
+    {
+      let request = TikTokShareRequest(
+        localIdentifiers: [id],
+        mediaType: .video,
+        redirectURI: redirect
+      )
+      tiktokShareRequest = request
+      let sent = request.send { _ in
+        tiktokShareRequest = nil
+      }
+      result(sent)
+      return
     }
-    let source = URL(fileURLWithPath: path)
-    let copy = FileManager.default.temporaryDirectory
-      .appendingPathComponent("clipgo_share.wam")
-    do {
-      try? FileManager.default.removeItem(at: copy)
-      try FileManager.default.copyItem(at: source, to: copy)
-    } catch {
-      return false
-    }
-    let controller = UIDocumentInteractionController(url: copy)
-    controller.uti = "net.whatsapp.movie"
-    documentController = controller
-    let anchor = CGRect(x: view.bounds.midX, y: view.bounds.maxY - 1, width: 1, height: 1)
-    return controller.presentOpenInMenu(from: anchor, in: view, animated: true)
+    result(presentShareSheet(items: [URL(fileURLWithPath: path)]))
   }
 
   /// System share sheet. Presented from the top view controller because the

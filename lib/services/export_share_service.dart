@@ -45,26 +45,37 @@ class ExportShareService {
   }
 
   static const _instagramPackage = 'com.instagram.android';
-  static const _whatsappPackage = 'com.whatsapp';
   static const _facebookPackage = 'com.facebook.katana';
 
-  /// Opens WhatsApp's chat picker with the video attached.
-  /// Android sends the file; iOS shows WhatsApp's own "Open in" menu.
-  Future<bool> shareToWhatsApp(String path) async {
+  /// TikTok (US / most regions) and TikTok (alternate package).
+  static const _tiktokPackages = [
+    'com.zhiliaoapp.musically',
+    'com.ss.android.ugc.trill',
+  ];
+
+  /// Opens TikTok's upload flow with the video attached.
+  /// Android: ACTION_SEND to the TikTok package.
+  /// iOS: TikTok Share Kit when client key is set; otherwise shares the file
+  /// so the user can pick TikTok (plain app open cannot attach media).
+  Future<bool> shareToTikTok(String path, {String? photosAssetId}) async {
     try {
       if (Platform.isAndroid) {
-        if (await _sendToAndroidApp(path, _whatsappPackage)) return true;
-      } else if (Platform.isIOS) {
-        final shown = await _channel.invokeMethod<bool>('shareToWhatsApp', {
+        for (final pkg in _tiktokPackages) {
+          if (await _sendToAndroidApp(path, pkg)) return true;
+        }
+        return false;
+      }
+      if (Platform.isIOS) {
+        final opened = await _channel.invokeMethod<bool>('shareToTikTok', {
           'path': path,
+          'localIdentifier': ?photosAssetId,
         });
-        if (shown == true) return true;
+        return opened == true;
       }
     } catch (error, stack) {
-      debugPrint('[ExportShare] WhatsApp 직접 공유 실패: $error\n$stack');
+      debugPrint('[ExportShare] TikTok 직접 공유 실패: $error\n$stack');
     }
-    final uri = appUri(ShareTargetKind.whatsapp);
-    return uri != null && await openApp(uri);
+    return false;
   }
 
   /// Opens Facebook's composer with the video attached.
@@ -89,9 +100,11 @@ class ExportShareService {
         if (raw is Map) {
           final status = raw['status']?.toString();
           debugPrint(
-            '[ExportShare] Facebook status=$status source=${raw['source']}',
+            '[ExportShare] Facebook status=$status source=${raw['source']} '
+            'message=${raw['message']}',
           );
           if (status != null && status != 'unavailable') {
+            onFacebookResult?.call(status, raw['message']?.toString());
             return true;
           }
         } else if (raw == true) {
@@ -104,6 +117,10 @@ class ExportShareService {
     await shareFile(path);
     return true;
   }
+
+  /// Called with "posted" / "cancelled" / "failed" (+ message) after the
+  /// iOS Facebook share dialog returns to the app.
+  void Function(String status, String? message)? onFacebookResult;
 
   Future<bool> _sendToAndroidApp(String path, String package) async {
     final sent = await _channel.invokeMethod<bool>('shareVideoToApp', {
@@ -146,7 +163,7 @@ class ExportShareService {
     return switch (kind) {
       ShareTargetKind.instagram => Uri.parse('instagram://app'),
       ShareTargetKind.facebook => Uri.parse('fb://'),
-      ShareTargetKind.whatsapp => Uri.parse('whatsapp://'),
+      ShareTargetKind.tiktok => Uri.parse('snssdk1233://'),
       ShareTargetKind.youtube => null,
     };
   }

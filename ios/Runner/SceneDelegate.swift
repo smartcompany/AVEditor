@@ -1,11 +1,11 @@
 import FBSDKCoreKit
 import Flutter
+import TikTokOpenSDKCore
 import UIKit
 
 class SceneDelegate: FlutterSceneDelegate {
-  /// The Facebook app returns to `fb<appId>://share?...` after a share.
-  /// Hand those to the Facebook SDK only — do not forward them to Flutter,
-  /// or MaterialApp treats `/share` as a missing named route and crashes.
+  /// Facebook returns via `fb<appId>://…`; TikTok via its redirect / client-key
+  /// scheme. Hand those to the SDKs only — do not forward them to Flutter.
   override func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
     var remaining = Set<UIOpenURLContext>()
     for context in URLContexts {
@@ -16,6 +16,8 @@ class SceneDelegate: FlutterSceneDelegate {
           sourceApplication: context.options.sourceApplication,
           annotation: context.options.annotation
         )
+      } else if TikTokURLHandler.handleOpenURL(context.url) {
+        continue
       } else {
         remaining.insert(context)
       }

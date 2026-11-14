@@ -12,9 +12,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appTitle => 'EasyClip';
 
   @override
-  String get homeTagline => 'Text on your timeline — upload Shorts in one app.';
-
-  @override
   String get pickFromGallery => 'Choose from gallery';
 
   @override
@@ -610,14 +607,14 @@ class AppLocalizationsEn extends AppLocalizations {
       'Choose Facebook in the list to finish posting.';
 
   @override
-  String get shareFacebookPosted => 'Posted to Facebook.';
+  String get shareFacebookPosted => 'Posted to Facebook';
 
   @override
   String get shareFacebookCancelled => 'Facebook post cancelled.';
 
   @override
   String shareFacebookFailed(String message) {
-    return 'Facebook post failed: $message';
+    return 'Facebook couldn\'t post the video. $message';
   }
 
   @override

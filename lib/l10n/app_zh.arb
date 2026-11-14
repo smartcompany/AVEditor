@@ -1,7 +1,6 @@
 {
   "@@locale": "zh",
   "appTitle": "EasyClip",
-  "homeTagline": "文字只在指定时段出现 — 一个应用完成 Shorts 上传。",
   "pickFromGallery": "从相册选择",
   "pickFromFiles": "选择视频文件",
   "recordVideo": "拍摄视频",
@@ -184,9 +183,9 @@
   "shareMore": "更多",
   "shareAppMissing": "未安装该应用。",
   "shareFacebookOpened": "请在列表中选择 Facebook 以完成发布。",
-  "shareFacebookPosted": "已发布到 Facebook。",
+  "shareFacebookPosted": "已发布到 Facebook",
   "shareFacebookCancelled": "已取消 Facebook 发布。",
-  "shareFacebookFailed": "Facebook 发布失败：{message}",
+  "shareFacebookFailed": "无法发布到 Facebook。{message}",
   "@shareFacebookFailed": {
     "placeholders": {
       "message": {

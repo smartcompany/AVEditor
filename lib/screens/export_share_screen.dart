@@ -53,7 +53,24 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
   @override
   void initState() {
     super.initState();
+    _share.onFacebookResult = _onFacebookResult;
     _run();
+  }
+
+  void _onFacebookResult(String status, String? message) {
+    if (!mounted) return;
+    final l10n = context.l10n;
+    final text = switch (status) {
+      'posted' => l10n.shareFacebookPosted,
+      'cancelled' => l10n.shareFacebookCancelled,
+      _ => l10n.shareFacebookFailed(message ?? ''),
+    };
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(text),
+        duration: Duration(seconds: status == 'failed' ? 8 : 3),
+      ),
+    );
   }
 
   @override
@@ -203,7 +220,10 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
         path: path,
         photosAssetId: _photosAssetId,
       ),
-      ShareTargetKind.whatsapp => await _share.shareToWhatsApp(path),
+      ShareTargetKind.tiktok => await _share.shareToTikTok(
+        path,
+        photosAssetId: _photosAssetId,
+      ),
       ShareTargetKind.facebook => await _share.shareToFacebook(
         path,
         photosAssetId: _photosAssetId,
@@ -458,7 +478,7 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
       ShareTargetKind.youtube => l10n.shareToYouTube,
       ShareTargetKind.instagram => 'Instagram',
       ShareTargetKind.facebook => 'Facebook',
-      ShareTargetKind.whatsapp => 'WhatsApp',
+      ShareTargetKind.tiktok => 'TikTok',
     };
   }
 
@@ -479,10 +499,10 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
         size: size,
         color: const Color(0xFF1877F2),
       ),
-      ShareTargetKind.whatsapp => Icon(
-        Icons.chat,
+      ShareTargetKind.tiktok => Icon(
+        Icons.music_note,
         size: size,
-        color: const Color(0xFF25D366),
+        color: const Color(0xFFF5F5F5),
       ),
     };
   }
