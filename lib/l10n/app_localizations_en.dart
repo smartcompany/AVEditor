@@ -703,4 +703,105 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get premiumAdNotFinished => 'Watch the whole ad to unlock this save.';
+
+  @override
+  String get uploadAccountTitle => 'YouTube account';
+
+  @override
+  String get uploadAccountNone => 'No account connected yet';
+
+  @override
+  String get uploadAccountConnect => 'Connect';
+
+  @override
+  String get uploadAccountSwitch => 'Switch';
+
+  @override
+  String get uploadErrorTitle => 'Couldn\'t upload';
+
+  @override
+  String get uploadErrSuspended =>
+      'The YouTube channel on this Google account is suspended, so videos can\'t be uploaded. Please sign in with another account.';
+
+  @override
+  String get uploadErrNoChannel =>
+      'This Google account doesn\'t have a YouTube channel yet. Create one in the YouTube app and try again, or sign in with another account.';
+
+  @override
+  String get uploadErrUploadLimit =>
+      'This channel has reached today\'s upload limit. Please try again in 24 hours.';
+
+  @override
+  String get uploadErrQuota =>
+      'YouTube is busy right now and couldn\'t take the upload. Please try again in a little while.';
+
+  @override
+  String get uploadErrAuth => 'Your sign-in has expired. Please sign in again.';
+
+  @override
+  String get uploadErrPermission =>
+      'Allow the YouTube upload permission to upload your video.';
+
+  @override
+  String get uploadErrNetwork =>
+      'The connection is unstable. Check your internet connection and try again.';
+
+  @override
+  String get uploadErrUnknown =>
+      'Please try again in a moment. If it keeps happening, let us know the code below.';
+
+  @override
+  String uploadErrCode(String code) {
+    return 'Error code: $code';
+  }
+
+  @override
+  String get uploadSwitchAccountAction => 'Use another account';
+
+  @override
+  String uploadPartialDone(String steps) {
+    return 'Your video was uploaded, but these settings couldn\'t be applied: $steps. You can change them in YouTube Studio.';
+  }
+
+  @override
+  String get uploadStepThumbnail => 'thumbnail';
+
+  @override
+  String get uploadStepPlaylist => 'playlist';
+
+  @override
+  String get uploadStepAgeRestriction => 'age restriction';
+
+  @override
+  String get uploadStepLocation => 'location';
+
+  @override
+  String get uploadOk => 'OK';
+
+  @override
+  String get uploadDoneTitle => 'Uploaded to YouTube';
+
+  @override
+  String get uploadDoneProcessing =>
+      'YouTube may take a few minutes to process it, so it might not play right away.';
+
+  @override
+  String uploadDoneVisibility(String visibility) {
+    return 'Visibility: $visibility';
+  }
+
+  @override
+  String get uploadDoneOpen => 'Watch on YouTube';
+
+  @override
+  String get uploadDoneCopy => 'Copy link';
+
+  @override
+  String get uploadDoneCopied => 'Link copied';
+
+  @override
+  String get uploadDoneShare => 'Share';
+
+  @override
+  String get uploadDoneClose => 'Done';
 }

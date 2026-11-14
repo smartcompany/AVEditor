@@ -55,14 +55,33 @@ void main() {
       expect(done.isFullyVisible, isTrue);
     });
 
-    test('fade staggers opacity', () {
+    test('fade brings the whole line in together', () {
       final mid = evaluateTextEntrance(
         animationId: TextEntranceIds.fade,
         text: 'Hi!',
         progress: 0.4,
       );
-      expect(mid.perGlyph, isTrue);
-      expect(mid.glyphs.any((g) => g.opacity > 0 && g.opacity < 1), isTrue);
+      expect(mid.perGlyph, isFalse);
+      expect(mid.layerOpacity, greaterThan(0));
+      expect(mid.layerOpacity, lessThan(1));
+      expect(mid.layerDy, 0);
+    });
+
+    test('fade and typewriter look different mid-way', () {
+      final fade = evaluateTextEntrance(
+        animationId: TextEntranceIds.fade,
+        text: 'Hello',
+        progress: 0.5,
+      );
+      final type = evaluateTextEntrance(
+        animationId: TextEntranceIds.typewriter,
+        text: 'Hello',
+        progress: 0.5,
+      );
+      // Typewriter: some letters fully on, others off. Fade: no per-letter state.
+      expect(type.perGlyph, isTrue);
+      expect(type.glyphs.where((g) => g.opacity == 0), isNotEmpty);
+      expect(fade.perGlyph, isFalse);
     });
 
     test('slide_up uses layer opacity and dy', () {
@@ -142,22 +161,25 @@ void main() {
       );
     });
 
-    test('pack catalog durationMs is used when overlay has no override', () async {
-      await TextTemplatePackService.instance.ensureInitialized();
-      final overlay = TextOverlay(
-        text: 'Hi',
-        start: Duration.zero,
-        end: const Duration(seconds: 10),
-        animationId: TextEntranceIds.typewriter,
-        animationDurationMs: 900,
-      );
-      final anim = resolveOverlayAnimation(overlay);
-      expect(anim.id, 'typewriter');
-      expect(
-        resolvedEntranceDuration(overlay: overlay, animation: anim),
-        const Duration(milliseconds: 900),
-      );
-    });
+    test(
+      'pack catalog durationMs is used when overlay has no override',
+      () async {
+        await TextTemplatePackService.instance.ensureInitialized();
+        final overlay = TextOverlay(
+          text: 'Hi',
+          start: Duration.zero,
+          end: const Duration(seconds: 10),
+          animationId: TextEntranceIds.typewriter,
+          animationDurationMs: 900,
+        );
+        final anim = resolveOverlayAnimation(overlay);
+        expect(anim.id, 'typewriter');
+        expect(
+          resolvedEntranceDuration(overlay: overlay, animation: anim),
+          const Duration(milliseconds: 900),
+        );
+      },
+    );
 
     test('resolveOverlayAnimation prefers overlay override', () async {
       final service = TextTemplatePackService();
@@ -186,105 +208,115 @@ void main() {
     Future<Uint8List> rgba(Uint8List png) async {
       final codec = await ui.instantiateImageCodec(png);
       final frame = await codec.getNextFrame();
-      final data =
-          await frame.image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      final data = await frame.image.toByteData(
+        format: ui.ImageByteFormat.rawRgba,
+      );
       frame.image.dispose();
       return data!.buffer.asUint8List();
     }
 
-    test('revealed paper keeps the finished shape (it does not stretch)',
-        () async {
-      await TextTemplatePackService.instance.ensureInitialized();
-      const width = 360;
-      const height = 640;
-      final overlay = TextOverlay(
-        text: 'abcdefghijkl',
-        start: Duration.zero,
-        end: const Duration(seconds: 3),
-        animationId: TextEntranceIds.typewriter,
-        animationDurationMs: 1000,
-        packItemId: 'pack_journal',
-      );
-      const service = OverlayRasterService();
-      final done = await rgba(await service.renderToPng(
-        overlay,
-        width: width,
-        height: height,
-        entrance: TextEntranceState.fullyVisible,
-      ));
-      final typing = await rgba(await service.renderToPng(
-        overlay,
-        width: width,
-        height: height,
-        entrance: evaluateTextEntrance(
+    test(
+      'revealed paper keeps the finished shape (it does not stretch)',
+      () async {
+        await TextTemplatePackService.instance.ensureInitialized();
+        const width = 360;
+        const height = 640;
+        final overlay = TextOverlay(
+          text: 'abcdefghijkl',
+          start: Duration.zero,
+          end: const Duration(seconds: 3),
           animationId: TextEntranceIds.typewriter,
-          text: overlay.text,
-          progress: 0.7,
-        ),
-      ));
+          animationDurationMs: 1000,
+          packItemId: 'pack_journal',
+        );
+        const service = OverlayRasterService();
+        final done = await rgba(
+          await service.renderToPng(
+            overlay,
+            width: width,
+            height: height,
+            entrance: TextEntranceState.fullyVisible,
+          ),
+        );
+        final typing = await rgba(
+          await service.renderToPng(
+            overlay,
+            width: width,
+            height: height,
+            entrance: evaluateTextEntrance(
+              animationId: TextEntranceIds.typewriter,
+              text: overlay.text,
+              progress: 0.7,
+            ),
+          ),
+        );
 
-      // Left third of the frame: paper and glyphs there are already revealed
-      // mid-typing, so they must match the finished frame (up to edge anti-aliasing).
-      var painted = 0;
-      var differing = 0;
-      for (var y = 0; y < height; y++) {
-        for (var x = 0; x < width ~/ 3; x++) {
-          final i = (y * width + x) * 4;
-          if (done[i + 3] > 0) painted++;
-          for (var c = 0; c < 4; c++) {
-            // ±few levels: blur anti-aliasing inside the reveal clip.
-            if ((done[i + c] - typing[i + c]).abs() > 6) {
-              differing++;
-              break;
+        // Left third of the frame: paper and glyphs there are already revealed
+        // mid-typing, so they must match the finished frame (up to edge anti-aliasing).
+        var painted = 0;
+        var differing = 0;
+        for (var y = 0; y < height; y++) {
+          for (var x = 0; x < width ~/ 3; x++) {
+            final i = (y * width + x) * 4;
+            if (done[i + 3] > 0) painted++;
+            for (var c = 0; c < 4; c++) {
+              // ±few levels: blur anti-aliasing inside the reveal clip.
+              if ((done[i + c] - typing[i + c]).abs() > 6) {
+                differing++;
+                break;
+              }
             }
           }
         }
-      }
-      expect(painted, greaterThan(0), reason: 'paper reaches the left third');
-      expect(differing, 0);
-    });
+        expect(painted, greaterThan(0), reason: 'paper reaches the left third');
+        expect(differing, 0);
+      },
+    );
   });
 
   group('overlay raster entrance', () {
-    test('static overlay renders one png; animated renders a sequence', () async {
-      final dir = await Directory.systemTemp.createTemp('aveditor_rast_');
-      addTearDown(() => dir.delete(recursive: true));
+    test(
+      'static overlay renders one png; animated renders a sequence',
+      () async {
+        final dir = await Directory.systemTemp.createTemp('aveditor_rast_');
+        addTearDown(() => dir.delete(recursive: true));
 
-      const service = OverlayRasterService();
-      final staticOverlay = TextOverlay(
-        text: 'Static',
-        start: Duration.zero,
-        end: const Duration(seconds: 2),
-        animationId: '',
-      );
-      final animated = TextOverlay(
-        text: 'Hi',
-        start: Duration.zero,
-        end: const Duration(seconds: 2),
-        animationId: TextEntranceIds.fade,
-        animationDurationMs: 400,
-      );
+        const service = OverlayRasterService();
+        final staticOverlay = TextOverlay(
+          text: 'Static',
+          start: Duration.zero,
+          end: const Duration(seconds: 2),
+          animationId: '',
+        );
+        final animated = TextOverlay(
+          text: 'Hi',
+          start: Duration.zero,
+          end: const Duration(seconds: 2),
+          animationId: TextEntranceIds.fade,
+          animationDurationMs: 400,
+        );
 
-      final rasters = await service.renderAll(
-        [staticOverlay, animated],
-        width: 180,
-        height: 320,
-        outputDir: dir,
-      );
+        final rasters = await service.renderAll(
+          [staticOverlay, animated],
+          width: 180,
+          height: 320,
+          outputDir: dir,
+        );
 
-      expect(rasters, hasLength(2));
-      expect(rasters[0].isAnimated, isFalse);
-      expect(rasters[0].file, isNotNull);
-      expect(await rasters[0].file!.exists(), isTrue);
+        expect(rasters, hasLength(2));
+        expect(rasters[0].isAnimated, isFalse);
+        expect(rasters[0].file, isNotNull);
+        expect(await rasters[0].file!.exists(), isTrue);
 
-      expect(rasters[1].isAnimated, isTrue);
-      expect(rasters[1].frameCount, greaterThan(2));
-      final frames = rasters[1].sequenceDir!
-          .listSync()
-          .whereType<File>()
-          .where((f) => f.path.endsWith('.png'));
-      expect(frames.length, rasters[1].frameCount);
-    });
+        expect(rasters[1].isAnimated, isTrue);
+        expect(rasters[1].frameCount, greaterThan(2));
+        final frames = rasters[1].sequenceDir!
+            .listSync()
+            .whereType<File>()
+            .where((f) => f.path.endsWith('.png'));
+        expect(frames.length, rasters[1].frameCount);
+      },
+    );
   });
 
   test('TextStyleTemplate still round-trips', () {

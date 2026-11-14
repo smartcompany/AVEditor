@@ -228,5 +228,30 @@ void main() {
       expect(list.map((s) => s.id), [idB, idA]);
       expect(list.every((s) => s.sourceExists), isTrue);
     });
+
+    test('summary cover time follows the first clip start', () async {
+      final source = File('${tempRoot.path}/c.mp4');
+      await source.writeAsBytes(List<int>.filled(512, 3));
+      final id = await service.createFromImport(source.path);
+
+      final loaded = (await service.load(id))!;
+      await service.save(
+        VideoProject(
+          id: id,
+          sourcePath: loaded.sourcePath,
+          duration: const Duration(seconds: 10),
+          segments: [
+            ClipSegment(
+              id: 'trimmed',
+              start: const Duration(milliseconds: 1500),
+              end: const Duration(seconds: 4),
+            ),
+          ],
+        ),
+      );
+
+      final summary = (await service.loadSummary(id))!;
+      expect(summary.coverTimeMs, 1500);
+    });
   });
 }

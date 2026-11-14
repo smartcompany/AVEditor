@@ -1,3 +1,4 @@
+import 'package:aveditor/services/analytics_service.dart';
 import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/services/pro_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
@@ -6,16 +7,22 @@ import 'package:flutter/material.dart';
 
 /// Pro paywall. Pops `true` when Pro is active on exit.
 class PaywallScreen extends StatefulWidget {
-  const PaywallScreen({super.key, this.pro});
+  const PaywallScreen({super.key, this.pro, this.source = 'settings'});
 
   /// Override for tests; defaults to [ProService.instance].
   final ProService? pro;
 
-  static Future<bool> open(BuildContext context) async {
+  /// Where the paywall was opened from (analytics only).
+  final String source;
+
+  static Future<bool> open(
+    BuildContext context, {
+    String source = 'settings',
+  }) async {
     final result = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (_) => const PaywallScreen(),
+        builder: (_) => PaywallScreen(source: source),
       ),
     );
     return result ?? ProService.instance.isPro;
@@ -37,6 +44,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
   void initState() {
     super.initState();
     _pro.addListener(_onProChanged);
+    AnalyticsService.instance.log('paywall_open', {'source': widget.source});
     _load();
   }
 
@@ -70,13 +78,19 @@ class _PaywallScreenState extends State<PaywallScreen> {
     final result = await _pro.purchase(plan);
     if (!mounted) return;
     setState(() => _busy = false);
+    final analytics = AnalyticsService.instance;
     switch (result) {
       case ProPurchaseResult.purchased:
+        analytics.log('purchase_success', {
+          'plan': plan.id,
+          'annual': plan.isAnnual,
+        });
         _close();
       case ProPurchaseResult.cancelled:
-        break;
+        analytics.log('purchase_cancelled', {'plan': plan.id});
       case ProPurchaseResult.failed:
       case ProPurchaseResult.unavailable:
+        analytics.log('purchase_failed', {'plan': plan.id});
         _snack(context.l10n.proPurchaseFailed);
     }
   }
@@ -88,6 +102,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
     if (!mounted) return;
     setState(() => _busy = false);
     if (active) {
+      AnalyticsService.instance.log('restore_success');
       _close();
     } else {
       _snack(context.l10n.proRestoreNone);

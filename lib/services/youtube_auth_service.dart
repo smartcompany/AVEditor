@@ -1,3 +1,4 @@
+import 'package:aveditor/services/youtube_errors.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -61,7 +62,7 @@ class YouTubeAuthService {
     }
     final account = await _google.signIn();
     if (account == null) {
-      throw StateError('YouTube sign-in was cancelled');
+      throw const YouTubeSignInCancelled();
     }
     await _ensureUploadScope();
     final auth = await account.authentication;
@@ -84,6 +85,30 @@ class YouTubeAuthService {
       throw StateError('YouTube access token was not issued');
     }
     return token;
+  }
+
+  /// The Google account uploads go to, restoring a previous session
+  /// silently. Null when nobody is signed in.
+  Future<GoogleSignInAccount?> currentAccount() async {
+    if (_needsIosClient) return null;
+    try {
+      return _google.currentUser ?? await _google.signInSilently();
+    } catch (error, stack) {
+      debugPrint('YouTubeAuthService.currentAccount failed: $error\n$stack');
+      return null;
+    }
+  }
+
+  /// Signs out and opens the Google account picker so the user can upload
+  /// to another account (e.g. when the current channel is suspended).
+  /// Throws [YouTubeSignInCancelled] if the picker is closed; the user is
+  /// then signed out.
+  Future<GoogleSignInAccount> switchAccount() async {
+    await signOut();
+    await signIn();
+    final account = _google.currentUser;
+    if (account == null) throw const YouTubeSignInCancelled();
+    return account;
   }
 
   Future<void> signOut() async {
@@ -114,7 +139,7 @@ class YouTubeAuthService {
       granted ? '[YouTubeUpload] $label 권한 허용' : '[YouTubeUpload] $label 권한 거부',
     );
     if (!granted) {
-      throw StateError('YouTube permission was not granted ($label)');
+      throw YouTubePermissionDenied(label);
     }
   }
 

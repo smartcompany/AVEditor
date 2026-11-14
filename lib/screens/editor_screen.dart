@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:aveditor/services/text_template_pack_service.dart';
+import 'package:aveditor/services/transition_catalog_service.dart';
+import 'package:aveditor/services/analytics_service.dart';
 import 'package:aveditor/l10n/app_localizations.dart';
 import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/models/applied_transition.dart';
@@ -339,6 +342,7 @@ class _EditorScreenState extends State<EditorScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _engineClaim = NativeVideoEngine.instance.claim();
+    AnalyticsService.instance.log('editor_open');
     _initVideo();
   }
 
@@ -2601,6 +2605,7 @@ class _EditorScreenState extends State<EditorScreen>
       timelineStart: _playhead,
       clipDuration: clipDuration,
     );
+    AnalyticsService.instance.log('music_added');
     _mutate((p) {
       final placed = assignMusicLane(p.musicTracks, clip);
       p.musicTracks.add(placed);
@@ -2720,6 +2725,14 @@ class _EditorScreenState extends State<EditorScreen>
 
   void _applyTransitionAtCut(int index, AppliedTransition applied) {
     if (!mounted) return;
+    if (!applied.isNone) {
+      AnalyticsService.instance.log('transition_applied', {
+        'id': applied.id,
+        'premium':
+            TransitionCatalogService.instance.itemById(applied.id)?.premium ??
+            false,
+      });
+    }
     _mutate((p) {
       if (index >= p.segments.length - 1) return;
       final segment = p.segments[index];
@@ -3212,6 +3225,7 @@ class _EditorScreenState extends State<EditorScreen>
 
   /// CapCut-style text — opens the text studio on the Text (effects) tab.
   void _addTextOverlay() {
+    AnalyticsService.instance.log('text_added');
     _placeNewTextOverlay();
   }
 
@@ -3423,6 +3437,15 @@ class _EditorScreenState extends State<EditorScreen>
 
     final index = project.overlays.indexWhere((o) => o.id == updated.id);
     if (index == -1) return;
+    final newPack = updated.packItemId;
+    if (newPack != null && newPack != project.overlays[index].packItemId) {
+      AnalyticsService.instance.log('text_style_applied', {
+        'id': newPack,
+        'premium':
+            TextTemplatePackService.instance.itemById(newPack)?.premium ??
+            false,
+      });
+    }
 
     final fitted = fitOverlayBoxToText(updated);
     setState(() {
@@ -3628,6 +3651,7 @@ class _EditorScreenState extends State<EditorScreen>
   Future<void> _presentExport() async {
     final project = _project;
     if (project == null || _exporting) return;
+    AnalyticsService.instance.log('export_tap');
     final exportProject = await _resolvePremiumForExport(project);
     if (exportProject == null || !mounted) return;
     await Navigator.of(context).push(
@@ -3649,14 +3673,21 @@ class _EditorScreenState extends State<EditorScreen>
     final uses = premiumUsesIn(project, catalog);
     if (uses.isEmpty || !mounted) return project;
 
+    final analytics = AnalyticsService.instance;
+    analytics.log('premium_sheet_shown', {
+      'items': uses.map((u) => u.itemId).take(10).toList(),
+    });
     final choice = await showPremiumExportSheet(context, uses);
     if (!mounted || choice == null) return null;
     switch (choice) {
       case PremiumExportChoice.pro:
-        final active = await PaywallScreen.open(context);
+        analytics.log('premium_choice_pro');
+        final active = await PaywallScreen.open(context, source: 'export');
         return active ? project : null;
       case PremiumExportChoice.watchAd:
+        analytics.log('premium_choice_ad');
         final unlocked = await watchAdToUnlockExport();
+        analytics.log(unlocked ? 'ad_unlock_success' : 'ad_unlock_failed');
         if (!mounted) return null;
         if (!unlocked) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -3666,6 +3697,7 @@ class _EditorScreenState extends State<EditorScreen>
         }
         return project;
       case PremiumExportChoice.strip:
+        analytics.log('premium_choice_strip');
         return withoutPremium(project, catalog);
     }
   }

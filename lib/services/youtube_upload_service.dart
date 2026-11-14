@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:aveditor/models/video_project.dart';
+import 'package:aveditor/services/youtube_errors.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
@@ -64,8 +65,10 @@ class YouTubeUploadService {
     );
     if (start.statusCode != 200) {
       debugPrint('[YouTubeUpload] 세션 실패 ${start.statusCode} ${start.body}');
-      throw StateError(
-        'YouTube upload did not start (${start.statusCode}) ${start.body}',
+      throw YouTubeApiException.fromResponse(
+        step: 'upload',
+        statusCode: start.statusCode,
+        body: start.body,
       );
     }
     final location = start.headers['location'];
@@ -98,7 +101,11 @@ class YouTubeUploadService {
     final body = await put.stream.bytesToString();
     if (put.statusCode != 200 && put.statusCode != 201) {
       debugPrint('[YouTubeUpload] 전송 실패 ${put.statusCode} $body');
-      throw StateError('YouTube upload failed (${put.statusCode}) $body');
+      throw YouTubeApiException.fromResponse(
+        step: 'upload',
+        statusCode: put.statusCode,
+        body: body,
+      );
     }
     final decoded = jsonDecode(body);
     if (decoded is! Map<String, dynamic>) {
@@ -153,9 +160,11 @@ class YouTubeUploadService {
         debugPrint(
           '[YouTubeUpload] 재생목록 실패 ${response.statusCode} ${response.body}',
         );
-        throw StateError(
-          'YouTube playlists failed (${response.statusCode}) ${response.body}',
-        );
+        throw YouTubeApiException.fromResponse(
+        step: 'playlists',
+        statusCode: response.statusCode,
+        body: response.body,
+      );
       }
       final decoded = jsonDecode(response.body);
       if (decoded is! Map) break;
@@ -201,8 +210,10 @@ class YouTubeUploadService {
       debugPrint(
         '[YouTubeUpload] 썸네일 실패 ${response.statusCode} ${response.body}',
       );
-      throw StateError(
-        'YouTube thumbnail failed (${response.statusCode}) ${response.body}',
+      throw YouTubeApiException.fromResponse(
+        step: 'thumbnail',
+        statusCode: response.statusCode,
+        body: response.body,
       );
     }
     debugPrint('[YouTubeUpload] 썸네일 완료');
@@ -233,8 +244,10 @@ class YouTubeUploadService {
       debugPrint(
         '[YouTubeUpload] 재생목록 추가 실패 ${response.statusCode} ${response.body}',
       );
-      throw StateError(
-        'YouTube playlist failed (${response.statusCode}) ${response.body}',
+      throw YouTubeApiException.fromResponse(
+        step: 'playlist',
+        statusCode: response.statusCode,
+        body: response.body,
       );
     }
     debugPrint('[YouTubeUpload] 재생목록 추가 완료');
@@ -264,8 +277,10 @@ class YouTubeUploadService {
       debugPrint(
         '[YouTubeUpload] 연령 제한 실패 ${response.statusCode} ${response.body}',
       );
-      throw StateError(
-        'YouTube age restriction failed (${response.statusCode}) ${response.body}',
+      throw YouTubeApiException.fromResponse(
+        step: 'ageRestriction',
+        statusCode: response.statusCode,
+        body: response.body,
       );
     }
     debugPrint('[YouTubeUpload] 연령 제한 완료');
@@ -324,8 +339,10 @@ class YouTubeUploadService {
       debugPrint(
         '[YouTubeUpload] 위치 실패 ${response.statusCode} ${response.body}',
       );
-      throw StateError(
-        'YouTube location failed (${response.statusCode}) ${response.body}',
+      throw YouTubeApiException.fromResponse(
+        step: 'location',
+        statusCode: response.statusCode,
+        body: response.body,
       );
     }
     debugPrint('[YouTubeUpload] 위치 완료');

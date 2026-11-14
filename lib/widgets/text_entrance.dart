@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:aveditor/models/text_entrance_animation.dart';
 import 'package:characters/characters.dart';
 import 'package:flutter/foundation.dart';
@@ -5,10 +6,7 @@ import 'package:flutter/foundation.dart';
 /// Per-grapheme (or whole-layer) entrance sample for one paint frame.
 @immutable
 class TextEntranceGlyph {
-  const TextEntranceGlyph({
-    required this.opacity,
-    this.dy = 0,
-  });
+  const TextEntranceGlyph({required this.opacity, this.dy = 0});
 
   final double opacity;
   final double dy;
@@ -37,10 +35,13 @@ class TextEntranceState {
   final bool perGlyph;
 
   bool get isFullyVisible =>
-      progress >= 1 && layerOpacity >= 0.999 && glyphs.every((g) => g.opacity >= 0.999);
+      progress >= 1 &&
+      layerOpacity >= 0.999 &&
+      glyphs.every((g) => g.opacity >= 0.999);
 
   bool get isInvisible =>
-      progress <= 0 || (layerOpacity <= 0.01 && glyphs.every((g) => !g.isVisible));
+      progress <= 0 ||
+      (layerOpacity <= 0.01 && glyphs.every((g) => !g.isVisible));
 
   static const fullyVisible = TextEntranceState(
     animationId: '',
@@ -108,23 +109,18 @@ TextEntranceState evaluateTextEntrance({
       return TextEntranceState(
         animationId: id,
         progress: t,
-        glyphs: _staggered(
-          count: graphemes.length,
-          progress: t,
-          hardCut: true,
-        ),
+        glyphs: _staggered(count: graphemes.length, progress: t, hardCut: true),
         perGlyph: true,
       );
     case TextEntranceIds.fade:
+      // Whole line fades in together. A per-glyph stagger read as a soft
+      // typewriter, so fade and typewriter looked the same.
       return TextEntranceState(
         animationId: id,
         progress: t,
-        glyphs: _staggered(
-          count: graphemes.length,
-          progress: t,
-          hardCut: false,
-        ),
-        perGlyph: true,
+        glyphs: const [],
+        layerOpacity: _easeInOutCubic(t),
+        perGlyph: false,
       );
     default:
       return TextEntranceState(
@@ -170,6 +166,10 @@ double _glyphOpacity({
   final local = ((progress - start) / window).clamp(0.0, 1.0);
   if (hardCut) return local > 0.15 ? 1 : 0;
   return _easeOutCubic(local);
+}
+
+double _easeInOutCubic(double t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - math.pow(-2 * t + 2, 3) / 2;
 }
 
 double _easeOutCubic(double t) {

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:aveditor/services/analytics_service.dart';
 import 'package:aveditor/l10n/app_localizations.dart';
 import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/models/video_project.dart';
@@ -12,6 +13,7 @@ import 'package:aveditor/services/native_video_engine.dart';
 import 'package:aveditor/services/export_share_service.dart';
 import 'package:aveditor/services/share_catalog_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
+import 'package:aveditor/widgets/video_thumbnail_scrubber.dart';
 import 'package:flutter/material.dart';
 import 'package:aveditor/services/video_frame_grab.dart';
 import 'package:video_player/video_player.dart';
@@ -83,6 +85,10 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
     try {
       final quality = await _settings.getExportQualityProfile();
       debugPrint('[ExportShare] 내보내기 시작 quality=${quality.name}');
+      final started = DateTime.now();
+      AnalyticsService.instance.log('export_started', {
+        'quality': quality.name,
+      });
       final path = await _export.exportToFile(
         widget.project,
         quality: quality,
@@ -94,6 +100,9 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
         },
       );
       debugPrint('[ExportShare] 내보내기 완료 path=$path');
+      AnalyticsService.instance.log('export_completed', {
+        'seconds': DateTime.now().difference(started).inSeconds,
+      });
       if (_cancelled || !mounted) return;
       await thumbFuture;
       final targets = await catalogFuture;
@@ -120,6 +129,7 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
         return;
       }
       debugPrint('[ExportShare] 실패: $error\n$stack');
+      AnalyticsService.instance.log('export_failed');
       if (!mounted) return;
       setState(() => _error = error.toString());
     }
@@ -280,19 +290,26 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
     final language = Localizations.localeOf(context).languageCode;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: AppTheme.surface,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 28, 20, 20),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
           child: Column(
             children: [
-              const Spacer(),
-              _buildPlayer(),
-              const Spacer(),
+              // The video takes all the room the share buttons leave.
+              Expanded(child: _buildPlayer()),
+              if (_player != null && _exportedPath != null) ...[
+                const SizedBox(height: 18),
+                VideoThumbnailScrubber(
+                  player: _player!,
+                  videoPath: _exportedPath!,
+                ),
+              ],
+              const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
                 height: 52,
@@ -348,40 +365,38 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
   Widget _buildPlayer() {
     final player = _player;
     final ready = player != null && player.value.isInitialized;
-    return GestureDetector(
-      onTap: _togglePlay,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: SizedBox(
-          width: 132,
-          height: 234,
-          child: ColoredBox(
-            color: Colors.black,
-            child: ready
-                ? Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      FittedBox(
-                        fit: BoxFit.cover,
-                        child: SizedBox(
-                          width: player.value.size.width,
-                          height: player.value.size.height,
-                          child: VideoPlayer(player),
-                        ),
-                      ),
-                      if (!player.value.isPlaying)
-                        const Center(
-                          child: Icon(
-                            Icons.play_circle_fill,
-                            size: 52,
-                            color: Colors.white,
+    final size = ready ? player.value.size : Size.zero;
+    final aspect = ready && size.width > 0 && size.height > 0
+        ? size.width / size.height
+        : 9 / 16;
+    return Center(
+      child: AspectRatio(
+        aspectRatio: aspect,
+        child: GestureDetector(
+          onTap: _togglePlay,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: ColoredBox(
+              color: Colors.black,
+              child: ready
+                  ? Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        VideoPlayer(player),
+                        if (!player.value.isPlaying)
+                          const Center(
+                            child: Icon(
+                              Icons.play_circle_fill,
+                              size: 64,
+                              color: Colors.white,
+                            ),
                           ),
-                        ),
-                    ],
-                  )
-                : const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
+                      ],
+                    )
+                  : const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+            ),
           ),
         ),
       ),

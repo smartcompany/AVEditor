@@ -961,6 +961,8 @@ internal data class MotionLayer(
   val rows: Int = 0,
   val gap: Float = 0f,
   val stagger: Float = 0f,
+  /** Ripple bend strength (catalog intensity). */
+  val amount: Float = 0.7f,
 )
 
 internal data class MotionPose(
@@ -1000,6 +1002,7 @@ private fun parseMotionLayers(raw: Any?): List<MotionLayer> {
         rows = ((map["grid"] as? Map<*, *>)?.get("rows") as? Number)?.toInt() ?: 0,
         gap = ((map["grid"] as? Map<*, *>)?.get("gap") as? Number)?.toFloat() ?: 0f,
         stagger = ((map["grid"] as? Map<*, *>)?.get("stagger") as? Number)?.toFloat() ?: 0f,
+        amount = (map["amount"] as? Number)?.toFloat() ?: 0.7f,
       ),
     )
   }

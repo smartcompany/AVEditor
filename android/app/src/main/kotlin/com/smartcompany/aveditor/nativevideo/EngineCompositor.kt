@@ -143,6 +143,7 @@ internal class EngineCompositor {
     u1f("uBright", d.bright)
     u1f("uWhite", if (d.white) 1f else 0f)
     u1f("uRipple", d.ripple)
+    u1f("uRippleAmount", d.rippleAmount)
     u1f("uAOnTop", if (d.aOnTop) 1f else 0f)
     u1f("uCircleIncoming", if (d.circleIncoming) 1f else 0f)
     u1f("uCols", d.cols)

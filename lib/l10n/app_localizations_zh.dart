@@ -683,4 +683,99 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get premiumAdNotFinished => '完整观看广告后即可保存。';
+
+  @override
+  String get uploadAccountTitle => '上传到的 YouTube 账号';
+
+  @override
+  String get uploadAccountNone => '尚未连接账号';
+
+  @override
+  String get uploadAccountConnect => '连接';
+
+  @override
+  String get uploadAccountSwitch => '切换';
+
+  @override
+  String get uploadErrorTitle => '无法上传';
+
+  @override
+  String get uploadErrSuspended =>
+      '此 Google 账号的 YouTube 频道已被停用，无法上传视频。请使用其他账号登录。';
+
+  @override
+  String get uploadErrNoChannel =>
+      '此 Google 账号还没有 YouTube 频道。请在 YouTube 应用中创建频道后重试，或使用其他账号登录。';
+
+  @override
+  String get uploadErrUploadLimit => '此频道已达到今日上传上限，请在 24 小时后重试。';
+
+  @override
+  String get uploadErrQuota => 'YouTube 当前繁忙，暂时无法上传。请稍后重试。';
+
+  @override
+  String get uploadErrAuth => '登录已过期，请重新登录。';
+
+  @override
+  String get uploadErrPermission => '需要允许 YouTube 上传权限才能上传视频。';
+
+  @override
+  String get uploadErrNetwork => '网络连接不稳定，请检查网络后重试。';
+
+  @override
+  String get uploadErrUnknown => '请稍后重试。如果问题持续，请告诉我们下面的代码。';
+
+  @override
+  String uploadErrCode(String code) {
+    return '错误代码：$code';
+  }
+
+  @override
+  String get uploadSwitchAccountAction => '使用其他账号登录';
+
+  @override
+  String uploadPartialDone(String steps) {
+    return '视频已上传，但以下设置未能应用：$steps。你可以在 YouTube 工作室中修改。';
+  }
+
+  @override
+  String get uploadStepThumbnail => '缩略图';
+
+  @override
+  String get uploadStepPlaylist => '播放列表';
+
+  @override
+  String get uploadStepAgeRestriction => '年龄限制';
+
+  @override
+  String get uploadStepLocation => '位置';
+
+  @override
+  String get uploadOk => '确定';
+
+  @override
+  String get uploadDoneTitle => '已上传到 YouTube';
+
+  @override
+  String get uploadDoneProcessing => 'YouTube 处理可能需要几分钟，可能无法立即播放。';
+
+  @override
+  String uploadDoneVisibility(String visibility) {
+    return '公开范围：$visibility';
+  }
+
+  @override
+  String get uploadDoneOpen => '在 YouTube 上观看';
+
+  @override
+  String get uploadDoneCopy => '复制链接';
+
+  @override
+  String get uploadDoneCopied => '链接已复制';
+
+  @override
+  String get uploadDoneShare => '分享';
+
+  @override
+  String get uploadDoneClose => '完成';
 }

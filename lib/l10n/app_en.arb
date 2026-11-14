@@ -295,5 +295,55 @@
         "type": "String"
       }
     }
+  },
+  "uploadAccountTitle": "YouTube account",
+  "uploadAccountNone": "No account connected yet",
+  "uploadAccountConnect": "Connect",
+  "uploadAccountSwitch": "Switch",
+  "uploadErrorTitle": "Couldn't upload",
+  "uploadErrSuspended": "The YouTube channel on this Google account is suspended, so videos can't be uploaded. Please sign in with another account.",
+  "uploadErrNoChannel": "This Google account doesn't have a YouTube channel yet. Create one in the YouTube app and try again, or sign in with another account.",
+  "uploadErrUploadLimit": "This channel has reached today's upload limit. Please try again in 24 hours.",
+  "uploadErrQuota": "YouTube is busy right now and couldn't take the upload. Please try again in a little while.",
+  "uploadErrAuth": "Your sign-in has expired. Please sign in again.",
+  "uploadErrPermission": "Allow the YouTube upload permission to upload your video.",
+  "uploadErrNetwork": "The connection is unstable. Check your internet connection and try again.",
+  "uploadErrUnknown": "Please try again in a moment. If it keeps happening, let us know the code below.",
+  "uploadErrCode": "Error code: {code}",
+  "uploadSwitchAccountAction": "Use another account",
+  "uploadPartialDone": "Your video was uploaded, but these settings couldn't be applied: {steps}. You can change them in YouTube Studio.",
+  "uploadStepThumbnail": "thumbnail",
+  "uploadStepPlaylist": "playlist",
+  "uploadStepAgeRestriction": "age restriction",
+  "uploadStepLocation": "location",
+  "uploadOk": "OK",
+  "@uploadErrCode": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "@uploadPartialDone": {
+    "placeholders": {
+      "steps": {
+        "type": "String"
+      }
+    }
+  },
+  "uploadDoneTitle": "Uploaded to YouTube",
+  "uploadDoneProcessing": "YouTube may take a few minutes to process it, so it might not play right away.",
+  "uploadDoneVisibility": "Visibility: {visibility}",
+  "uploadDoneOpen": "Watch on YouTube",
+  "uploadDoneCopy": "Copy link",
+  "uploadDoneCopied": "Link copied",
+  "uploadDoneShare": "Share",
+  "uploadDoneClose": "Done",
+  "@uploadDoneVisibility": {
+    "placeholders": {
+      "visibility": {
+        "type": "String"
+      }
+    }
   }
 }

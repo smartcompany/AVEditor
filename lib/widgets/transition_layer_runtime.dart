@@ -1120,7 +1120,9 @@ class _RenderRipple extends RenderBox
     final center = size.center(Offset.zero);
     final maxR = math.sqrt(size.width * size.width + size.height * size.height) * 0.62;
     final front = wave * maxR;
-    final ring = math.min(size.width, size.height) * (0.10 + 0.08 * intensity);
+    // Same wave width as the native renderers / dashboard (shorter side × 0.16);
+    // intensity only changes how far the bands bulge.
+    final ring = math.min(size.width, size.height) * 0.16;
     final bulge = math.sin(wave * math.pi) * intensity * 0.22;
 
     context.paintChild(outgoing, offset);

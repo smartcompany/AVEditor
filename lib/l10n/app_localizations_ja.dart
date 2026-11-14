@@ -688,4 +688,100 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get premiumAdNotFinished => '広告を最後まで見ると保存できます。';
+
+  @override
+  String get uploadAccountTitle => 'アップロード先のYouTubeアカウント';
+
+  @override
+  String get uploadAccountNone => 'まだアカウントが接続されていません';
+
+  @override
+  String get uploadAccountConnect => '接続';
+
+  @override
+  String get uploadAccountSwitch => '切り替え';
+
+  @override
+  String get uploadErrorTitle => 'アップロードできませんでした';
+
+  @override
+  String get uploadErrSuspended =>
+      'このGoogleアカウントのYouTubeチャンネルは停止中のため、動画をアップロードできません。別のアカウントでログインしてください。';
+
+  @override
+  String get uploadErrNoChannel =>
+      'このGoogleアカウントにはまだYouTubeチャンネルがありません。YouTubeアプリでチャンネルを作成してから再試行するか、別のアカウントでログインしてください。';
+
+  @override
+  String get uploadErrUploadLimit =>
+      'このチャンネルは本日のアップロード上限に達しました。24時間後に再試行してください。';
+
+  @override
+  String get uploadErrQuota => '現在YouTubeへのリクエストが混み合っています。しばらくしてから再試行してください。';
+
+  @override
+  String get uploadErrAuth => 'ログインの有効期限が切れました。もう一度ログインしてください。';
+
+  @override
+  String get uploadErrPermission => '動画をアップロードするにはYouTubeのアップロード権限を許可してください。';
+
+  @override
+  String get uploadErrNetwork => '接続が不安定です。インターネット接続を確認して再試行してください。';
+
+  @override
+  String get uploadErrUnknown => 'しばらくしてから再試行してください。解決しない場合は下のコードをお知らせください。';
+
+  @override
+  String uploadErrCode(String code) {
+    return 'エラーコード: $code';
+  }
+
+  @override
+  String get uploadSwitchAccountAction => '別のアカウントでログイン';
+
+  @override
+  String uploadPartialDone(String steps) {
+    return '動画はアップロードされましたが、次の設定を適用できませんでした: $steps。YouTube Studioで変更できます。';
+  }
+
+  @override
+  String get uploadStepThumbnail => 'サムネイル';
+
+  @override
+  String get uploadStepPlaylist => '再生リスト';
+
+  @override
+  String get uploadStepAgeRestriction => '年齢制限';
+
+  @override
+  String get uploadStepLocation => '位置';
+
+  @override
+  String get uploadOk => 'OK';
+
+  @override
+  String get uploadDoneTitle => 'YouTubeにアップロードしました';
+
+  @override
+  String get uploadDoneProcessing => 'YouTubeでの処理に数分かかるため、すぐには再生できない場合があります。';
+
+  @override
+  String uploadDoneVisibility(String visibility) {
+    return '公開範囲: $visibility';
+  }
+
+  @override
+  String get uploadDoneOpen => 'YouTubeで見る';
+
+  @override
+  String get uploadDoneCopy => 'リンクをコピー';
+
+  @override
+  String get uploadDoneCopied => 'リンクをコピーしました';
+
+  @override
+  String get uploadDoneShare => '共有';
+
+  @override
+  String get uploadDoneClose => '完了';
 }

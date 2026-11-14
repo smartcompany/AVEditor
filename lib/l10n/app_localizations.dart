@@ -1379,6 +1379,180 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Watch the whole ad to unlock this save.'**
   String get premiumAdNotFinished;
+
+  /// No description provided for @uploadAccountTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'YouTube account'**
+  String get uploadAccountTitle;
+
+  /// No description provided for @uploadAccountNone.
+  ///
+  /// In en, this message translates to:
+  /// **'No account connected yet'**
+  String get uploadAccountNone;
+
+  /// No description provided for @uploadAccountConnect.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect'**
+  String get uploadAccountConnect;
+
+  /// No description provided for @uploadAccountSwitch.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch'**
+  String get uploadAccountSwitch;
+
+  /// No description provided for @uploadErrorTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t upload'**
+  String get uploadErrorTitle;
+
+  /// No description provided for @uploadErrSuspended.
+  ///
+  /// In en, this message translates to:
+  /// **'The YouTube channel on this Google account is suspended, so videos can\'t be uploaded. Please sign in with another account.'**
+  String get uploadErrSuspended;
+
+  /// No description provided for @uploadErrNoChannel.
+  ///
+  /// In en, this message translates to:
+  /// **'This Google account doesn\'t have a YouTube channel yet. Create one in the YouTube app and try again, or sign in with another account.'**
+  String get uploadErrNoChannel;
+
+  /// No description provided for @uploadErrUploadLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'This channel has reached today\'s upload limit. Please try again in 24 hours.'**
+  String get uploadErrUploadLimit;
+
+  /// No description provided for @uploadErrQuota.
+  ///
+  /// In en, this message translates to:
+  /// **'YouTube is busy right now and couldn\'t take the upload. Please try again in a little while.'**
+  String get uploadErrQuota;
+
+  /// No description provided for @uploadErrAuth.
+  ///
+  /// In en, this message translates to:
+  /// **'Your sign-in has expired. Please sign in again.'**
+  String get uploadErrAuth;
+
+  /// No description provided for @uploadErrPermission.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow the YouTube upload permission to upload your video.'**
+  String get uploadErrPermission;
+
+  /// No description provided for @uploadErrNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'The connection is unstable. Check your internet connection and try again.'**
+  String get uploadErrNetwork;
+
+  /// No description provided for @uploadErrUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Please try again in a moment. If it keeps happening, let us know the code below.'**
+  String get uploadErrUnknown;
+
+  /// No description provided for @uploadErrCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Error code: {code}'**
+  String uploadErrCode(String code);
+
+  /// No description provided for @uploadSwitchAccountAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Use another account'**
+  String get uploadSwitchAccountAction;
+
+  /// No description provided for @uploadPartialDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Your video was uploaded, but these settings couldn\'t be applied: {steps}. You can change them in YouTube Studio.'**
+  String uploadPartialDone(String steps);
+
+  /// No description provided for @uploadStepThumbnail.
+  ///
+  /// In en, this message translates to:
+  /// **'thumbnail'**
+  String get uploadStepThumbnail;
+
+  /// No description provided for @uploadStepPlaylist.
+  ///
+  /// In en, this message translates to:
+  /// **'playlist'**
+  String get uploadStepPlaylist;
+
+  /// No description provided for @uploadStepAgeRestriction.
+  ///
+  /// In en, this message translates to:
+  /// **'age restriction'**
+  String get uploadStepAgeRestriction;
+
+  /// No description provided for @uploadStepLocation.
+  ///
+  /// In en, this message translates to:
+  /// **'location'**
+  String get uploadStepLocation;
+
+  /// No description provided for @uploadOk.
+  ///
+  /// In en, this message translates to:
+  /// **'OK'**
+  String get uploadOk;
+
+  /// No description provided for @uploadDoneTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Uploaded to YouTube'**
+  String get uploadDoneTitle;
+
+  /// No description provided for @uploadDoneProcessing.
+  ///
+  /// In en, this message translates to:
+  /// **'YouTube may take a few minutes to process it, so it might not play right away.'**
+  String get uploadDoneProcessing;
+
+  /// No description provided for @uploadDoneVisibility.
+  ///
+  /// In en, this message translates to:
+  /// **'Visibility: {visibility}'**
+  String uploadDoneVisibility(String visibility);
+
+  /// No description provided for @uploadDoneOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Watch on YouTube'**
+  String get uploadDoneOpen;
+
+  /// No description provided for @uploadDoneCopy.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy link'**
+  String get uploadDoneCopy;
+
+  /// No description provided for @uploadDoneCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Link copied'**
+  String get uploadDoneCopied;
+
+  /// No description provided for @uploadDoneShare.
+  ///
+  /// In en, this message translates to:
+  /// **'Share'**
+  String get uploadDoneShare;
+
+  /// No description provided for @uploadDoneClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get uploadDoneClose;
 }
 
 class _AppLocalizationsDelegate

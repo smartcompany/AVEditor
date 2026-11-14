@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:aveditor/models/clip_trim.dart';
 import 'package:aveditor/models/video_project.dart';
+import 'package:aveditor/services/video_frame_grab.dart';
 import 'package:aveditor/services/playback_fallback_transcoder.dart';
 import 'package:aveditor/utils/av_editor_log.dart';
 import 'package:flutter/foundation.dart';
@@ -19,6 +20,7 @@ class ProjectSummary {
     required this.overlayCount,
     required this.sourceExists,
     this.name,
+    this.coverTimeMs = 0,
   });
 
   final String id;
@@ -28,6 +30,10 @@ class ProjectSummary {
 
   /// User-given name, or null for a project that was never named.
   final String? name;
+
+  /// Source time of the project's first frame (start of the first clip),
+  /// used for the home-screen cover thumbnail.
+  final int coverTimeMs;
 }
 
 /// Persists edit projects as JSON + a copied source video on disk.
@@ -88,8 +94,12 @@ class ProjectStorageService {
     if (!await file.exists()) return null;
 
     final json = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-    final sourceFileName = json['sourceFileName'] as String? ?? kProjectSourceFileName;
-    final sourcePath = p.join((await _projectDir(projectId)).path, sourceFileName);
+    final sourceFileName =
+        json['sourceFileName'] as String? ?? kProjectSourceFileName;
+    final sourcePath = p.join(
+      (await _projectDir(projectId)).path,
+      sourceFileName,
+    );
     if (!await File(sourcePath).exists()) return null;
 
     return VideoProject.fromJson(json, sourcePath: sourcePath);
@@ -131,7 +141,55 @@ class ProjectStorageService {
       overlayCount: project.overlays.length,
       sourceExists: await File(project.sourcePath).exists(),
       name: project.name,
+      coverTimeMs: project.segments.isEmpty
+          ? 0
+          : project.segments.first.start.inMilliseconds,
     );
+  }
+
+  /// Cover thumbnail for the home list: one frame at the start of the first
+  /// clip, cached as `cover_<ms>.jpg` in the project folder. Trimming the
+  /// front changes the time and so the file name, which refreshes the cover.
+  /// Returns null when no frame can be read.
+  Future<String?> coverThumbnail(
+    ProjectSummary summary, {
+    VideoFrameGrab grab = const VideoFrameGrab(),
+  }) async {
+    final dir = await _projectDir(summary.id);
+    if (!await dir.exists()) return null;
+    final target = p.join(dir.path, 'cover_${summary.coverTimeMs}.jpg');
+    final file = File(target);
+    if (await file.exists() && await file.length() > 0) return target;
+
+    // Drop covers for older first-frame times.
+    await for (final entity in dir.list()) {
+      final name = p.basename(entity.path);
+      if (entity is File &&
+          name.startsWith('cover_') &&
+          name.endsWith('.jpg')) {
+        await entity.delete();
+      }
+    }
+
+    final project = await load(summary.id);
+    if (project == null) return null;
+    final generated = await grab.jpegFile(
+      video: project.sourcePath,
+      thumbnailPath: target,
+      maxWidth: 240,
+      timeMs: summary.coverTimeMs,
+      quality: 70,
+    );
+    if (generated == null) return null;
+    if (generated != target) {
+      try {
+        await File(generated).copy(target);
+        return target;
+      } catch (_) {
+        return generated;
+      }
+    }
+    return target;
   }
 
   Future<void> save(VideoProject project) async {
@@ -179,7 +237,8 @@ class ProjectStorageService {
     return root;
   }
 
-  Future<Directory> projectDirectory(String projectId) => _projectDir(projectId);
+  Future<Directory> projectDirectory(String projectId) =>
+      _projectDir(projectId);
 
   Future<Directory> _projectDir(String projectId) async {
     return Directory(p.join((await _rootDir()).path, 'projects', projectId));

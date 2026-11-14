@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:aveditor/services/analytics_service.dart';
 import 'package:aveditor/l10n/app_localizations.dart';
 import 'package:aveditor/screens/home_screen.dart';
 import 'package:aveditor/services/pro_service.dart';
@@ -43,6 +44,11 @@ Future<void> main() async {
     DeviceOrientation.portraitDown,
   ]);
   runApp(const AveditorApp());
+  unawaited(AnalyticsService.instance.init());
+  // Deliver queued events when the app leaves the foreground.
+  AppLifecycleListener(
+    onHide: () => unawaited(AnalyticsService.instance.flush()),
+  );
   // Asset reads started before the first frame stay pending, and later
   // opens of the transition panel wait on that same read.
   WidgetsBinding.instance.addPostFrameCallback((_) {

@@ -1,4 +1,5 @@
 import 'package:aveditor/models/applied_transition.dart';
+import 'package:aveditor/models/transition_item.dart';
 import 'package:aveditor/models/transition_role_effect.dart';
 import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/services/transition_engine.dart';
@@ -34,6 +35,10 @@ List<Map<String, Object>> compositionMotion(AppliedTransition? applied) {
         'start': layer.start,
         'end': layer.end,
         if (layer.mode != null) 'mode': layer.mode!,
+        // Ripple bend strength (catalog `intensity`, default 0.7). Native
+        // renderers ignored it before, so the slider did nothing in the app.
+        if (layer.property == TransitionProperty.ripple)
+          'amount': parameters['intensity'] ?? 0.7,
         if (layer.grid != null)
           'grid': {
             'columns': layer.grid!.columns,

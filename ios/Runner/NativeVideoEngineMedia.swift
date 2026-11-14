@@ -750,6 +750,8 @@ struct ExportMotion {
   let rows: Int
   let gap: CGFloat
   let stagger: CGFloat
+  /// Ripple bend strength (catalog intensity, default 0.7).
+  var amount: CGFloat = 0.7
 }
 
 func exportMotionLayers(_ raw: Any?) -> [ExportMotion] {
@@ -782,7 +784,8 @@ func exportMotionLayers(_ raw: Any?) -> [ExportMotion] {
       columns: columns,
       rows: rows,
       gap: gap,
-      stagger: stagger
+      stagger: stagger,
+      amount: exportOptionalNumber(map["amount"]) ?? 0.7
     )
   }
 }
@@ -1479,7 +1482,9 @@ private final class ExportFrameRenderer {
     let warpedFrom: CIImage
     let warpedTo: CIImage
     if let map = rippleDisplacementMap(canvas: canvas, progress: progress, front: front, ring: ring) {
-      let scale = side * 0.18
+      // Bend scales with the catalog intensity (0.7 = the original look).
+      let amount = layers.first(where: { $0.property == "ripple" })?.amount ?? 0.7
+      let scale = side * 0.18 * (amount / 0.7)
       warpedFrom = displace(from, map: map, scale: scale, canvas: canvas)
       warpedTo = displace(to, map: map, scale: scale, canvas: canvas)
     } else {

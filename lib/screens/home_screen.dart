@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:aveditor/services/analytics_service.dart';
 import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/screens/editor_screen.dart';
 import 'package:aveditor/screens/settings_screen.dart';
@@ -29,6 +30,18 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _youtubeConnected = false;
   bool _projectsLoading = true;
   List<ProjectSummary> _projects = const [];
+
+  /// Cover thumbnail lookups, keyed by project id + first-frame time so a
+  /// trimmed project gets a fresh cover and others are not re-read.
+  final Map<String, Future<String?>> _covers = {};
+
+  Future<String?> _coverFor(ProjectSummary summary) {
+    final key = '${summary.id}_${summary.coverTimeMs}';
+    return _covers.putIfAbsent(
+      key,
+      () => _projectStorage.coverThumbnail(summary).catchError((_) => null),
+    );
+  }
 
   @override
   void initState() {
@@ -98,13 +111,12 @@ class _HomeScreenState extends State<HomeScreen> {
         path,
         onProgress: _onConvertProgress,
       );
+      AnalyticsService.instance.log('project_created');
       await _openEditor(projectId);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.l10n.videoPickError(e.toString())),
-        ),
+        SnackBar(content: Text(context.l10n.videoPickError(e.toString()))),
       );
     } finally {
       if (mounted) {
@@ -133,9 +145,9 @@ class _HomeScreenState extends State<HomeScreen> {
       await _refreshYouTubeStatus();
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.toString())),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
     }
   }
 
@@ -236,35 +248,36 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: _projectsLoading
                       ? const Center(child: CircularProgressIndicator())
                       : _projects.isEmpty
-                          ? Align(
-                              alignment: Alignment.topLeft,
-                              child: Text(
-                                l10n.noProjectsYet,
-                                style: GoogleFonts.dmSans(
-                                  fontSize: 14,
-                                  height: 1.45,
-                                  color: AppTheme.muted,
-                                ),
-                              ),
-                            )
-                          : ListView.separated(
-                              itemCount: _projects.length,
-                              separatorBuilder: (_, _) =>
-                                  const SizedBox(height: 10),
-                              itemBuilder: (context, index) {
-                                final project = _projects[index];
-                                return _ProjectTile(
-                                  title: _projectTitle(project),
-                                  subtitle: l10n.projectListSubtitle(
-                                    project.overlayCount,
-                                  ),
-                                  enabled: !_loading,
-                                  onOpen: () => _openEditor(project.id),
-                                  onDelete: () => _deleteProject(project),
-                                  deleteTooltip: l10n.deleteProject,
-                                );
-                              },
+                      ? Align(
+                          alignment: Alignment.topLeft,
+                          child: Text(
+                            l10n.noProjectsYet,
+                            style: GoogleFonts.dmSans(
+                              fontSize: 14,
+                              height: 1.45,
+                              color: AppTheme.muted,
                             ),
+                          ),
+                        )
+                      : ListView.separated(
+                          itemCount: _projects.length,
+                          separatorBuilder: (_, _) =>
+                              const SizedBox(height: 10),
+                          itemBuilder: (context, index) {
+                            final project = _projects[index];
+                            return _ProjectTile(
+                              cover: _coverFor(project),
+                              title: _projectTitle(project),
+                              subtitle: l10n.projectListSubtitle(
+                                project.overlayCount,
+                              ),
+                              enabled: !_loading,
+                              onOpen: () => _openEditor(project.id),
+                              onDelete: () => _deleteProject(project),
+                              deleteTooltip: l10n.deleteProject,
+                            );
+                          },
+                        ),
                 ),
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
@@ -291,6 +304,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
 class _ProjectTile extends StatelessWidget {
   const _ProjectTile({
+    required this.cover,
     required this.title,
     required this.subtitle,
     required this.enabled,
@@ -299,6 +313,8 @@ class _ProjectTile extends StatelessWidget {
     required this.deleteTooltip,
   });
 
+  /// Path of the cover JPEG (first frame), or null when none could be made.
+  final Future<String?> cover;
   final String title;
   final String subtitle;
   final bool enabled;
@@ -317,9 +333,7 @@ class _ProjectTile extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppTheme.surface,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: AppTheme.accent.withValues(alpha: 0.18),
-            ),
+            border: Border.all(color: AppTheme.accent.withValues(alpha: 0.18)),
           ),
           child: IntrinsicHeight(
             child: Row(
@@ -340,10 +354,7 @@ class _ProjectTile extends StatelessWidget {
                       horizontal: 12,
                       vertical: 6,
                     ),
-                    leading: Icon(
-                      Icons.movie_outlined,
-                      color: AppTheme.accentCyan.withValues(alpha: 0.9),
-                    ),
+                    leading: _ProjectCover(cover: cover),
                     title: Text(
                       title,
                       maxLines: 1,
@@ -389,11 +400,7 @@ class _ActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final child = Row(
       mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(icon, size: 22),
-        const SizedBox(width: 10),
-        Text(label),
-      ],
+      children: [Icon(icon, size: 22), const SizedBox(width: 10), Text(label)],
     );
 
     if (outlined) {
@@ -433,6 +440,45 @@ class _ActionButton extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 9:16 cover of the project's first frame; the movie icon while loading or
+/// when no frame could be read.
+class _ProjectCover extends StatelessWidget {
+  const _ProjectCover({required this.cover});
+
+  final Future<String?> cover;
+
+  static const _width = 40.0;
+  static const _height = _width * 16 / 9;
+
+  @override
+  Widget build(BuildContext context) {
+    final placeholder = Icon(
+      Icons.movie_outlined,
+      color: AppTheme.accentCyan.withValues(alpha: 0.9),
+    );
+    return SizedBox(
+      width: _width,
+      height: _height,
+      child: FutureBuilder<String?>(
+        future: cover,
+        builder: (context, snapshot) {
+          final path = snapshot.data;
+          if (path == null) return Center(child: placeholder);
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: Image.file(
+              File(path),
+              fit: BoxFit.cover,
+              gaplessPlayback: true,
+              errorBuilder: (_, _, _) => Center(child: placeholder),
+            ),
+          );
+        },
       ),
     );
   }

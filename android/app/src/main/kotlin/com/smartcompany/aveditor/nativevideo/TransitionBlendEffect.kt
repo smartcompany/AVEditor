@@ -127,6 +127,7 @@ private class TransitionBlendProgram(
     uniform1f("uBright", draw.bright)
     uniform1f("uWhite", if (draw.white) 1f else 0f)
     uniform1f("uRipple", draw.ripple)
+    uniform1f("uRippleAmount", draw.rippleAmount)
     if (blend == null) {
       drawnBlendStart = -1L
       drawnSplit = false
@@ -293,6 +294,7 @@ internal object TransitionBlendGlsl {
       uniform float uBright;
       uniform float uWhite;
       uniform float uRipple;
+      uniform float uRippleAmount;
       uniform float uAOnTop;
       uniform float uCircleIncoming;
       uniform float uCols;
@@ -442,27 +444,34 @@ internal object TransitionBlendGlsl {
           vec3 veil = uWhite > 0.5 ? vec3(1.0) : vec3(0.0);
           color = vec4(mix(base.rgb, veil, amount), 1.0);
         } else if (uMode == 6) {
-          vec2 p = uv - 0.5;
-          p.x *= 0.5625;
+          // Same field as the iOS export (composeRipple) and the dashboard:
+          // lengths are in frame-height units with the real aspect, the wave
+          // width and bend scale with the shorter side.
+          float aspect = uAspect > 0.0 ? uAspect : 0.5625;
+          vec2 p = (uv - 0.5) * vec2(aspect, 1.0);
           float rad = length(p);
-          float front = uRipple * length(vec2(0.5625, 1.0)) * 0.62;
-          float ring = 0.16;
+          float side = min(aspect, 1.0);
+          float front = uRipple * length(vec2(aspect, 1.0)) * 0.62;
+          float ring = side * 0.16;
+          float sigma = max(ring * 0.42, 0.001);
           float env = sin(uRipple * 3.14159265);
           float mag = 0.0;
-          if (rad > 0.01) {
+          if (rad > 0.0005) {
             for (int k = 0; k < 3; k++) {
               float crest = front - float(k) * ring * 0.72;
               float dist = rad - crest;
-              float sigma = max(ring * 0.42, 0.01);
               float band = exp(-(dist * dist) / (sigma * sigma));
-              float wave = sin(dist / max(ring, 0.01) * 6.2831853);
+              float wave = sin(dist / max(ring, 0.0005) * 6.2831853);
               mag += wave * band * env * (k == 0 ? 1.0 : 0.45);
             }
           }
           mag = clamp(mag, -1.0, 1.0);
-          vec2 dir = rad > 0.01 ? p / rad : vec2(0.0);
-          vec2 shift = vec2(dir.x / 0.5625, dir.y) * mag * 0.08;
-          float mixIn = 1.0 - smoothstep(front - ring * 0.9, front, rad);
+          vec2 dir = rad > 0.0005 ? p / rad : vec2(0.0);
+          vec2 shiftH = dir * mag * side * 0.09 * (uRippleAmount / 0.7);
+          vec2 shift = vec2(shiftH.x / aspect, shiftH.y);
+          float inner = front - ring * 0.9;
+          float outer = front + ring * 0.2;
+          float mixIn = clamp((outer - rad) / max(outer - inner, 0.0005), 0.0, 1.0);
           color = mix(take(uv - shift, 0.0), take(uv - shift, 1.0), mixIn);
           color.a = 1.0;
         } else if (uMode == 7) {
@@ -559,6 +568,7 @@ internal class BlendDraw(
   var bright: Float = 0f,
   var white: Boolean = false,
   var ripple: Float = 0f,
+  var rippleAmount: Float = 0.7f,
   var aOnTop: Boolean = false,
   var circleIncoming: Boolean = true,
   var cols: Float = 1f,
@@ -595,6 +605,7 @@ internal fun resolveBlend(blend: BlendWindow, t: Float): BlendDraw {
       draw.mode = 6
       val poses = evaluateMotionPoses(layers, t)
       draw.ripple = maxOf(poses.first.ripple, poses.second.ripple)
+      draw.rippleAmount = layers.first { it.property == "ripple" }.amount
     }
     layers.any { it.columns > 0 || it.property == "rotationY" } -> {
       draw.mode = 7
