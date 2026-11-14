@@ -9,7 +9,7 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
-  String get appTitle => 'ClipGo';
+  String get appTitle => 'EasyClip';
 
   @override
   String get homeTagline => 'Text on your timeline — upload Shorts in one app.';
@@ -604,6 +604,21 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get shareAppMissing => 'That app is not installed.';
+
+  @override
+  String get shareFacebookOpened =>
+      'Choose Facebook in the list to finish posting.';
+
+  @override
+  String get shareFacebookPosted => 'Posted to Facebook.';
+
+  @override
+  String get shareFacebookCancelled => 'Facebook post cancelled.';
+
+  @override
+  String shareFacebookFailed(String message) {
+    return 'Facebook post failed: $message';
+  }
 
   @override
   String uploadPartialFailure(String videoId, String message) {

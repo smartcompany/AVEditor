@@ -1,6 +1,6 @@
 {
   "@@locale": "ja",
-  "appTitle": "ClipGo",
+  "appTitle": "EasyClip",
   "homeTagline": "テキストは指定区間だけ — Shorts投稿までこのアプリで。",
   "pickFromGallery": "ギャラリーから選択",
   "pickFromFiles": "動画ファイルを選択",
@@ -183,6 +183,17 @@
   "shareToYouTube": "YouTubeにシェア",
   "shareMore": "その他",
   "shareAppMissing": "そのアプリはインストールされていません。",
+  "shareFacebookOpened": "一覧からFacebookを選んで投稿を完了してください。",
+  "shareFacebookPosted": "Facebookに投稿しました。",
+  "shareFacebookCancelled": "Facebookへの投稿をキャンセルしました。",
+  "shareFacebookFailed": "Facebookへの投稿に失敗しました: {message}",
+  "@shareFacebookFailed": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
   "uploadPartialFailure": "動画はアップロードされました ({videoId})。その後の処理に失敗しました: {message}",
   "canvasRatio": "比率",
   "canvasRatioOriginal": "オリジナル",

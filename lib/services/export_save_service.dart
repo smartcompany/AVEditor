@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/services.dart';
 import 'package:gal/gal.dart';
 import 'package:path/path.dart' as p;
 
@@ -9,20 +10,41 @@ class ExportSaveService {
   /// Rejects exports that never materialised on disk.
   static const minExportBytes = 1024;
 
-  Future<void> saveExportedVideo(String filePath) async {
+  static const _channel = MethodChannel('aveditor/media_share');
+
+  /// Saves the export. On iOS returns the Photos asset id, which lets other
+  /// apps (Instagram) open that exact video; null elsewhere.
+  Future<String?> saveExportedVideo(String filePath) async {
     await _assertExportReady(filePath);
 
-    if (Platform.isMacOS) {
-      await _saveOnMacOS(filePath);
-      return;
+    if (Platform.isIOS) {
+      return _saveToPhotosWithId(filePath);
     }
 
-    if (Platform.isIOS || Platform.isAndroid) {
+    if (Platform.isAndroid) {
       await _saveToGallery(filePath);
-      return;
+      return null;
     }
 
     await _saveOnMacOS(filePath);
+    return null;
+  }
+
+  Future<String?> _saveToPhotosWithId(String filePath) async {
+    try {
+      return await _channel.invokeMethod<String>('saveVideo', {
+        'path': filePath,
+      });
+    } on PlatformException catch (e) {
+      if (e.code == 'photos_permission_denied') {
+        throw StateError('photos_permission_denied');
+      }
+      throw StateError('gallery_save_failed:${e.code}');
+    } on MissingPluginException {
+      // Older builds without the channel: plain save, no id.
+      await _saveToGallery(filePath);
+      return null;
+    }
   }
 
   Future<void> _assertExportReady(String filePath) async {

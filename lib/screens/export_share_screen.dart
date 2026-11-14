@@ -44,6 +44,9 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
   String? _error;
   var _savedToAlbum = false;
   var _savingToAlbum = false;
+
+  /// iOS Photos asset id of the saved export, for handing to Instagram.
+  String? _photosAssetId;
   List<ShareTarget> _targets = ShareCatalogService.fallback;
   VideoPlayerController? _player;
 
@@ -152,9 +155,12 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
     if (_savedToAlbum) return true;
     setState(() => _savingToAlbum = true);
     try {
-      await _save.saveExportedVideo(path);
+      final assetId = await _save.saveExportedVideo(path);
       if (!mounted) return false;
-      setState(() => _savedToAlbum = true);
+      setState(() {
+        _savedToAlbum = true;
+        _photosAssetId = assetId;
+      });
       debugPrint('[ExportShare] 앨범 저장 완료');
       return true;
     } catch (error, stack) {
@@ -192,8 +198,18 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
       );
       return;
     }
-    final uri = _share.appUri(target.kind);
-    final opened = uri != null && await _share.openApp(uri);
+    final opened = switch (target.kind) {
+      ShareTargetKind.instagram => await _share.shareToInstagram(
+        path: path,
+        photosAssetId: _photosAssetId,
+      ),
+      ShareTargetKind.whatsapp => await _share.shareToWhatsApp(path),
+      ShareTargetKind.facebook => await _share.shareToFacebook(
+        path,
+        photosAssetId: _photosAssetId,
+      ),
+      ShareTargetKind.youtube => false,
+    };
     if (!opened && mounted) {
       ScaffoldMessenger.of(
         context,

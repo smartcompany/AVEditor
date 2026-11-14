@@ -1,5 +1,5 @@
 {
-  "appName": "ClipGo",
+  "appName": "EasyClip",
   "bundleId": "com.smartcompany.aveditor",
   "sku": "clipgo",
   "packageName": "com.smartcompany.aveditor",
@@ -21,8 +21,8 @@
   "androidKeystorePath": "/Users/smart/Projects/auth/androidKey/my-release-key.jks",
   "androidKeyAlias": "my-key-alias",
   "notes": [
-    "Display name: ClipGo",
+    "Display name: EasyClip",
     "Bundle / package: com.smartcompany.aveditor",
-    "Update serverBaseUrl / privacyPath when a ClipGo privacy page is hosted."
+    "Update serverBaseUrl / privacyPath when an EasyClip privacy page is hosted."
   ]
 }

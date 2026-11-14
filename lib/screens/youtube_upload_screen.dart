@@ -8,6 +8,7 @@ import 'package:aveditor/models/video_project.dart';
 import 'package:aveditor/screens/thumbnail_editor_screen.dart';
 import 'package:aveditor/services/app_settings_service.dart';
 import 'package:aveditor/services/export_service.dart';
+import 'package:aveditor/services/export_share_service.dart';
 import 'package:aveditor/services/youtube_auth_service.dart';
 import 'package:aveditor/services/youtube_errors.dart';
 import 'package:aveditor/services/youtube_upload_service.dart';
@@ -15,7 +16,6 @@ import 'package:aveditor/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
@@ -898,7 +898,7 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () => Share.share(link),
+                  onPressed: () => ExportShareService().shareText(link),
                   icon: const Icon(Icons.ios_share_rounded, size: 18),
                   label: Text(l10n.uploadDoneShare),
                 ),

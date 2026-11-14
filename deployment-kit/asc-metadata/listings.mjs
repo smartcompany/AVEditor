@@ -1,12 +1,12 @@
-/** App Store listing copy — ClipGo. Edit and run ./update-metadata.sh */
+/** App Store listing copy — EasyClip. Edit and run ./update-metadata.sh */
 export default {
   ko: {
-    name: 'ClipGo - 쉬운 숏폼 편집',
+    name: 'EasyClip - 쉬운 숏폼 편집',
     subtitle: '텍스트·컷·숏폼을 한곳에서',
     promotionalText:
-      '영상 고르고, 타임라인에 텍스트 올리고, 바로 내보내기. ClipGo로 Shorts·릴스용 클립을 빠르게 만드세요.',
+      '영상 고르고, 타임라인에 텍스트 올리고, 바로 내보내기. EasyClip로 Shorts·릴스용 클립을 빠르게 만드세요.',
     description: `
-ClipGo는 짧은 영상을 빠르게 다듬는 모바일 편집기입니다. 갤러리·파일·카메라에서 영상을 가져와 타임라인에서 자르고, 텍스트를 올린 뒤 기기에 저장하거나 Shorts로 올릴 수 있습니다.
+EasyClip는 짧은 영상을 빠르게 다듬는 모바일 편집기입니다. 갤러리·파일·카메라에서 영상을 가져와 타임라인에서 자르고, 텍스트를 올린 뒤 기기에 저장하거나 Shorts로 올릴 수 있습니다.
 
 ■ 이런 분께 추천합니다
 • Shorts / 릴스용 짧은 클립을 자주 만드는 분
@@ -34,12 +34,12 @@ ClipGo는 짧은 영상을 빠르게 다듬는 모바일 편집기입니다. 갤
       '영상편집,숏폼,쇼츠,릴스,자막,텍스트,컷,타임라인,편집기,유튜브,클립',
   },
   'en-US': {
-    name: 'ClipGo - Easy Shorts Editor',
+    name: 'EasyClip - Easy Shorts Editor',
     subtitle: 'Trim, caption, share Shorts',
     promotionalText:
-      'Pick a clip, add captions on the timeline, export fast. ClipGo makes Shorts-ready videos without the desktop detour.',
+      'Pick a clip, add captions on the timeline, export fast. EasyClip makes Shorts-ready videos without the desktop detour.',
     description: `
-ClipGo is a mobile editor for short videos. Import from gallery, files, or camera; cut on a timeline; overlay text; then save or upload as a Short.
+EasyClip is a mobile editor for short videos. Import from gallery, files, or camera; cut on a timeline; overlay text; then save or upload as a Short.
 
 ■ WHO IT'S FOR
 • Creators who ship Shorts / Reels often
@@ -67,12 +67,12 @@ Privacy Policy: https://smartcompany.github.io/privacy
       'video,editor,shorts,reels,caption,timeline,trim,cut,youtube,clip,mobile',
   },
   ja: {
-    name: 'ClipGo - かんたんショート編集',
+    name: 'EasyClip - かんたんショート編集',
     subtitle: 'カット・テロップ・書き出し',
     promotionalText:
-      '動画を選んでタイムラインに文字を乗せ、すぐ書き出し。ClipGoでショート向けクリップをすばやく作れます。',
+      '動画を選んでタイムラインに文字を乗せ、すぐ書き出し。EasyClipでショート向けクリップをすばやく作れます。',
     description: `
-ClipGoは短い動画向けのモバイル編集アプリです。ギャラリー・ファイル・カメラから取り込み、タイムラインでカット、テキストを重ねて保存やShorts投稿ができます。
+EasyClipは短い動画向けのモバイル編集アプリです。ギャラリー・ファイル・カメラから取り込み、タイムラインでカット、テキストを重ねて保存やShorts投稿ができます。
 
 ■ こんな方に
 • Shorts / リール用の短い動画をよく作る方
@@ -95,12 +95,12 @@ ClipGoは短い動画向けのモバイル編集アプリです。ギャラリ�
       '動画編集,ショート,ショーツ,テロップ,カット,タイムライン,YouTube,クリップ',
   },
   'zh-Hans': {
-    name: 'ClipGo - 轻松短视频剪辑',
+    name: 'EasyClip - 轻松短视频剪辑',
     subtitle: '裁剪、字幕、一键导出',
     promotionalText:
-      '选视频、在时间轴加字幕、快速导出。用 ClipGo 轻松做出 Shorts / 短视频。',
+      '选视频、在时间轴加字幕、快速导出。用 EasyClip 轻松做出 Shorts / 短视频。',
     description: `
-ClipGo 是面向短视频的手机剪辑应用。可从相册、文件或相机导入，在时间轴裁剪并叠加文字，然后保存或上传 Shorts。
+EasyClip 是面向短视频的手机剪辑应用。可从相册、文件或相机导入，在时间轴裁剪并叠加文字，然后保存或上传 Shorts。
 
 ■ 适合谁
 • 经常制作 Shorts / 短视频的人

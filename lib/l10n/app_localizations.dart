@@ -105,7 +105,7 @@ abstract class AppLocalizations {
   /// No description provided for @appTitle.
   ///
   /// In en, this message translates to:
-  /// **'ClipGo'**
+  /// **'EasyClip'**
   String get appTitle;
 
   /// No description provided for @homeTagline.
@@ -1199,6 +1199,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'That app is not installed.'**
   String get shareAppMissing;
+
+  /// No description provided for @shareFacebookOpened.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose Facebook in the list to finish posting.'**
+  String get shareFacebookOpened;
+
+  /// No description provided for @shareFacebookPosted.
+  ///
+  /// In en, this message translates to:
+  /// **'Posted to Facebook.'**
+  String get shareFacebookPosted;
+
+  /// No description provided for @shareFacebookCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Facebook post cancelled.'**
+  String get shareFacebookCancelled;
+
+  /// No description provided for @shareFacebookFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Facebook post failed: {message}'**
+  String shareFacebookFailed(String message);
 
   /// No description provided for @uploadPartialFailure.
   ///

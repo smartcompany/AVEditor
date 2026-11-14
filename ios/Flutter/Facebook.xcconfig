@@ -1,0 +1,5 @@
+// Facebook SDK (iOS share dialog). Fill in from developers.facebook.com:
+// App settings > Basic (App ID) and App settings > Advanced > Security (Client token).
+// 0 / empty = not configured: the app falls back to the system share sheet.
+FACEBOOK_APP_ID = 1437287894673647
+FACEBOOK_CLIENT_TOKEN = 576cd732c230fbc22f96b9afa8e27046

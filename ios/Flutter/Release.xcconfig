@@ -2,3 +2,4 @@
 #include "Generated.xcconfig"
 // google_mobile_ads 9.1.0 imports GoogleMobileAds private headers from its module.
 CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES = YES
+#include? "Facebook.xcconfig"

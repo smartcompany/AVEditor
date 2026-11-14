@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Exports are written to the cache directory (getTemporaryDirectory). -->
+<paths>
+    <cache-path name="exports" path="." />
+</paths>

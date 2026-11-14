@@ -1,4 +1,4 @@
-App Review Notes — ClipGo
+App Review Notes — EasyClip
 Bundle ID: com.smartcompany.aveditor
 
 1) CORE FLOW
@@ -23,4 +23,4 @@ Bundle ID: com.smartcompany.aveditor
 Privacy: https://smartcompany.github.io/privacy
 Support: https://smartcompany.github.io
 
-Thank you for reviewing ClipGo.
+Thank you for reviewing EasyClip.

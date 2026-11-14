@@ -1,6 +1,6 @@
 {
   "@@locale": "ko",
-  "appTitle": "ClipGo",
+  "appTitle": "EasyClip",
   "homeTagline": "텍스트는 원하는 구간에만 — Shorts 업로드까지 한 앱에서.",
   "pickFromGallery": "갤러리에서 선택",
   "pickFromFiles": "동영상 파일 선택",
@@ -183,6 +183,17 @@
   "shareToYouTube": "YouTube에 공유",
   "shareMore": "기타",
   "shareAppMissing": "해당 앱이 설치되어 있지 않습니다.",
+  "shareFacebookOpened": "목록에서 Facebook을 선택해 게시를 완료하세요.",
+  "shareFacebookPosted": "Facebook에 게시되었습니다.",
+  "shareFacebookCancelled": "Facebook 게시를 취소했습니다.",
+  "shareFacebookFailed": "Facebook 게시에 실패했습니다: {message}",
+  "@shareFacebookFailed": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
   "uploadPartialFailure": "영상은 업로드되었습니다 ({videoId}). 다음 단계가 실패했습니다: {message}",
   "canvasRatio": "비율",
   "canvasRatioOriginal": "원본",

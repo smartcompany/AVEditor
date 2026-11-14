@@ -1,4 +1,4 @@
-# Deployment Kit — ClipGo
+# Deployment Kit — EasyClip
 
 배포 직전마다 AI에게 여러 번 설명하지 않도록 만든 단일 폴더입니다.
 
@@ -6,7 +6,7 @@
 
 ```
 deployment-kit/
-├── app-config.json              # ClipGo 설정 (bundle id, URL, 키 경로)
+├── app-config.json              # EasyClip 설정 (bundle id, URL, 키 경로)
 ├── app-config.example.json
 ├── asc-metadata/                # App Store Connect 메타데이터
 ├── play-metadata/               # Google Play 메타데이터

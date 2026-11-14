@@ -1,6 +1,6 @@
 {
   "@@locale": "en",
-  "appTitle": "ClipGo",
+  "appTitle": "EasyClip",
   "homeTagline": "Text on your timeline — upload Shorts in one app.",
   "pickFromGallery": "Choose from gallery",
   "pickFromFiles": "Choose video file",
@@ -242,6 +242,17 @@
   "shareToYouTube": "Share to YouTube",
   "shareMore": "More",
   "shareAppMissing": "That app is not installed.",
+  "shareFacebookOpened": "Choose Facebook in the list to finish posting.",
+  "shareFacebookPosted": "Posted to Facebook.",
+  "shareFacebookCancelled": "Facebook post cancelled.",
+  "shareFacebookFailed": "Facebook post failed: {message}",
+  "@shareFacebookFailed": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
   "uploadPartialFailure": "The video was uploaded ({videoId}). A later step failed: {message}",
   "@uploadPartialFailure": {
     "placeholders": {

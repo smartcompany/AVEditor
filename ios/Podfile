@@ -29,6 +29,8 @@ target 'Runner' do
   use_frameworks! :linkage => :static
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+  # Facebook share dialog (video straight into the Facebook composer).
+  pod 'FBSDKShareKit'
   target 'RunnerTests' do
     inherit! :search_paths
   end

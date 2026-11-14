@@ -296,7 +296,7 @@ class YouTubeUploadService {
             'format': 'jsonv2',
             'limit': '1',
           }),
-          headers: const {'User-Agent': 'ClipGo/1.0 (com.smartcompany.aveditor)'},
+          headers: const {'User-Agent': 'EasyClip/1.0 (com.smartcompany.aveditor)'},
         )
         .timeout(const Duration(seconds: 8));
     if (response.statusCode != 200) {

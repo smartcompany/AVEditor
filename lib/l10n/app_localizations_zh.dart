@@ -9,7 +9,7 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
-  String get appTitle => 'ClipGo';
+  String get appTitle => 'EasyClip';
 
   @override
   String get homeTagline => '文字只在指定时段出现 — 一个应用完成 Shorts 上传。';
@@ -587,6 +587,20 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get shareAppMissing => '未安装该应用。';
+
+  @override
+  String get shareFacebookOpened => '请在列表中选择 Facebook 以完成发布。';
+
+  @override
+  String get shareFacebookPosted => '已发布到 Facebook。';
+
+  @override
+  String get shareFacebookCancelled => '已取消 Facebook 发布。';
+
+  @override
+  String shareFacebookFailed(String message) {
+    return 'Facebook 发布失败：$message';
+  }
 
   @override
   String uploadPartialFailure(String videoId, String message) {

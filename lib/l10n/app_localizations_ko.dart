@@ -9,7 +9,7 @@ class AppLocalizationsKo extends AppLocalizations {
   AppLocalizationsKo([String locale = 'ko']) : super(locale);
 
   @override
-  String get appTitle => 'ClipGo';
+  String get appTitle => 'EasyClip';
 
   @override
   String get homeTagline => '텍스트는 원하는 구간에만 — Shorts 업로드까지 한 앱에서.';
@@ -594,6 +594,20 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get shareAppMissing => '해당 앱이 설치되어 있지 않습니다.';
+
+  @override
+  String get shareFacebookOpened => '목록에서 Facebook을 선택해 게시를 완료하세요.';
+
+  @override
+  String get shareFacebookPosted => 'Facebook에 게시되었습니다.';
+
+  @override
+  String get shareFacebookCancelled => 'Facebook 게시를 취소했습니다.';
+
+  @override
+  String shareFacebookFailed(String message) {
+    return 'Facebook 게시에 실패했습니다: $message';
+  }
 
   @override
   String uploadPartialFailure(String videoId, String message) {
