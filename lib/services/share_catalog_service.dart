@@ -55,10 +55,10 @@ class ShareCatalogService {
     ShareTarget(
       kind: ShareTargetKind.youtube,
       labels: {
-        'ko': 'YouTube에 공유',
-        'en': 'Share to YouTube',
-        'ja': 'YouTubeにシェア',
-        'zh': '分享到 YouTube',
+        'ko': 'YouTube',
+        'en': 'YouTube',
+        'ja': 'YouTube',
+        'zh': 'YouTube',
       },
     ),
     ShareTarget(kind: ShareTargetKind.instagram, labels: {'en': 'Instagram'}),

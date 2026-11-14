@@ -6,7 +6,6 @@ import 'package:aveditor/screens/editor_screen.dart';
 import 'package:aveditor/screens/settings_screen.dart';
 import 'package:aveditor/services/project_storage_service.dart';
 import 'package:aveditor/services/video_import_service.dart';
-import 'package:aveditor/services/youtube_auth_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/widgets/convert_progress_view.dart';
 import 'package:aveditor/utils/platform_helper.dart';
@@ -24,10 +23,8 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _import = VideoImportService();
   final _projectStorage = const ProjectStorageService();
-  final _youtubeAuth = YouTubeAuthService();
   bool _loading = false;
   double? _convertProgress;
-  bool _youtubeConnected = false;
   bool _projectsLoading = true;
   List<ProjectSummary> _projects = const [];
 
@@ -46,7 +43,6 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _refreshYouTubeStatus();
     _loadProjects();
   }
 
@@ -58,13 +54,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _projects = summaries;
       _projectsLoading = false;
     });
-  }
-
-  Future<void> _refreshYouTubeStatus() async {
-    final signedIn = await _youtubeAuth.isSignedIn;
-    if (mounted) {
-      setState(() => _youtubeConnected = signedIn);
-    }
   }
 
   Future<void> _openEditor(String projectId) async {
@@ -131,24 +120,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _deleteProject(ProjectSummary project) async {
     await _projectStorage.delete(project.id);
     await _loadProjects();
-  }
-
-  Future<void> _toggleYouTube() async {
-    if (_youtubeConnected) {
-      await _youtubeAuth.signOut();
-      await _refreshYouTubeStatus();
-      return;
-    }
-
-    try {
-      await _youtubeAuth.signIn();
-      await _refreshYouTubeStatus();
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.toString())));
-    }
   }
 
   String _projectTitle(ProjectSummary summary) {
@@ -269,20 +240,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             );
                           },
                         ),
-                ),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: _toggleYouTube,
-                  icon: Icon(
-                    _youtubeConnected
-                        ? Icons.check_circle_outline
-                        : Icons.play_circle_outline,
-                  ),
-                  label: Text(
-                    _youtubeConnected
-                        ? l10n.youtubeSignedIn
-                        : l10n.youtubeSignIn,
-                  ),
                 ),
               ],
             ),

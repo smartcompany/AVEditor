@@ -3,5 +3,6 @@
 // - Redirect URI must be a Universal Link registered for Share Kit
 //   (e.g. https://aveditorserver.vercel.app/tiktok/callback)
 // Empty = Share Kit disabled; iOS falls back to sharing the video file.
-TIKTOK_CLIENT_KEY = awlroq9gy84a32v2
+TIKTOK_CLIENT_KEY = sbaweoqbj85n2ha94e
+TIKTOK_CLIENT_SECRET = PiVSZKi6v04juWC3649AclsHljtcf94H
 TIKTOK_REDIRECT_URI = https://aveditorserver.vercel.app/tiktok/callback

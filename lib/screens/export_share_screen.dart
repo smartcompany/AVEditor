@@ -5,6 +5,7 @@ import 'package:aveditor/services/analytics_service.dart';
 import 'package:aveditor/l10n/app_localizations.dart';
 import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/models/video_project.dart';
+import 'package:aveditor/screens/tiktok_upload_screen.dart';
 import 'package:aveditor/screens/youtube_upload_screen.dart';
 import 'package:aveditor/services/app_settings_service.dart';
 import 'package:aveditor/services/export_save_service.dart';
@@ -54,7 +55,25 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
   void initState() {
     super.initState();
     _share.onFacebookResult = _onFacebookResult;
+    _share.onTikTokResult = _onTikTokResult;
     _run();
+  }
+
+  void _onTikTokResult(String status, String? message) {
+    if (!mounted) return;
+    final l10n = context.l10n;
+    const app = 'TikTok';
+    final text = switch (status) {
+      'posted' => l10n.shareAppPosted(app),
+      'cancelled' => l10n.shareAppCancelled(app),
+      _ => l10n.shareAppFailed(app, message ?? ''),
+    };
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(text),
+        duration: Duration(seconds: status == 'failed' ? 8 : 3),
+      ),
+    );
   }
 
   void _onFacebookResult(String status, String? message) {
@@ -215,6 +234,19 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
       );
       return;
     }
+    if (target.kind == ShareTargetKind.tiktok) {
+      if (!mounted) return;
+      // Direct Post form; the TikTok app hand-off stays as a fallback.
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => TikTokUploadScreen(
+            videoPath: path,
+            onFinishInApp: () => _shareToTikTokApp(path),
+          ),
+        ),
+      );
+      return;
+    }
     final opened = switch (target.kind) {
       ShareTargetKind.instagram => await _share.shareToInstagram(
         path: path,
@@ -230,6 +262,18 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
       ),
       ShareTargetKind.youtube => false,
     };
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(context.l10n.shareAppMissing)));
+    }
+  }
+
+  Future<void> _shareToTikTokApp(String path) async {
+    final opened = await _share.shareToTikTok(
+      path,
+      photosAssetId: _photosAssetId,
+    );
     if (!opened && mounted) {
       ScaffoldMessenger.of(
         context,
@@ -266,9 +310,10 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
           ),
           actions: [
             if (ready)
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: Text(l10n.exportDone),
+              IconButton(
+                onPressed: _shareMore,
+                tooltip: l10n.shareMore,
+                icon: const Icon(Icons.ios_share),
               ),
           ],
         ),
@@ -321,9 +366,15 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
   }
 
   Widget _buildSaved(AppLocalizations l10n) {
-    final primary = _targets.first;
-    final rest = _targets.skip(1);
     final language = Localizations.localeOf(context).languageCode;
+    final buttons = [
+      for (final target in _targets)
+        _shareTile(
+          label: target.labelFor(language, _fallbackLabel(l10n, target.kind)),
+          glyph: _glyph(target.kind, size: 28),
+          onTap: () => _onTarget(target),
+        ),
+    ];
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
@@ -346,51 +397,21 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
                 ),
               ],
               const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+              // Equal-weight 2×2 share grid (no YouTube-primary CTA).
+              for (var i = 0; i < buttons.length; i += 2) ...[
+                if (i > 0) const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(child: buttons[i]),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: i + 1 < buttons.length
+                          ? buttons[i + 1]
+                          : const SizedBox.shrink(),
                     ),
-                  ),
-                  onPressed: () => _onTarget(primary),
-                  icon: _glyph(primary.kind, size: 22),
-                  label: Text(
-                    primary.labelFor(
-                      language,
-                      _fallbackLabel(l10n, primary.kind),
-                    ),
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 22),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  for (final target in rest)
-                    _iconButton(
-                      label: target.labelFor(
-                        language,
-                        _fallbackLabel(l10n, target.kind),
-                      ),
-                      glyph: _glyph(target.kind, size: 26),
-                      onTap: () => _onTarget(target),
-                    ),
-                  _iconButton(
-                    label: l10n.shareMore,
-                    glyph: const Icon(Icons.more_horiz, size: 26),
-                    onTap: _shareMore,
-                  ),
-                ],
-              ),
+              ],
             ],
           ),
         ),
@@ -439,35 +460,39 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
     );
   }
 
-  Widget _iconButton({
+  Widget _shareTile({
     required String label,
     required Widget glyph,
     required VoidCallback onTap,
   }) {
-    return InkWell(
-      onTap: onTap,
-      child: SizedBox(
-        width: 72,
-        child: Column(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: AppTheme.surfaceElevated,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: glyph,
+    return Material(
+      color: AppTheme.surfaceElevated,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: SizedBox(
+          height: 56,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                glyph,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 11, color: AppTheme.muted),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -475,7 +500,7 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
 
   String _fallbackLabel(AppLocalizations l10n, ShareTargetKind kind) {
     return switch (kind) {
-      ShareTargetKind.youtube => l10n.shareToYouTube,
+      ShareTargetKind.youtube => 'YouTube',
       ShareTargetKind.instagram => 'Instagram',
       ShareTargetKind.facebook => 'Facebook',
       ShareTargetKind.tiktok => 'TikTok',

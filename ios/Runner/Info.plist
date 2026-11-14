@@ -57,6 +57,15 @@
 				<string>$(TIKTOK_CLIENT_KEY)</string>
 			</array>
 		</dict>
+		<dict>
+			<!-- TikTok return fallback: /tiktok/callback in Safari bounces here. -->
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>easyclipshare</string>
+			</array>
+		</dict>
 	</array>
 	<key>FacebookAppID</key>
 	<string>$(FACEBOOK_APP_ID)</string>

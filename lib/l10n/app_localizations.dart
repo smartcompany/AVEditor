@@ -1179,7 +1179,7 @@ abstract class AppLocalizations {
   /// No description provided for @shareToYouTube.
   ///
   /// In en, this message translates to:
-  /// **'Share to YouTube'**
+  /// **'YouTube'**
   String get shareToYouTube;
 
   /// No description provided for @shareMore.
@@ -1571,6 +1571,282 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Done'**
   String get uploadDoneClose;
+
+  /// No description provided for @shareAppPosted.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared to {app}'**
+  String shareAppPosted(String app);
+
+  /// No description provided for @shareAppCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'{app} post cancelled.'**
+  String shareAppCancelled(String app);
+
+  /// No description provided for @shareAppFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'{app} couldn\'t take the video. {message}'**
+  String shareAppFailed(String app, String message);
+
+  /// No description provided for @tiktokUploadTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Post to TikTok'**
+  String get tiktokUploadTitle;
+
+  /// No description provided for @tiktokAccountTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'TikTok account'**
+  String get tiktokAccountTitle;
+
+  /// No description provided for @tiktokCaptionHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Caption, #hashtags, @mentions'**
+  String get tiktokCaptionHint;
+
+  /// No description provided for @tiktokPrivacyChoose.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose who can watch'**
+  String get tiktokPrivacyChoose;
+
+  /// No description provided for @tiktokPrivacyPublic.
+  ///
+  /// In en, this message translates to:
+  /// **'Everyone'**
+  String get tiktokPrivacyPublic;
+
+  /// No description provided for @tiktokPrivacyFriends.
+  ///
+  /// In en, this message translates to:
+  /// **'Friends (follow each other)'**
+  String get tiktokPrivacyFriends;
+
+  /// No description provided for @tiktokPrivacyFollowers.
+  ///
+  /// In en, this message translates to:
+  /// **'Followers'**
+  String get tiktokPrivacyFollowers;
+
+  /// No description provided for @tiktokPrivacySelf.
+  ///
+  /// In en, this message translates to:
+  /// **'Only me'**
+  String get tiktokPrivacySelf;
+
+  /// No description provided for @tiktokInteractionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow others to'**
+  String get tiktokInteractionTitle;
+
+  /// No description provided for @tiktokAllowComment.
+  ///
+  /// In en, this message translates to:
+  /// **'Comment'**
+  String get tiktokAllowComment;
+
+  /// No description provided for @tiktokAllowDuet.
+  ///
+  /// In en, this message translates to:
+  /// **'Duet'**
+  String get tiktokAllowDuet;
+
+  /// No description provided for @tiktokAllowStitch.
+  ///
+  /// In en, this message translates to:
+  /// **'Stitch'**
+  String get tiktokAllowStitch;
+
+  /// No description provided for @tiktokInteractionOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Turned off in your TikTok settings'**
+  String get tiktokInteractionOff;
+
+  /// No description provided for @tiktokDisclose.
+  ///
+  /// In en, this message translates to:
+  /// **'Disclose video content'**
+  String get tiktokDisclose;
+
+  /// No description provided for @tiktokDiscloseHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on if this video promotes goods, a brand or a service.'**
+  String get tiktokDiscloseHelp;
+
+  /// No description provided for @tiktokYourBrand.
+  ///
+  /// In en, this message translates to:
+  /// **'Your brand'**
+  String get tiktokYourBrand;
+
+  /// No description provided for @tiktokYourBrandHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'re promoting yourself or your own business. Labelled \"Promotional content\".'**
+  String get tiktokYourBrandHelp;
+
+  /// No description provided for @tiktokBrandedContent.
+  ///
+  /// In en, this message translates to:
+  /// **'Branded content'**
+  String get tiktokBrandedContent;
+
+  /// No description provided for @tiktokBrandedContentHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'re promoting another brand or a third party. Labelled \"Paid partnership\".'**
+  String get tiktokBrandedContentHelp;
+
+  /// No description provided for @tiktokDiscloseNeedOne.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose at least one to post.'**
+  String get tiktokDiscloseNeedOne;
+
+  /// No description provided for @tiktokBrandedNotPrivate.
+  ///
+  /// In en, this message translates to:
+  /// **'Branded content can\'t be posted as Only me.'**
+  String get tiktokBrandedNotPrivate;
+
+  /// No description provided for @tiktokConsent.
+  ///
+  /// In en, this message translates to:
+  /// **'By posting, you agree to TikTok\'s {policies}.'**
+  String tiktokConsent(String policies);
+
+  /// No description provided for @tiktokMusicPolicy.
+  ///
+  /// In en, this message translates to:
+  /// **'Music Usage Confirmation'**
+  String get tiktokMusicPolicy;
+
+  /// No description provided for @tiktokBrandPolicy.
+  ///
+  /// In en, this message translates to:
+  /// **'Branded Content Policy'**
+  String get tiktokBrandPolicy;
+
+  /// No description provided for @tiktokAnd.
+  ///
+  /// In en, this message translates to:
+  /// **' and '**
+  String get tiktokAnd;
+
+  /// No description provided for @tiktokPost.
+  ///
+  /// In en, this message translates to:
+  /// **'Post'**
+  String get tiktokPost;
+
+  /// No description provided for @tiktokUploading.
+  ///
+  /// In en, this message translates to:
+  /// **'Uploading {percent}%'**
+  String tiktokUploading(int percent);
+
+  /// No description provided for @tiktokProcessing.
+  ///
+  /// In en, this message translates to:
+  /// **'TikTok is processing…'**
+  String get tiktokProcessing;
+
+  /// No description provided for @tiktokDoneTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Posted to TikTok'**
+  String get tiktokDoneTitle;
+
+  /// No description provided for @tiktokDoneProcessing.
+  ///
+  /// In en, this message translates to:
+  /// **'It may take a few minutes to appear on your profile.'**
+  String get tiktokDoneProcessing;
+
+  /// No description provided for @tiktokOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open TikTok'**
+  String get tiktokOpen;
+
+  /// No description provided for @tiktokFinishInApp.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish in the TikTok app instead'**
+  String get tiktokFinishInApp;
+
+  /// No description provided for @tiktokTooLong.
+  ///
+  /// In en, this message translates to:
+  /// **'This account can post videos up to {max} seconds.'**
+  String tiktokTooLong(int max);
+
+  /// No description provided for @tiktokConnectHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect your TikTok account to post directly from here.'**
+  String get tiktokConnectHelp;
+
+  /// No description provided for @tiktokErrServer.
+  ///
+  /// In en, this message translates to:
+  /// **'TikTok isn\'t set up on our server yet. Please try again later.'**
+  String get tiktokErrServer;
+
+  /// No description provided for @tiktokErrDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow posting to TikTok to continue.'**
+  String get tiktokErrDenied;
+
+  /// No description provided for @tiktokErrAuth.
+  ///
+  /// In en, this message translates to:
+  /// **'Your TikTok sign-in has expired. Please connect again.'**
+  String get tiktokErrAuth;
+
+  /// No description provided for @tiktokErrPrivateOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Until EasyClip passes TikTok\'s review, TikTok only allows posting from a private account. In the TikTok app, go to Settings and privacy → Privacy and turn on Private account, then try again.'**
+  String get tiktokErrPrivateOnly;
+
+  /// No description provided for @tiktokErrSpam.
+  ///
+  /// In en, this message translates to:
+  /// **'TikTok has limited posting for now. Please try again later.'**
+  String get tiktokErrSpam;
+
+  /// No description provided for @tiktokErrBanned.
+  ///
+  /// In en, this message translates to:
+  /// **'This TikTok account can\'t post right now. Try another account.'**
+  String get tiktokErrBanned;
+
+  /// No description provided for @tiktokErrPrivacyMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'That visibility isn\'t available for this account. Choose another.'**
+  String get tiktokErrPrivacyMismatch;
+
+  /// No description provided for @tiktokErrFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'TikTok couldn\'t process the video.'**
+  String get tiktokErrFailed;
+
+  /// No description provided for @tiktokSwitchAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'Use another account'**
+  String get tiktokSwitchAccount;
 }
 
 class _AppLocalizationsDelegate

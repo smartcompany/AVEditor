@@ -582,7 +582,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get exportDone => '完了';
 
   @override
-  String get shareToYouTube => 'YouTubeにシェア';
+  String get shareToYouTube => 'YouTube';
 
   @override
   String get shareMore => 'その他';
@@ -795,4 +795,155 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get uploadDoneClose => '完了';
+
+  @override
+  String shareAppPosted(String app) {
+    return '$appに共有しました';
+  }
+
+  @override
+  String shareAppCancelled(String app) {
+    return '$appへの投稿をキャンセルしました。';
+  }
+
+  @override
+  String shareAppFailed(String app, String message) {
+    return '$appに共有できませんでした。$message';
+  }
+
+  @override
+  String get tiktokUploadTitle => 'TikTokに投稿';
+
+  @override
+  String get tiktokAccountTitle => '投稿するTikTokアカウント';
+
+  @override
+  String get tiktokCaptionHint => 'キャプション、#ハッシュタグ、@メンション';
+
+  @override
+  String get tiktokPrivacyChoose => '公開範囲を選択してください';
+
+  @override
+  String get tiktokPrivacyPublic => 'すべての人';
+
+  @override
+  String get tiktokPrivacyFriends => '友達（相互フォロー）';
+
+  @override
+  String get tiktokPrivacyFollowers => 'フォロワー';
+
+  @override
+  String get tiktokPrivacySelf => '自分のみ';
+
+  @override
+  String get tiktokInteractionTitle => '他の人に許可すること';
+
+  @override
+  String get tiktokAllowComment => 'コメント';
+
+  @override
+  String get tiktokAllowDuet => 'デュエット';
+
+  @override
+  String get tiktokAllowStitch => 'リミックス';
+
+  @override
+  String get tiktokInteractionOff => 'TikTokの設定でオフになっています';
+
+  @override
+  String get tiktokDisclose => '動画コンテンツの開示';
+
+  @override
+  String get tiktokDiscloseHelp => '商品、ブランド、サービスを宣伝する動画の場合はオンにしてください。';
+
+  @override
+  String get tiktokYourBrand => '自分のブランド';
+
+  @override
+  String get tiktokYourBrandHelp => '自分や自分のビジネスを宣伝します。「プロモーションコンテンツ」と表示されます。';
+
+  @override
+  String get tiktokBrandedContent => 'ブランドコンテンツ';
+
+  @override
+  String get tiktokBrandedContentHelp => '他のブランドや第三者を宣伝します。「タイアップ投稿」と表示されます。';
+
+  @override
+  String get tiktokDiscloseNeedOne => '投稿するには少なくとも1つ選択してください。';
+
+  @override
+  String get tiktokBrandedNotPrivate => 'ブランドコンテンツは「自分のみ」では投稿できません。';
+
+  @override
+  String tiktokConsent(String policies) {
+    return '投稿すると、TikTokの$policiesに同意したことになります。';
+  }
+
+  @override
+  String get tiktokMusicPolicy => '音楽の使用に関する確認';
+
+  @override
+  String get tiktokBrandPolicy => 'ブランドコンテンツポリシー';
+
+  @override
+  String get tiktokAnd => 'および';
+
+  @override
+  String get tiktokPost => '投稿';
+
+  @override
+  String tiktokUploading(int percent) {
+    return 'アップロード中 $percent%';
+  }
+
+  @override
+  String get tiktokProcessing => 'TikTokで処理中…';
+
+  @override
+  String get tiktokDoneTitle => 'TikTokに投稿しました';
+
+  @override
+  String get tiktokDoneProcessing => 'プロフィールに表示されるまで数分かかる場合があります。';
+
+  @override
+  String get tiktokOpen => 'TikTokで見る';
+
+  @override
+  String get tiktokFinishInApp => 'TikTokアプリで仕上げる';
+
+  @override
+  String tiktokTooLong(int max) {
+    return 'このアカウントは$max秒までの動画を投稿できます。';
+  }
+
+  @override
+  String get tiktokConnectHelp => 'TikTokアカウントを接続すると、ここから直接投稿できます。';
+
+  @override
+  String get tiktokErrServer => 'TikTok連携の設定がまだ完了していません。しばらくしてから再試行してください。';
+
+  @override
+  String get tiktokErrDenied => '続行するにはTikTokへの投稿を許可してください。';
+
+  @override
+  String get tiktokErrAuth => 'TikTokのログインの有効期限が切れました。もう一度接続してください。';
+
+  @override
+  String get tiktokErrPrivateOnly =>
+      'EasyClipがTikTokの審査を通過するまでは、非公開アカウントからのみ投稿できます。TikTokアプリの「設定とプライバシー」→「プライバシー」で「非公開アカウント」をオンにしてから再試行してください。';
+
+  @override
+  String get tiktokErrSpam => 'TikTokにより現在投稿が制限されています。後でもう一度お試しください。';
+
+  @override
+  String get tiktokErrBanned => 'このTikTokアカウントは現在投稿できません。別のアカウントをお試しください。';
+
+  @override
+  String get tiktokErrPrivacyMismatch => 'このアカウントではその公開範囲は使えません。別の範囲を選んでください。';
+
+  @override
+  String get tiktokErrFailed => 'TikTokで動画を処理できませんでした。';
+
+  @override
+  String get tiktokSwitchAccount => '別のアカウントで接続';
 }

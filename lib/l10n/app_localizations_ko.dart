@@ -584,7 +584,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get exportDone => '완료';
 
   @override
-  String get shareToYouTube => 'YouTube에 공유';
+  String get shareToYouTube => 'YouTube';
 
   @override
   String get shareMore => '기타';
@@ -799,4 +799,157 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get uploadDoneClose => '완료';
+
+  @override
+  String shareAppPosted(String app) {
+    return '$app에 올렸어요';
+  }
+
+  @override
+  String shareAppCancelled(String app) {
+    return '$app 게시를 취소했어요.';
+  }
+
+  @override
+  String shareAppFailed(String app, String message) {
+    return '$app에 올리지 못했어요. $message';
+  }
+
+  @override
+  String get tiktokUploadTitle => 'TikTok에 올리기';
+
+  @override
+  String get tiktokAccountTitle => '올릴 TikTok 계정';
+
+  @override
+  String get tiktokCaptionHint => '설명, #해시태그, @멘션';
+
+  @override
+  String get tiktokPrivacyChoose => '공개 범위를 선택하세요';
+
+  @override
+  String get tiktokPrivacyPublic => '전체 공개';
+
+  @override
+  String get tiktokPrivacyFriends => '친구 (서로 팔로우)';
+
+  @override
+  String get tiktokPrivacyFollowers => '팔로워';
+
+  @override
+  String get tiktokPrivacySelf => '나만 보기';
+
+  @override
+  String get tiktokInteractionTitle => '다른 사람이 할 수 있는 것';
+
+  @override
+  String get tiktokAllowComment => '댓글';
+
+  @override
+  String get tiktokAllowDuet => '듀엣';
+
+  @override
+  String get tiktokAllowStitch => '스티치';
+
+  @override
+  String get tiktokInteractionOff => 'TikTok 설정에서 꺼져 있어요';
+
+  @override
+  String get tiktokDisclose => '콘텐츠 공개';
+
+  @override
+  String get tiktokDiscloseHelp => '상품, 브랜드, 서비스를 홍보하는 영상이면 켜세요.';
+
+  @override
+  String get tiktokYourBrand => '내 브랜드';
+
+  @override
+  String get tiktokYourBrandHelp => '본인이나 내 사업을 홍보해요. \'홍보 콘텐츠\'로 표시돼요.';
+
+  @override
+  String get tiktokBrandedContent => '브랜드 콘텐츠';
+
+  @override
+  String get tiktokBrandedContentHelp =>
+      '다른 브랜드나 제3자를 홍보해요. \'유료 파트너십\'으로 표시돼요.';
+
+  @override
+  String get tiktokDiscloseNeedOne => '하나 이상 선택해야 게시할 수 있어요.';
+
+  @override
+  String get tiktokBrandedNotPrivate => '브랜드 콘텐츠는 \'나만 보기\'로 올릴 수 없어요.';
+
+  @override
+  String tiktokConsent(String policies) {
+    return '게시하면 TikTok의 $policies에 동의하게 됩니다.';
+  }
+
+  @override
+  String get tiktokMusicPolicy => '음악 사용 확인';
+
+  @override
+  String get tiktokBrandPolicy => '브랜드 콘텐츠 정책';
+
+  @override
+  String get tiktokAnd => ' 및 ';
+
+  @override
+  String get tiktokPost => '게시';
+
+  @override
+  String tiktokUploading(int percent) {
+    return '업로드 중 $percent%';
+  }
+
+  @override
+  String get tiktokProcessing => 'TikTok에서 처리 중…';
+
+  @override
+  String get tiktokDoneTitle => 'TikTok에 올렸어요';
+
+  @override
+  String get tiktokDoneProcessing => '프로필에 나타나기까지 몇 분 걸릴 수 있어요.';
+
+  @override
+  String get tiktokOpen => 'TikTok에서 보기';
+
+  @override
+  String get tiktokFinishInApp => 'TikTok 앱에서 마무리하기';
+
+  @override
+  String tiktokTooLong(int max) {
+    return '이 계정은 $max초까지 올릴 수 있어요.';
+  }
+
+  @override
+  String get tiktokConnectHelp => 'TikTok 계정을 연결하면 여기서 바로 올릴 수 있어요.';
+
+  @override
+  String get tiktokErrServer => 'TikTok 연결 설정이 아직 끝나지 않았어요. 잠시 후 다시 시도해 주세요.';
+
+  @override
+  String get tiktokErrDenied => 'TikTok 게시 권한을 허용해야 올릴 수 있어요.';
+
+  @override
+  String get tiktokErrAuth => 'TikTok 로그인이 만료됐어요. 다시 연결해 주세요.';
+
+  @override
+  String get tiktokErrPrivateOnly =>
+      'EasyClip이 TikTok 심사를 통과하기 전에는 비공개 계정에서만 올릴 수 있어요. TikTok 앱 → 설정 및 개인정보 → 개인정보에서 \'비공개 계정\'을 켠 뒤 다시 시도해 주세요.';
+
+  @override
+  String get tiktokErrSpam => 'TikTok이 지금은 게시를 제한했어요. 나중에 다시 시도해 주세요.';
+
+  @override
+  String get tiktokErrBanned => '이 TikTok 계정은 지금 게시할 수 없어요. 다른 계정으로 연결해 주세요.';
+
+  @override
+  String get tiktokErrPrivacyMismatch =>
+      '이 계정에서는 그 공개 범위를 쓸 수 없어요. 다른 범위를 선택해 주세요.';
+
+  @override
+  String get tiktokErrFailed => 'TikTok이 영상을 처리하지 못했어요.';
+
+  @override
+  String get tiktokSwitchAccount => '다른 계정으로 연결';
 }

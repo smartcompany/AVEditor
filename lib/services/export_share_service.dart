@@ -66,11 +66,21 @@ class ExportShareService {
         return false;
       }
       if (Platform.isIOS) {
-        final opened = await _channel.invokeMethod<bool>('shareToTikTok', {
+        // Native replies {status: posted|cancelled|failed|sheet|unavailable}
+        // once TikTok returns, or right away for sheet / unavailable.
+        final raw = await _channel.invokeMethod<dynamic>('shareToTikTok', {
           'path': path,
           'localIdentifier': ?photosAssetId,
         });
-        return opened == true;
+        if (raw is! Map) return raw == true;
+        final status = raw['status']?.toString();
+        debugPrint(
+          '[ExportShare] TikTok status=$status message=${raw['message']}',
+        );
+        if (status == 'posted' || status == 'cancelled' || status == 'failed') {
+          onTikTokResult?.call(status!, raw['message']?.toString());
+        }
+        return status != null && status != 'unavailable';
       }
     } catch (error, stack) {
       debugPrint('[ExportShare] TikTok 직접 공유 실패: $error\n$stack');
@@ -117,6 +127,10 @@ class ExportShareService {
     await shareFile(path);
     return true;
   }
+
+  /// Called with "posted" / "cancelled" / "failed" (+ message) after TikTok
+  /// Share Kit returns to the app (iOS).
+  void Function(String status, String? message)? onTikTokResult;
 
   /// Called with "posted" / "cancelled" / "failed" (+ message) after the
   /// iOS Facebook share dialog returns to the app.

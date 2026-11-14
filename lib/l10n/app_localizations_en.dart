@@ -594,7 +594,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get exportDone => 'Done';
 
   @override
-  String get shareToYouTube => 'Share to YouTube';
+  String get shareToYouTube => 'YouTube';
 
   @override
   String get shareMore => 'More';
@@ -816,4 +816,166 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get uploadDoneClose => 'Done';
+
+  @override
+  String shareAppPosted(String app) {
+    return 'Shared to $app';
+  }
+
+  @override
+  String shareAppCancelled(String app) {
+    return '$app post cancelled.';
+  }
+
+  @override
+  String shareAppFailed(String app, String message) {
+    return '$app couldn\'t take the video. $message';
+  }
+
+  @override
+  String get tiktokUploadTitle => 'Post to TikTok';
+
+  @override
+  String get tiktokAccountTitle => 'TikTok account';
+
+  @override
+  String get tiktokCaptionHint => 'Caption, #hashtags, @mentions';
+
+  @override
+  String get tiktokPrivacyChoose => 'Choose who can watch';
+
+  @override
+  String get tiktokPrivacyPublic => 'Everyone';
+
+  @override
+  String get tiktokPrivacyFriends => 'Friends (follow each other)';
+
+  @override
+  String get tiktokPrivacyFollowers => 'Followers';
+
+  @override
+  String get tiktokPrivacySelf => 'Only me';
+
+  @override
+  String get tiktokInteractionTitle => 'Allow others to';
+
+  @override
+  String get tiktokAllowComment => 'Comment';
+
+  @override
+  String get tiktokAllowDuet => 'Duet';
+
+  @override
+  String get tiktokAllowStitch => 'Stitch';
+
+  @override
+  String get tiktokInteractionOff => 'Turned off in your TikTok settings';
+
+  @override
+  String get tiktokDisclose => 'Disclose video content';
+
+  @override
+  String get tiktokDiscloseHelp =>
+      'Turn on if this video promotes goods, a brand or a service.';
+
+  @override
+  String get tiktokYourBrand => 'Your brand';
+
+  @override
+  String get tiktokYourBrandHelp =>
+      'You\'re promoting yourself or your own business. Labelled \"Promotional content\".';
+
+  @override
+  String get tiktokBrandedContent => 'Branded content';
+
+  @override
+  String get tiktokBrandedContentHelp =>
+      'You\'re promoting another brand or a third party. Labelled \"Paid partnership\".';
+
+  @override
+  String get tiktokDiscloseNeedOne => 'Choose at least one to post.';
+
+  @override
+  String get tiktokBrandedNotPrivate =>
+      'Branded content can\'t be posted as Only me.';
+
+  @override
+  String tiktokConsent(String policies) {
+    return 'By posting, you agree to TikTok\'s $policies.';
+  }
+
+  @override
+  String get tiktokMusicPolicy => 'Music Usage Confirmation';
+
+  @override
+  String get tiktokBrandPolicy => 'Branded Content Policy';
+
+  @override
+  String get tiktokAnd => ' and ';
+
+  @override
+  String get tiktokPost => 'Post';
+
+  @override
+  String tiktokUploading(int percent) {
+    return 'Uploading $percent%';
+  }
+
+  @override
+  String get tiktokProcessing => 'TikTok is processing…';
+
+  @override
+  String get tiktokDoneTitle => 'Posted to TikTok';
+
+  @override
+  String get tiktokDoneProcessing =>
+      'It may take a few minutes to appear on your profile.';
+
+  @override
+  String get tiktokOpen => 'Open TikTok';
+
+  @override
+  String get tiktokFinishInApp => 'Finish in the TikTok app instead';
+
+  @override
+  String tiktokTooLong(int max) {
+    return 'This account can post videos up to $max seconds.';
+  }
+
+  @override
+  String get tiktokConnectHelp =>
+      'Connect your TikTok account to post directly from here.';
+
+  @override
+  String get tiktokErrServer =>
+      'TikTok isn\'t set up on our server yet. Please try again later.';
+
+  @override
+  String get tiktokErrDenied => 'Allow posting to TikTok to continue.';
+
+  @override
+  String get tiktokErrAuth =>
+      'Your TikTok sign-in has expired. Please connect again.';
+
+  @override
+  String get tiktokErrPrivateOnly =>
+      'Until EasyClip passes TikTok\'s review, TikTok only allows posting from a private account. In the TikTok app, go to Settings and privacy → Privacy and turn on Private account, then try again.';
+
+  @override
+  String get tiktokErrSpam =>
+      'TikTok has limited posting for now. Please try again later.';
+
+  @override
+  String get tiktokErrBanned =>
+      'This TikTok account can\'t post right now. Try another account.';
+
+  @override
+  String get tiktokErrPrivacyMismatch =>
+      'That visibility isn\'t available for this account. Choose another.';
+
+  @override
+  String get tiktokErrFailed => 'TikTok couldn\'t process the video.';
+
+  @override
+  String get tiktokSwitchAccount => 'Use another account';
 }

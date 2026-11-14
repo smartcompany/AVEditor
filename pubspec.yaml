@@ -38,6 +38,7 @@ dependencies:
   ffmpeg_kit_flutter_new_min_gpl: ^2.6.7
   purchases_flutter: ^11.0.1
   package_info_plus: ^8.3.1
+  flutter_web_auth_2: ^5.1.0
 
 dev_dependencies:
   flutter_test:

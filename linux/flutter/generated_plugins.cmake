@@ -4,10 +4,12 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   audioplayers_linux
+  desktop_webview_window
   ffmpeg_kit_flutter_new_min_gpl
   file_selector_linux
   flutter_secure_storage_linux
   url_launcher_linux
+  window_to_front
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST

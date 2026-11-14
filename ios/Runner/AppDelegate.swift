@@ -247,13 +247,36 @@ enum MediaShareChannel {
         redirectURI: redirect
       )
       tiktokShareRequest = request
-      let sent = request.send { _ in
+      // Reply once TikTok comes back (via the universal link) so Dart can
+      // show what happened; false right away if TikTok could not be opened.
+      var replied = false
+      let sent = request.send { response in
         tiktokShareRequest = nil
+        guard !replied else { return }
+        replied = true
+        guard let share = response as? TikTokShareResponse else {
+          result(["status": "failed", "message": "unexpected response"])
+          return
+        }
+        let status: String
+        switch share.shareState {
+        case .success: status = "posted"
+        case .cancelled, .saveAsDraft: status = "cancelled"
+        default: status = share.errorCode == .cancelled ? "cancelled" : "failed"
+        }
+        result([
+          "status": status,
+          "message": "\(share.shareState.rawValue) \(share.errorDescription ?? "")",
+        ])
       }
-      result(sent)
+      if !sent {
+        tiktokShareRequest = nil
+        replied = true
+        result(["status": "unavailable"])
+      }
       return
     }
-    result(presentShareSheet(items: [URL(fileURLWithPath: path)]))
+    result(["status": presentShareSheet(items: [URL(fileURLWithPath: path)]) ? "sheet" : "unavailable"])
   }
 
   /// System share sheet. Presented from the top view controller because the

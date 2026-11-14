@@ -238,7 +238,7 @@
   "exportComplete": "Export complete",
   "savedToDevice": "Saved to device",
   "exportDone": "Done",
-  "shareToYouTube": "Share to YouTube",
+  "shareToYouTube": "YouTube",
   "shareMore": "More",
   "shareAppMissing": "That app is not installed.",
   "shareFacebookOpened": "Choose Facebook in the list to finish posting.",
@@ -353,6 +353,97 @@
     "placeholders": {
       "visibility": {
         "type": "String"
+      }
+    }
+  },
+  "shareAppPosted": "Shared to {app}",
+  "shareAppCancelled": "{app} post cancelled.",
+  "shareAppFailed": "{app} couldn't take the video. {message}",
+  "@shareAppPosted": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
+  "@shareAppCancelled": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
+  "@shareAppFailed": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      },
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "tiktokUploadTitle": "Post to TikTok",
+  "tiktokAccountTitle": "TikTok account",
+  "tiktokCaptionHint": "Caption, #hashtags, @mentions",
+  "tiktokPrivacyChoose": "Choose who can watch",
+  "tiktokPrivacyPublic": "Everyone",
+  "tiktokPrivacyFriends": "Friends (follow each other)",
+  "tiktokPrivacyFollowers": "Followers",
+  "tiktokPrivacySelf": "Only me",
+  "tiktokInteractionTitle": "Allow others to",
+  "tiktokAllowComment": "Comment",
+  "tiktokAllowDuet": "Duet",
+  "tiktokAllowStitch": "Stitch",
+  "tiktokInteractionOff": "Turned off in your TikTok settings",
+  "tiktokDisclose": "Disclose video content",
+  "tiktokDiscloseHelp": "Turn on if this video promotes goods, a brand or a service.",
+  "tiktokYourBrand": "Your brand",
+  "tiktokYourBrandHelp": "You're promoting yourself or your own business. Labelled \"Promotional content\".",
+  "tiktokBrandedContent": "Branded content",
+  "tiktokBrandedContentHelp": "You're promoting another brand or a third party. Labelled \"Paid partnership\".",
+  "tiktokDiscloseNeedOne": "Choose at least one to post.",
+  "tiktokBrandedNotPrivate": "Branded content can't be posted as Only me.",
+  "tiktokConsent": "By posting, you agree to TikTok's {policies}.",
+  "tiktokMusicPolicy": "Music Usage Confirmation",
+  "tiktokBrandPolicy": "Branded Content Policy",
+  "tiktokAnd": " and ",
+  "tiktokPost": "Post",
+  "tiktokUploading": "Uploading {percent}%",
+  "tiktokProcessing": "TikTok is processing…",
+  "tiktokDoneTitle": "Posted to TikTok",
+  "tiktokDoneProcessing": "It may take a few minutes to appear on your profile.",
+  "tiktokOpen": "Open TikTok",
+  "tiktokFinishInApp": "Finish in the TikTok app instead",
+  "tiktokTooLong": "This account can post videos up to {max} seconds.",
+  "tiktokConnectHelp": "Connect your TikTok account to post directly from here.",
+  "tiktokErrServer": "TikTok isn't set up on our server yet. Please try again later.",
+  "tiktokErrDenied": "Allow posting to TikTok to continue.",
+  "tiktokErrAuth": "Your TikTok sign-in has expired. Please connect again.",
+  "tiktokErrPrivateOnly": "Until EasyClip passes TikTok's review, TikTok only allows posting from a private account. In the TikTok app, go to Settings and privacy → Privacy and turn on Private account, then try again.",
+  "tiktokErrSpam": "TikTok has limited posting for now. Please try again later.",
+  "tiktokErrBanned": "This TikTok account can't post right now. Try another account.",
+  "tiktokErrPrivacyMismatch": "That visibility isn't available for this account. Choose another.",
+  "tiktokErrFailed": "TikTok couldn't process the video.",
+  "tiktokSwitchAccount": "Use another account",
+  "@tiktokConsent": {
+    "placeholders": {
+      "policies": {
+        "type": "String"
+      }
+    }
+  },
+  "@tiktokUploading": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "@tiktokTooLong": {
+    "placeholders": {
+      "max": {
+        "type": "int"
       }
     }
   }

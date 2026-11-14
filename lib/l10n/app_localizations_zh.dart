@@ -577,7 +577,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get exportDone => '完成';
 
   @override
-  String get shareToYouTube => '分享到 YouTube';
+  String get shareToYouTube => 'YouTube';
 
   @override
   String get shareMore => '更多';
@@ -789,4 +789,155 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get uploadDoneClose => '完成';
+
+  @override
+  String shareAppPosted(String app) {
+    return '已分享到 $app';
+  }
+
+  @override
+  String shareAppCancelled(String app) {
+    return '已取消 $app 发布。';
+  }
+
+  @override
+  String shareAppFailed(String app, String message) {
+    return '无法分享到 $app。$message';
+  }
+
+  @override
+  String get tiktokUploadTitle => '发布到 TikTok';
+
+  @override
+  String get tiktokAccountTitle => '发布到的 TikTok 账号';
+
+  @override
+  String get tiktokCaptionHint => '说明、#话题、@提及';
+
+  @override
+  String get tiktokPrivacyChoose => '请选择谁可以观看';
+
+  @override
+  String get tiktokPrivacyPublic => '所有人';
+
+  @override
+  String get tiktokPrivacyFriends => '朋友（互相关注）';
+
+  @override
+  String get tiktokPrivacyFollowers => '粉丝';
+
+  @override
+  String get tiktokPrivacySelf => '仅自己';
+
+  @override
+  String get tiktokInteractionTitle => '允许他人';
+
+  @override
+  String get tiktokAllowComment => '评论';
+
+  @override
+  String get tiktokAllowDuet => '合拍';
+
+  @override
+  String get tiktokAllowStitch => '拼接';
+
+  @override
+  String get tiktokInteractionOff => '已在 TikTok 设置中关闭';
+
+  @override
+  String get tiktokDisclose => '披露视频内容';
+
+  @override
+  String get tiktokDiscloseHelp => '如果视频推广商品、品牌或服务，请开启。';
+
+  @override
+  String get tiktokYourBrand => '你的品牌';
+
+  @override
+  String get tiktokYourBrandHelp => '推广你自己或你的业务。将标注为“推广内容”。';
+
+  @override
+  String get tiktokBrandedContent => '品牌内容';
+
+  @override
+  String get tiktokBrandedContentHelp => '推广其他品牌或第三方。将标注为“付费合作”。';
+
+  @override
+  String get tiktokDiscloseNeedOne => '请至少选择一项才能发布。';
+
+  @override
+  String get tiktokBrandedNotPrivate => '品牌内容不能设为“仅自己”。';
+
+  @override
+  String tiktokConsent(String policies) {
+    return '发布即表示你同意 TikTok 的$policies。';
+  }
+
+  @override
+  String get tiktokMusicPolicy => '音乐使用确认';
+
+  @override
+  String get tiktokBrandPolicy => '品牌内容政策';
+
+  @override
+  String get tiktokAnd => '和';
+
+  @override
+  String get tiktokPost => '发布';
+
+  @override
+  String tiktokUploading(int percent) {
+    return '正在上传 $percent%';
+  }
+
+  @override
+  String get tiktokProcessing => 'TikTok 正在处理…';
+
+  @override
+  String get tiktokDoneTitle => '已发布到 TikTok';
+
+  @override
+  String get tiktokDoneProcessing => '可能需要几分钟才会显示在你的主页上。';
+
+  @override
+  String get tiktokOpen => '在 TikTok 中查看';
+
+  @override
+  String get tiktokFinishInApp => '改在 TikTok 应用中完成';
+
+  @override
+  String tiktokTooLong(int max) {
+    return '此账号最多可发布 $max 秒的视频。';
+  }
+
+  @override
+  String get tiktokConnectHelp => '连接 TikTok 账号后即可直接在此发布。';
+
+  @override
+  String get tiktokErrServer => 'TikTok 连接尚未设置完成，请稍后重试。';
+
+  @override
+  String get tiktokErrDenied => '需要允许发布到 TikTok 才能继续。';
+
+  @override
+  String get tiktokErrAuth => 'TikTok 登录已过期，请重新连接。';
+
+  @override
+  String get tiktokErrPrivateOnly =>
+      '在 EasyClip 通过 TikTok 审核之前，只能从私密账号发布。请在 TikTok 应用的“设置和隐私”→“隐私”中开启“私密账号”，然后重试。';
+
+  @override
+  String get tiktokErrSpam => 'TikTok 暂时限制了发布，请稍后重试。';
+
+  @override
+  String get tiktokErrBanned => '此 TikTok 账号目前无法发布，请换一个账号。';
+
+  @override
+  String get tiktokErrPrivacyMismatch => '此账号不能使用该公开范围，请选择其他范围。';
+
+  @override
+  String get tiktokErrFailed => 'TikTok 无法处理该视频。';
+
+  @override
+  String get tiktokSwitchAccount => '使用其他账号';
 }
