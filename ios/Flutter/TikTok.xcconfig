@@ -1,0 +1,7 @@
+// TikTok Share Kit. Fill in from developers.tiktok.com → your app:
+// - Client Key (Basic)
+// - Redirect URI must be a Universal Link registered for Share Kit
+//   (e.g. https://aveditorserver.vercel.app/tiktok/callback)
+// Empty = Share Kit disabled; iOS falls back to sharing the video file.
+TIKTOK_CLIENT_KEY = awlroq9gy84a32v2
+TIKTOK_REDIRECT_URI = https://aveditorserver.vercel.app/tiktok/callback
