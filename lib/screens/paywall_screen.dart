@@ -2,6 +2,7 @@ import 'package:aveditor/services/analytics_service.dart';
 import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/services/pro_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
+import 'package:aveditor/utils/logged_snackbar.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -110,9 +111,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
   }
 
   void _snack(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    showLoggedSnackBar(context, message);
   }
 
   @override

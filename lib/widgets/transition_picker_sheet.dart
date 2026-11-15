@@ -7,6 +7,7 @@ import 'package:aveditor/models/transition_item.dart';
 import 'package:aveditor/services/transition_asset_store.dart';
 import 'package:aveditor/services/transition_catalog_service.dart';
 import 'package:aveditor/services/transition_engine.dart';
+import 'package:aveditor/utils/logged_snackbar.dart';
 import 'package:aveditor/widgets/transition_preview_compositor.dart';
 import 'package:flutter/material.dart';
 
@@ -149,10 +150,13 @@ class _TransitionPickerPanelState extends State<TransitionPickerPanel> {
     if (item.needsDownload && !_assets.isInstalled(item)) {
       try {
         await _assets.install(item);
-      } catch (_) {
+      } catch (e, st) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Download failed')),
+        showLoggedSnackBar(
+          context,
+          'Download failed',
+          error: e,
+          stackTrace: st,
         );
         return;
       }

@@ -9,6 +9,7 @@ import 'package:aveditor/services/music_storage_service.dart';
 import 'package:aveditor/services/text_template_pack_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/utils/duration_format.dart';
+import 'package:aveditor/utils/logged_snackbar.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
@@ -48,7 +49,6 @@ class _MusicPickerScreenState extends State<MusicPickerScreen>
   String? _error;
   String? _busyTrackId;
   String? _previewTrackId;
-  String? _attribution;
   String? _selectedGenreId;
   Timer? _debounce;
   Timer? _autocompleteDebounce;
@@ -148,7 +148,6 @@ class _MusicPickerScreenState extends State<MusicPickerScreen>
         _catalogConfigured = page.configured;
         _tracks = page.tracks;
         if (page.genres.isNotEmpty) _genres = page.genres;
-        _attribution = page.attribution;
         _loading = false;
         if (!page.configured) {
           _error = page.error;
@@ -225,11 +224,14 @@ class _MusicPickerScreenState extends State<MusicPickerScreen>
     try {
       await _previewPlayer.stop();
       await _previewPlayer.play(UrlSource(track.previewUrl));
-    } catch (_) {
+    } catch (e, st) {
       if (!mounted) return;
       setState(() => _previewTrackId = null);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.musicPreviewFailed)),
+      showLoggedSnackBar(
+        context,
+        context.l10n.musicPreviewFailed,
+        error: e,
+        stackTrace: st,
       );
     }
   }
@@ -256,10 +258,13 @@ class _MusicPickerScreenState extends State<MusicPickerScreen>
       );
       if (!mounted) return;
       Navigator.of(context).pop(music);
-    } catch (e) {
+    } catch (e, st) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.musicImportFailed(e.toString()))),
+      showLoggedSnackBar(
+        context,
+        l10n.musicImportFailed(e.toString()),
+        error: e,
+        stackTrace: st,
       );
     } finally {
       if (mounted) setState(() => _busyTrackId = null);
@@ -278,10 +283,13 @@ class _MusicPickerScreenState extends State<MusicPickerScreen>
       );
       if (!mounted) return;
       Navigator.of(context).pop(music);
-    } catch (e) {
+    } catch (e, st) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.musicImportFailed(e.toString()))),
+      showLoggedSnackBar(
+        context,
+        l10n.musicImportFailed(e.toString()),
+        error: e,
+        stackTrace: st,
       );
     } finally {
       if (mounted) setState(() => _busyTrackId = null);
@@ -496,17 +504,6 @@ class _MusicPickerScreenState extends State<MusicPickerScreen>
               ],
             ),
           ),
-          if (_attribution != null || _catalogConfigured)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  _attribution ?? l10n.musicCatalogAttribution,
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
-              ),
-            ),
           if (widget.current != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),

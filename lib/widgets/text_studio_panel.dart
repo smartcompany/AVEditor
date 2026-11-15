@@ -11,6 +11,7 @@ import 'package:aveditor/services/text_template_pack_service.dart';
 import 'package:aveditor/widgets/overlay_fonts.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/widgets/text_entrance.dart';
+import 'package:aveditor/utils/logged_snackbar.dart';
 import 'package:aveditor/widgets/text_template_pack_browser.dart';
 import 'package:flutter/material.dart';
 
@@ -111,11 +112,14 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
     if (!_packService.isInstalled(item)) {
       try {
         await _packService.install(item);
-      } catch (_) {
+      } catch (e, st) {
         if (!mounted) return;
-        ScaffoldMessenger.of(
+        showLoggedSnackBar(
           context,
-        ).showSnackBar(const SnackBar(content: Text('Download failed')));
+          'Download failed',
+          error: e,
+          stackTrace: st,
+        );
         return;
       }
     }

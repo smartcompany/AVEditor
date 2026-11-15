@@ -65,6 +65,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get videoPickEmpty =>
+      'Could not open this video. It may still be in iCloud — download it in Photos, then try again.';
+
+  @override
   String get permissionPhotosDenied =>
       'Photo library access is off. Enable it in Settings.';
 
@@ -210,6 +214,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get convertingVideo => 'Converting video…';
 
   @override
+  String get openingVideo => 'Opening video…';
+
+  @override
   String get exportSuccess => 'Saved to your library.';
 
   @override
@@ -262,6 +269,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get deleteProject => 'Delete project';
+
+  @override
+  String get deleteProjectConfirm =>
+      'Delete this project? This cannot be undone.';
 
   @override
   String get projectNotFound => 'Saved project could not be found.';
@@ -430,7 +441,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get musicCatalogBody =>
-      'Royalty-free music for commercial use — no attribution required. Uses Pixabay when PIXABAY_API_KEY is set on the server; otherwise Mixkit.';
+      'Free for commercial use. Attribution not required (Pixabay / Mixkit).';
 
   @override
   String get splitVideo => 'Split clip';
@@ -589,6 +600,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get savedToDevice => 'Saved to device';
+
+  @override
+  String get shareContentTitle => 'Share content';
+
+  @override
+  String get share => 'Share';
 
   @override
   String get exportDone => 'Done';

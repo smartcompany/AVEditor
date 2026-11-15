@@ -65,6 +65,10 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
+  String get videoPickEmpty =>
+      '動画を開けませんでした。iCloud上のみの動画は、写真アプリでダウンロードしてから再度お試しください。';
+
+  @override
   String get permissionPhotosDenied => '写真ライブラリへのアクセスがオフです。設定で許可してください。';
 
   @override
@@ -207,6 +211,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get convertingVideo => '動画を変換しています…';
 
   @override
+  String get openingVideo => '動画を開いています…';
+
+  @override
   String get exportSuccess => 'ライブラリに保存しました。';
 
   @override
@@ -259,6 +266,9 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get deleteProject => 'プロジェクトを削除';
+
+  @override
+  String get deleteProjectConfirm => 'このプロジェクトを削除しますか？元に戻せません。';
 
   @override
   String get projectNotFound => '保存されたプロジェクトが見つかりません。';
@@ -422,8 +432,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get musicCatalogReady => 'Pixabay Music';
 
   @override
-  String get musicCatalogBody =>
-      '商用利用可・クレジット不要。サーバーに PIXABAY_API_KEY があれば Pixabay Music、なければ Mixkit で検索します。';
+  String get musicCatalogBody => '商用利用可・クレジット不要（Pixabay / Mixkit）。';
 
   @override
   String get splitVideo => '分割';
@@ -577,6 +586,12 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get savedToDevice => 'デバイスに保存しました';
+
+  @override
+  String get shareContentTitle => 'コンテンツを共有';
+
+  @override
+  String get share => '共有';
 
   @override
   String get exportDone => '完了';

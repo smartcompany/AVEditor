@@ -18,6 +18,7 @@
   "cancel": "Cancel",
   "videoNotSelected": "No video selected.",
   "videoPickError": "Could not open video: {message}",
+  "videoPickEmpty": "Could not open this video. It may still be in iCloud — download it in Photos, then try again.",
   "@videoPickError": {
     "placeholders": {
       "message": {
@@ -84,6 +85,7 @@
   "save": "Save",
   "exporting": "Exporting video…",
   "convertingVideo": "Converting video…",
+  "openingVideo": "Opening video…",
   "exportSuccess": "Saved to your library.",
   "exportFailed": "Export failed.",
   "exportFailedWithMessage": "Export failed: {message}",
@@ -120,6 +122,7 @@
     }
   },
   "deleteProject": "Delete project",
+  "deleteProjectConfirm": "Delete this project? This cannot be undone.",
   "projectNotFound": "Saved project could not be found.",
   "settingsTitle": "Settings",
   "exportQualitySection": "Export quality",
@@ -179,7 +182,7 @@
   "retry": "Retry",
   "musicCatalogSection": "Music catalog",
   "musicCatalogReady": "Pixabay Music",
-  "musicCatalogBody": "Royalty-free music for commercial use — no attribution required. Uses Pixabay when PIXABAY_API_KEY is set on the server; otherwise Mixkit.",
+  "musicCatalogBody": "Free for commercial use. Attribution not required (Pixabay / Mixkit).",
   "splitVideo": "Split clip",
   "transition": "Transition",
   "transitionSheetTitle": "Transitions",
@@ -237,6 +240,8 @@
   "uploadTagsHint": "Separate with commas",
   "exportComplete": "Export complete",
   "savedToDevice": "Saved to device",
+  "shareContentTitle": "Share content",
+  "share": "Share",
   "exportDone": "Done",
   "shareToYouTube": "YouTube",
   "shareMore": "More",

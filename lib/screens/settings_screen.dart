@@ -4,8 +4,6 @@ import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/models/export_quality_profile.dart';
 import 'package:aveditor/services/app_settings_service.dart';
-import 'package:aveditor/services/text_template_pack_service.dart';
-import 'package:aveditor/services/transition_catalog_service.dart';
 import 'package:flutter/material.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -17,10 +15,8 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final _settings = const AppSettingsService();
-  final _packUrlController = TextEditingController();
   ExportQualityProfile? _selected;
   bool _loading = true;
-  bool _savingPackUrl = false;
 
   @override
   void initState() {
@@ -28,19 +24,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _load();
   }
 
-  @override
-  void dispose() {
-    _packUrlController.dispose();
-    super.dispose();
-  }
-
   Future<void> _load() async {
     final profile = await _settings.getExportQualityProfile();
-    await TextTemplatePackService.instance.ensureInitialized();
     if (!mounted) return;
     setState(() {
       _selected = profile;
-      _packUrlController.text = TextTemplatePackService.instance.remoteBaseUrl;
       _loading = false;
     });
   }
@@ -49,31 +37,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _settings.setExportQualityProfile(profile);
     if (!mounted) return;
     setState(() => _selected = profile);
-  }
-
-  Future<void> _savePackUrl() async {
-    setState(() => _savingPackUrl = true);
-    try {
-      await TextTemplatePackService.instance.setRemoteBaseUrl(
-        _packUrlController.text.trim(),
-      );
-      // Same base hosts the transition catalog.
-      await TransitionCatalogService.instance.refresh();
-      if (!mounted) return;
-      final packError = TextTemplatePackService.instance.lastError;
-      final transitionError = TransitionCatalogService.instance.lastError;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            packError == null && transitionError == null
-                ? context.l10n.textPackUrlSaved
-                : context.l10n.textPackUrlSavePartial,
-          ),
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _savingPackUrl = false);
-    }
   }
 
   @override
@@ -125,45 +88,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     title: _titleFor(profile, l10n),
                     subtitle: _subtitleFor(profile, l10n),
                     onTap: () => _select(profile),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  l10n.textPackSection,
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                const SizedBox(height: 8),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(
-                          l10n.textPackUrlBody,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _packUrlController,
-                          decoration: InputDecoration(
-                            hintText:
-                                TextTemplatePackService.defaultRemoteBaseUrl,
-                            labelText: l10n.textPackUrlLabel,
-                          ),
-                          keyboardType: TextInputType.url,
-                          autocorrect: false,
-                        ),
-                        const SizedBox(height: 12),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: FilledButton(
-                            onPressed: _savingPackUrl ? null : _savePackUrl,
-                            child: Text(l10n.save),
-                          ),
-                        ),
-                      ],
-                    ),
                   ),
                 ),
                 const SizedBox(height: 24),

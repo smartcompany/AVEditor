@@ -210,6 +210,12 @@ abstract class AppLocalizations {
   /// **'Could not open video: {message}'**
   String videoPickError(String message);
 
+  /// No description provided for @videoPickEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not open this video. It may still be in iCloud — download it in Photos, then try again.'**
+  String get videoPickEmpty;
+
   /// No description provided for @permissionPhotosDenied.
   ///
   /// In en, this message translates to:
@@ -480,6 +486,12 @@ abstract class AppLocalizations {
   /// **'Converting video…'**
   String get convertingVideo;
 
+  /// No description provided for @openingVideo.
+  ///
+  /// In en, this message translates to:
+  /// **'Opening video…'**
+  String get openingVideo;
+
   /// No description provided for @exportSuccess.
   ///
   /// In en, this message translates to:
@@ -551,6 +563,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Delete project'**
   String get deleteProject;
+
+  /// No description provided for @deleteProjectConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete this project? This cannot be undone.'**
+  String get deleteProjectConfirm;
 
   /// No description provided for @projectNotFound.
   ///
@@ -867,7 +885,7 @@ abstract class AppLocalizations {
   /// No description provided for @musicCatalogBody.
   ///
   /// In en, this message translates to:
-  /// **'Royalty-free music for commercial use — no attribution required. Uses Pixabay when PIXABAY_API_KEY is set on the server; otherwise Mixkit.'**
+  /// **'Free for commercial use. Attribution not required (Pixabay / Mixkit).'**
   String get musicCatalogBody;
 
   /// No description provided for @splitVideo.
@@ -1169,6 +1187,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Saved to device'**
   String get savedToDevice;
+
+  /// No description provided for @shareContentTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Share content'**
+  String get shareContentTitle;
+
+  /// No description provided for @share.
+  ///
+  /// In en, this message translates to:
+  /// **'Share'**
+  String get share;
 
   /// No description provided for @exportDone.
   ///

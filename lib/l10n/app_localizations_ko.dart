@@ -65,6 +65,10 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
+  String get videoPickEmpty =>
+      '동영상을 열 수 없습니다. iCloud에만 있는 영상이면 사진 앱에서 먼저 다운로드한 뒤 다시 시도하세요.';
+
+  @override
   String get permissionPhotosDenied => '사진 라이브러리 접근이 꺼져 있습니다. 설정에서 허용해 주세요.';
 
   @override
@@ -207,6 +211,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get convertingVideo => '영상을 변환하는 중…';
 
   @override
+  String get openingVideo => '영상을 여는 중…';
+
+  @override
   String get exportSuccess => '갤러리에 저장했습니다.';
 
   @override
@@ -259,6 +266,9 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get deleteProject => '프로젝트 삭제';
+
+  @override
+  String get deleteProjectConfirm => '이 프로젝트를 삭제할까요? 되돌릴 수 없습니다.';
 
   @override
   String get projectNotFound => '저장된 프로젝트를 찾을 수 없습니다.';
@@ -423,8 +433,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get musicCatalogReady => 'Pixabay Music';
 
   @override
-  String get musicCatalogBody =>
-      '상업 이용 가능, 저작자 표시 불필요. 서버에 PIXABAY_API_KEY가 있으면 Pixabay Music, 없으면 Mixkit으로 검색합니다.';
+  String get musicCatalogBody => '상업 이용 가능 · 저작자 표시 불필요 (Pixabay / Mixkit).';
 
   @override
   String get splitVideo => '분할';
@@ -579,6 +588,12 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get savedToDevice => '장치에 저장됨';
+
+  @override
+  String get shareContentTitle => '컨텐츠 공유';
+
+  @override
+  String get share => '공유';
 
   @override
   String get exportDone => '완료';

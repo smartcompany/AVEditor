@@ -59,9 +59,17 @@ class PlaybackFallbackTranscoder {
   Future<bool> shouldReplace(String path) async {
     final hook = shouldTranscode;
     if (hook != null) return hook(path);
-    final codec = await videoCodec(path);
-    final transfer = await colorTransfer(path);
-    return needsStoredTranscode(codec, transfer);
+    // ExoPlayer fallback is Android-only. Skip ffprobe on iOS/desktop so
+    // import cannot hang on a media probe that never affects playback.
+    if (!Platform.isAndroid) return false;
+    final probed = await _probe(path).timeout(
+      const Duration(seconds: 12),
+      onTimeout: () {
+        avEditorLog('probe timed out: $path');
+        return null;
+      },
+    );
+    return needsStoredTranscode(probed?.codec, probed?.colorTransfer);
   }
 
   /// Video codec name from the file header. Null when the probe cannot read one.
@@ -206,14 +214,18 @@ class PlaybackFallbackTranscoder {
     return outputPath;
   }
 
-  Future<({String? colorTransfer, int? durationMs})?> _probe(String path) async {
+  Future<({String? codec, String? colorTransfer, int? durationMs})?> _probe(
+    String path,
+  ) async {
     try {
       final session = await FFprobeKit.getMediaInformation(path);
       final info = session.getMediaInformation();
       if (info == null) return null;
+      String? codec;
       String? transfer;
       for (final stream in info.getStreams()) {
         if (stream.getType() != 'video') continue;
+        codec = stream.getCodec();
         transfer = stream.getStringProperty('color_transfer');
         break;
       }
@@ -221,7 +233,7 @@ class PlaybackFallbackTranscoder {
       final durationMs = seconds == null || seconds <= 0
           ? null
           : (seconds * 1000).round();
-      return (colorTransfer: transfer, durationMs: durationMs);
+      return (codec: codec, colorTransfer: transfer, durationMs: durationMs);
     } catch (error) {
       avEditorLog('probe failed: $error');
       return null;

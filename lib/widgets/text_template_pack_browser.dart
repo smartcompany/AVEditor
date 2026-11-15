@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:aveditor/models/text_template_pack.dart';
 import 'package:aveditor/services/text_template_pack_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
+import 'package:aveditor/utils/logged_snackbar.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
@@ -166,10 +167,13 @@ class _TextTemplatePackBrowserState extends State<_TextTemplatePackBrowser> {
     if (!_service.isInstalled(item)) {
       try {
         await _service.install(item);
-      } catch (_) {
+      } catch (e, st) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Download failed')),
+        showLoggedSnackBar(
+          context,
+          'Download failed',
+          error: e,
+          stackTrace: st,
         );
         return;
       }

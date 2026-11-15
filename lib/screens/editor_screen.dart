@@ -29,6 +29,7 @@ import 'package:aveditor/services/timeline_thumbnail_service.dart';
 import 'package:aveditor/services/video_probe_service.dart';
 import 'package:aveditor/utils/av_editor_log.dart';
 import 'package:aveditor/utils/debug_agent_log.dart';
+import 'package:aveditor/utils/logged_snackbar.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
 import 'package:aveditor/utils/music_timeline_ops.dart';
 import 'package:aveditor/utils/duration_format.dart';
@@ -803,7 +804,9 @@ class _EditorScreenState extends State<EditorScreen>
       if (stored.duration == Duration.zero) {
         _scheduleSave();
       }
-    } catch (e) {
+    } catch (e, st) {
+      avEditorLog('editor load failed: $e');
+      debugPrint('$st');
       if (!mounted) return;
       setState(() {
         _ready = true;
@@ -813,20 +816,42 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   Future<VideoPlayerController?> _openPlayableController(String path) async {
-    final controller = VideoPlayerController.file(File(path));
-    try {
-      await controller.initialize();
-      if (controller.value.hasError) {
-        throw StateError(
-          controller.value.errorDescription ?? 'video open failed',
-        );
-      }
-      return controller;
-    } catch (error, stack) {
-      avEditorLog('video open failed: $error\n$stack');
-      await controller.dispose();
+    final file = File(path);
+    final exists = await file.exists();
+    final length = exists ? await file.length() : 0;
+    avEditorLog('video open attempt path=$path exists=$exists bytes=$length');
+    if (!exists || length <= 0) {
+      avEditorLog('video open failed: missing or empty file');
       return null;
     }
+
+    // One retry covers slow Photos/iCloud exports that finish writing just
+    // after the first initialize attempt.
+    Object? lastError;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) {
+        await Future<void>.delayed(const Duration(milliseconds: 350));
+      }
+      final controller = VideoPlayerController.file(file);
+      try {
+        await controller.initialize();
+        if (controller.value.hasError) {
+          throw StateError(
+            controller.value.errorDescription ?? 'video open failed',
+          );
+        }
+        if (controller.value.duration <= Duration.zero) {
+          throw StateError('video open failed: zero duration');
+        }
+        return controller;
+      } catch (error, stack) {
+        lastError = error;
+        avEditorLog('video open failed attempt=${attempt + 1}: $error\n$stack');
+        await controller.dispose();
+      }
+    }
+    avEditorLog('video open failed permanently: $lastError');
+    return null;
   }
 
   Future<void> _loadFilmstrip(String sourcePath, Duration duration) async {
@@ -1126,7 +1151,7 @@ class _EditorScreenState extends State<EditorScreen>
         'sequenceTime': sequenceTime,
         'newSegmentCount': project.segments.length,
       });
-    } on StateError catch (e) {
+    } on StateError catch (e, st) {
       OverlayEventLog.log('split', 'failed', {
         'code': e.message,
         'rawPlayhead': rawPlayhead,
@@ -1135,7 +1160,7 @@ class _EditorScreenState extends State<EditorScreen>
             .map((segment) => segment.duration.inMilliseconds)
             .join(','),
       });
-      _showSnack(_splitErrorMessage(e.message));
+      _showSnack(_splitErrorMessage(e.message), error: e, stackTrace: st);
     }
   }
 
@@ -1152,8 +1177,8 @@ class _EditorScreenState extends State<EditorScreen>
           ..addAll(updated);
         _selectedSegmentId = null;
       });
-    } on StateError catch (e) {
-      _showSnack(_splitErrorMessage(e.message));
+    } on StateError catch (e, st) {
+      _showSnack(_splitErrorMessage(e.message), error: e, stackTrace: st);
     }
   }
 
@@ -1168,11 +1193,14 @@ class _EditorScreenState extends State<EditorScreen>
     };
   }
 
-  void _showSnack(String message) {
+  void _showSnack(String message, {Object? error, StackTrace? stackTrace}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(
+    showLoggedSnackBar(
       context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+      message,
+      error: error,
+      stackTrace: stackTrace,
+    );
   }
 
   String _timelineSig = '';
@@ -2627,9 +2655,7 @@ class _EditorScreenState extends State<EditorScreen>
     if (project == null || _exporting) return;
 
     if (!hasVideoCuts(project.segments)) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(l10n.transitionNeedsCuts)));
+      showLoggedSnackBar(context, l10n.transitionNeedsCuts);
       return;
     }
 
@@ -3690,9 +3716,7 @@ class _EditorScreenState extends State<EditorScreen>
         analytics.log(unlocked ? 'ad_unlock_success' : 'ad_unlock_failed');
         if (!mounted) return null;
         if (!unlocked) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(context.l10n.premiumAdNotFinished)),
-          );
+          showLoggedSnackBar(context, context.l10n.premiumAdNotFinished);
           return null;
         }
         return project;
@@ -3786,15 +3810,14 @@ class _EditorScreenState extends State<EditorScreen>
     final controller = _controller;
 
     if (!_ready) {
+      final converting = _convertProgress != null;
       return Scaffold(
         appBar: AppBar(title: Text(l10n.editorTitle)),
         body: Center(
-          child: _convertProgress == null
-              ? const CircularProgressIndicator()
-              : ConvertProgressView(
-                  label: l10n.convertingVideo,
-                  progress: _convertProgress!,
-                ),
+          child: ConvertProgressView(
+            label: converting ? l10n.convertingVideo : l10n.openingVideo,
+            progress: _convertProgress,
+          ),
         ),
       );
     }
@@ -3855,10 +3878,29 @@ class _EditorScreenState extends State<EditorScreen>
                 icon: const Icon(Icons.redo),
                 tooltip: l10n.redo,
               ),
-              IconButton(
-                onPressed: _exporting ? null : _presentExport,
-                icon: const Icon(Icons.upload_outlined),
-                tooltip: l10n.export,
+              Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: FilledButton(
+                  onPressed: _exporting ? null : _presentExport,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppTheme.accent,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: AppTheme.surfaceElevated,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    minimumSize: const Size(0, 34),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(17),
+                    ),
+                  ),
+                  child: Text(
+                    l10n.share,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
               ),
             ],
           ],

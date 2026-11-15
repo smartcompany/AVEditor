@@ -14,6 +14,7 @@ import 'package:aveditor/services/native_video_engine.dart';
 import 'package:aveditor/services/export_share_service.dart';
 import 'package:aveditor/services/share_catalog_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
+import 'package:aveditor/utils/logged_snackbar.dart';
 import 'package:aveditor/widgets/video_thumbnail_scrubber.dart';
 import 'package:flutter/material.dart';
 import 'package:aveditor/services/video_frame_grab.dart';
@@ -68,11 +69,11 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
       'cancelled' => l10n.shareAppCancelled(app),
       _ => l10n.shareAppFailed(app, message ?? ''),
     };
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(text),
-        duration: Duration(seconds: status == 'failed' ? 8 : 3),
-      ),
+    showLoggedSnackBar(
+      context,
+      text,
+      error: status == 'failed' ? (message ?? status) : null,
+      duration: Duration(seconds: status == 'failed' ? 8 : 3),
     );
   }
 
@@ -84,11 +85,11 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
       'cancelled' => l10n.shareFacebookCancelled,
       _ => l10n.shareFacebookFailed(message ?? ''),
     };
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(text),
-        duration: Duration(seconds: status == 'failed' ? 8 : 3),
-      ),
+    showLoggedSnackBar(
+      context,
+      text,
+      error: status == 'failed' ? (message ?? status) : null,
+      duration: Duration(seconds: status == 'failed' ? 8 : 3),
     );
   }
 
@@ -210,7 +211,7 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
       final text = message.contains('photos_permission_denied')
           ? context.l10n.permissionPhotosDenied
           : context.l10n.exportFailedWithMessage(message);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+      showLoggedSnackBar(context, text, error: error, stackTrace: stack);
       return false;
     } finally {
       if (mounted) setState(() => _savingToAlbum = false);
@@ -263,9 +264,7 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
       ShareTargetKind.youtube => false,
     };
     if (!opened && mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(context.l10n.shareAppMissing)));
+      showLoggedSnackBar(context, context.l10n.shareAppMissing);
     }
   }
 
@@ -275,9 +274,7 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
       photosAssetId: _photosAssetId,
     );
     if (!opened && mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(context.l10n.shareAppMissing)));
+      showLoggedSnackBar(context, context.l10n.shareAppMissing);
     }
   }
 
@@ -303,11 +300,7 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
         backgroundColor: AppTheme.background,
         appBar: AppBar(
           backgroundColor: AppTheme.background,
-          title: Text(
-            ready
-                ? (_savedToAlbum ? l10n.savedToDevice : l10n.exportComplete)
-                : l10n.exporting,
-          ),
+          title: Text(ready ? l10n.shareContentTitle : l10n.exporting),
           actions: [
             if (ready)
               IconButton(

@@ -8,6 +8,7 @@ import 'package:aveditor/services/project_storage_service.dart';
 import 'package:aveditor/services/video_import_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/widgets/convert_progress_view.dart';
+import 'package:aveditor/utils/logged_snackbar.dart';
 import 'package:aveditor/utils/platform_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -87,7 +88,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _runPick(Future<String?> Function() pick) async {
-    setState(() => _loading = true);
     try {
       final path = await pick();
       if (path == null || path.isEmpty) {
@@ -96,17 +96,25 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!File(path).existsSync()) {
         throw StateError('file not found');
       }
+      // Show progress only after a file is chosen — not while the gallery is open.
+      if (!mounted) return;
+      setState(() {
+        _loading = true;
+        _convertProgress = null;
+      });
       final projectId = await _projectStorage.createFromImport(
         path,
         onProgress: _onConvertProgress,
       );
       AnalyticsService.instance.log('project_created');
       await _openEditor(projectId);
-    } catch (e) {
+    } catch (e, st) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.videoPickError(e.toString()))),
-      );
+      final detail = e.toString();
+      final message = detail.contains('empty_video')
+          ? context.l10n.videoPickEmpty
+          : context.l10n.videoPickError(detail);
+      showLoggedSnackBar(context, message, error: e, stackTrace: st);
     } finally {
       if (mounted) {
         setState(() {
@@ -118,6 +126,27 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _deleteProject(ProjectSummary project) async {
+    final l10n = context.l10n;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(l10n.deleteProject),
+          content: Text(l10n.deleteProjectConfirm),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(l10n.cancel),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(l10n.deleteProject),
+            ),
+          ],
+        );
+      },
+    );
+    if (!mounted || confirmed != true) return;
     await _projectStorage.delete(project.id);
     await _loadProjects();
   }
@@ -163,12 +192,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (_loading)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: _convertProgress == null
-                        ? const Center(child: CircularProgressIndicator())
-                        : ConvertProgressView(
-                            label: l10n.convertingVideo,
-                            progress: _convertProgress!,
-                          ),
+                    child: ConvertProgressView(
+                      label: _convertProgress == null
+                          ? l10n.openingVideo
+                          : l10n.convertingVideo,
+                      progress: _convertProgress,
+                    ),
                   )
                 else ...[
                   if (PlatformHelper.supportsGallery)

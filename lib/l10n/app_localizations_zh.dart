@@ -65,6 +65,9 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get videoPickEmpty => '无法打开此视频。如果文件仍在 iCloud，请先在“照片”中下载后再试。';
+
+  @override
   String get permissionPhotosDenied => '照片库访问已关闭，请在设置中开启。';
 
   @override
@@ -205,6 +208,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get convertingVideo => '正在转换视频…';
 
   @override
+  String get openingVideo => '正在打开视频…';
+
+  @override
   String get exportSuccess => '已保存到相册。';
 
   @override
@@ -257,6 +263,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get deleteProject => '删除项目';
+
+  @override
+  String get deleteProjectConfirm => '要删除此项目吗？此操作无法撤销。';
 
   @override
   String get projectNotFound => '找不到已保存的项目。';
@@ -418,8 +427,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get musicCatalogReady => 'Pixabay Music';
 
   @override
-  String get musicCatalogBody =>
-      '可商用、无需署名。服务器设置 PIXABAY_API_KEY 时用 Pixabay Music，否则用 Mixkit。';
+  String get musicCatalogBody => '可商用，无需署名（Pixabay / Mixkit）。';
 
   @override
   String get splitVideo => '分割';
@@ -572,6 +580,12 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get savedToDevice => '已保存到设备';
+
+  @override
+  String get shareContentTitle => '分享内容';
+
+  @override
+  String get share => '分享';
 
   @override
   String get exportDone => '完成';

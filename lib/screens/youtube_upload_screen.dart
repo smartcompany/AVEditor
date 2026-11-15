@@ -13,6 +13,7 @@ import 'package:aveditor/services/youtube_auth_service.dart';
 import 'package:aveditor/services/youtube_errors.dart';
 import 'package:aveditor/services/youtube_upload_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
+import 'package:aveditor/utils/logged_snackbar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -334,17 +335,13 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
     var description = _descriptionController.text.trim();
     final title = _titleFromCaption(description);
     if (title.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(l10n.uploadTitleHint)));
+      showLoggedSnackBar(context, l10n.uploadTitleHint);
       return;
     }
     final relatedRaw = _relatedController.text.trim();
     final relatedId = youtubeVideoId(relatedRaw);
     if (relatedRaw.isNotEmpty && relatedId == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(l10n.uploadRelatedVideoInvalid)));
+      showLoggedSnackBar(context, l10n.uploadRelatedVideoInvalid);
       return;
     }
     final tags = youtubeTags(_tagsController.text);
@@ -374,9 +371,7 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
         place = await _upload.lookupPlace(location);
         if (!mounted) return;
         if (place == null) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(l10n.uploadLocationNotFound)));
+          showLoggedSnackBar(context, l10n.uploadLocationNotFound);
           return;
         }
       }
@@ -913,9 +908,8 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
   Future<void> _copyLink(AppLocalizations l10n, String link) async {
     await Clipboard.setData(ClipboardData(text: link));
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(l10n.uploadDoneCopied)));
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    showLoggedSnackBar(context, l10n.uploadDoneCopied);
   }
 
   /// Shows which channel the video goes to, with a one-tap way to use a

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:aveditor/utils/av_editor_log.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
@@ -18,19 +19,9 @@ class VideoImportService {
       await _requestMobileMediaPermissions();
     }
 
-    try {
-      final file = await _picker.pickVideo(
-        source: ImageSource.gallery,
-        maxDuration: const Duration(minutes: 10),
-      );
-      if (file == null) return null;
-      return _resolveUsableVideoPath(file);
-    } catch (e) {
-      if (Platform.isIOS) {
-        return pickFromFiles();
-      }
-      rethrow;
-    }
+    final file = await _picker.pickVideo(source: ImageSource.gallery);
+    if (file == null) return null;
+    return materializeImport(file);
   }
 
   Future<String?> pickFromCamera() async {
@@ -44,7 +35,7 @@ class VideoImportService {
       maxDuration: const Duration(minutes: 10),
     );
     if (file == null) return null;
-    return _resolveUsableVideoPath(file);
+    return materializeImport(file);
   }
 
   Future<String?> pickFromFiles() async {
@@ -54,43 +45,77 @@ class VideoImportService {
     );
     final file = await openFile(acceptedTypeGroups: [group]);
     if (file == null) return null;
-    return _resolveUsableVideoPath(file);
+    return materializeImport(file);
   }
 
-  Future<String?> _resolveUsableVideoPath(XFile file) async {
-    final rawPath = file.path;
-    if (rawPath.isNotEmpty) {
-      final rawFile = File(rawPath);
-      if (await rawFile.exists()) {
-        return rawPath;
-      }
-    }
-
-    final bytes = await file.readAsBytes();
-    if (bytes.isEmpty) {
-      return null;
-    }
-
+  /// Copies the picker result into an app-owned temp file.
+  ///
+  /// Gallery/camera paths are often ephemeral (Photos export, content URIs).
+  /// Reusing them directly leads to intermittent "could not open video" errors.
+  Future<String> materializeImport(XFile file) async {
     final dir = await getTemporaryDirectory();
-    final name = file.name;
-    final ext = p.extension(name).isNotEmpty ? p.extension(name) : '.mp4';
-    final tempPath = p.join(
+    final ext = _extensionFor(file);
+    final destPath = p.join(
       dir.path,
       'import_${DateTime.now().millisecondsSinceEpoch}$ext',
     );
-    final tempFile = File(tempPath);
-    await tempFile.writeAsBytes(bytes, flush: true);
-    return tempFile.path;
+    final dest = File(destPath);
+
+    try {
+      await file.saveTo(destPath);
+    } catch (error) {
+      avEditorLog('import saveTo failed: $error');
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty) {
+        throw StateError('empty_video');
+      }
+      await dest.writeAsBytes(bytes, flush: true);
+    }
+
+    if (!await dest.exists() || await dest.length() == 0) {
+      final rawPath = file.path;
+      if (rawPath.isNotEmpty) {
+        final raw = File(rawPath);
+        if (await raw.exists() && await raw.length() > 0) {
+          await raw.copy(destPath);
+        }
+      }
+    }
+
+    final length = await dest.exists() ? await dest.length() : 0;
+    if (length <= 0) {
+      avEditorLog('import materialized empty path=$destPath src=${file.path}');
+      throw StateError('empty_video');
+    }
+    avEditorLog('import materialized bytes=$length path=$destPath');
+    return destPath;
+  }
+
+  String _extensionFor(XFile file) {
+    final fromName = p.extension(file.name).trim();
+    if (fromName.isNotEmpty) return fromName.toLowerCase();
+    final fromPath = p.extension(file.path).trim();
+    if (fromPath.isNotEmpty) return fromPath.toLowerCase();
+    final mime = file.mimeType?.toLowerCase() ?? '';
+    if (mime.contains('quicktime') || mime.contains('mov')) return '.mov';
+    if (mime.contains('webm')) return '.webm';
+    if (mime.contains('matroska') || mime.contains('mkv')) return '.mkv';
+    return '.mp4';
   }
 
   Future<void> _requestMobileMediaPermissions() async {
     if (kIsWeb) {
       return;
     }
-    if (Platform.isIOS || Platform.isAndroid) {
+    // iOS PHPicker does not require Photos permission; requesting it can put
+    // the app into limited-library mode and break some exports.
+    if (Platform.isIOS) {
+      return;
+    }
+    if (Platform.isAndroid) {
       await [
-        Permission.photos,
         Permission.videos,
+        Permission.photos,
         Permission.storage,
       ].request();
     }

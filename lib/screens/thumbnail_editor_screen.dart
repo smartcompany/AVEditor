@@ -10,6 +10,7 @@ import 'package:aveditor/widgets/basic_text_edit_toolbar.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/services/video_frame_grab.dart';
 import 'package:aveditor/theme/app_theme.dart';
+import 'package:aveditor/utils/logged_snackbar.dart';
 import 'package:aveditor/widgets/video_preview.dart';
 import 'package:flutter/material.dart';
 
@@ -320,11 +321,13 @@ class _ThumbnailEditorScreenState extends State<ThumbnailEditorScreen> {
       if (!mounted) return;
       Navigator.of(context).pop(file.path);
     } catch (error, stack) {
-      debugPrint('[ThumbnailEditor] 저장 실패: $error\n$stack');
       if (!mounted) return;
-      ScaffoldMessenger.of(
+      showLoggedSnackBar(
         context,
-      ).showSnackBar(SnackBar(content: Text(context.l10n.exportFailed)));
+        context.l10n.exportFailed,
+        error: error,
+        stackTrace: stack,
+      );
       setState(() => _saving = false);
     }
   }

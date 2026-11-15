@@ -58,7 +58,15 @@ class ProjectStorageService {
     final ext = p.extension(pickedPath);
     final sourceFileName = 'source${ext.isEmpty ? '.mp4' : ext}';
     final sourcePath = p.join(dir.path, sourceFileName);
-    await File(pickedPath).copy(sourcePath);
+    final picked = File(pickedPath);
+    if (!await picked.exists() || await picked.length() == 0) {
+      throw StateError('empty_video');
+    }
+    await picked.copy(sourcePath);
+    final storedFile = File(sourcePath);
+    if (!await storedFile.exists() || await storedFile.length() == 0) {
+      throw StateError('empty_video');
+    }
 
     final project = VideoProject(
       id: id,
