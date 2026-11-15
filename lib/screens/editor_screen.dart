@@ -3695,12 +3695,31 @@ class _EditorScreenState extends State<EditorScreen>
     _openTextStudio(overlay);
   }
 
+  /// Freeze preview + bed music so export (and the sheet before it) is silent.
+  Future<void> _pausePlaybackForExport() async {
+    if (NativeVideoEngine.instance.isTimelineActive) {
+      if (NativeVideoEngine.instance.isPlaying) {
+        await NativeVideoEngine.instance.pause();
+      }
+    } else {
+      await _controller?.pause();
+      await _auxController?.pause();
+    }
+    await _musicSafe(_musicPlayer.pause);
+    if (mounted) setState(() {});
+  }
+
   Future<void> _presentExport() async {
     final project = _project;
     if (project == null || _exporting) return;
     AnalyticsService.instance.log('export_tap');
+    await _pausePlaybackForExport();
+    if (!mounted) return;
     final exportProject = await _resolvePremiumForExport(project);
     if (exportProject == null || !mounted) return;
+    // Premium sheet can take a while — ensure still paused before export UI.
+    await _pausePlaybackForExport();
+    if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         fullscreenDialog: true,
@@ -4530,6 +4549,20 @@ class _EditorScreenState extends State<EditorScreen>
         if (index != null && !_exporting) {
           unawaited(_openTransitionPicker(cutIndex: index));
         }
+      },
+      onSelectionCleared: () {
+        if (_selectedOverlayId == null &&
+            _selectedSegmentId == null &&
+            _selectedMusicId == null &&
+            _selectedTransitionAfterIndex == null) {
+          return;
+        }
+        setState(() {
+          _selectedOverlayId = null;
+          _selectedSegmentId = null;
+          _selectedMusicId = null;
+          _selectedTransitionAfterIndex = null;
+        });
       },
     );
   }

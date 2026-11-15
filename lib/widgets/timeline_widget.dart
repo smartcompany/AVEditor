@@ -249,6 +249,7 @@ class TimelineWidget extends StatefulWidget {
     this.onSegmentSelected,
     this.onSegmentChanged,
     this.onTransitionSelected,
+    this.onSelectionCleared,
     this.onEdgeFramePreview,
     this.onPlayheadTimelineOnly,
     this.selectedOverlayId,
@@ -297,6 +298,9 @@ class TimelineWidget extends StatefulWidget {
 
   /// Cut index (0..n-2) of the selected video transition, or null.
   final ValueChanged<int?>? onTransitionSelected;
+
+  /// Empty-area tap (not drag) clears the focused timeline item.
+  final VoidCallback? onSelectionCleared;
   final String? selectedOverlayId;
   final String? selectedSegmentId;
   final int? selectedTransitionAfterIndex;
@@ -2467,25 +2471,31 @@ class TimelineWidgetState extends State<TimelineWidget>
     // must not count as a tap / selection.
     final tapped = _maxTravelFromDown < _segmentTapSlop;
     final onClipTrack = down.dy < _videoTrackHeight;
+    var didSelectItem = false;
 
     if (tapped && _dragOverlay != null && _overlayDragOnBar) {
       _announceSelection();
+      didSelectItem = true;
     } else if (tapped && _dragMusic != null) {
       _announceSelection();
+      didSelectItem = true;
     } else if (tapped &&
         (_dragTarget == TimelineDragTarget.transitionBody ||
             _dragTarget == TimelineDragTarget.transitionStart ||
             _dragTarget == TimelineDragTarget.transitionEnd)) {
       _announceSelection();
+      didSelectItem = true;
     } else if (tapped && onClipTrack) {
       final segment = _segmentAtViewportX(down.dx) ?? _tapSegment;
       if (segment != null) {
         widget.onSegmentSelected?.call(segment);
+        didSelectItem = true;
       }
       // Empty filmstrip taps must not seek — only a drag pans time.
     } else if (_dragTarget == TimelineDragTarget.panTimeline &&
         !tapped &&
         _didMove) {
+      // Pan / scrub — keep the current selection.
       final velocityPx =
           _velocityTracker?.getVelocity().pixelsPerSecond.dx ?? 0;
       _resetSingleGesture();
@@ -2495,6 +2505,17 @@ class TimelineWidgetState extends State<TimelineWidget>
       }
       _startPanFling(velocityPx);
       return;
+    }
+
+    // Empty-area tap (not drag) clears focus; drag never reaches here for pan.
+    if (tapped &&
+        !didSelectItem &&
+        _hasFocusedTimelineItem &&
+        (_dragTarget == TimelineDragTarget.panTimeline ||
+            _dragTarget == TimelineDragTarget.scrollLanes ||
+            (onClipTrack &&
+                (_segmentAtViewportX(down.dx) ?? _tapSegment) == null))) {
+      widget.onSelectionCleared?.call();
     }
 
     _resetSingleGesture();
@@ -2507,6 +2528,12 @@ class TimelineWidgetState extends State<TimelineWidget>
       setState(() {});
     }
   }
+
+  bool get _hasFocusedTimelineItem =>
+      widget.selectedOverlayId != null ||
+      widget.selectedSegmentId != null ||
+      widget.selectedMusicId != null ||
+      widget.selectedTransitionAfterIndex != null;
 
   void _clearTrimLimitGlow() {
     if (_trimLimitGlow == 0) return;
