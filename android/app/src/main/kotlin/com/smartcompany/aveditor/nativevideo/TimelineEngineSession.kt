@@ -31,6 +31,7 @@ internal class TimelineEngineSession(
   private var compositor: EngineCompositor? = null
   private var outputSurface: Surface? = null
   private var audioPlayer: MediaPlayer? = null
+  private var audioVolume = 1f
   private val released = AtomicBoolean(false)
   private var lastDrawnMs = -1L
 
@@ -116,12 +117,20 @@ internal class TimelineEngineSession(
       audioPlayer?.release()
       audioPlayer = MediaPlayer().apply {
         setDataSource(plan.sourcePath)
-        setVolume(1f, 1f)
+        setVolume(audioVolume, audioVolume)
         prepare()
       }
     } catch (e: Exception) {
       Log.e("NativeVideoEngine", "audio prepare failed", e)
       audioPlayer = null
+    }
+  }
+
+  override fun setVolume(volume: Float) {
+    audioVolume = volume.coerceIn(0f, 1f)
+    try {
+      audioPlayer?.setVolume(audioVolume, audioVolume)
+    } catch (_: Exception) {
     }
   }
 

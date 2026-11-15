@@ -1,5 +1,4 @@
-import 'dart:math' as math;
-
+import 'package:aveditor/models/audio_envelope.dart';
 import 'package:uuid/uuid.dart';
 
 /// One music clip on the timeline (CapCut-style audio track block).
@@ -107,7 +106,7 @@ class ProjectMusic {
   }
 
   /// Playback volume at [localOffset] into the clip (0 → clipDuration).
-  /// Fade ramps use a half-cosine curve so the envelope reads as a round cover.
+  /// Fade ramps use cubic ease-out (same as [AudioEnvelope.fadeGain]).
   double volumeAt(Duration localOffset) {
     final base = volume.clamp(0.0, 1.0);
     final t = localOffset.inMilliseconds.toDouble();
@@ -119,19 +118,13 @@ class ProjectMusic {
 
     var gain = 1.0;
     if (fi > 0 && t < fi) {
-      gain = _roundFadeGain(t / fi);
+      gain = AudioEnvelope.fadeGain(t / fi);
     }
     if (fo > 0 && t > dur - fo) {
-      final outGain = _roundFadeGain((dur - t) / fo);
+      final outGain = AudioEnvelope.fadeGain((dur - t) / fo);
       gain = gain < outGain ? gain : outGain;
     }
     return base * gain;
-  }
-
-  /// Smooth 0→1 ease (half-cosine) for rounded fade covers.
-  static double _roundFadeGain(double linear01) {
-    final t = linear01.clamp(0.0, 1.0);
-    return 0.5 - 0.5 * math.cos(math.pi * t);
   }
 
   Map<String, dynamic> toJson() => {

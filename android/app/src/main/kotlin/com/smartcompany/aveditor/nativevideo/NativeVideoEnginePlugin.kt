@@ -177,6 +177,13 @@ class NativeVideoEnginePlugin :
         timeline?.pause()
         result.success(null)
       }
+      "setVolume" -> {
+        val volume = ((call.arguments as? Map<*, *>)?.get("volume") as? Number)
+          ?.toFloat()
+          ?: 1f
+        timeline?.setVolume(volume.coerceIn(0f, 1f))
+        result.success(null)
+      }
       "seek" -> {
         val ms = ((call.arguments as? Map<*, *>)?.get("positionMs") as? Number)?.toLong() ?: 0L
         timeline?.seekToMs(ms)

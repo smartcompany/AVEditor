@@ -66,7 +66,7 @@ void main() {
     expect(music.effectiveFadeIn, greaterThan(const Duration(seconds: 8)));
   });
 
-  test('volume envelope uses a rounded fade curve', () {
+  test('volume envelope uses cubic ease-out fades', () {
     final music = ProjectMusic(
       title: 'Curve',
       fileName: 'music.mp3',
@@ -77,11 +77,11 @@ void main() {
     );
 
     final midIn = music.volumeAt(const Duration(seconds: 1));
-    // Half-cosine starts gentler than linear, then steepens — round cover.
+    // Cubic ease-out rises faster than linear early, then softens.
     final quarter = music.volumeAt(const Duration(milliseconds: 500));
-    expect(quarter, lessThan(0.25));
-    expect(quarter, greaterThan(0.1));
-    expect(midIn, closeTo(0.5, 0.02));
+    expect(quarter, greaterThan(0.5));
+    expect(quarter, lessThan(0.7));
+    expect(midIn, closeTo(0.875, 0.02));
     expect(music.volumeAt(Duration.zero), closeTo(0, 0.001));
     expect(music.volumeAt(const Duration(seconds: 2)), closeTo(1, 0.02));
   });

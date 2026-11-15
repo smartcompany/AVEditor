@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 /// Shared fade/volume math for music clips and source-video audio.
 class AudioEnvelope {
   const AudioEnvelope({
@@ -55,7 +53,7 @@ class AudioEnvelope {
     return Duration(milliseconds: maxMs);
   }
 
-  /// Gain at [localOffset] within a clip of [clipDuration] (half-cosine fades).
+  /// Gain at [localOffset] within a clip of [clipDuration] (ease-out fades).
   double volumeAt(Duration localOffset, Duration clipDuration) {
     final base = volume.clamp(0.0, 1.0);
     final t = localOffset.inMilliseconds.toDouble();
@@ -67,19 +65,27 @@ class AudioEnvelope {
 
     var gain = 1.0;
     if (fi > 0 && t < fi) {
-      gain = roundFadeGain(t / fi);
+      gain = fadeGain(t / fi);
     }
     if (fo > 0 && t > dur - fo) {
-      final outGain = roundFadeGain((dur - t) / fo);
+      final outGain = fadeGain((dur - t) / fo);
       gain = gain < outGain ? gain : outGain;
     }
     return base * gain;
   }
 
-  static double roundFadeGain(double linear01) {
+  /// Cubic ease-out 0→1: rises quickly, then softens into full level.
+  ///
+  /// Same curve on fade-out via remaining time, so level falls quickly then
+  /// eases into silence — closer to CapCut-style volume covers than cosine.
+  static double fadeGain(double linear01) {
     final t = linear01.clamp(0.0, 1.0);
-    return 0.5 - 0.5 * math.cos(math.pi * t);
+    final u = 1.0 - t;
+    return 1.0 - u * u * u;
   }
+
+  @Deprecated('Use fadeGain')
+  static double roundFadeGain(double linear01) => fadeGain(linear01);
 
   /// Volume / fade only — native export applies these on-device.
   AudioEnvelope copyWith({

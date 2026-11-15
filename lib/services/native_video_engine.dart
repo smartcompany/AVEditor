@@ -255,6 +255,18 @@ class NativeVideoEngine {
     await _channel.invokeMethod<void>('pause');
   }
 
+  /// Timeline preview master volume (0..1). Source-clip envelope is applied
+  /// in Flutter and pushed here while the native player owns audible audio.
+  Future<void> setVolume(double volume) async {
+    if (!_active) return;
+    final v = volume.clamp(0.0, 1.0);
+    try {
+      await _channel.invokeMethod<void>('setVolume', {'volume': v});
+    } catch (e) {
+      debugPrint('NativeVideoEngine.setVolume failed: $e');
+    }
+  }
+
   Future<void> seek(Duration position, {bool resume = false}) async {
     if (!_active) return;
     final ms = _clampPositionMs(position.inMilliseconds);

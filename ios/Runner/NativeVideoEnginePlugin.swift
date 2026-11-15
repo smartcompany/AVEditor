@@ -126,6 +126,10 @@ final class NativeVideoEnginePlugin: NSObject, FlutterPlugin {
     case "pause":
       session?.pause()
       result(nil)
+    case "setVolume":
+      let volume = (call.arguments as? [String: Any])?["volume"] as? Double ?? 1
+      session?.setVolume(Float(max(0, min(1, volume))))
+      result(nil)
     case "seek":
       let ms = (call.arguments as? [String: Any])?["positionMs"] as? Int ?? 0
       guard let session else {
@@ -475,6 +479,10 @@ final class NativeVideoEngineSession: NSObject {
   func pause() {
     player.pause()
     onEvent(["type": "playing", "playing": false])
+  }
+
+  func setVolume(_ volume: Float) {
+    player.volume = max(0, min(1, volume))
   }
 
   func seek(toMs ms: Int, completion: @escaping (Bool) -> Void) {

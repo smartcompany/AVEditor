@@ -31,7 +31,8 @@ const _videoAudioHeight = 20.0;
 const _videoTrackHeight = _videoFilmstripHeight + _videoAudioHeight;
 
 /// Background-music lane under the filmstrip (waveform + volume envelope).
-const _musicTrackHeight = 30.0;
+/// Match the main video+source-audio track height.
+const _musicTrackHeight = _videoTrackHeight;
 const _musicTrackGap = 4.0;
 const _musicLaneStride = _musicTrackHeight + _musicTrackGap;
 
@@ -53,15 +54,16 @@ const _cutMarkerHeight = 30.0;
 const _cutMarkerRadius = 6.0;
 const _cutMarkerHitSlop = 8.0;
 
-/// Fade knobs match trim-handle width; touch radius equals the painted knob.
-const _audioFadeKnobDiameter = _overlayHandleWidth;
+/// Fade knobs — painted size; hit radius matches the painted knob.
+/// Slightly larger than trim-handle width so the circle is easier to grab.
+const _audioFadeKnobDiameter = 24.0;
 const _audioFadeKnobRadius = _audioFadeKnobDiameter / 2;
 
-/// Hit-test radius for fade knobs (= knob radius so touch matches the button).
+/// Hit-test radius for fade knobs — match the painted knob exactly.
 const _musicFadeHitSlop = _audioFadeKnobRadius;
 
-/// Half-height of the volume strip (= knob radius → strip height = knob diameter).
-const _musicVolumeHitSlop = _audioFadeKnobRadius;
+/// Half-height of the volume *line* hit strip (not the whole audio band).
+const _musicVolumeHitSlop = 5.0;
 
 /// Visible gap between split clip blocks on the timeline.
 const _segmentGap = 2.0;
@@ -158,7 +160,8 @@ double audioFadeHandleInset(double width) {
 
 /// Text overlays share lanes when they do not overlap in time; overlapping
 /// clips are pushed to a new lane below (CapCut-style).
-const _laneHeight = 30.0;
+/// Match music / main-track height so all clip rows feel the same size.
+const _laneHeight = _musicTrackHeight;
 const _laneGap = 4.0;
 const _laneStride = _laneHeight + _laneGap;
 
@@ -169,7 +172,6 @@ const _lanesScrollBottomPad = _laneStride;
 const _maxVisibleLanes = 3;
 
 /// Fixed timeline strip height at editor load / entry (not dock-expanded).
-/// Video track (70) + 3 text-lane slots (90) = 160.
 const kTimelineBodyHeight = _videoTrackHeight + _maxVisibleLanes * _laneStride;
 
 /// Travel before a drag commits to scrolling lanes or panning time.
@@ -343,9 +345,13 @@ class TimelineWidgetState extends State<TimelineWidget>
   Duration? _musicAnchorStart;
   Duration? _musicAnchorSpan;
   double? _musicAnchorVolume;
+  Duration? _musicAnchorFadeIn;
+  Duration? _musicAnchorFadeOut;
   ProjectMusic? _dragMusic;
   ClipSegment? _dragSegment;
   double? _videoAudioAnchorVolume;
+  Duration? _videoAudioAnchorFadeIn;
+  Duration? _videoAudioAnchorFadeOut;
   Duration? _segmentAnchorStart;
   Duration? _segmentAnchorEnd;
   int? _tapTransitionAfterIndex;
@@ -1086,6 +1092,20 @@ class TimelineWidgetState extends State<TimelineWidget>
     if (seq == null) return null;
     final startX = _viewportXForSequence(seq.start);
     final endX = _viewportXForSequence(seq.end);
+    final width = endX - startX;
+    final point = Offset(x, y);
+
+    // Fade knobs can protrude slightly past the lane (volume at 0/1). Still
+    // claim them before lane-bounds rejection so they never become musicMove.
+    if (music.id == widget.selectedMusicId && width >= _minAudioFadeBarWidth) {
+      final fade = _musicFadeDragTargetAt(
+        music,
+        point: point,
+        startX: startX,
+        endX: endX,
+      );
+      if (fade != null) return fade;
+    }
 
     // Outside end-caps may sit over a neighbor in X — still only this lane in Y.
     final onHandle =
@@ -1101,6 +1121,26 @@ class TimelineWidgetState extends State<TimelineWidget>
     if (x < startX || x > endX) return null;
 
     return _musicDragTargetFor(music, x: x, y: y, startX: startX, endX: endX);
+  }
+
+  /// Exact painted-knob hit for music fade. Null when the point misses both.
+  TimelineDragTarget? _musicFadeDragTargetAt(
+    ProjectMusic music, {
+    required Offset point,
+    required double startX,
+    required double endX,
+  }) {
+    final fadeInPt = _fadeInHandle(music, startX, endX);
+    final fadeOutPt = _fadeOutHandle(music, startX, endX);
+    final dIn = (point - fadeInPt).distance;
+    final dOut = (point - fadeOutPt).distance;
+    if (dIn <= _musicFadeHitSlop && dIn <= dOut) {
+      return TimelineDragTarget.musicFadeIn;
+    }
+    if (dOut <= _musicFadeHitSlop) {
+      return TimelineDragTarget.musicFadeOut;
+    }
+    return null;
   }
 
   bool _isMusicBand(Offset local) {
@@ -1257,7 +1297,8 @@ class TimelineWidgetState extends State<TimelineWidget>
   double _videoVolumeLineY(ClipSegment segment) {
     final top = _videoAudioBandTop();
     final bottom = _videoAudioBandBottom();
-    const pad = 4.0;
+    // Keep in sync with [_TimelinePainter._segmentEnvelopePath] / fade handles.
+    const pad = 3.0;
     final usable = (bottom - top - pad * 2).clamp(1.0, double.infinity);
     return bottom - pad - segment.volume.clamp(0.0, 1.0) * usable;
   }
@@ -1297,8 +1338,10 @@ class TimelineWidgetState extends State<TimelineWidget>
 
     final fadeInPt = _videoFadeInHandle(segment, startX, endX);
     final fadeOutPt = _videoFadeOutHandle(segment, startX, endX);
-    final dIn = (Offset(x, y) - fadeInPt).distance;
-    final dOut = (Offset(x, y) - fadeOutPt).distance;
+    final point = Offset(x, y);
+    final dIn = (point - fadeInPt).distance;
+    final dOut = (point - fadeOutPt).distance;
+    // Strict circle hit — only the painted knob, no expanded slop.
     if (dIn <= _musicFadeHitSlop && dIn <= dOut) {
       return TimelineDragTarget.videoAudioFadeIn;
     }
@@ -1313,11 +1356,11 @@ class TimelineWidgetState extends State<TimelineWidget>
     if (inFlat && (y - volumeY).abs() <= _musicVolumeHitSlop) {
       return TimelineDragTarget.videoAudioVolume;
     }
-    // Selected clip: the whole audio bar is a control surface — never pan.
+    // Rest of the selected audio band: keep focus, do not steal volume/fade.
     final top = _videoAudioBandTop();
     final bottom = _videoAudioBandBottom();
     if (y >= top && y <= bottom && x >= startX && x <= endX) {
-      return TimelineDragTarget.videoAudioVolume;
+      return TimelineDragTarget.selectedItemBody;
     }
     return null;
   }
@@ -1386,6 +1429,28 @@ class TimelineWidgetState extends State<TimelineWidget>
     final laneTop = _musicLaneTop(music.lane);
     final laneBottom = _musicLaneBottom(music.lane);
     final point = Offset(x, y);
+
+    // Priority: fade circle > volume line > trim > clip move.
+    if (selected && width >= _minAudioFadeBarWidth) {
+      final fade = _musicFadeDragTargetAt(
+        music,
+        point: point,
+        startX: startX,
+        endX: endX,
+      );
+      if (fade != null) return fade;
+
+      final fadeInPt = _fadeInHandle(music, startX, endX);
+      final fadeOutPt = _fadeOutHandle(music, startX, endX);
+      final volumeY = _volumeLineY(music);
+      final volLeft = fadeInPt.dx + _audioFadeKnobRadius;
+      final volRight = fadeOutPt.dx - _audioFadeKnobRadius;
+      final inFlatZone = volRight > volLeft && x >= volLeft && x <= volRight;
+      if (inFlatZone && (y - volumeY).abs() <= _musicVolumeHitSlop) {
+        return TimelineDragTarget.musicVolume;
+      }
+    }
+
     final startHandle = overlayEdgeHandleRect(
       startX,
       top: laneTop,
@@ -1401,8 +1466,6 @@ class TimelineWidgetState extends State<TimelineWidget>
     final onStart = startHandle.contains(point);
     final onEnd = endHandle.contains(point);
 
-    // Trim caps win over fade/volume — otherwise the inward fade knob steals
-    // the left/right edge and start-extend feels randomly broken.
     if (onStart && (!onEnd || (x - startX).abs() <= (x - endX).abs())) {
       return TimelineDragTarget.musicStart;
     }
@@ -1410,8 +1473,8 @@ class TimelineWidgetState extends State<TimelineWidget>
       return TimelineDragTarget.musicEnd;
     }
 
-    // Near the painted edge inside the body, still prefer trim (finger often
-    // lands just inside the green clip rather than on the outside cap).
+    // Near the painted edge inside the body, prefer trim (finger often lands
+    // just inside the clip rather than on the outside cap).
     const edgeSlop = 14.0;
     if (x >= startX &&
         x <= startX + edgeSlop &&
@@ -1423,28 +1486,6 @@ class TimelineWidgetState extends State<TimelineWidget>
       return TimelineDragTarget.musicEnd;
     }
 
-    if (selected && width >= _minAudioFadeBarWidth) {
-      final fadeInPt = _fadeInHandle(music, startX, endX);
-      final fadeOutPt = _fadeOutHandle(music, startX, endX);
-      final dIn = (Offset(x, y) - fadeInPt).distance;
-      final dOut = (Offset(x, y) - fadeOutPt).distance;
-      if (dIn <= _musicFadeHitSlop && dIn <= dOut) {
-        return TimelineDragTarget.musicFadeIn;
-      }
-      if (dOut <= _musicFadeHitSlop) {
-        return TimelineDragTarget.musicFadeOut;
-      }
-
-      final volumeY = _volumeLineY(music);
-      final volLeft = fadeInPt.dx + _audioFadeKnobRadius;
-      final volRight = fadeOutPt.dx - _audioFadeKnobRadius;
-      final inFlatZone = volRight > volLeft && x >= volLeft && x <= volRight;
-      if (inFlatZone && (y - volumeY).abs() <= _musicVolumeHitSlop) {
-        return TimelineDragTarget.musicVolume;
-      }
-    }
-
-    if (x >= startX && x <= endX) return TimelineDragTarget.musicMove;
     return TimelineDragTarget.musicMove;
   }
 
@@ -1463,6 +1504,10 @@ class TimelineWidgetState extends State<TimelineWidget>
     _musicAnchorStart = null;
     _musicAnchorSpan = null;
     _musicAnchorVolume = null;
+    _musicAnchorFadeIn = null;
+    _musicAnchorFadeOut = null;
+    _videoAudioAnchorFadeIn = null;
+    _videoAudioAnchorFadeOut = null;
 
     // Focused clip wins first: its outside end-caps sit over the next clip's
     // body, so a generic lane pick would steal the grab and change selection.
@@ -1478,6 +1523,39 @@ class TimelineWidgetState extends State<TimelineWidget>
       if (target != null) return target;
     }
 
+    // Fade knobs can sit a few px outside the music band (volume 0/1). Claim
+    // them before band / video hits so they never fall through to musicMove.
+    final focusedMusicEarly = _musicById(widget.selectedMusicId);
+    if (focusedMusicEarly != null) {
+      final seq = musicSequenceSpan(focusedMusicEarly, widget.segments);
+      if (seq != null) {
+        final startX = _viewportXForSequence(seq.start);
+        final endX = _viewportXForSequence(seq.end);
+        final width = endX - startX;
+        if (width >= _minAudioFadeBarWidth) {
+          final fade = _musicFadeDragTargetAt(
+            focusedMusicEarly,
+            point: Offset(x, local.dy),
+            startX: startX,
+            endX: endX,
+          );
+          if (fade != null) {
+            _dragMusic = focusedMusicEarly;
+            _musicAnchorStart = focusedMusicEarly.timelineStart;
+            _musicAnchorSpan = focusedMusicEarly.clipDuration;
+            _musicAnchorVolume = focusedMusicEarly.volume;
+            _musicAnchorFadeIn = focusedMusicEarly.fadeIn;
+            _musicAnchorFadeOut = focusedMusicEarly.fadeOut;
+            if (!_selectionAnnounced) {
+              _selectionAnnounced = true;
+              widget.onMusicSelected?.call(focusedMusicEarly);
+            }
+            return fade;
+          }
+        }
+      }
+    }
+
     if (_isMusicBand(local)) {
       final focusedMusic = _musicById(widget.selectedMusicId);
       if (focusedMusic != null) {
@@ -1487,6 +1565,12 @@ class TimelineWidgetState extends State<TimelineWidget>
           _musicAnchorStart = focusedMusic.timelineStart;
           _musicAnchorSpan = focusedMusic.clipDuration;
           _musicAnchorVolume = focusedMusic.volume;
+          _musicAnchorFadeIn = focusedMusic.fadeIn;
+          _musicAnchorFadeOut = focusedMusic.fadeOut;
+          if (!_selectionAnnounced) {
+            _selectionAnnounced = true;
+            widget.onMusicSelected?.call(focusedMusic);
+          }
           return target;
         }
       }
@@ -1506,6 +1590,8 @@ class TimelineWidgetState extends State<TimelineWidget>
     if (local.dy < _videoTrackHeight) {
       _dragSegment = null;
       _videoAudioAnchorVolume = null;
+      _videoAudioAnchorFadeIn = null;
+      _videoAudioAnchorFadeOut = null;
       _tapTransitionAfterIndex = null;
       _dragTransitionAfterIndex = null;
       _transitionAnchorDuration = null;
@@ -1553,6 +1639,8 @@ class TimelineWidgetState extends State<TimelineWidget>
         if (segment != null) {
           _dragSegment = segment;
           _videoAudioAnchorVolume = segment.volume;
+          _videoAudioAnchorFadeIn = segment.fadeIn;
+          _videoAudioAnchorFadeOut = segment.fadeOut;
           _tapSegment = segment;
           final bounds = _segmentAudioBounds(segment);
           if (bounds != null) {
@@ -1563,7 +1651,14 @@ class TimelineWidgetState extends State<TimelineWidget>
               startX: bounds.left,
               endX: bounds.right,
             );
-            if (audioTarget != null) return audioTarget;
+            if (audioTarget != null) {
+              // Select immediately so the envelope lights up while dragging.
+              if (!_selectionAnnounced) {
+                _selectionAnnounced = true;
+                widget.onSegmentSelected?.call(segment);
+              }
+              return audioTarget;
+            }
           }
           // Selected audio strip with no knob hit — still block timeline pan.
           if (segment.id == widget.selectedSegmentId) {
@@ -1581,15 +1676,6 @@ class TimelineWidgetState extends State<TimelineWidget>
     }
 
     return TimelineDragTarget.panTimeline;
-  }
-
-  Duration? _sequenceOffsetOfSegment(ClipSegment target) {
-    var offset = Duration.zero;
-    for (final segment in widget.segments) {
-      if (segment.id == target.id) return offset;
-      offset += segment.duration;
-    }
-    return null;
   }
 
   bool _freezesCommittedDuration(TimelineDragTarget target) {
@@ -1627,7 +1713,82 @@ class TimelineWidgetState extends State<TimelineWidget>
       _panAnchorSequenceTime = _sequenceTimeAtViewportX(_viewportWidth / 2);
     }
     _freezeCommittedDurationIfNeeded();
+    // Repaint so press highlights show immediately.
+    if (_hasPressHighlight) setState(() {});
   }
+
+  bool get _hasPressHighlight =>
+      _pressedVolumeSegmentId != null ||
+      _pressedVolumeMusicId != null ||
+      _pressedSegmentHandleAtStart != null ||
+      _pressedMusicHandleAtStart != null ||
+      _pressedOverlayHandleAtStart != null ||
+      _pressedMusicFadeAtIn != null ||
+      _pressedSegmentFadeAtIn != null ||
+      _pressedMusicMove ||
+      _pressedOverlayMove ||
+      _pressedSegmentMove;
+
+  String? get _pressedVolumeSegmentId {
+    if (_dragTarget == TimelineDragTarget.videoAudioVolume ||
+        _dragTarget == TimelineDragTarget.videoAudioFadeIn ||
+        _dragTarget == TimelineDragTarget.videoAudioFadeOut) {
+      return _dragSegment?.id ?? _tapSegment?.id;
+    }
+    return null;
+  }
+
+  String? get _pressedVolumeMusicId {
+    if (_dragTarget == TimelineDragTarget.musicVolume ||
+        _dragTarget == TimelineDragTarget.musicFadeIn ||
+        _dragTarget == TimelineDragTarget.musicFadeOut) {
+      return _dragMusic?.id;
+    }
+    return null;
+  }
+
+  /// null = idle; true = start cap; false = end cap.
+  bool? get _pressedSegmentHandleAtStart {
+    if (_dragTarget == TimelineDragTarget.segmentStart) return true;
+    if (_dragTarget == TimelineDragTarget.segmentEnd) return false;
+    return null;
+  }
+
+  bool? get _pressedMusicHandleAtStart {
+    if (_dragTarget == TimelineDragTarget.musicStart) return true;
+    if (_dragTarget == TimelineDragTarget.musicEnd) return false;
+    return null;
+  }
+
+  bool? get _pressedOverlayHandleAtStart {
+    if (_dragTarget == TimelineDragTarget.overlayStart) return true;
+    if (_dragTarget == TimelineDragTarget.overlayEnd) return false;
+    return null;
+  }
+
+  /// null = idle; true = fade-in knob; false = fade-out knob.
+  bool? get _pressedMusicFadeAtIn {
+    if (_dragTarget == TimelineDragTarget.musicFadeIn) return true;
+    if (_dragTarget == TimelineDragTarget.musicFadeOut) return false;
+    return null;
+  }
+
+  bool? get _pressedSegmentFadeAtIn {
+    if (_dragTarget == TimelineDragTarget.videoAudioFadeIn) return true;
+    if (_dragTarget == TimelineDragTarget.videoAudioFadeOut) return false;
+    return null;
+  }
+
+  bool get _pressedMusicMove =>
+      _dragTarget == TimelineDragTarget.musicMove;
+
+  bool get _pressedOverlayMove =>
+      _dragTarget == TimelineDragTarget.overlayMove;
+
+  /// Video clip body press (no timeline move, but same chrome feedback).
+  bool get _pressedSegmentMove =>
+      _dragTarget == TimelineDragTarget.selectedItemBody &&
+      (_dragSegment != null || _tapSegment != null);
 
   /// True for trim / fade / volume handles that must not become lane scroll.
   bool _locksHorizontalAxis(TimelineDragTarget target) {
@@ -2012,30 +2173,45 @@ class TimelineWidgetState extends State<TimelineWidget>
         final downLocal = _pointerDownLocal;
         final anchorVolume = _musicAnchorVolume;
         if (music == null || downLocal == null || anchorVolume == null) return;
-        final usable = (_musicTrackHeight - 8).clamp(1.0, double.infinity);
-        // Drag up → louder.
-        final next = (anchorVolume - (local.dy - downLocal.dy) / usable).clamp(
-          0.0,
-          1.0,
+        widget.onMusicChanged?.call(
+          music.copyWith(volume: _musicVolumeFromDrag(downLocal, local)),
         );
-        widget.onMusicChanged?.call(music.copyWith(volume: next));
       case TimelineDragTarget.musicFadeIn:
         final music = _liveMusic(_dragMusic);
-        if (music == null) return;
-        final t = _timeAtViewportX(x);
+        final downLocal = _pointerDownLocal;
+        final anchor = _musicAnchorFadeIn;
+        if (music == null || downLocal == null || anchor == null) return;
+        // X → fade-in; Y → volume (same as the volume line).
+        final deltaMs = ((x - downLocal.dx) * _msPerPx).round();
         final fade = clampDuration(
-          t - music.timelineStart,
+          Duration(milliseconds: anchor.inMilliseconds + deltaMs),
           Duration.zero,
           music.maxFadeIn,
         );
-        widget.onMusicChanged?.call(music.copyWith(fadeIn: fade));
+        widget.onMusicChanged?.call(
+          music.copyWith(
+            fadeIn: fade,
+            volume: _musicVolumeFromDrag(downLocal, local),
+          ),
+        );
       case TimelineDragTarget.musicFadeOut:
         final music = _liveMusic(_dragMusic);
-        if (music == null) return;
-        final t = _timeAtViewportX(x);
-        final fromEnd = music.timelineEnd - t;
-        final fade = clampDuration(fromEnd, Duration.zero, music.maxFadeOut);
-        widget.onMusicChanged?.call(music.copyWith(fadeOut: fade));
+        final downLocal = _pointerDownLocal;
+        final anchor = _musicAnchorFadeOut;
+        if (music == null || downLocal == null || anchor == null) return;
+        // Drag left (toward clip end) → longer fade-out; Y → volume.
+        final deltaMs = ((downLocal.dx - x) * _msPerPx).round();
+        final fade = clampDuration(
+          Duration(milliseconds: anchor.inMilliseconds + deltaMs),
+          Duration.zero,
+          music.maxFadeOut,
+        );
+        widget.onMusicChanged?.call(
+          music.copyWith(
+            fadeOut: fade,
+            volume: _musicVolumeFromDrag(downLocal, local),
+          ),
+        );
       case TimelineDragTarget.videoAudioVolume:
         final segment = _liveSegment(_dragSegment);
         final downLocal = _pointerDownLocal;
@@ -2043,30 +2219,45 @@ class TimelineWidgetState extends State<TimelineWidget>
         if (segment == null || downLocal == null || anchorVolume == null) {
           return;
         }
-        final usable = (_videoAudioHeight - 8).clamp(1.0, double.infinity);
-        final next = (anchorVolume - (local.dy - downLocal.dy) / usable).clamp(
-          0.0,
-          1.0,
+        widget.onSegmentChanged?.call(
+          segment.copyWith(
+            volume: _videoAudioVolumeFromDrag(downLocal, local),
+          ),
         );
-        widget.onSegmentChanged?.call(segment.copyWith(volume: next));
       case TimelineDragTarget.videoAudioFadeIn:
         final segment = _liveSegment(_dragSegment);
-        if (segment == null) return;
-        final seqStart = _sequenceOffsetOfSegment(segment);
-        if (seqStart == null) return;
-        final t = _timeAtViewportX(x);
-        final localT = t - seqStart;
-        final fade = clampDuration(localT, Duration.zero, segment.maxFadeIn);
-        widget.onSegmentChanged?.call(segment.copyWith(fadeIn: fade));
+        final downLocal = _pointerDownLocal;
+        final anchor = _videoAudioAnchorFadeIn;
+        if (segment == null || downLocal == null || anchor == null) return;
+        final deltaMs = ((x - downLocal.dx) * _msPerPx).round();
+        final fade = clampDuration(
+          Duration(milliseconds: anchor.inMilliseconds + deltaMs),
+          Duration.zero,
+          segment.maxFadeIn,
+        );
+        widget.onSegmentChanged?.call(
+          segment.copyWith(
+            fadeIn: fade,
+            volume: _videoAudioVolumeFromDrag(downLocal, local),
+          ),
+        );
       case TimelineDragTarget.videoAudioFadeOut:
         final segment = _liveSegment(_dragSegment);
-        if (segment == null) return;
-        final seqStart = _sequenceOffsetOfSegment(segment);
-        if (seqStart == null) return;
-        final t = _timeAtViewportX(x);
-        final fromEnd = (seqStart + segment.duration) - t;
-        final fade = clampDuration(fromEnd, Duration.zero, segment.maxFadeOut);
-        widget.onSegmentChanged?.call(segment.copyWith(fadeOut: fade));
+        final downLocal = _pointerDownLocal;
+        final anchor = _videoAudioAnchorFadeOut;
+        if (segment == null || downLocal == null || anchor == null) return;
+        final deltaMs = ((downLocal.dx - x) * _msPerPx).round();
+        final fade = clampDuration(
+          Duration(milliseconds: anchor.inMilliseconds + deltaMs),
+          Duration.zero,
+          segment.maxFadeOut,
+        );
+        widget.onSegmentChanged?.call(
+          segment.copyWith(
+            fadeOut: fade,
+            volume: _videoAudioVolumeFromDrag(downLocal, local),
+          ),
+        );
       case TimelineDragTarget.transitionBody:
         break;
       case TimelineDragTarget.transitionStart:
@@ -2215,6 +2406,19 @@ class TimelineWidgetState extends State<TimelineWidget>
         _dragTarget == TimelineDragTarget.transitionEnd;
   }
 
+  /// Drag up → louder. Uses the volume at pointer-down as the anchor.
+  double _musicVolumeFromDrag(Offset downLocal, Offset local) {
+    final anchor = _musicAnchorVolume ?? 0.0;
+    final usable = (_musicTrackHeight - 8).clamp(1.0, double.infinity);
+    return (anchor - (local.dy - downLocal.dy) / usable).clamp(0.0, 1.0);
+  }
+
+  double _videoAudioVolumeFromDrag(Offset downLocal, Offset local) {
+    final anchor = _videoAudioAnchorVolume ?? 0.0;
+    final usable = (_videoAudioHeight - 8).clamp(1.0, double.infinity);
+    return (anchor - (local.dy - downLocal.dy) / usable).clamp(0.0, 1.0);
+  }
+
   void _announceSelection() {
     final overlay = _dragOverlay;
     if (overlay != null && !_selectionAnnounced) {
@@ -2248,10 +2452,14 @@ class TimelineWidgetState extends State<TimelineWidget>
     final down = _pointerDownLocal;
     final hadFrozenDuration = _frozenEnvelopeDuration != null;
     final hadTrimGlow = _trimLimitGlow > 0;
+    final hadPressHighlight = _hasPressHighlight;
     final edgeSeek = _isEdgeResizeTarget ? _edgeDragSequenceTime : null;
     if (_isPinching || down == null) {
       _resetSingleGesture();
-      if ((hadFrozenDuration || hadTrimGlow) && mounted) setState(() {});
+      if ((hadFrozenDuration || hadTrimGlow || hadPressHighlight) &&
+          mounted) {
+        setState(() {});
+      }
       return;
     }
 
@@ -2281,7 +2489,10 @@ class TimelineWidgetState extends State<TimelineWidget>
       final velocityPx =
           _velocityTracker?.getVelocity().pixelsPerSecond.dx ?? 0;
       _resetSingleGesture();
-      if ((hadFrozenDuration || hadTrimGlow) && mounted) setState(() {});
+      if ((hadFrozenDuration || hadTrimGlow || hadPressHighlight) &&
+          mounted) {
+        setState(() {});
+      }
       _startPanFling(velocityPx);
       return;
     }
@@ -2291,8 +2502,10 @@ class TimelineWidgetState extends State<TimelineWidget>
     if (edgeSeek != null && !tapped) {
       _animatePlayheadTo(edgeSeek);
     }
-    // Refresh envelope / clear trim-limit glow after the drag commits.
-    if ((hadFrozenDuration || hadTrimGlow) && mounted) setState(() {});
+    // Refresh envelope / clear trim-limit glow / press highlights.
+    if ((hadFrozenDuration || hadTrimGlow || hadPressHighlight) && mounted) {
+      setState(() {});
+    }
   }
 
   void _clearTrimLimitGlow() {
@@ -2342,7 +2555,11 @@ class TimelineWidgetState extends State<TimelineWidget>
     _musicAnchorStart = null;
     _musicAnchorSpan = null;
     _musicAnchorVolume = null;
+    _musicAnchorFadeIn = null;
+    _musicAnchorFadeOut = null;
     _videoAudioAnchorVolume = null;
+    _videoAudioAnchorFadeIn = null;
+    _videoAudioAnchorFadeOut = null;
     _tapTransitionAfterIndex = null;
     _dragTransitionAfterIndex = null;
     _transitionAnchorDuration = null;
@@ -2621,6 +2838,16 @@ class TimelineWidgetState extends State<TimelineWidget>
                   selectedMusicId: widget.selectedMusicId,
                   selectedTransitionAfterIndex:
                       widget.selectedTransitionAfterIndex,
+                  pressedVolumeSegmentId: _pressedVolumeSegmentId,
+                  pressedVolumeMusicId: _pressedVolumeMusicId,
+                  pressedSegmentHandleAtStart: _pressedSegmentHandleAtStart,
+                  pressedMusicHandleAtStart: _pressedMusicHandleAtStart,
+                  pressedOverlayHandleAtStart: _pressedOverlayHandleAtStart,
+                  pressedMusicFadeAtIn: _pressedMusicFadeAtIn,
+                  pressedSegmentFadeAtIn: _pressedSegmentFadeAtIn,
+                  pressedMusicMove: _pressedMusicMove,
+                  pressedOverlayMove: _pressedOverlayMove,
+                  pressedSegmentMove: _pressedSegmentMove,
                   scrollPx: _scrollPx,
                   contentWidth: _contentWidth,
                   contentInsetX: _contentInsetX,
@@ -2704,6 +2931,16 @@ class _TimelinePainter extends CustomPainter {
     this.selectedSegmentId,
     this.selectedMusicId,
     this.selectedTransitionAfterIndex,
+    this.pressedVolumeSegmentId,
+    this.pressedVolumeMusicId,
+    this.pressedSegmentHandleAtStart,
+    this.pressedMusicHandleAtStart,
+    this.pressedOverlayHandleAtStart,
+    this.pressedMusicFadeAtIn,
+    this.pressedSegmentFadeAtIn,
+    this.pressedMusicMove = false,
+    this.pressedOverlayMove = false,
+    this.pressedSegmentMove = false,
     this.trimLimitGlow = 0,
     this.trimLimitGlowAtStart = true,
   });
@@ -2734,6 +2971,24 @@ class _TimelinePainter extends CustomPainter {
   final String? selectedSegmentId;
   final String? selectedMusicId;
   final int? selectedTransitionAfterIndex;
+
+  /// Volume envelope lit only while the volume line is pressed.
+  final String? pressedVolumeSegmentId;
+  final String? pressedVolumeMusicId;
+
+  /// Edge resize caps: null = idle, true = start, false = end.
+  final bool? pressedSegmentHandleAtStart;
+  final bool? pressedMusicHandleAtStart;
+  final bool? pressedOverlayHandleAtStart;
+
+  /// Fade knobs: null = idle, true = fade-in, false = fade-out.
+  final bool? pressedMusicFadeAtIn;
+  final bool? pressedSegmentFadeAtIn;
+
+  /// Whole-clip move / body press — lights both caps + top/bottom rails.
+  final bool pressedMusicMove;
+  final bool pressedOverlayMove;
+  final bool pressedSegmentMove;
   final double trimLimitGlow;
   final bool trimLimitGlowAtStart;
 
@@ -2831,13 +3086,15 @@ class _TimelinePainter extends CustomPainter {
     final peaks = musicWaveforms[music.fileName] ?? const <double>[];
     _paintCapCutWaveform(canvas, rect, _musicPeakSlice(music, peaks));
 
-    // Volume envelope stays interactive but stays light over CapCut bars.
+    final volumePressed = music.id == pressedVolumeMusicId;
     canvas.drawPath(
       _musicEnvelopePath(music, rect),
       Paint()
-        ..color = Colors.white.withValues(alpha: selected ? 0.85 : 0.45)
+        ..color = volumePressed
+            ? AppTheme.accent.withValues(alpha: 0.95)
+            : Colors.white.withValues(alpha: selected ? 0.72 : 0.45)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = selected ? 1.4 : 1.0
+        ..strokeWidth = volumePressed ? 2.0 : 1.0
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round,
     );
@@ -2856,14 +3113,29 @@ class _TimelinePainter extends CustomPainter {
           bottom: bottom,
         );
       }
-      _paintClipSelectionChrome(canvas, rect, strokeWidth: 2);
+      final movePressed =
+          music.id == selectedMusicId && pressedMusicMove;
+      final edge = music.id == selectedMusicId
+          ? pressedMusicHandleAtStart
+          : null;
+      final fade = music.id == selectedMusicId ? pressedMusicFadeAtIn : null;
+      _paintClipSelectionChrome(
+        canvas,
+        rect,
+        strokeWidth: 2,
+        startPressed: movePressed || edge == true,
+        endPressed: movePressed || edge == false,
+        railsPressed: movePressed,
+      );
       _paintFadeHandle(
         canvas,
         _fadeHandleOffset(music, left, right, fadeIn: true),
+        pressed: fade == true,
       );
       _paintFadeHandle(
         canvas,
         _fadeHandleOffset(music, left, right, fadeIn: false),
+        pressed: fade == false,
       );
     }
   }
@@ -2976,19 +3248,25 @@ class _TimelinePainter extends CustomPainter {
     return Offset(fadeIn ? xs.inX : xs.outX, y);
   }
 
-  void _paintFadeHandle(Canvas canvas, Offset center) {
+  void _paintFadeHandle(
+    Canvas canvas,
+    Offset center, {
+    bool pressed = false,
+  }) {
     canvas.drawCircle(
       center,
       _audioFadeKnobRadius,
-      Paint()..color = AppTheme.accentWarm,
+      Paint()..color = pressed ? AppTheme.accentCyan : AppTheme.accentWarm,
     );
     canvas.drawCircle(
       center,
       _audioFadeKnobRadius,
       Paint()
-        ..color = Colors.white
+        ..color = pressed
+            ? Colors.white
+            : Colors.white.withValues(alpha: 0.95)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.2,
+        ..strokeWidth = pressed ? 2.0 : 1.2,
     );
   }
 
@@ -3216,10 +3494,14 @@ class _TimelinePainter extends CustomPainter {
         gapBefore: i > 0,
         gapAfter: i < segments.length - 1,
       );
+      final edge = pressedSegmentHandleAtStart;
       _paintClipSelectionChrome(
         canvas,
         Rect.fromLTRB(bounds.left, filmTop, bounds.right, audioBottom),
         strokeWidth: 2,
+        startPressed: pressedSegmentMove || edge == true,
+        endPressed: pressedSegmentMove || edge == false,
+        railsPressed: pressedSegmentMove,
       );
       return;
     }
@@ -3374,25 +3656,32 @@ class _TimelinePainter extends CustomPainter {
 
     _paintSegmentWaveform(canvas, rect, segment);
 
+    final volumePressed = segment.id == pressedVolumeSegmentId;
     canvas.drawPath(
       _segmentEnvelopePath(segment, rect),
       Paint()
-        ..color = Colors.white.withValues(alpha: selected ? 0.85 : 0.45)
+        ..color = volumePressed
+            ? AppTheme.accent.withValues(alpha: 0.95)
+            : Colors.white.withValues(alpha: selected ? 0.72 : 0.45)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = selected ? 1.3 : 1.0
+        ..strokeWidth = volumePressed ? 2.0 : 1.0
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round,
     );
     canvas.restore();
 
     if (selected) {
+      final fade =
+          segment.id == selectedSegmentId ? pressedSegmentFadeAtIn : null;
       _paintFadeHandle(
         canvas,
         _segmentFadeHandleOffset(segment, rect.left, rect.right, fadeIn: true),
+        pressed: fade == true,
       );
       _paintFadeHandle(
         canvas,
         _segmentFadeHandleOffset(segment, rect.left, rect.right, fadeIn: false),
+        pressed: fade == false,
       );
     }
   }
@@ -3519,7 +3808,19 @@ class _TimelinePainter extends CustomPainter {
     _paintLaneLabel(canvas, rect, overlay.text);
 
     if (selected) {
-      _paintClipSelectionChrome(canvas, rect, strokeWidth: 2);
+      final movePressed =
+          overlay.id == selectedOverlayId && pressedOverlayMove;
+      final edge = overlay.id == selectedOverlayId
+          ? pressedOverlayHandleAtStart
+          : null;
+      _paintClipSelectionChrome(
+        canvas,
+        rect,
+        strokeWidth: 2,
+        startPressed: movePressed || edge == true,
+        endPressed: movePressed || edge == false,
+        railsPressed: movePressed,
+      );
     }
   }
 
@@ -3529,9 +3830,13 @@ class _TimelinePainter extends CustomPainter {
     Canvas canvas,
     Rect content, {
     required double strokeWidth,
+    bool startPressed = false,
+    bool endPressed = false,
+    bool railsPressed = false,
   }) {
     final sw = strokeWidth.clamp(1.0, content.height / 2);
-    final paint = Paint()..color = Colors.white;
+    final railColor = railsPressed ? AppTheme.accentCyan : Colors.white;
+    final paint = Paint()..color = railColor;
     canvas.drawRect(
       Rect.fromLTRB(content.left, content.top, content.right, content.top + sw),
       paint,
@@ -3558,16 +3863,18 @@ class _TimelinePainter extends CustomPainter {
       content.left,
       top: content.top,
       bottom: content.bottom,
-      color: Colors.white,
+      color: startPressed ? AppTheme.accentCyan : Colors.white,
       atStart: true,
+      pressed: startPressed,
     );
     _drawHandle(
       canvas,
       content.right,
       top: content.top,
       bottom: content.bottom,
-      color: Colors.white,
+      color: endPressed ? AppTheme.accentCyan : Colors.white,
       atStart: false,
+      pressed: endPressed,
     );
   }
 
@@ -3733,6 +4040,7 @@ class _TimelinePainter extends CustomPainter {
     required double bottom,
     required Color color,
     required bool atStart,
+    bool pressed = false,
   }) {
     final rect = overlayEdgeHandleRect(
       x,
@@ -3744,18 +4052,18 @@ class _TimelinePainter extends CustomPainter {
       rect,
       Paint()..color = color,
     );
-    // CapCut-style grip cue down the middle of white trim caps.
-    if (color == Colors.white) {
-      final midX = rect.center.dx;
-      canvas.drawLine(
-        Offset(midX, rect.top + 5),
-        Offset(midX, rect.bottom - 5),
-        Paint()
-          ..color = const Color(0x66000000)
-          ..strokeWidth = 1.5
-          ..strokeCap = StrokeCap.round,
-      );
-    }
+    // CapCut-style grip cue down the middle of trim caps.
+    final midX = rect.center.dx;
+    canvas.drawLine(
+      Offset(midX, rect.top + 5),
+      Offset(midX, rect.bottom - 5),
+      Paint()
+        ..color = pressed
+            ? Colors.white.withValues(alpha: 0.85)
+            : const Color(0x66000000)
+        ..strokeWidth = 1.5
+        ..strokeCap = StrokeCap.round,
+    );
   }
 
   /// Visualizes the exact start/end hit rect (outside the clip) in debug.
@@ -3802,6 +4110,18 @@ class _TimelinePainter extends CustomPainter {
         oldDelegate.selectedMusicId != selectedMusicId ||
         oldDelegate.selectedTransitionAfterIndex !=
             selectedTransitionAfterIndex ||
+        oldDelegate.pressedVolumeSegmentId != pressedVolumeSegmentId ||
+        oldDelegate.pressedVolumeMusicId != pressedVolumeMusicId ||
+        oldDelegate.pressedSegmentHandleAtStart !=
+            pressedSegmentHandleAtStart ||
+        oldDelegate.pressedMusicHandleAtStart != pressedMusicHandleAtStart ||
+        oldDelegate.pressedOverlayHandleAtStart !=
+            pressedOverlayHandleAtStart ||
+        oldDelegate.pressedMusicFadeAtIn != pressedMusicFadeAtIn ||
+        oldDelegate.pressedSegmentFadeAtIn != pressedSegmentFadeAtIn ||
+        oldDelegate.pressedMusicMove != pressedMusicMove ||
+        oldDelegate.pressedOverlayMove != pressedOverlayMove ||
+        oldDelegate.pressedSegmentMove != pressedSegmentMove ||
         oldDelegate.musicContentHeight != musicContentHeight ||
         oldDelegate.filmstripFrames != filmstripFrames ||
         oldDelegate.musicTracks != musicTracks ||

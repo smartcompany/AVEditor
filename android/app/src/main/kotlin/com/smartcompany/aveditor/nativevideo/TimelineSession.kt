@@ -13,5 +13,6 @@ internal interface TimelineSession {
   fun pause()
   fun seekToMs(ms: Long)
   fun prerollToMs(ms: Long, done: (Boolean) -> Unit)
+  fun setVolume(volume: Float)
   fun release()
 }

@@ -1405,6 +1405,9 @@ class _EditorScreenState extends State<EditorScreen>
           );
         }
       }
+      // Keep source-audio volume/fade envelope in sync with the native clock
+      // (Flutter VideoPlayer is muted while the timeline engine owns audio).
+      _syncVideoAudioVolume();
       unawaited(_syncMusicOnTick());
       setState(() {});
     });
@@ -2118,17 +2121,48 @@ class _EditorScreenState extends State<EditorScreen>
   void _syncVideoAudioVolume() {
     final controller = _controller;
     final project = _project;
-    if (controller == null || project == null) return;
+    if (project == null) return;
+
+    double volumeForPlayhead() {
+      if (_spatialPreviewActive) return 0;
+      final playhead = _playhead;
+      final fade = previewFadeAt(project.segments, playhead);
+      if (fade != null) {
+        final outLocal = playhead - fade.outgoing.start;
+        final inLocal = fade.auxSourceTime - fade.incoming.start;
+        final outVol = fade.outgoing.volumeAt(
+          outLocal < Duration.zero ? Duration.zero : outLocal,
+        );
+        final inVol = fade.incoming.volumeAt(
+          inLocal < Duration.zero ? Duration.zero : inLocal,
+        );
+        return outVol * (1.0 - fade.t) + inVol * fade.t;
+      }
+      for (final candidate in project.segments) {
+        if (playhead >= candidate.start && playhead < candidate.end) {
+          return candidate.volumeAt(playhead - candidate.start);
+        }
+      }
+      return 0;
+    }
+
+    final volume = volumeForPlayhead();
+
+    // Native timeline owns audible source audio (Flutter players stay muted).
+    if (NativeVideoEngine.instance.isTimelineActive) {
+      controller?.setVolume(0);
+      _auxController?.setVolume(0);
+      unawaited(NativeVideoEngine.instance.setVolume(volume));
+      return;
+    }
+
+    if (controller == null) return;
     if (_spatialPreviewActive) {
       controller.setVolume(0);
       _auxController?.setVolume(0);
       return;
     }
-    if (!_hasSourceAudio) {
-      controller.setVolume(0);
-      _auxController?.setVolume(0);
-      return;
-    }
+
     final playhead = _playhead;
     final fade = previewFadeAt(project.segments, playhead);
     if (fade != null) {
@@ -2145,20 +2179,7 @@ class _EditorScreenState extends State<EditorScreen>
       return;
     }
     _auxController?.setVolume(0);
-
-    ClipSegment? segment;
-    for (final candidate in project.segments) {
-      if (playhead >= candidate.start && playhead < candidate.end) {
-        segment = candidate;
-        break;
-      }
-    }
-    if (segment == null) {
-      controller.setVolume(0);
-      return;
-    }
-    final local = playhead - segment.start;
-    controller.setVolume(segment.volumeAt(local));
+    controller.setVolume(volume);
   }
 
   void _onVideoTick() {
