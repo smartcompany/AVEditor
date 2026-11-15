@@ -223,6 +223,8 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
     if (path == null) return;
     await _player?.pause();
     if (!await _saveToAlbumIfNeeded() || !mounted) return;
+    // YouTube: in-app API upload (no iOS share sheet — YouTube has no
+    // public scheme to open Shorts create with a local file attached).
     if (target.kind == ShareTargetKind.youtube) {
       if (!mounted) return;
       await Navigator.of(context).push(

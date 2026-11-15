@@ -90,6 +90,7 @@
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>instagram</string>
+		<string>youtube</string>
 		<string>fb</string>
 		<string>snssdk1233</string>
 		<string>snssdk1180</string>

@@ -119,6 +119,14 @@ enum MediaShareChannel {
           return
         }
         result(openInstagram(localIdentifier: id))
+      case "shareToYouTube":
+        guard let path = args?["path"] as? String else {
+          result(FlutterError(code: "bad_args", message: "path", details: nil))
+          return
+        }
+        // YouTube has no public Shorts-upload URL scheme. Open In / share
+        // sheet with the file is the supported hand-off (YouTube Share Extension).
+        result(shareToYouTube(path: path))
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -296,6 +304,30 @@ enum MediaShareChannel {
     top.present(sheet, animated: true)
     return true
   }
+
+  /// Prefer "Open In" so YouTube can appear as a direct target with the
+  /// video attached; fall back to the system share sheet (YouTube extension).
+  private static func shareToYouTube(path: String) -> Bool {
+    let url = URL(fileURLWithPath: path)
+    guard FileManager.default.fileExists(atPath: path) else { return false }
+    guard let top = topViewController() else {
+      return presentShareSheet(items: [url])
+    }
+    let interaction = UIDocumentInteractionController(url: url)
+    interaction.uti = "public.movie"
+    let rect = CGRect(
+      x: top.view.bounds.midX, y: top.view.bounds.maxY - 1, width: 1, height: 1
+    )
+    // Retain for the presentation lifetime.
+    youtubeDocumentInteraction = interaction
+    if interaction.presentOpenInMenu(from: rect, in: top.view, animated: true) {
+      return true
+    }
+    youtubeDocumentInteraction = nil
+    return presentShareSheet(items: [url])
+  }
+
+  private static var youtubeDocumentInteraction: UIDocumentInteractionController?
 
   private static func topViewController() -> UIViewController? {
     let scene = UIApplication.shared.connectedScenes

@@ -8,6 +8,11 @@ import 'package:google_sign_in/google_sign_in.dart';
 /// The iOS client id belongs to Firebase project `aveditor-shorts`
 /// (bundle `com.smartcompany.aveditor`). Android matches package
 /// `com.smartcompany.aveditor` plus the debug SHA registered on that app.
+///
+/// “This app isn’t verified” is fixed in Google Cloud (test users + OAuth
+/// app verification), not in this class — see
+/// `docs/youtube-oauth-verification.md` and
+/// https://aveditorserver.vercel.app/youtube-oauth .
 class YouTubeAuthService {
   YouTubeAuthService({FlutterSecureStorage? storage, GoogleSignIn? google})
     : _storage = storage ?? const FlutterSecureStorage(),

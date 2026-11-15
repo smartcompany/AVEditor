@@ -46,12 +46,41 @@ class ExportShareService {
 
   static const _instagramPackage = 'com.instagram.android';
   static const _facebookPackage = 'com.facebook.katana';
+  static const _youtubePackage = 'com.google.android.youtube';
 
   /// TikTok (US / most regions) and TikTok (alternate package).
   static const _tiktokPackages = [
     'com.zhiliaoapp.musically',
     'com.ss.android.ugc.trill',
   ];
+
+  /// Hands the exported Short to YouTube with the file attached.
+  ///
+  /// Android: YouTube UPLOAD intent (opens upload UI with the video).
+  /// iOS: no public Shorts deep link — Open In / share sheet with the file
+  /// (YouTube Share Extension). Metadata is entered in YouTube.
+  Future<bool> shareToYouTube(String path, {String? photosAssetId}) async {
+    try {
+      if (Platform.isAndroid) {
+        final sent = await _channel.invokeMethod<bool>('shareToYouTube', {
+          'path': path,
+        });
+        return sent == true;
+      }
+      if (Platform.isIOS) {
+        final sent = await _channel.invokeMethod<bool>('shareToYouTube', {
+          'path': path,
+          'localIdentifier': ?photosAssetId,
+        });
+        if (sent == true) return true;
+        await shareFile(path);
+        return true;
+      }
+    } catch (error, stack) {
+      debugPrint('[ExportShare] YouTube 공유 실패: $error\n$stack');
+    }
+    return false;
+  }
 
   /// Opens TikTok's upload flow with the video attached.
   /// Android: ACTION_SEND to the TikTok package.
@@ -178,7 +207,7 @@ class ExportShareService {
       ShareTargetKind.instagram => Uri.parse('instagram://app'),
       ShareTargetKind.facebook => Uri.parse('fb://'),
       ShareTargetKind.tiktok => Uri.parse('snssdk1233://'),
-      ShareTargetKind.youtube => null,
+      ShareTargetKind.youtube => Uri.parse('youtube://'),
     };
   }
 }
