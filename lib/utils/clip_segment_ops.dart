@@ -525,12 +525,16 @@ class PreviewFadeWindow {
 }
 
 /// Returns the active dual-layer transition preview at [sourcePos], or null.
+///
+/// [sourcePos] is packed timeline time when any segment has a [mediaId]
+/// (multi-source); otherwise it is the legacy master-file clock.
 PreviewFadeWindow? previewFadeAt(
   List<ClipSegment> segments,
   Duration sourcePos,
 ) {
   if (segments.length < 2) return null;
   final posMs = sourcePos.inMilliseconds;
+  final packedClock = segments.any((s) => s.mediaId != null);
   final engine = TransitionEngine.instance;
   for (var i = 0; i < segments.length - 1; i++) {
     final outgoing = segments[i];
@@ -540,8 +544,11 @@ PreviewFadeWindow? previewFadeAt(
     final td = clampedTransitionDuration(outgoing, next: incoming);
     if (td <= Duration.zero) continue;
     final half = transitionHalfMs(td);
-    final startMs = outgoing.end.inMilliseconds - half.before;
-    final endMs = outgoing.end.inMilliseconds + half.after;
+    final cutMs = packedClock
+        ? cutExportTimeAfter(segments, i).inMilliseconds
+        : outgoing.end.inMilliseconds;
+    final startMs = cutMs - half.before;
+    final endMs = cutMs + half.after;
     if (posMs < startMs || posMs >= endMs) continue;
     final span = td.inMilliseconds;
     final t = span <= 0 ? 1.0 : ((posMs - startMs) / span).clamp(0.0, 1.0);

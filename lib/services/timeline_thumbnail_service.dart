@@ -51,15 +51,26 @@ class TimelineThumbnailService {
       if (asset.isImage || MediaConcatService.isImagePath(path)) {
         frames.addAll(await _loadImageStill(path, mediaId: id));
       } else {
-        final duration = asset.duration > Duration.zero
-            ? asset.duration
-            : (segment.end > segment.start ? segment.end : const Duration(seconds: 1));
+        // Prefer the clip's in/out window so tiles match what the user sees,
+        // not an unused tail of the source file.
+        final clipEnd = segment.end > segment.start
+            ? segment.end
+            : (asset.duration > Duration.zero
+                ? asset.duration
+                : const Duration(seconds: 1));
+        final span = clipEnd - segment.start;
+        final duration = span > Duration.zero
+            ? span
+            : (asset.duration > Duration.zero
+                ? asset.duration
+                : const Duration(seconds: 1));
         frames.addAll(
           await loadFilmstrip(
             videoPath: path,
             duration: duration,
             segments: [segment],
             mediaId: id,
+            baseTime: segment.start,
           ),
         );
       }
@@ -77,6 +88,8 @@ class TimelineThumbnailService {
     required Duration duration,
     List<ClipSegment> segments = const [],
     String? mediaId,
+    /// Local media time of the first sample (clip in-point).
+    Duration baseTime = Duration.zero,
   }) async {
     if (duration <= Duration.zero || !await File(videoPath).exists()) {
       return const [];
@@ -84,9 +97,10 @@ class TimelineThumbnailService {
 
     final frameCount = _frameCountFor(duration);
     final durationMs = duration.inMilliseconds;
+    final baseMs = baseTime.inMilliseconds;
     // Stay off the last millisecond — short/probe-rounded clips often have no
     // frame there and ffmpeg exits 0 with an empty file.
-    final lastSafeMs = durationMs <= 1
+    final lastOffsetMs = durationMs <= 1
         ? 0
         : (durationMs > 500 ? durationMs - 250 : durationMs ~/ 2);
     final stepMs =
@@ -95,8 +109,10 @@ class TimelineThumbnailService {
     final frames = <TimelineFilmstripFrame>[];
     final capturedMs = <int>{};
 
-    Future<void> addFrame(int timeMs) async {
-      final clampedMs = timeMs.clamp(0, lastSafeMs);
+    Future<void> addFrame(int mediaTimeMs) async {
+      final lo = baseMs;
+      final hi = baseMs + lastOffsetMs;
+      final clampedMs = mediaTimeMs.clamp(lo, hi);
       if (!capturedMs.add(clampedMs)) return;
 
       final cacheFile = File(
@@ -135,9 +151,9 @@ class TimelineThumbnailService {
     }
 
     for (var i = 0; i < frameCount; i++) {
-      await addFrame(stepMs * i);
+      await addFrame(baseMs + stepMs * i);
     }
-    await addFrame(lastSafeMs);
+    await addFrame(baseMs + lastOffsetMs);
 
     for (final segment in segments) {
       if (segment.duration <= Duration.zero) continue;

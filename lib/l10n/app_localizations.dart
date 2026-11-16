@@ -114,6 +114,90 @@ abstract class AppLocalizations {
   /// **'Choose from gallery'**
   String get pickFromGallery;
 
+  /// No description provided for @galleryPickerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Gallery'**
+  String get galleryPickerTitle;
+
+  /// No description provided for @galleryPickerHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap media to preview. Use the circle to select.'**
+  String get galleryPickerHint;
+
+  /// No description provided for @galleryPickerEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No photos or videos found.'**
+  String get galleryPickerEmpty;
+
+  /// No description provided for @gallerySelectedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} selected'**
+  String gallerySelectedCount(int count);
+
+  /// No description provided for @galleryAddSelected.
+  ///
+  /// In en, this message translates to:
+  /// **'Add'**
+  String get galleryAddSelected;
+
+  /// No description provided for @galleryAddSelectedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Add ({count})'**
+  String galleryAddSelectedCount(int count);
+
+  /// No description provided for @gallerySelect.
+  ///
+  /// In en, this message translates to:
+  /// **'Select'**
+  String get gallerySelect;
+
+  /// No description provided for @galleryDeselect.
+  ///
+  /// In en, this message translates to:
+  /// **'Deselect'**
+  String get galleryDeselect;
+
+  /// No description provided for @gallerySelectToggle.
+  ///
+  /// In en, this message translates to:
+  /// **'Toggle selection'**
+  String get gallerySelectToggle;
+
+  /// No description provided for @galleryPhotoPreview.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo'**
+  String get galleryPhotoPreview;
+
+  /// No description provided for @galleryVideoPreview.
+  ///
+  /// In en, this message translates to:
+  /// **'Video'**
+  String get galleryVideoPreview;
+
+  /// No description provided for @galleryBackToGrid.
+  ///
+  /// In en, this message translates to:
+  /// **'Back'**
+  String get galleryBackToGrid;
+
+  /// No description provided for @galleryManageAccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage'**
+  String get galleryManageAccess;
+
+  /// No description provided for @galleryRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get galleryRetry;
+
   /// No description provided for @pickFromFiles.
   ///
   /// In en, this message translates to:

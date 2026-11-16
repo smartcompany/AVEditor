@@ -15,6 +15,53 @@ class AppLocalizationsEn extends AppLocalizations {
   String get pickFromGallery => 'Choose from gallery';
 
   @override
+  String get galleryPickerTitle => 'Gallery';
+
+  @override
+  String get galleryPickerHint =>
+      'Tap media to preview. Use the circle to select.';
+
+  @override
+  String get galleryPickerEmpty => 'No photos or videos found.';
+
+  @override
+  String gallerySelectedCount(int count) {
+    return '$count selected';
+  }
+
+  @override
+  String get galleryAddSelected => 'Add';
+
+  @override
+  String galleryAddSelectedCount(int count) {
+    return 'Add ($count)';
+  }
+
+  @override
+  String get gallerySelect => 'Select';
+
+  @override
+  String get galleryDeselect => 'Deselect';
+
+  @override
+  String get gallerySelectToggle => 'Toggle selection';
+
+  @override
+  String get galleryPhotoPreview => 'Photo';
+
+  @override
+  String get galleryVideoPreview => 'Video';
+
+  @override
+  String get galleryBackToGrid => 'Back';
+
+  @override
+  String get galleryManageAccess => 'Manage';
+
+  @override
+  String get galleryRetry => 'Retry';
+
+  @override
   String get pickFromFiles => 'Choose video file';
 
   @override

@@ -3026,21 +3026,36 @@ class _EditorScreenState extends State<EditorScreen>
     final td = clampedTransitionDuration(outgoing, next: incoming);
     final hardCut = !outgoing.hasTransition || td <= Duration.zero;
     const hardCutPad = Duration(milliseconds: 500);
-    // Duration-preserving: play [cut − ⌊td/2⌋, cut + ⌈td/2⌉), land on B at ⌈td/2⌉.
+    // Packed cut time — segment start/end are per-asset locals and must not be
+    // used as the native/UI playhead (photo after video would seek to ~0–3s).
+    final cutAt = cutExportTimeAfter(project.segments, cutIndex);
     final half = transitionHalfMs(td);
     final windowBefore = hardCut
         ? hardCutPad
         : Duration(milliseconds: half.before);
-    final previewStart = outgoing.end - windowBefore;
-    final clampedStart = previewStart < outgoing.start
-        ? outgoing.start
-        : previewStart;
-    final previewUntil = hardCut
-        ? (() {
-            final end = incoming.start + hardCutPad;
-            return end > incoming.end ? incoming.end : end;
-          })()
-        : outgoing.end + Duration(milliseconds: half.after);
+    final windowAfter = hardCut
+        ? hardCutPad
+        : Duration(milliseconds: half.after);
+    final outgoingPackedStart = cutAt - outgoing.duration;
+    var clampedStart = cutAt - windowBefore;
+    if (clampedStart < outgoingPackedStart) {
+      clampedStart = outgoingPackedStart;
+    }
+    if (clampedStart < Duration.zero) clampedStart = Duration.zero;
+    final incomingPackedEnd = cutAt + incoming.duration;
+    final totalPacked = exportTimelineDuration(project.segments);
+    var previewUntil = cutAt + windowAfter;
+    if (previewUntil > incomingPackedEnd) previewUntil = incomingPackedEnd;
+    if (previewUntil > totalPacked) previewUntil = totalPacked;
+    if (previewUntil <= clampedStart) {
+      previewUntil = clampDuration(
+        clampedStart + const Duration(milliseconds: 200),
+        Duration.zero,
+        totalPacked <= Duration.zero
+            ? clampedStart + const Duration(milliseconds: 200)
+            : totalPacked,
+      );
+    }
 
     _transitionPreviewUntil = null;
     _transitionPreviewArmed = false;

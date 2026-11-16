@@ -1,9 +1,10 @@
 import 'dart:io';
 
+import 'package:aveditor/screens/gallery_picker_screen.dart';
 import 'package:aveditor/services/media_concat_service.dart';
 import 'package:aveditor/utils/av_editor_log.dart';
 import 'package:file_selector/file_selector.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -20,14 +21,27 @@ class VideoImportService {
     ...MediaConcatService.imageExtensions,
   ];
 
-  /// Gallery multi-select for videos and photos. Empty when cancelled.
-  Future<List<String>> pickFromGallery() async {
-    if (!Platform.isMacOS) {
-      await _requestMobileMediaPermissions();
-    }
+  /// Custom gallery multi-select for videos and photos. Empty when cancelled.
+  Future<List<String>> pickFromGallery(BuildContext context) async {
+    final assets = await GalleryPickerScreen.open(context);
+    if (assets == null || assets.isEmpty) return const [];
 
-    final files = await _picker.pickMultipleMedia();
-    if (files.isEmpty) return const [];
+    final files = <XFile>[];
+    for (final asset in assets) {
+      var file = await asset.originFile;
+      file ??= await asset.file;
+      if (file == null || !await file.exists() || await file.length() == 0) {
+        avEditorLog('gallery asset unresolved id=${asset.id}');
+        throw StateError('empty_video');
+      }
+      files.add(
+        XFile(
+          file.path,
+          mimeType: asset.mimeType,
+          name: asset.title ?? p.basename(file.path),
+        ),
+      );
+    }
     return _materializeAll(files);
   }
 
@@ -126,24 +140,6 @@ class VideoImportService {
     if (mime.contains('webm')) return '.webm';
     if (mime.contains('matroska') || mime.contains('mkv')) return '.mkv';
     return '.mp4';
-  }
-
-  Future<void> _requestMobileMediaPermissions() async {
-    if (kIsWeb) {
-      return;
-    }
-    // iOS PHPicker does not require Photos permission; requesting it can put
-    // the app into limited-library mode and break some exports.
-    if (Platform.isIOS) {
-      return;
-    }
-    if (Platform.isAndroid) {
-      await [
-        Permission.videos,
-        Permission.photos,
-        Permission.storage,
-      ].request();
-    }
   }
 
   Future<void> _requestCameraPermission() async {

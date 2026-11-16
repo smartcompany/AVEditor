@@ -3116,6 +3116,7 @@ class TimelineWidgetState extends State<TimelineWidget>
                   sourceAudioWaveform: widget.sourceAudioWaveform,
                   hasSourceAudio: widget.hasSourceAudio,
                   sourceDuration: widget.duration,
+                  mediaAssets: widget.mediaAssets,
                   filmstripFrames: widget.filmstripFrames,
                   selectedOverlayId: widget.selectedOverlayId,
                   selectedSegmentId: widget.selectedSegmentId,
@@ -3215,6 +3216,7 @@ class _TimelinePainter extends CustomPainter {
     required this.lanesContentHeight,
     required this.musicContentHeight,
     required this.laneLabelStyle,
+    this.mediaAssets = const [],
     this.filmstripFrames = const [],
     this.selectedOverlayId,
     this.selectedSegmentId,
@@ -3252,6 +3254,7 @@ class _TimelinePainter extends CustomPainter {
   final List<double> sourceAudioWaveform;
   final bool hasSourceAudio;
   final Duration sourceDuration;
+  final List<MediaAsset> mediaAssets;
   final double scrollPx;
   final double contentWidth;
   final double contentInsetX;
@@ -4450,46 +4453,55 @@ class _TimelinePainter extends CustomPainter {
     canvas.restore();
   }
 
+  bool _segmentIsImage(ClipSegment segment) {
+    final id = segment.mediaId;
+    if (id == null) return false;
+    for (final asset in mediaAssets) {
+      if (asset.id == id) return asset.isImage;
+    }
+    return false;
+  }
+
   TimelineFilmstripFrame? _nearestFilmstripFrame(
     Duration sourceTime, {
     ClipSegment? within,
   }) {
     TimelineFilmstripFrame? bestInSegment;
     var bestInDelta = 1 << 62;
-    TimelineFilmstripFrame? bestAny;
-    var bestAnyDelta = 1 << 62;
     final mediaId = within?.mediaId;
+    final imageClip = within != null && _segmentIsImage(within);
     for (final frame in filmstripFrames) {
-      if (mediaId != null &&
-          frame.mediaId != null &&
-          frame.mediaId != mediaId) {
-        continue;
+      // Never paint another clip's frames onto this one.
+      if (mediaId != null) {
+        if (frame.mediaId == null || frame.mediaId != mediaId) continue;
       }
       final deltaMs = (frame.sourceTime - sourceTime).inMilliseconds.abs();
-      if (deltaMs < bestAnyDelta) {
-        bestAnyDelta = deltaMs;
-        bestAny = frame;
-      }
-      if (within == null) continue;
-      // Image holds: a single still at t=0 tiles across the whole clip.
-      if (frame.mediaId != null &&
-          frame.mediaId == mediaId &&
-          within.mediaId == mediaId) {
+      if (within == null) {
         if (deltaMs < bestInDelta) {
           bestInDelta = deltaMs;
           bestInSegment = frame;
         }
         continue;
       }
-      if (frame.sourceTime < within.start || frame.sourceTime >= within.end) {
+      // Image holds: one still tiles across the whole clip width.
+      if (imageClip) {
+        if (deltaMs < bestInDelta) {
+          bestInDelta = deltaMs;
+          bestInSegment = frame;
+        }
         continue;
       }
-      if (deltaMs < bestInDelta) {
-        bestInDelta = deltaMs;
+      // Prefer frames inside the clip's local in/out; otherwise nearest on
+      // the same media (handles sparse strips).
+      final inRange =
+          frame.sourceTime >= within.start && frame.sourceTime < within.end;
+      final score = inRange ? deltaMs : deltaMs + 1_000_000;
+      if (score < bestInDelta) {
+        bestInDelta = score;
         bestInSegment = frame;
       }
     }
-    return bestInSegment ?? bestAny;
+    return bestInSegment;
   }
 
   void _drawHandle(
@@ -4588,6 +4600,7 @@ class _TimelinePainter extends CustomPainter {
         oldDelegate.segmentReorderStripLeft != segmentReorderStripLeft ||
         oldDelegate.musicContentHeight != musicContentHeight ||
         oldDelegate.filmstripFrames != filmstripFrames ||
+        oldDelegate.mediaAssets != mediaAssets ||
         oldDelegate.musicTracks != musicTracks ||
         oldDelegate.musicWaveforms != musicWaveforms ||
         oldDelegate.sourceAudioWaveform != sourceAudioWaveform ||

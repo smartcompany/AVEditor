@@ -15,6 +15,52 @@ class AppLocalizationsZh extends AppLocalizations {
   String get pickFromGallery => '从相册选择';
 
   @override
+  String get galleryPickerTitle => '相册';
+
+  @override
+  String get galleryPickerHint => '点按媒体可预览，用圆圈选择。';
+
+  @override
+  String get galleryPickerEmpty => '没有照片或视频。';
+
+  @override
+  String gallerySelectedCount(int count) {
+    return '已选 $count 项';
+  }
+
+  @override
+  String get galleryAddSelected => '添加';
+
+  @override
+  String galleryAddSelectedCount(int count) {
+    return '添加（$count）';
+  }
+
+  @override
+  String get gallerySelect => '选择';
+
+  @override
+  String get galleryDeselect => '取消选择';
+
+  @override
+  String get gallerySelectToggle => '切换选择';
+
+  @override
+  String get galleryPhotoPreview => '照片';
+
+  @override
+  String get galleryVideoPreview => '视频';
+
+  @override
+  String get galleryBackToGrid => '返回';
+
+  @override
+  String get galleryManageAccess => '管理';
+
+  @override
+  String get galleryRetry => '重试';
+
+  @override
   String get pickFromFiles => '选择视频文件';
 
   @override

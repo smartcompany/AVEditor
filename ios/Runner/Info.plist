@@ -110,7 +110,7 @@
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Photo library access is needed to save exported Shorts to your device.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Photo library access is needed to choose videos for editing.</string>
+	<string>Photo library access is needed to browse and choose videos and photos for editing.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

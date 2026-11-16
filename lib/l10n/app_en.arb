@@ -2,6 +2,34 @@
   "@@locale": "en",
   "appTitle": "EasyClip",
   "pickFromGallery": "Choose from gallery",
+  "galleryPickerTitle": "Gallery",
+  "galleryPickerHint": "Tap media to preview. Use the circle to select.",
+  "galleryPickerEmpty": "No photos or videos found.",
+  "gallerySelectedCount": "{count} selected",
+  "@gallerySelectedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "galleryAddSelected": "Add",
+  "galleryAddSelectedCount": "Add ({count})",
+  "@galleryAddSelectedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "gallerySelect": "Select",
+  "galleryDeselect": "Deselect",
+  "gallerySelectToggle": "Toggle selection",
+  "galleryPhotoPreview": "Photo",
+  "galleryVideoPreview": "Video",
+  "galleryBackToGrid": "Back",
+  "galleryManageAccess": "Manage",
+  "galleryRetry": "Retry",
   "pickFromFiles": "Choose video file",
   "recordVideo": "Record video",
   "youtubeSignIn": "Sign in with YouTube",

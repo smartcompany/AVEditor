@@ -15,6 +15,52 @@ class AppLocalizationsJa extends AppLocalizations {
   String get pickFromGallery => 'ギャラリーから選択';
 
   @override
+  String get galleryPickerTitle => 'ギャラリー';
+
+  @override
+  String get galleryPickerHint => 'メディアをタップしてプレビュー、丸印で選択します。';
+
+  @override
+  String get galleryPickerEmpty => '写真や動画がありません。';
+
+  @override
+  String gallerySelectedCount(int count) {
+    return '$count件選択中';
+  }
+
+  @override
+  String get galleryAddSelected => '追加';
+
+  @override
+  String galleryAddSelectedCount(int count) {
+    return '追加（$count）';
+  }
+
+  @override
+  String get gallerySelect => '選択';
+
+  @override
+  String get galleryDeselect => '選択解除';
+
+  @override
+  String get gallerySelectToggle => '選択を切り替え';
+
+  @override
+  String get galleryPhotoPreview => '写真';
+
+  @override
+  String get galleryVideoPreview => '動画';
+
+  @override
+  String get galleryBackToGrid => '戻る';
+
+  @override
+  String get galleryManageAccess => '管理';
+
+  @override
+  String get galleryRetry => '再試行';
+
+  @override
   String get pickFromFiles => '動画ファイルを選択';
 
   @override

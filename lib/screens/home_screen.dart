@@ -68,7 +68,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _pickGallery() async {
-    await _runPick(_import.pickFromGallery);
+    await _runPick(() => _import.pickFromGallery(context));
   }
 
   Future<void> _pickFiles() async {

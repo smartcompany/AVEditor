@@ -15,6 +15,52 @@ class AppLocalizationsKo extends AppLocalizations {
   String get pickFromGallery => '갤러리에서 선택';
 
   @override
+  String get galleryPickerTitle => '갤러리';
+
+  @override
+  String get galleryPickerHint => '미디어를 탭하면 미리보기, 동그라미로 선택하세요.';
+
+  @override
+  String get galleryPickerEmpty => '사진이나 영상이 없습니다.';
+
+  @override
+  String gallerySelectedCount(int count) {
+    return '$count개 선택됨';
+  }
+
+  @override
+  String get galleryAddSelected => '추가';
+
+  @override
+  String galleryAddSelectedCount(int count) {
+    return '추가 ($count)';
+  }
+
+  @override
+  String get gallerySelect => '선택';
+
+  @override
+  String get galleryDeselect => '선택 해제';
+
+  @override
+  String get gallerySelectToggle => '선택 전환';
+
+  @override
+  String get galleryPhotoPreview => '사진';
+
+  @override
+  String get galleryVideoPreview => '영상';
+
+  @override
+  String get galleryBackToGrid => '뒤로';
+
+  @override
+  String get galleryManageAccess => '관리';
+
+  @override
+  String get galleryRetry => '다시 시도';
+
+  @override
   String get pickFromFiles => '동영상 파일 선택';
 
   @override

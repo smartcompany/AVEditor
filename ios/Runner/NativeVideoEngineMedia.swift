@@ -662,7 +662,8 @@ private func packTransitionPlacements(
         srcDurMs: wantSrc,
         atMs: blendStartMs,
         compDurMs: prevOutTdMs,
-        availableMs: availableMs
+        availableMs: availableMs,
+        stretchShortSource: isImage
       )
     }
 
@@ -680,7 +681,8 @@ private func packTransitionPlacements(
         srcDurMs: max(1, soloSrcDur),
         atMs: soloAtMs,
         compDurMs: soloCompDurMs,
-        availableMs: availableMs
+        availableMs: availableMs,
+        stretchShortSource: isImage
       )
     }
 
@@ -697,7 +699,8 @@ private func packTransitionPlacements(
         srcDurMs: wantSrc,
         atMs: blendStartMs,
         compDurMs: outTdMs,
-        availableMs: availableMs
+        availableMs: availableMs,
+        stretchShortSource: isImage
       )
     }
 
@@ -747,7 +750,9 @@ private func packTransitionPlacements(
 ///
 /// Still holds are often longer than the cached 1s `.hold.mp4` — never ask
 /// AVFoundation for a source range past the track end (that throws
-/// "작업을 완료할 수 없습니다" / prepare_failed).
+/// "작업을 완료할 수 없습니다" / prepare_failed). Pass [stretchShortSource]
+/// only for image holds so real video keeps 1:1 timing (a 1s cap + stretch
+/// made multi-source playback look frozen on the first frame).
 private func insertScaledClip(
   into compositionTrack: AVMutableCompositionTrack,
   from sourceTrack: AVAssetTrack,
@@ -755,7 +760,8 @@ private func insertScaledClip(
   srcDurMs: Int,
   atMs: Int,
   compDurMs: Int,
-  availableMs: Int
+  availableMs: Int,
+  stretchShortSource: Bool
 ) throws {
   if compDurMs <= 0 { return }
 
@@ -766,27 +772,51 @@ private func insertScaledClip(
     ])
   }
 
-  // Short source slice (≥1 frame, ≤1s) then scale — more reliable than
-  // requesting the full still duration on Simulator.
   let oneFrame = CMTime(value: 1, timescale: 30)
-  let maxSlice = CMTimeMultiply(oneFrame, multiplier: 30)
-  var srcRange = CMTimeRange(
-    start: trackRange.start,
-    duration: CMTimeMinimum(trackRange.duration, maxSlice)
-  )
-  if srcStartMs > 0 {
-    let start = CMTimeAdd(trackRange.start, cmTimeMs(srcStartMs))
-    let want = cmTimeMs(max(1, min(srcDurMs, 1000)))
-    srcRange = CMTimeRangeGetIntersection(
-      CMTimeRange(start: start, duration: want),
+  let srcRange: CMTimeRange
+  if stretchShortSource {
+    // Still bake is ≤1s; take a short slice then scale to the hold length.
+    let maxSlice = CMTimeMultiply(oneFrame, multiplier: 30)
+    var range = CMTimeRange(
+      start: trackRange.start,
+      duration: CMTimeMinimum(trackRange.duration, maxSlice)
+    )
+    if srcStartMs > 0 {
+      let start = CMTimeAdd(trackRange.start, cmTimeMs(srcStartMs))
+      let want = cmTimeMs(max(1, min(srcDurMs, 1000)))
+      range = CMTimeRangeGetIntersection(
+        CMTimeRange(start: start, duration: want),
+        otherRange: trackRange
+      )
+    }
+    if CMTimeCompare(range.duration, .zero) <= 0 {
+      range = CMTimeRange(
+        start: trackRange.start,
+        duration: CMTimeMinimum(trackRange.duration, oneFrame)
+      )
+    }
+    srcRange = range
+  } else {
+    // Real video: insert the requested media range 1:1 (no 1s cap).
+    let clampedStart = min(max(0, srcStartMs), max(0, availableMs - 1))
+    let clampedDur = min(
+      max(1, srcDurMs),
+      max(1, availableMs - clampedStart)
+    )
+    var range = CMTimeRangeGetIntersection(
+      CMTimeRange(
+        start: CMTimeAdd(trackRange.start, cmTimeMs(clampedStart)),
+        duration: cmTimeMs(clampedDur)
+      ),
       otherRange: trackRange
     )
-  }
-  if CMTimeCompare(srcRange.duration, .zero) <= 0 {
-    srcRange = CMTimeRange(
-      start: trackRange.start,
-      duration: CMTimeMinimum(trackRange.duration, oneFrame)
-    )
+    if CMTimeCompare(range.duration, .zero) <= 0 {
+      range = CMTimeRange(
+        start: trackRange.start,
+        duration: CMTimeMinimum(trackRange.duration, oneFrame)
+      )
+    }
+    srcRange = range
   }
 
   let targetDur = cmTimeMs(compDurMs)
