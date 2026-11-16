@@ -21,7 +21,7 @@ const double maxOverlayBoxHeight = kOverlayFrameHeight * 1.3;
 /// short horizontal placeholder — not one glyph that forces vertical wrap.
 const String kEmptyOverlayLayoutSample = '탭 해서 텍스트 입력';
 
-/// Bundled font used for overlay text.
+/// Bundled font used for overlay text (DM Sans — not an Apple system face).
 ///
 /// Pinned rather than inherited from the theme so the preview and the exported
 /// video lay out identically — theme fonts are fetched at runtime and would
