@@ -105,6 +105,84 @@ void main() {
     expect(normalized[1].start, const Duration(seconds: 10));
   });
 
+  test('normalizeSegments keeps drag-reordered list order', () {
+    final segments = [
+      seg(const Duration(seconds: 10), const Duration(seconds: 25), id: 'b'),
+      seg(Duration.zero, const Duration(seconds: 10), id: 'a'),
+    ];
+
+    final normalized = normalizeSegments(
+      List<ClipSegment>.from(segments),
+      sourceDuration: const Duration(seconds: 30),
+    );
+
+    expect(normalized.map((s) => s.id), ['b', 'a']);
+    expect(
+      exportTimeToSourceTime(normalized, const Duration(seconds: 1)),
+      const Duration(seconds: 11),
+    );
+    expect(
+      exportTimeToSourceTime(normalized, const Duration(seconds: 16)),
+      const Duration(seconds: 1),
+    );
+  });
+
+  test('swapAdjacentSegments exchanges playback order', () {
+    final segments = [
+      seg(Duration.zero, const Duration(seconds: 3), id: 'a'),
+      seg(const Duration(seconds: 3), const Duration(seconds: 7), id: 'b'),
+      seg(const Duration(seconds: 7), const Duration(seconds: 10), id: 'c'),
+    ];
+
+    final swapped = swapAdjacentSegments(segments, 0);
+    expect(swapped.map((s) => s.id), ['b', 'a', 'c']);
+    expect(
+      exportTimeToSourceTime(swapped, Duration.zero),
+      const Duration(seconds: 3),
+    );
+  });
+
+  test('moveSegmentToIndex drops on release slots', () {
+    final segments = [
+      seg(Duration.zero, const Duration(seconds: 3), id: 'a'),
+      seg(const Duration(seconds: 3), const Duration(seconds: 7), id: 'b'),
+      seg(const Duration(seconds: 7), const Duration(seconds: 10), id: 'c'),
+    ];
+
+    expect(
+      moveSegmentToIndex(segments, 0, 2).map((s) => s.id),
+      ['b', 'a', 'c'],
+    );
+    expect(
+      moveSegmentToIndex(segments, 0, 3).map((s) => s.id),
+      ['b', 'c', 'a'],
+    );
+    expect(
+      moveSegmentToIndex(segments, 2, 0).map((s) => s.id),
+      ['c', 'a', 'b'],
+    );
+    expect(segmentReorderWouldMove(1, 1), isFalse);
+    expect(segmentReorderWouldMove(1, 2), isFalse);
+    expect(segmentReorderWouldMove(1, 0), isTrue);
+  });
+
+  test('segment trim limits follow source neighbors after reorder', () {
+    final segments = [
+      seg(const Duration(seconds: 5), const Duration(seconds: 10), id: 'b'),
+      seg(Duration.zero, const Duration(seconds: 5), id: 'a'),
+    ];
+    final a = segments[1];
+    expect(segmentTrimMinStart(segments, a), Duration.zero);
+    expect(
+      segmentTrimMaxEnd(
+        segments,
+        a,
+        sourceDuration: const Duration(seconds: 20),
+      ),
+      const Duration(seconds: 5),
+    );
+  });
+
   test('clearing segments before normalize wipes cuts (load footgun)', () {
     // Documents why editor load must normalize a copy, not clear-then-read.
     final segments = [

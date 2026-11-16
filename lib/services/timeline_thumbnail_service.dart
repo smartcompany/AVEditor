@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/timeline_filmstrip_frame.dart';
 import 'package:aveditor/services/video_frame_grab.dart';
 import 'package:path/path.dart' as p;
@@ -17,13 +18,15 @@ class TimelineThumbnailService {
   Future<List<TimelineFilmstripFrame>> loadFilmstrip({
     required String videoPath,
     required Duration duration,
+    List<ClipSegment> segments = const [],
   }) async {
     if (duration <= Duration.zero || !await File(videoPath).exists()) {
       return const [];
     }
 
     final frameCount = _frameCountFor(duration);
-    final stepMs = (duration.inMilliseconds / frameCount).ceil().clamp(1, 1 << 30);
+    final stepMs =
+        (duration.inMilliseconds / frameCount).ceil().clamp(1, 1 << 30);
     final cacheDir = await _cacheDirectory(videoPath);
     final frames = <TimelineFilmstripFrame>[];
     final capturedMs = <int>{};
@@ -43,6 +46,7 @@ class TimelineThumbnailService {
           timeMs: clampedMs,
           maxHeight: _thumbHeight,
           quality: 65,
+          accurate: true,
         );
         if (generated != null &&
             p.normalize(generated) != p.normalize(cacheFile.path)) {
@@ -72,6 +76,18 @@ class TimelineThumbnailService {
     // Cover the clip end — evenly spaced frames often stop short of duration.
     await addFrame(duration.inMilliseconds - 1);
 
+    // Multi-import / cut segments: pin a frame near each clip start so short
+    // image clips are not painted with a neighbor video keyframe.
+    for (final segment in segments) {
+      if (segment.duration <= Duration.zero) continue;
+      await addFrame(segment.start.inMilliseconds);
+      if (segment.duration.inMilliseconds >= 500) {
+        await addFrame(
+          segment.start.inMilliseconds + segment.duration.inMilliseconds ~/ 2,
+        );
+      }
+    }
+
     frames.sort(
       (a, b) => a.sourceTime.compareTo(b.sourceTime),
     );
@@ -87,7 +103,10 @@ class TimelineThumbnailService {
   Future<Directory> _cacheDirectory(String videoPath) async {
     final root = await getTemporaryDirectory();
     final stat = await File(videoPath).stat();
-    final key = '${videoPath.hashCode}_${stat.modified.millisecondsSinceEpoch}';
+    // Include size so a replaced source.mp4 with the same mtime resolution
+    // cannot reuse stale wrong JPEGs.
+    final key =
+        '${videoPath.hashCode}_${stat.modified.millisecondsSinceEpoch}_${stat.size}';
     final dir = Directory(p.join(root.path, 'aveditor_timeline_thumbs', key));
     if (!await dir.exists()) {
       await dir.create(recursive: true);

@@ -6,8 +6,10 @@ import 'package:aveditor/models/clip_trim.dart';
 import 'package:aveditor/models/export_preset.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/video_project.dart';
+import 'package:aveditor/services/media_concat_service.dart';
 import 'package:aveditor/services/playback_fallback_transcoder.dart';
 import 'package:aveditor/services/project_storage_service.dart';
+import 'package:aveditor/utils/clip_segment_ops.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -253,5 +255,87 @@ void main() {
       final summary = (await service.loadSummary(id))!;
       expect(summary.coverTimeMs, 1500);
     });
+
+    test('createFromImports builds sequential hard-cut segments', () async {
+      final video = File('${tempRoot.path}/clip.mp4');
+      final image = File('${tempRoot.path}/still.jpg');
+      await video.writeAsBytes(List<int>.filled(512, 4));
+      await image.writeAsBytes(List<int>.filled(128, 5));
+
+      final id = await service.createFromImports(
+        [video.path, image.path, video.path],
+        concat: _FakeMediaConcat(),
+      );
+      final loaded = (await service.load(id))!;
+
+      // Video 2s + still baked 60s + video 4s; still keeps 3s on the timeline.
+      expect(
+        loaded.duration,
+        const Duration(seconds: 2) +
+            kMaxImageClipDuration +
+            const Duration(seconds: 4),
+      );
+      expect(loaded.segments, hasLength(3));
+      expect(loaded.segments[0].start, Duration.zero);
+      expect(loaded.segments[0].end, const Duration(seconds: 2));
+      expect(loaded.segments[0].hasTransition, isFalse);
+      expect(loaded.segments[1].start, const Duration(seconds: 2));
+      expect(
+        loaded.segments[1].end,
+        const Duration(seconds: 2) + kDefaultImageClipDuration,
+      );
+      expect(loaded.segments[1].hasTransition, isFalse);
+      final thirdStart = const Duration(seconds: 2) + kMaxImageClipDuration;
+      expect(loaded.segments[2].start, thirdStart);
+      expect(loaded.segments[2].end, thirdStart + const Duration(seconds: 4));
+      expect(await File(loaded.sourcePath).exists(), isTrue);
+
+      // Right handle on the still can grow into the unused baked source.
+      final extended = trimSegmentEnd(
+        loaded.segments,
+        loaded.segments[1],
+        nextEnd: const Duration(seconds: 2) + const Duration(seconds: 12),
+        sourceDuration: loaded.duration,
+      )!;
+      expect(extended.end, const Duration(seconds: 14));
+    });
   });
+
+  test('MediaConcatService classifies image paths', () {
+    expect(MediaConcatService.isImagePath('/a/b/c.JPG'), isTrue);
+    expect(MediaConcatService.isImagePath('/a/b/c.png'), isTrue);
+    expect(MediaConcatService.isImagePath('/a/b/c.mp4'), isFalse);
+    expect(kDefaultImageClipDuration, const Duration(seconds: 3));
+    expect(kMaxImageClipDuration, const Duration(seconds: 60));
+    expect(kMaxImageClipDuration > kDefaultImageClipDuration, isTrue);
+  });
+}
+
+class _FakeMediaConcat extends MediaConcatService {
+  @override
+  Future<({String outputPath, List<Duration> pieceDurations})> buildSource({
+    required List<String> inputPaths,
+    required String workDir,
+    void Function(double progress)? onProgress,
+  }) async {
+    await Directory(workDir).create(recursive: true);
+    final output = File('$workDir/source.mp4');
+    await output.writeAsBytes(List<int>.filled(1024, 9));
+    onProgress?.call(1);
+    var videoIndex = 0;
+    final videoLengths = const [
+      Duration(seconds: 2),
+      Duration(seconds: 4),
+    ];
+    return (
+      outputPath: output.path,
+      pieceDurations: [
+        for (final path in inputPaths)
+          if (MediaConcatService.isImagePath(path))
+            kMaxImageClipDuration
+          else
+            videoLengths[videoIndex++ % videoLengths.length],
+      ],
+    );
+  }
 }

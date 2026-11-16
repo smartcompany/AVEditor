@@ -797,7 +797,13 @@ class _EditorScreenState extends State<EditorScreen>
         _ready = true;
         _errorMessage = null;
       });
-      unawaited(_loadFilmstrip(project.sourcePath, project.duration));
+      unawaited(
+        _loadFilmstrip(
+          project.sourcePath,
+          project.duration,
+          List<ClipSegment>.from(project.segments),
+        ),
+      );
       unawaited(_loadMusicWaveforms(project));
       unawaited(_loadSourceAudioWaveform(project.sourcePath));
 
@@ -854,12 +860,17 @@ class _EditorScreenState extends State<EditorScreen>
     return null;
   }
 
-  Future<void> _loadFilmstrip(String sourcePath, Duration duration) async {
+  Future<void> _loadFilmstrip(
+    String sourcePath,
+    Duration duration, [
+    List<ClipSegment> segments = const [],
+  ]) async {
     late final List<TimelineFilmstripFrame> frames;
     try {
       frames = await _thumbnailService.loadFilmstrip(
         videoPath: sourcePath,
         duration: duration,
+        segments: segments,
       );
     } catch (error, stack) {
       avEditorLog('filmstrip failed: $error\n$stack');
@@ -4520,6 +4531,14 @@ class _EditorScreenState extends State<EditorScreen>
           if (i >= 0) p.segments[i] = segment;
         });
         _syncVideoAudioVolume();
+      },
+      onSegmentsReordered: (segments) {
+        _mutate((p) {
+          p.segments
+            ..clear()
+            ..addAll(segments);
+          _selectedTransitionAfterIndex = null;
+        });
       },
       onMusicSelected: (music) {
         setState(() {

@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/clip_trim.dart';
 import 'package:aveditor/models/video_project.dart';
+import 'package:aveditor/services/media_concat_service.dart';
 import 'package:aveditor/services/video_frame_grab.dart';
 import 'package:aveditor/services/playback_fallback_transcoder.dart';
 import 'package:aveditor/utils/av_editor_log.dart';
@@ -48,6 +50,80 @@ class ProjectStorageService {
 
   /// Creates a new on-disk project from a picked video and returns its id.
   Future<String> createFromImport(
+    String pickedPath, {
+    void Function(double progress)? onProgress,
+  }) {
+    return createFromImports([pickedPath], onProgress: onProgress);
+  }
+
+  /// Creates a project from one or more videos/images in pick order.
+  ///
+  /// Multiple assets (or any image) are normalized and concatenated into one
+  /// source. Boundaries become [ClipSegment]s with hard cuts (null transition).
+  /// Images keep [kDefaultImageClipDuration] on the timeline and bake
+  /// [kMaxImageClipDuration] so the right trim handle can extend.
+  Future<String> createFromImports(
+    List<String> pickedPaths, {
+    void Function(double progress)? onProgress,
+    MediaConcatService? concat,
+  }) async {
+    final paths = [
+      for (final path in pickedPaths)
+        if (path.trim().isNotEmpty) path.trim(),
+    ];
+    if (paths.isEmpty) throw StateError('empty_video');
+
+    final needsConcat =
+        paths.length > 1 || paths.any(MediaConcatService.isImagePath);
+    if (!needsConcat) {
+      return _createFromSingleVideo(paths.first, onProgress: onProgress);
+    }
+
+    final id = const Uuid().v4();
+    final dir = await _projectDir(id);
+    await dir.create(recursive: true);
+    final workDir = Directory(p.join(dir.path, '.import'));
+    final builder = concat ?? const MediaConcatService();
+    final built = await builder.buildSource(
+      inputPaths: paths,
+      workDir: workDir.path,
+      onProgress: onProgress,
+    );
+
+    final sourcePath = p.join(dir.path, kProjectSourceFileName);
+    await File(built.outputPath).copy(sourcePath);
+    if (await workDir.exists()) {
+      await workDir.delete(recursive: true);
+    }
+
+    final segments = <ClipSegment>[];
+    var cursor = Duration.zero;
+    for (var i = 0; i < built.pieceDurations.length; i++) {
+      final piece = built.pieceDurations[i];
+      if (piece <= Duration.zero) continue;
+      final pieceEnd = cursor + piece;
+      // Stills are baked longer than the default so the right handle can grow
+      // into unused source without crossing into the next clip.
+      final kept = i < paths.length && MediaConcatService.isImagePath(paths[i])
+          ? (piece < kDefaultImageClipDuration ? piece : kDefaultImageClipDuration)
+          : piece;
+      segments.add(ClipSegment(start: cursor, end: cursor + kept));
+      cursor = pieceEnd;
+    }
+    if (segments.isEmpty) throw StateError('empty_video');
+
+    final project = VideoProject(
+      id: id,
+      sourcePath: sourcePath,
+      duration: cursor,
+      segments: segments,
+    );
+    await save(project);
+    final stored = await ensurePlayableSource(project, onProgress: onProgress);
+    return stored.id;
+  }
+
+  Future<String> _createFromSingleVideo(
     String pickedPath, {
     void Function(double progress)? onProgress,
   }) async {
@@ -165,11 +241,20 @@ class ProjectStorageService {
   }) async {
     final dir = await _projectDir(summary.id);
     if (!await dir.exists()) return null;
-    final target = p.join(dir.path, 'cover_${summary.coverTimeMs}.jpg');
+
+    final project = await load(summary.id);
+    if (project == null) return null;
+    final source = File(project.sourcePath);
+    if (!await source.exists()) return null;
+    final sourceSize = await source.length();
+    final target = p.join(
+      dir.path,
+      'cover_${summary.coverTimeMs}_$sourceSize.jpg',
+    );
     final file = File(target);
     if (await file.exists() && await file.length() > 0) return target;
 
-    // Drop covers for older first-frame times.
+    // Drop covers for older first-frame times / previous source bytes.
     await for (final entity in dir.list()) {
       final name = p.basename(entity.path);
       if (entity is File &&
@@ -179,14 +264,13 @@ class ProjectStorageService {
       }
     }
 
-    final project = await load(summary.id);
-    if (project == null) return null;
     final generated = await grab.jpegFile(
       video: project.sourcePath,
       thumbnailPath: target,
       maxWidth: 240,
       timeMs: summary.coverTimeMs,
       quality: 70,
+      accurate: true,
     );
     if (generated == null) return null;
     if (generated != target) {

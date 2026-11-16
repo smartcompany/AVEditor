@@ -109,6 +109,8 @@ List<ClipSegment> normalizeSegments(
 }
 
 /// Drops invalid segments and clamps bounds to the source file duration.
+///
+/// Preserves list order so drag-reorder of cut clips is not undone.
 List<ClipSegment> repairSegments(
   List<ClipSegment> segments, {
   required Duration sourceDuration,
@@ -127,12 +129,56 @@ List<ClipSegment> repairSegments(
     valid.add(segment.copyWith(start: start, end: end));
   }
 
-  valid.sort((a, b) => a.start.compareTo(b.start));
-
   if (valid.isEmpty) {
     return segmentsFromTrim(start: Duration.zero, end: sourceDuration);
   }
   return valid;
+}
+
+/// Swaps [leftIndex] with the next clip. List order is playback order.
+List<ClipSegment> swapAdjacentSegments(
+  List<ClipSegment> segments,
+  int leftIndex,
+) {
+  if (leftIndex < 0 || leftIndex >= segments.length - 1) {
+    return List<ClipSegment>.from(segments);
+  }
+  final next = List<ClipSegment>.from(segments);
+  final left = next[leftIndex];
+  final right = next[leftIndex + 1];
+  next[leftIndex] = right;
+  next[leftIndex + 1] = left;
+  return next;
+}
+
+/// Moves the clip at [fromIndex] to [insertIndex] (0 = before first, length =
+/// after last). No-op when the slot is the clip's current home.
+List<ClipSegment> moveSegmentToIndex(
+  List<ClipSegment> segments,
+  int fromIndex,
+  int insertIndex,
+) {
+  if (fromIndex < 0 || fromIndex >= segments.length) {
+    return List<ClipSegment>.from(segments);
+  }
+  if (insertIndex < 0 || insertIndex > segments.length) {
+    return List<ClipSegment>.from(segments);
+  }
+  if (insertIndex == fromIndex || insertIndex == fromIndex + 1) {
+    return List<ClipSegment>.from(segments);
+  }
+  final next = List<ClipSegment>.from(segments);
+  final item = next.removeAt(fromIndex);
+  var dest = insertIndex;
+  if (insertIndex > fromIndex) dest = insertIndex - 1;
+  dest = dest.clamp(0, next.length);
+  next.insert(dest, item);
+  return next;
+}
+
+/// True when dropping at [insertIndex] would change order for [fromIndex].
+bool segmentReorderWouldMove(int fromIndex, int insertIndex) {
+  return insertIndex != fromIndex && insertIndex != fromIndex + 1;
 }
 
 /// Maps the packed timeline position under the centre playhead to source time.
@@ -184,23 +230,32 @@ List<ClipSegment> deleteSegment(
   return next;
 }
 
-/// Earliest source time [segment] may start — previous neighbor's end, or zero.
+/// Earliest source time [segment] may start — nearest earlier source clip end.
 Duration segmentTrimMinStart(List<ClipSegment> segments, ClipSegment segment) {
-  final index = segments.indexWhere((s) => s.id == segment.id);
-  if (index <= 0) return Duration.zero;
-  return segments[index - 1].end;
+  Duration? prevEnd;
+  for (final other in segments) {
+    if (other.id == segment.id) continue;
+    if (other.end <= segment.start) {
+      if (prevEnd == null || other.end > prevEnd) prevEnd = other.end;
+    }
+  }
+  return prevEnd ?? Duration.zero;
 }
 
-/// Latest source time [segment] may end — next neighbor's start, or [sourceDuration].
+/// Latest source time [segment] may end — nearest later source clip start.
 Duration segmentTrimMaxEnd(
   List<ClipSegment> segments,
   ClipSegment segment, {
   required Duration sourceDuration,
 }) {
-  final index = segments.indexWhere((s) => s.id == segment.id);
-  if (index < 0) return sourceDuration;
-  if (index >= segments.length - 1) return sourceDuration;
-  return segments[index + 1].start;
+  Duration? nextStart;
+  for (final other in segments) {
+    if (other.id == segment.id) continue;
+    if (other.start >= segment.end) {
+      if (nextStart == null || other.start < nextStart) nextStart = other.start;
+    }
+  }
+  return nextStart ?? sourceDuration;
 }
 
 /// Trims [segment] start in place; packed timeline ripples followers automatically.
@@ -259,10 +314,19 @@ Duration? nextSegmentStartAfter(
   List<ClipSegment> segments,
   Duration time,
 ) {
-  for (final segment in segments) {
-    if (segment.start > time) return segment.start;
+  for (var i = 0; i < segments.length; i++) {
+    final segment = segments[i];
+    if (time >= segment.start && time < segment.end) {
+      if (i + 1 >= segments.length) return null;
+      return segments[i + 1].start;
+    }
   }
-  return null;
+  Duration? best;
+  for (final segment in segments) {
+    if (segment.start <= time) continue;
+    if (best == null || segment.start < best) best = segment.start;
+  }
+  return best;
 }
 
 ClipSegment? segmentEndingAtOrBefore(
@@ -503,8 +567,7 @@ Duration? sourceTimeToExportTime(
   var offset = Duration.zero;
   for (var i = 0; i < segments.length; i++) {
     final segment = segments[i];
-    if (sourceTime < segment.start) return null;
-    if (sourceTime < segment.end) {
+    if (sourceTime >= segment.start && sourceTime < segment.end) {
       return offset + (sourceTime - segment.start);
     }
     if (sourceTime == segment.end) {
@@ -514,10 +577,13 @@ Duration? sourceTimeToExportTime(
     // Duration-preserving: flag kept for API compat (does not shorten).
     if (applyTransitions) {}
   }
-  // Past the last kept frame: continue linearly so music/text can sit after video.
-  final last = segments.last;
-  if (sourceTime > last.end) {
-    return offset + (sourceTime - last.end);
+  // Past every kept source frame: continue linearly after packed video.
+  var maxEnd = Duration.zero;
+  for (final segment in segments) {
+    if (segment.end > maxEnd) maxEnd = segment.end;
+  }
+  if (sourceTime > maxEnd) {
+    return totalKeptDuration(segments) + (sourceTime - maxEnd);
   }
   return null;
 }

@@ -87,23 +87,25 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _convertProgress = next);
   }
 
-  Future<void> _runPick(Future<String?> Function() pick) async {
+  Future<void> _runPick(Future<List<String>> Function() pick) async {
     try {
-      final path = await pick();
-      if (path == null || path.isEmpty) {
+      final paths = await pick();
+      if (paths.isEmpty) {
         return;
       }
-      if (!File(path).existsSync()) {
-        throw StateError('file not found');
+      for (final path in paths) {
+        if (!File(path).existsSync()) {
+          throw StateError('file not found');
+        }
       }
-      // Show progress only after a file is chosen — not while the gallery is open.
+      // Show progress only after files are chosen — not while the gallery is open.
       if (!mounted) return;
       setState(() {
         _loading = true;
         _convertProgress = null;
       });
-      final projectId = await _projectStorage.createFromImport(
-        path,
+      final projectId = await _projectStorage.createFromImports(
+        paths,
         onProgress: _onConvertProgress,
       );
       AnalyticsService.instance.log('project_created');

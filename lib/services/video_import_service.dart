@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:aveditor/services/media_concat_service.dart';
 import 'package:aveditor/utils/av_editor_log.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
@@ -8,25 +9,32 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-/// Picks a video from gallery, camera, or filesystem (macOS/desktop).
+/// Picks videos and images from gallery, camera, or filesystem.
 class VideoImportService {
   VideoImportService({ImagePicker? picker}) : _picker = picker ?? ImagePicker();
 
   final ImagePicker _picker;
 
-  Future<String?> pickFromGallery() async {
+  static const _fileExtensions = [
+    ...MediaConcatService.videoExtensions,
+    ...MediaConcatService.imageExtensions,
+  ];
+
+  /// Gallery multi-select for videos and photos. Empty when cancelled.
+  Future<List<String>> pickFromGallery() async {
     if (!Platform.isMacOS) {
       await _requestMobileMediaPermissions();
     }
 
-    final file = await _picker.pickVideo(source: ImageSource.gallery);
-    if (file == null) return null;
-    return materializeImport(file);
+    final files = await _picker.pickMultipleMedia();
+    if (files.isEmpty) return const [];
+    return _materializeAll(files);
   }
 
-  Future<String?> pickFromCamera() async {
+  /// Camera still returns a single video path list.
+  Future<List<String>> pickFromCamera() async {
     if (Platform.isMacOS) {
-      return null;
+      return const [];
     }
 
     await _requestCameraPermission();
@@ -34,19 +42,29 @@ class VideoImportService {
       source: ImageSource.camera,
       maxDuration: const Duration(minutes: 10),
     );
-    if (file == null) return null;
-    return materializeImport(file);
+    if (file == null) return const [];
+    return [await materializeImport(file)];
   }
 
-  Future<String?> pickFromFiles() async {
-    const group = XTypeGroup(
-      label: 'videos',
-      extensions: ['mp4', 'mov', 'm4v', 'webm', 'mkv'],
-    );
-    final file = await openFile(acceptedTypeGroups: [group]);
-    if (file == null) return null;
-    return materializeImport(file);
+  Future<List<String>> pickFromFiles() async {
+    final extensions = [
+      for (final ext in _fileExtensions) ext.replaceFirst('.', ''),
+    ];
+    final group = XTypeGroup(label: 'media', extensions: extensions);
+    final files = await openFiles(acceptedTypeGroups: [group]);
+    if (files.isEmpty) return const [];
+    return _materializeAll(files);
   }
+
+  Future<List<String>> _materializeAll(List<XFile> files) async {
+    final paths = <String>[];
+    for (final file in files) {
+      paths.add(await materializeImport(file));
+    }
+    return paths;
+  }
+
+  static var _materializeSeq = 0;
 
   /// Copies the picker result into an app-owned temp file.
   ///
@@ -55,9 +73,10 @@ class VideoImportService {
   Future<String> materializeImport(XFile file) async {
     final dir = await getTemporaryDirectory();
     final ext = _extensionFor(file);
+    _materializeSeq += 1;
     final destPath = p.join(
       dir.path,
-      'import_${DateTime.now().millisecondsSinceEpoch}$ext',
+      'import_${DateTime.now().millisecondsSinceEpoch}_$_materializeSeq$ext',
     );
     final dest = File(destPath);
 
@@ -97,6 +116,12 @@ class VideoImportService {
     final fromPath = p.extension(file.path).trim();
     if (fromPath.isNotEmpty) return fromPath.toLowerCase();
     final mime = file.mimeType?.toLowerCase() ?? '';
+    if (mime.startsWith('image/')) {
+      if (mime.contains('png')) return '.png';
+      if (mime.contains('webp')) return '.webp';
+      if (mime.contains('heic') || mime.contains('heif')) return '.heic';
+      return '.jpg';
+    }
     if (mime.contains('quicktime') || mime.contains('mov')) return '.mov';
     if (mime.contains('webm')) return '.webm';
     if (mime.contains('matroska') || mime.contains('mkv')) return '.mkv';

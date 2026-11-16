@@ -26,8 +26,10 @@ class VideoFrameGrab {
     int maxWidth = 0,
     int timeMs = 0,
     int quality = 75,
+    /// Prefer ffmpeg decode seek (accurate on concat / multi-import sources).
+    bool accurate = false,
   }) async {
-    if (await _usesFfmpeg(video)) {
+    if (accurate || await _usesFfmpeg(video)) {
       return _ffmpegJpeg(
         video: video,
         thumbnailPath: thumbnailPath,
@@ -160,12 +162,14 @@ class VideoFrameGrab {
     required int maxHeight,
     required int quality,
   }) async {
+    // Seek after -i for frame-accurate grabs (input -ss is faster but can
+    // land on the wrong keyframe, especially on concatenated sources).
     final arguments = <String>[
       '-y',
-      '-ss',
-      (timeMs / 1000).toStringAsFixed(3),
       '-i',
       video,
+      '-ss',
+      (timeMs / 1000).toStringAsFixed(3),
       '-frames:v',
       '1',
       '-update',

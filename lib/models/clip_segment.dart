@@ -5,7 +5,11 @@ import 'package:uuid/uuid.dart';
 /// Default crossfade length when a transition is applied at a cut.
 const defaultTransitionDuration = Duration(milliseconds: 500);
 
-/// A kept portion of the source clip, in source-timeline order.
+/// A kept portion of the source file.
+///
+/// [start]/[end] are source times. Playback / export / timeline packing follow
+/// **list order**, which may differ from ascending source order after the user
+/// reorders cut clips.
 class ClipSegment {
   ClipSegment({
     String? id,

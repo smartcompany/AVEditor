@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:aveditor/models/clip_segment.dart';
@@ -13,6 +14,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
+import 'package:flutter/services.dart';
 
 /// Music / source-audio waveform colors (icon cyan ↔ warm palette).
 const _capCutAudioBg = Color(0xFF1A1230);
@@ -177,6 +179,25 @@ const kTimelineBodyHeight = _videoTrackHeight + _maxVisibleLanes * _laneStride;
 /// Travel before a drag commits to scrolling lanes or panning time.
 const _axisSlop = 3.0;
 
+/// Hold still this long on a clip to enter equal-width reorder mode.
+const _segmentReorderLongPress = Duration(milliseconds: 420);
+
+/// Cancel pending long-press reorder if the finger moves farther than this.
+const _segmentReorderLongPressSlop = 12.0;
+
+/// Gap between equal-width reorder cells (0 = flush neighbors).
+const _segmentReorderCellGap = 0.0;
+
+/// Equal-width slot left edge in a fixed strip (`stripLeft + index * stride`).
+/// The strip origin stays put while the hole moves with the dragged index.
+double reorderStripSlotLeft({
+  required int index,
+  required double stripLeft,
+  required double stride,
+}) {
+  return stripLeft + index * stride;
+}
+
 /// Finger travel still treated as a tap for item selection (pointer-up only).
 const _segmentTapSlop = 12.0;
 
@@ -248,6 +269,7 @@ class TimelineWidget extends StatefulWidget {
     this.onOverlaySelected,
     this.onSegmentSelected,
     this.onSegmentChanged,
+    this.onSegmentsReordered,
     this.onTransitionSelected,
     this.onSelectionCleared,
     this.onEdgeFramePreview,
@@ -295,6 +317,9 @@ class TimelineWidget extends StatefulWidget {
   final ValueChanged<TextOverlay>? onOverlaySelected;
   final ValueChanged<ClipSegment>? onSegmentSelected;
   final ValueChanged<ClipSegment>? onSegmentChanged;
+
+  /// Full segment list after a drag-reorder (list order = playback order).
+  final ValueChanged<List<ClipSegment>>? onSegmentsReordered;
 
   /// Cut index (0..n-2) of the selected video transition, or null.
   final ValueChanged<int?>? onTransitionSelected;
@@ -353,6 +378,19 @@ class TimelineWidgetState extends State<TimelineWidget>
   Duration? _musicAnchorFadeOut;
   ProjectMusic? _dragMusic;
   ClipSegment? _dragSegment;
+
+  /// Long-press reorder: equal-width cells; neighbors shift when crossed.
+  bool _segmentReorderActive = false;
+  String? _segmentReorderDraggingId;
+  List<ClipSegment>? _segmentReorderPreview;
+  double? _segmentReorderFingerX;
+
+  /// Left edge of slot 0 in the equal-width reorder strip (viewport X).
+  double? _segmentReorderStripLeft;
+
+  Timer? _segmentLongPressTimer;
+  ClipSegment? _longPressCandidate;
+
   double? _videoAudioAnchorVolume;
   Duration? _videoAudioAnchorFadeIn;
   Duration? _videoAudioAnchorFadeOut;
@@ -1664,18 +1702,15 @@ class TimelineWidgetState extends State<TimelineWidget>
               return audioTarget;
             }
           }
-          // Selected audio strip with no knob hit — still block timeline pan.
-          if (segment.id == widget.selectedSegmentId) {
-            return TimelineDragTarget.selectedItemBody;
-          }
+          // Selected audio strip without a knob: pan until long-press reorder.
+          _tapSegment = segment;
+          _dragSegment = segment;
         }
       }
 
-      _tapSegment = _segmentAtViewportX(x);
-      // Selected filmstrip / clip body: item focus absorbs the drag.
-      if (_tapSegment != null && _tapSegment!.id == widget.selectedSegmentId) {
+      _tapSegment = _segmentAtViewportX(x) ?? _tapSegment;
+      if (_tapSegment != null) {
         _dragSegment = _tapSegment;
-        return TimelineDragTarget.selectedItemBody;
       }
     }
 
@@ -1708,6 +1743,7 @@ class TimelineWidgetState extends State<TimelineWidget>
     _pointerDownLocal = local;
     _lastSingleLocal = local;
     _panAnchorSequenceTime = null;
+    _cancelSegmentLongPress();
     _dragTarget = _hitTest(local);
     // Edge / volume / fade handles stay horizontal. Move / body / empty space
     // leave axis open so a dominant vertical drag can scroll packed lanes.
@@ -1717,8 +1753,93 @@ class TimelineWidgetState extends State<TimelineWidget>
       _panAnchorSequenceTime = _sequenceTimeAtViewportX(_viewportWidth / 2);
     }
     _freezeCommittedDurationIfNeeded();
+    _scheduleSegmentLongPressIfNeeded(local);
     // Repaint so press highlights show immediately.
     if (_hasPressHighlight) setState(() {});
+  }
+
+  void _cancelSegmentLongPress() {
+    _segmentLongPressTimer?.cancel();
+    _segmentLongPressTimer = null;
+    _longPressCandidate = null;
+  }
+
+  void _scheduleSegmentLongPressIfNeeded(Offset local) {
+    if (widget.onSegmentsReordered == null) return;
+    if (widget.segments.length < 2) return;
+    if (local.dy < 0 || local.dy >= _videoTrackHeight) return;
+    if (_isSegmentTrimDragTarget(_dragTarget) ||
+        _isVideoAudioDragTarget(_dragTarget) ||
+        _dragTarget == TimelineDragTarget.transitionBody ||
+        _dragTarget == TimelineDragTarget.transitionStart ||
+        _dragTarget == TimelineDragTarget.transitionEnd) {
+      return;
+    }
+    final segment = _tapSegment ?? _segmentAtViewportX(local.dx);
+    if (segment == null) return;
+    _longPressCandidate = segment;
+    _segmentLongPressTimer = Timer(_segmentReorderLongPress, () {
+      if (!mounted) return;
+      final candidate = _longPressCandidate;
+      if (candidate == null || candidate.id != segment.id) return;
+      if (_maxTravelFromDown >= _segmentReorderLongPressSlop) return;
+      _enterSegmentReorder(candidate);
+    });
+  }
+
+  void _enterSegmentReorder(ClipSegment segment) {
+    _cancelSegmentLongPress();
+    HapticFeedback.mediumImpact();
+    // Fixed equal-width strip: slot 0..n stay put; the hole moves with the
+    // dragged index so neighbors slide into place (A,C,B — not C … A,B).
+    final homeLeft = _reorderHomeLeftForSegment(segment);
+    final from = widget.segments.indexWhere((s) => s.id == segment.id);
+    final stride = _videoTrackHeight + _segmentReorderCellGap;
+    final stripLeft =
+        from >= 0 ? homeLeft - from * stride : homeLeft;
+    final fingerX = _pointerDownLocal?.dx ?? (homeLeft + _videoTrackHeight / 2);
+    setState(() {
+      _segmentReorderActive = true;
+      _segmentReorderDraggingId = segment.id;
+      _segmentReorderPreview = List<ClipSegment>.of(widget.segments);
+      _segmentReorderFingerX = fingerX;
+      _segmentReorderStripLeft = stripLeft;
+      _dragTarget = TimelineDragTarget.selectedItemBody;
+      _dragSegment = segment;
+      _tapSegment = segment;
+      _dragAxis = Axis.horizontal;
+      _panAnchorSequenceTime = null;
+    });
+    if (!_selectionAnnounced) {
+      _selectionAnnounced = true;
+      widget.onSegmentSelected?.call(segment);
+    }
+  }
+
+  /// Equal-width cell left for [target], centered on its packed clip.
+  double _reorderHomeLeftForSegment(ClipSegment target) {
+    final cell = _videoTrackHeight;
+    var sequenceOffset = Duration.zero;
+    for (var i = 0; i < widget.segments.length; i++) {
+      final segment = widget.segments[i];
+      if (segment.id == target.id) {
+        final rawLeft = _viewportXForSequence(sequenceOffset);
+        final rawRight = _viewportXForSequence(
+          sequenceOffset + segment.duration,
+        );
+        final bounds = segmentBlockBounds(
+          rawLeft: rawLeft,
+          rawRight: rawRight,
+          gapBefore: i > 0,
+          gapAfter: i < widget.segments.length - 1,
+        );
+        final center = (bounds.left + bounds.right) / 2;
+        return center - cell / 2;
+      }
+      sequenceOffset += segment.duration;
+    }
+    final finger = _pointerDownLocal?.dx ?? 0;
+    return finger - cell / 2;
   }
 
   bool get _hasPressHighlight =>
@@ -1789,8 +1910,9 @@ class TimelineWidgetState extends State<TimelineWidget>
   bool get _pressedOverlayMove =>
       _dragTarget == TimelineDragTarget.overlayMove;
 
-  /// Video clip body press (no timeline move, but same chrome feedback).
+  /// Video clip body press chrome — hidden during long-press reorder.
   bool get _pressedSegmentMove =>
+      !_segmentReorderActive &&
       _dragTarget == TimelineDragTarget.selectedItemBody &&
       (_dragSegment != null || _tapSegment != null);
 
@@ -1847,6 +1969,10 @@ class TimelineWidgetState extends State<TimelineWidget>
     if (down != null) {
       final fromDown = (local - down).distance;
       if (fromDown > _maxTravelFromDown) _maxTravelFromDown = fromDown;
+      if (_segmentLongPressTimer != null &&
+          fromDown >= _segmentReorderLongPressSlop) {
+        _cancelSegmentLongPress();
+      }
     }
 
     if (_dragAxis == null) {
@@ -1867,8 +1993,7 @@ class TimelineWidgetState extends State<TimelineWidget>
       case TimelineDragTarget.scrollLanes:
         _scrollLanesBy(-delta.dy);
       case TimelineDragTarget.selectedItemBody:
-        // Selected clip chrome — do not pan the timeline under the finger.
-        break;
+        _updateSegmentReorder(x);
       case TimelineDragTarget.panTimeline:
         final down = _pointerDownLocal;
         final anchor = _panAnchorSequenceTime;
@@ -2423,6 +2548,80 @@ class TimelineWidgetState extends State<TimelineWidget>
     return (anchor - (local.dy - downLocal.dy) / usable).clamp(0.0, 1.0);
   }
 
+  /// Float the pressed clip; crossing a neighbor's center swaps into that slot
+  /// so the hole moves under the finger (C past B mid → A, hole, B).
+  void _updateSegmentReorder(double x) {
+    if (!_segmentReorderActive) return;
+    final preview = _segmentReorderPreview;
+    final draggingId = _segmentReorderDraggingId;
+    final stripLeft = _segmentReorderStripLeft;
+    if (preview == null ||
+        draggingId == null ||
+        stripLeft == null ||
+        preview.length < 2) {
+      return;
+    }
+
+    final cell = _videoTrackHeight;
+    final stride = cell + _segmentReorderCellGap;
+    final next = List<ClipSegment>.of(preview);
+    var from = next.indexWhere((s) => s.id == draggingId);
+    if (from < 0) return;
+
+    var swapped = false;
+    while (from > 0) {
+      final neighborCenter =
+          reorderStripSlotLeft(
+            index: from - 1,
+            stripLeft: stripLeft,
+            stride: stride,
+          ) +
+          cell / 2;
+      if (x >= neighborCenter) break;
+      final item = next.removeAt(from);
+      next.insert(from - 1, item);
+      from -= 1;
+      swapped = true;
+    }
+    while (from < next.length - 1) {
+      final neighborCenter =
+          reorderStripSlotLeft(
+            index: from + 1,
+            stripLeft: stripLeft,
+            stride: stride,
+          ) +
+          cell / 2;
+      if (x <= neighborCenter) break;
+      final item = next.removeAt(from);
+      next.insert(from + 1, item);
+      from += 1;
+      swapped = true;
+    }
+
+    if (!swapped && _segmentReorderFingerX == x) return;
+    if (swapped) HapticFeedback.selectionClick();
+    setState(() {
+      if (swapped) _segmentReorderPreview = next;
+      _segmentReorderFingerX = x;
+    });
+  }
+
+  void _commitSegmentReorderIfNeeded() {
+    final onReorder = widget.onSegmentsReordered;
+    final preview = _segmentReorderPreview;
+    if (!_segmentReorderActive || onReorder == null || preview == null) return;
+    if (preview.length != widget.segments.length) return;
+    var changed = false;
+    for (var i = 0; i < preview.length; i++) {
+      if (preview[i].id != widget.segments[i].id) {
+        changed = true;
+        break;
+      }
+    }
+    if (!changed) return;
+    onReorder(List<ClipSegment>.of(preview));
+  }
+
   void _announceSelection() {
     final overlay = _dragOverlay;
     if (overlay != null && !_selectionAnnounced) {
@@ -2492,6 +2691,8 @@ class TimelineWidgetState extends State<TimelineWidget>
         didSelectItem = true;
       }
       // Empty filmstrip taps must not seek — only a drag pans time.
+    } else if (_segmentReorderActive && !tapped) {
+      _commitSegmentReorderIfNeeded();
     } else if (_dragTarget == TimelineDragTarget.panTimeline &&
         !tapped &&
         _didMove) {
@@ -2568,10 +2769,16 @@ class TimelineWidgetState extends State<TimelineWidget>
   }
 
   void _resetSingleGesture() {
+    _cancelSegmentLongPress();
     _dragOverlay = null;
     _dragMusic = null;
     _dragSegment = null;
     _tapSegment = null;
+    _segmentReorderActive = false;
+    _segmentReorderDraggingId = null;
+    _segmentReorderPreview = null;
+    _segmentReorderFingerX = null;
+    _segmentReorderStripLeft = null;
     _segmentAnchorStart = null;
     _segmentAnchorEnd = null;
     _overlayAnchorStart = null;
@@ -2697,6 +2904,7 @@ class TimelineWidgetState extends State<TimelineWidget>
   void dispose() {
     _stopPanFling();
     _stopEdgeSettle();
+    _cancelSegmentLongPress();
     _panFling.dispose();
     _edgeSettle.dispose();
     super.dispose();
@@ -2875,6 +3083,11 @@ class TimelineWidgetState extends State<TimelineWidget>
                   pressedMusicMove: _pressedMusicMove,
                   pressedOverlayMove: _pressedOverlayMove,
                   pressedSegmentMove: _pressedSegmentMove,
+                  segmentReorderActive: _segmentReorderActive,
+                  segmentReorderPreview: _segmentReorderPreview,
+                  segmentReorderDraggingId: _segmentReorderDraggingId,
+                  segmentReorderFingerX: _segmentReorderFingerX,
+                  segmentReorderStripLeft: _segmentReorderStripLeft,
                   scrollPx: _scrollPx,
                   contentWidth: _contentWidth,
                   contentInsetX: _contentInsetX,
@@ -2968,6 +3181,11 @@ class _TimelinePainter extends CustomPainter {
     this.pressedMusicMove = false,
     this.pressedOverlayMove = false,
     this.pressedSegmentMove = false,
+    this.segmentReorderActive = false,
+    this.segmentReorderPreview,
+    this.segmentReorderDraggingId,
+    this.segmentReorderFingerX,
+    this.segmentReorderStripLeft,
     this.trimLimitGlow = 0,
     this.trimLimitGlowAtStart = true,
   });
@@ -3016,6 +3234,14 @@ class _TimelinePainter extends CustomPainter {
   final bool pressedMusicMove;
   final bool pressedOverlayMove;
   final bool pressedSegmentMove;
+
+  /// Long-press equal-width reorder (neighbors shift past midpoints).
+  final bool segmentReorderActive;
+  final List<ClipSegment>? segmentReorderPreview;
+  final String? segmentReorderDraggingId;
+  final double? segmentReorderFingerX;
+  final double? segmentReorderStripLeft;
+
   final double trimLimitGlow;
   final bool trimLimitGlowAtStart;
 
@@ -3429,6 +3655,26 @@ class _TimelinePainter extends CustomPainter {
         hasSourceAudio ? _videoFilmstripHeight : _videoTrackHeight;
     final audioTop = _videoFilmstripHeight;
     final audioBottom = _videoTrackHeight;
+    final preview = segmentReorderPreview;
+    final reordering = segmentReorderActive &&
+        preview != null &&
+        preview.length > 1 &&
+        segmentReorderDraggingId != null;
+
+    if (reordering) {
+      _paintEqualWidthReorderTrack(
+        canvas,
+        preview: preview,
+        draggingId: segmentReorderDraggingId!,
+        fingerX: segmentReorderFingerX ?? 0,
+        stripLeft: segmentReorderStripLeft ?? 0,
+        filmTop: filmTop,
+        filmBottom: filmBottom,
+        audioTop: audioTop,
+        audioBottom: audioBottom,
+      );
+      return;
+    }
 
     // Full committed duration behind the filmstrip — shows how far the project
     // runs past the picture (text/music tails). Updates on gesture commit.
@@ -3491,6 +3737,113 @@ class _TimelinePainter extends CustomPainter {
     // Selected trim caps last — outside end-caps would otherwise be covered by
     // the next segment painted later in the loop.
     _paintSelectedSegmentHandles(canvas, filmTop, audioBottom);
+  }
+
+  /// Equal-width slots; neighbors shift when the float crosses their center.
+  void _paintEqualWidthReorderTrack(
+    Canvas canvas, {
+    required List<ClipSegment> preview,
+    required String draggingId,
+    required double fingerX,
+    required double stripLeft,
+    required double filmTop,
+    required double filmBottom,
+    required double audioTop,
+    required double audioBottom,
+  }) {
+    final cell = _videoTrackHeight;
+    final stride = cell + _segmentReorderCellGap;
+    final dragIndex = preview.indexWhere((s) => s.id == draggingId);
+    if (dragIndex < 0) return;
+
+    ClipSegment? floating;
+
+    for (var i = 0; i < preview.length; i++) {
+      final segment = preview[i];
+      final left = reorderStripSlotLeft(
+        index: i,
+        stripLeft: stripLeft,
+        stride: stride,
+      );
+      final right = left + cell;
+      final fullRect = Rect.fromLTRB(left, filmTop, right, audioBottom);
+      final filmRect = Rect.fromLTRB(left, filmTop, right, filmBottom);
+
+      if (segment.id == draggingId) {
+        floating = segment;
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(fullRect, const Radius.circular(6)),
+          Paint()..color = Colors.white.withValues(alpha: 0.08),
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(fullRect, const Radius.circular(6)),
+          Paint()
+            ..color = Colors.white.withValues(alpha: 0.25)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5,
+        );
+        continue;
+      }
+
+      _paintFilmstrip(canvas, filmRect, segment);
+      canvas.drawRect(
+        filmRect,
+        Paint()..color = Colors.black.withValues(alpha: 0.12),
+      );
+      if (hasSourceAudio) {
+        final audioRect = Rect.fromLTRB(left, audioTop, right, audioBottom);
+        _paintSourceAudioBand(canvas, audioRect, segment, selected: false);
+      }
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(fullRect, const Radius.circular(6)),
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.16)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1,
+      );
+    }
+
+    if (floating == null) return;
+    final floatLeft = fingerX - cell / 2;
+    final floatRect = Rect.fromLTRB(
+      floatLeft,
+      filmTop,
+      floatLeft + cell,
+      audioBottom,
+    );
+    final filmFloat = Rect.fromLTRB(
+      floatRect.left,
+      filmTop,
+      floatRect.right,
+      filmBottom,
+    );
+    canvas.save();
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(floatRect, const Radius.circular(6)),
+      Paint()..color = Colors.black.withValues(alpha: 0.5),
+    );
+    _paintFilmstrip(canvas, filmFloat, floating);
+    canvas.drawRect(
+      filmFloat,
+      Paint()..color = Colors.black.withValues(alpha: 0.08),
+    );
+    if (hasSourceAudio) {
+      final audioRect = Rect.fromLTRB(
+        floatRect.left,
+        audioTop,
+        floatRect.right,
+        audioBottom,
+      );
+      _paintSourceAudioBand(canvas, audioRect, floating, selected: true);
+    }
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(floatRect, const Radius.circular(6)),
+      Paint()
+        ..color = AppTheme.accent
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2,
+    );
+    canvas.restore();
   }
 
   void _paintSelectedSegmentHandles(
@@ -4033,6 +4386,7 @@ class _TimelinePainter extends CustomPainter {
       final clampedMs = sourceMs.clamp(segment.start.inMilliseconds, upperMs);
       final frame = _nearestFilmstripFrame(
         Duration(milliseconds: clampedMs.toInt()),
+        within: segment,
       );
       if (frame == null) continue;
 
@@ -4047,17 +4401,30 @@ class _TimelinePainter extends CustomPainter {
     canvas.restore();
   }
 
-  TimelineFilmstripFrame? _nearestFilmstripFrame(Duration sourceTime) {
-    TimelineFilmstripFrame? best;
-    var bestDeltaMs = 1 << 62;
+  TimelineFilmstripFrame? _nearestFilmstripFrame(
+    Duration sourceTime, {
+    ClipSegment? within,
+  }) {
+    TimelineFilmstripFrame? bestInSegment;
+    var bestInDelta = 1 << 62;
+    TimelineFilmstripFrame? bestAny;
+    var bestAnyDelta = 1 << 62;
     for (final frame in filmstripFrames) {
       final deltaMs = (frame.sourceTime - sourceTime).inMilliseconds.abs();
-      if (deltaMs < bestDeltaMs) {
-        bestDeltaMs = deltaMs;
-        best = frame;
+      if (deltaMs < bestAnyDelta) {
+        bestAnyDelta = deltaMs;
+        bestAny = frame;
+      }
+      if (within == null) continue;
+      if (frame.sourceTime < within.start || frame.sourceTime >= within.end) {
+        continue;
+      }
+      if (deltaMs < bestInDelta) {
+        bestInDelta = deltaMs;
+        bestInSegment = frame;
       }
     }
-    return best;
+    return bestInSegment ?? bestAny;
   }
 
   void _drawHandle(
@@ -4149,6 +4516,11 @@ class _TimelinePainter extends CustomPainter {
         oldDelegate.pressedMusicMove != pressedMusicMove ||
         oldDelegate.pressedOverlayMove != pressedOverlayMove ||
         oldDelegate.pressedSegmentMove != pressedSegmentMove ||
+        oldDelegate.segmentReorderActive != segmentReorderActive ||
+        oldDelegate.segmentReorderPreview != segmentReorderPreview ||
+        oldDelegate.segmentReorderDraggingId != segmentReorderDraggingId ||
+        oldDelegate.segmentReorderFingerX != segmentReorderFingerX ||
+        oldDelegate.segmentReorderStripLeft != segmentReorderStripLeft ||
         oldDelegate.musicContentHeight != musicContentHeight ||
         oldDelegate.filmstripFrames != filmstripFrames ||
         oldDelegate.musicTracks != musicTracks ||
