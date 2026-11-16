@@ -5,14 +5,14 @@ import 'package:uuid/uuid.dart';
 /// Default crossfade length when a transition is applied at a cut.
 const defaultTransitionDuration = Duration(milliseconds: 500);
 
-/// A kept portion of the source file.
+/// One timeline clip backed by a [mediaId] asset.
 ///
-/// [start]/[end] are source times. Playback / export / timeline packing follow
-/// **list order**, which may differ from ascending source order after the user
-/// reorders cut clips.
+/// [start]/[end] are in/out times on that asset (hold length for images).
+/// Playback / export / packing follow **list order**.
 class ClipSegment {
   ClipSegment({
     String? id,
+    this.mediaId,
     required this.start,
     required this.end,
     this.volume = 1.0,
@@ -30,6 +30,11 @@ class ClipSegment {
         );
 
   final String id;
+
+  /// References [MediaAsset.id]. Null only on legacy in-memory segments
+  /// before v1→v2 migration assigns an id.
+  final String? mediaId;
+
   final Duration start;
   final Duration end;
 
@@ -78,6 +83,7 @@ class ClipSegment {
     final applied = transition;
     return {
       'id': id,
+      if (mediaId != null) 'mediaId': mediaId,
       'startMs': start.inMilliseconds,
       'endMs': end.inMilliseconds,
       'volume': volume,
@@ -106,6 +112,7 @@ class ClipSegment {
 
     return ClipSegment(
       id: json['id'] as String,
+      mediaId: json['mediaId'] as String?,
       start: Duration(milliseconds: json['startMs'] as int),
       end: Duration(milliseconds: json['endMs'] as int),
       volume: (json['volume'] as num?)?.toDouble() ?? 1.0,
@@ -117,6 +124,8 @@ class ClipSegment {
 
   ClipSegment copyWith({
     String? id,
+    String? mediaId,
+    bool clearMediaId = false,
     Duration? start,
     Duration? end,
     double? volume,
@@ -145,6 +154,7 @@ class ClipSegment {
 
     return ClipSegment(
       id: id ?? this.id,
+      mediaId: clearMediaId ? null : (mediaId ?? this.mediaId),
       start: start ?? this.start,
       end: end ?? this.end,
       volume: volume ?? this.volume,

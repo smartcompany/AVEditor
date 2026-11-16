@@ -166,7 +166,7 @@ void main() {
     expect(segmentReorderWouldMove(1, 0), isTrue);
   });
 
-  test('segment trim limits follow source neighbors after reorder', () {
+  test('segment trim limits follow the asset, not source neighbors', () {
     final segments = [
       seg(const Duration(seconds: 5), const Duration(seconds: 10), id: 'b'),
       seg(Duration.zero, const Duration(seconds: 5), id: 'a'),
@@ -179,7 +179,7 @@ void main() {
         a,
         sourceDuration: const Duration(seconds: 20),
       ),
-      const Duration(seconds: 5),
+      const Duration(seconds: 20),
     );
   });
 
@@ -463,7 +463,7 @@ void main() {
     );
   });
 
-  test('trimSegmentEnd shortens and can restore into a source gap', () {
+  test('trimSegmentEnd shortens and can restore within asset bounds', () {
     final a = seg(Duration.zero, const Duration(seconds: 5), id: 'a');
     final b = seg(const Duration(seconds: 5), const Duration(seconds: 10), id: 'b');
     final segments = [a, b];
@@ -486,16 +486,17 @@ void main() {
     )!;
     expect(restored.end, const Duration(seconds: 5));
 
-    final blocked = trimSegmentEnd(
+    // No neighbor wall — end may grow up to sourceDuration / asset max.
+    final extended = trimSegmentEnd(
       gapped,
       shortened,
       nextEnd: const Duration(seconds: 8),
       sourceDuration: source,
     )!;
-    expect(blocked.end, const Duration(seconds: 5)); // neighbor wall
+    expect(extended.end, const Duration(seconds: 8));
   });
 
-  test('trimSegmentStart shortens and can restore into a source gap', () {
+  test('trimSegmentStart shortens and can restore within asset bounds', () {
     final a = seg(Duration.zero, const Duration(seconds: 5), id: 'a');
     final b = seg(const Duration(seconds: 5), const Duration(seconds: 10), id: 'b');
     final segments = [a, b];
@@ -518,12 +519,72 @@ void main() {
     )!;
     expect(restored.start, const Duration(seconds: 5));
 
-    final blocked = trimSegmentStart(
+    // No neighbor wall — start may move earlier down to zero.
+    final extended = trimSegmentStart(
       gapped,
       shortened,
       nextStart: const Duration(seconds: 2),
       sourceDuration: source,
     )!;
-    expect(blocked.start, const Duration(seconds: 5));
+    expect(extended.start, const Duration(seconds: 2));
+  });
+
+  test('crossing a multi-source cut maps to the next clip local zero', () {
+    // Regression for centre-playhead jump: pan past a photo must keep packed
+    // UI time. exportTimeToSourceTime at the cut returns the next clip's local
+    // 0 — feeding that back as the playhead resets the strip to the start.
+    final segments = [
+      ClipSegment(
+        id: 'photo',
+        mediaId: 'img',
+        start: Duration.zero,
+        end: const Duration(seconds: 3),
+      ),
+      ClipSegment(
+        id: 'vid',
+        mediaId: 'v1',
+        start: Duration.zero,
+        end: const Duration(seconds: 5),
+      ),
+    ];
+    expect(
+      exportTimeToSourceTime(segments, const Duration(seconds: 3)),
+      Duration.zero,
+    );
+    expect(
+      exportTimeToSourceTime(
+        segments,
+        const Duration(seconds: 3, milliseconds: 100),
+      ),
+      const Duration(milliseconds: 100),
+    );
+  });
+
+  test('splitSegmentsAtSequenceTime picks the packed clip when locals overlap', () {
+    final segments = [
+      ClipSegment(
+        id: 'a',
+        mediaId: 'm1',
+        start: Duration.zero,
+        end: const Duration(seconds: 3),
+      ),
+      ClipSegment(
+        id: 'b',
+        mediaId: 'm2',
+        start: Duration.zero,
+        end: const Duration(seconds: 3),
+      ),
+    ];
+    final split = splitSegmentsAtSequenceTime(
+      segments,
+      const Duration(seconds: 4),
+    );
+    expect(split, hasLength(3));
+    expect(split[0].mediaId, 'm1');
+    expect(split[0].end, const Duration(seconds: 3));
+    expect(split[1].mediaId, 'm2');
+    expect(split[1].end, const Duration(seconds: 1));
+    expect(split[2].mediaId, 'm2');
+    expect(split[2].start, const Duration(seconds: 1));
   });
 }

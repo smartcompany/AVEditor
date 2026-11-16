@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/clip_trim.dart';
 import 'package:aveditor/models/export_preset.dart';
+import 'package:aveditor/models/media_asset.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/video_project.dart';
 import 'package:aveditor/services/media_concat_service.dart';
@@ -45,7 +46,8 @@ void main() {
       );
 
       expect(restored.id, project.id);
-      expect(restored.duration, project.duration);
+      // Duration is the packed timeline (kept segment length), not master EOF.
+      expect(restored.duration, const Duration(seconds: 7));
       expect(restored.trim.start, project.trim.start);
       expect(restored.trim.end, project.trim.end);
       expect(restored.segments.length, 1);
@@ -144,6 +146,97 @@ void main() {
       expect(project.trim.end, const Duration(seconds: 10));
       expect(project.trimmedDuration, Duration.zero);
     });
+
+    test('v1 JSON migrates to one MediaAsset and mediaIds', () {
+      final json = <String, dynamic>{
+        'version': 1,
+        'id': 'legacy',
+        'durationMs': 8000,
+        'sourceFileName': 'source.mp4',
+        'preset': ExportPreset.youtubeShorts.name,
+        'segments': [
+          {
+            'id': 'a',
+            'startMs': 0,
+            'endMs': 3000,
+            'volume': 1.0,
+            'fadeInMs': 0,
+            'fadeOutMs': 0,
+            'transitionMs': 500,
+          },
+          {
+            'id': 'b',
+            'startMs': 3000,
+            'endMs': 8000,
+            'volume': 1.0,
+            'fadeInMs': 0,
+            'fadeOutMs': 0,
+            'transitionMs': 500,
+          },
+        ],
+        'updatedAt': '2026-03-01T12:00:00.000Z',
+      };
+
+      final restored = VideoProject.fromJson(
+        json,
+        sourcePath: '/tmp/projects/legacy/source.mp4',
+      );
+
+      expect(restored.mediaAssets, hasLength(1));
+      expect(restored.mediaAssets.first.fileName, 'source.mp4');
+      expect(restored.mediaAssets.first.kind, MediaAssetKind.video);
+      expect(restored.mediaAssets.first.duration, const Duration(seconds: 8));
+      expect(restored.segments.every((s) => s.mediaId != null), isTrue);
+      expect(
+        restored.segments.map((s) => s.mediaId).toSet(),
+        {restored.mediaAssets.first.id},
+      );
+      expect(restored.toJson()['version'], kProjectFileVersion);
+    });
+
+    test('round-trips mediaAssets and segment mediaIds', () {
+      final assetA = MediaAsset(
+        id: 'ma',
+        fileName: 'media/ma.mp4',
+        kind: MediaAssetKind.video,
+        duration: const Duration(seconds: 4),
+      );
+      final assetB = MediaAsset(
+        id: 'mb',
+        fileName: 'media/mb.jpg',
+        kind: MediaAssetKind.image,
+      );
+      final project = VideoProject(
+        id: 'multi',
+        sourcePath: '/tmp/projects/multi/media/ma.mp4',
+        duration: const Duration(seconds: 7),
+        mediaAssets: [assetA, assetB],
+        segments: [
+          ClipSegment(
+            id: 'a',
+            mediaId: assetA.id,
+            start: Duration.zero,
+            end: const Duration(seconds: 4),
+          ),
+          ClipSegment(
+            id: 'b',
+            mediaId: assetB.id,
+            start: Duration.zero,
+            end: kDefaultImageHoldDuration,
+          ),
+        ],
+        updatedAt: DateTime.utc(2026, 3, 1, 12),
+      );
+
+      final restored = VideoProject.fromJson(
+        project.toJson(),
+        sourcePath: project.sourcePath,
+      );
+      expect(restored.mediaAssets, hasLength(2));
+      expect(restored.segments[0].mediaId, assetA.id);
+      expect(restored.segments[1].mediaId, assetB.id);
+      expect(restored.pathForSegment(restored.segments[1]), endsWith('mb.jpg'));
+    });
   });
 
   group('ProjectStorageService', () {
@@ -163,16 +256,23 @@ void main() {
       }
     });
 
-    test('createFromImport copies the source and writes project.json', () async {
+    test('createFromImport copies into media/ and writes project.json', () async {
       final picked = File('${tempRoot.path}/picked.mp4');
       await picked.writeAsBytes(List<int>.filled(2048, 7));
 
-      final projectId = await service.createFromImport(picked.path);
+      final projectId = await service.createFromImport(
+        picked.path,
+        concat: _FakeMediaConcat(),
+      );
       final loaded = await service.load(projectId);
 
       expect(loaded, isNotNull);
-      expect(await File(loaded!.sourcePath).exists(), isTrue);
-      expect(await File(loaded.sourcePath).length(), greaterThan(1024));
+      expect(loaded!.mediaAssets, hasLength(1));
+      expect(loaded.mediaAssets.first.fileName, startsWith('media/'));
+      expect(await File(loaded.primaryVideoPath).exists(), isTrue);
+      expect(await File(loaded.primaryVideoPath).length(), greaterThan(1024));
+      expect(loaded.segments.single.mediaId, loaded.mediaAssets.first.id);
+      expect(loaded.duration, const Duration(seconds: 2));
 
       final json =
           jsonDecode(
@@ -182,11 +282,12 @@ void main() {
               )
               as Map<String, dynamic>;
       expect(json['id'], projectId);
-      expect(json['durationMs'], 0);
+      expect(json['version'], kProjectFileVersion);
+      expect(json['mediaAssets'], hasLength(1));
     });
 
     test(
-      'createFromImport replaces an unplayable source with source.mp4',
+      'createFromImport replaces an unplayable media file in place',
       () async {
         final picked = File('${tempRoot.path}/picked.mov');
         await picked.writeAsString('hevc-original');
@@ -201,17 +302,15 @@ void main() {
           ),
         );
 
-        final projectId = await converting.createFromImport(picked.path);
+        final projectId = await converting.createFromImport(
+          picked.path,
+          concat: _FakeMediaConcat(),
+        );
         final loaded = await converting.load(projectId);
 
         expect(loaded!.sourcePath, endsWith('/source.mp4'));
         expect(await File(loaded.sourcePath).readAsString(), 'h264-sdr');
-        expect(
-          await File(
-            '${tempRoot.path}/aveditor/projects/$projectId/source.mov',
-          ).exists(),
-          isFalse,
-        );
+        expect(loaded.mediaAssets.single.fileName, contains('source.mp4'));
         expect(await picked.readAsString(), 'hevc-original');
       },
     );
@@ -222,9 +321,15 @@ void main() {
       await first.writeAsBytes(List<int>.filled(512, 1));
       await second.writeAsBytes(List<int>.filled(512, 2));
 
-      final idA = await service.createFromImport(first.path);
+      final idA = await service.createFromImport(
+        first.path,
+        concat: _FakeMediaConcat(),
+      );
       await Future<void>.delayed(const Duration(milliseconds: 5));
-      final idB = await service.createFromImport(second.path);
+      final idB = await service.createFromImport(
+        second.path,
+        concat: _FakeMediaConcat(),
+      );
 
       final list = await service.listSummaries();
       expect(list.map((s) => s.id), [idB, idA]);
@@ -234,7 +339,10 @@ void main() {
     test('summary cover time follows the first clip start', () async {
       final source = File('${tempRoot.path}/c.mp4');
       await source.writeAsBytes(List<int>.filled(512, 3));
-      final id = await service.createFromImport(source.path);
+      final id = await service.createFromImport(
+        source.path,
+        concat: _FakeMediaConcat(),
+      );
 
       final loaded = (await service.load(id))!;
       await service.save(
@@ -242,9 +350,11 @@ void main() {
           id: id,
           sourcePath: loaded.sourcePath,
           duration: const Duration(seconds: 10),
+          mediaAssets: loaded.mediaAssets,
           segments: [
             ClipSegment(
               id: 'trimmed',
+              mediaId: loaded.mediaAssets.first.id,
               start: const Duration(milliseconds: 1500),
               end: const Duration(seconds: 4),
             ),
@@ -256,7 +366,7 @@ void main() {
       expect(summary.coverTimeMs, 1500);
     });
 
-    test('createFromImports builds sequential hard-cut segments', () async {
+    test('createFromImports copies each pick under media/ without concat', () async {
       final video = File('${tempRoot.path}/clip.mp4');
       final image = File('${tempRoot.path}/still.jpg');
       await video.writeAsBytes(List<int>.filled(512, 4));
@@ -268,36 +378,39 @@ void main() {
       );
       final loaded = (await service.load(id))!;
 
-      // Video 2s + still baked 60s + video 4s; still keeps 3s on the timeline.
+      expect(loaded.mediaAssets, hasLength(3));
+      expect(loaded.mediaAssets[0].kind, MediaAssetKind.video);
+      expect(loaded.mediaAssets[1].kind, MediaAssetKind.image);
+      expect(loaded.mediaAssets[2].kind, MediaAssetKind.video);
       expect(
         loaded.duration,
         const Duration(seconds: 2) +
-            kMaxImageClipDuration +
+            kDefaultImageHoldDuration +
             const Duration(seconds: 4),
       );
       expect(loaded.segments, hasLength(3));
       expect(loaded.segments[0].start, Duration.zero);
       expect(loaded.segments[0].end, const Duration(seconds: 2));
-      expect(loaded.segments[0].hasTransition, isFalse);
-      expect(loaded.segments[1].start, const Duration(seconds: 2));
-      expect(
-        loaded.segments[1].end,
-        const Duration(seconds: 2) + kDefaultImageClipDuration,
-      );
-      expect(loaded.segments[1].hasTransition, isFalse);
-      final thirdStart = const Duration(seconds: 2) + kMaxImageClipDuration;
-      expect(loaded.segments[2].start, thirdStart);
-      expect(loaded.segments[2].end, thirdStart + const Duration(seconds: 4));
-      expect(await File(loaded.sourcePath).exists(), isTrue);
+      expect(loaded.segments[0].mediaId, loaded.mediaAssets[0].id);
+      expect(loaded.segments[1].start, Duration.zero);
+      expect(loaded.segments[1].end, kDefaultImageHoldDuration);
+      expect(loaded.segments[1].mediaId, loaded.mediaAssets[1].id);
+      expect(loaded.segments[2].start, Duration.zero);
+      expect(loaded.segments[2].end, const Duration(seconds: 4));
+      expect(loaded.segments[2].mediaId, loaded.mediaAssets[2].id);
 
-      // Right handle on the still can grow into the unused baked source.
+      for (final asset in loaded.mediaAssets) {
+        expect(await File(loaded.absoluteMediaPath(asset)).exists(), isTrue);
+      }
+
+      // Image right edge can grow hold length up to the soft max.
       final extended = trimSegmentEnd(
         loaded.segments,
         loaded.segments[1],
-        nextEnd: const Duration(seconds: 2) + const Duration(seconds: 12),
-        sourceDuration: loaded.duration,
+        nextEnd: const Duration(seconds: 12),
+        asset: loaded.mediaAssets[1],
       )!;
-      expect(extended.end, const Duration(seconds: 14));
+      expect(extended.end, const Duration(seconds: 12));
     });
   });
 
@@ -305,37 +418,33 @@ void main() {
     expect(MediaConcatService.isImagePath('/a/b/c.JPG'), isTrue);
     expect(MediaConcatService.isImagePath('/a/b/c.png'), isTrue);
     expect(MediaConcatService.isImagePath('/a/b/c.mp4'), isFalse);
-    expect(kDefaultImageClipDuration, const Duration(seconds: 3));
-    expect(kMaxImageClipDuration, const Duration(seconds: 60));
-    expect(kMaxImageClipDuration > kDefaultImageClipDuration, isTrue);
+    expect(kDefaultImageHoldDuration, const Duration(seconds: 3));
+    expect(kMaxImageHoldDuration, const Duration(minutes: 5));
+    expect(kMaxImageHoldDuration > kDefaultImageHoldDuration, isTrue);
   });
 }
 
 class _FakeMediaConcat extends MediaConcatService {
+  int _videoProbeCount = 0;
+
+  @override
+  Future<Duration?> probeDuration(String path) async {
+    if (MediaConcatService.isImagePath(path)) return null;
+    final lengths = const [
+      Duration(seconds: 2),
+      Duration(seconds: 4),
+    ];
+    final d = lengths[_videoProbeCount % lengths.length];
+    _videoProbeCount++;
+    return d;
+  }
+
   @override
   Future<({String outputPath, List<Duration> pieceDurations})> buildSource({
     required List<String> inputPaths,
     required String workDir,
     void Function(double progress)? onProgress,
   }) async {
-    await Directory(workDir).create(recursive: true);
-    final output = File('$workDir/source.mp4');
-    await output.writeAsBytes(List<int>.filled(1024, 9));
-    onProgress?.call(1);
-    var videoIndex = 0;
-    final videoLengths = const [
-      Duration(seconds: 2),
-      Duration(seconds: 4),
-    ];
-    return (
-      outputPath: output.path,
-      pieceDurations: [
-        for (final path in inputPaths)
-          if (MediaConcatService.isImagePath(path))
-            kMaxImageClipDuration
-          else
-            videoLengths[videoIndex++ % videoLengths.length],
-      ],
-    );
+    fail('buildSource must not be called for multi-source import');
   }
 }

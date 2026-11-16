@@ -59,12 +59,13 @@ class ExportService {
 
     await TransitionCatalogService.instance.ensureInitialized();
 
-    final sourceFile = File(project.sourcePath);
+    final primaryPath = project.primaryVideoPath;
+    final sourceFile = File(primaryPath);
     if (!await sourceFile.exists()) {
       throw StateError('Source video not found');
     }
 
-    final sourceSize = await probeService.readFrameSize(project.sourcePath);
+    final sourceSize = await probeService.readFrameSize(primaryPath);
     final frame = computeCanvasFrameSize(
       sourceWidth: sourceSize.width,
       sourceHeight: sourceSize.height,
@@ -92,7 +93,7 @@ class ExportService {
 
     final outputPath = p.join(outputDir.path, 'aveditor_export_$stamp.mp4');
     final musicPath = _musicPathForProject(project);
-    final hasVideoAudio = await probeService.hasAudioStream(project.sourcePath);
+    final hasVideoAudio = await probeService.hasAudioStream(primaryPath);
 
     final streamCopy = canStreamCopy(
       project: project,
@@ -145,7 +146,11 @@ class ExportService {
     required bool hasVideoAudio,
     required bool streamCopy,
   }) {
-    final visual = encodeCompositionSegments(project.segments);
+    final visual = encodeCompositionSegments(
+      project.segments,
+      project: project,
+      fallbackSourcePath: project.primaryVideoPath,
+    );
     final segments = <Map<String, dynamic>>[];
     for (var i = 0; i < project.segments.length; i++) {
       final segment = project.segments[i];
@@ -203,7 +208,7 @@ class ExportService {
     }
 
     return {
-      'sourcePath': project.sourcePath,
+      'sourcePath': project.primaryVideoPath,
       'outputPath': outputPath,
       'width': frame.width,
       'height': frame.height,

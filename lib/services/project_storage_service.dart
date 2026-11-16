@@ -2,12 +2,13 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:aveditor/models/clip_segment.dart';
-import 'package:aveditor/models/clip_trim.dart';
+import 'package:aveditor/models/media_asset.dart';
 import 'package:aveditor/models/video_project.dart';
 import 'package:aveditor/services/media_concat_service.dart';
 import 'package:aveditor/services/video_frame_grab.dart';
 import 'package:aveditor/services/playback_fallback_transcoder.dart';
 import 'package:aveditor/utils/av_editor_log.dart';
+import 'package:aveditor/utils/clip_segment_ops.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -52,16 +53,19 @@ class ProjectStorageService {
   Future<String> createFromImport(
     String pickedPath, {
     void Function(double progress)? onProgress,
+    MediaConcatService? concat,
   }) {
-    return createFromImports([pickedPath], onProgress: onProgress);
+    return createFromImports(
+      [pickedPath],
+      onProgress: onProgress,
+      concat: concat,
+    );
   }
 
   /// Creates a project from one or more videos/images in pick order.
   ///
-  /// Multiple assets (or any image) are normalized and concatenated into one
-  /// source. Boundaries become [ClipSegment]s with hard cuts (null transition).
-  /// Images keep [kDefaultImageClipDuration] on the timeline and bake
-  /// [kMaxImageClipDuration] so the right trim handle can extend.
+  /// Each pick is copied into `media/<id>.<ext>` as its own [MediaAsset].
+  /// Images hold [kDefaultImageHoldDuration] on the timeline (no bake/concat).
   Future<String> createFromImports(
     List<String> pickedPaths, {
     void Function(double progress)? onProgress,
@@ -73,102 +77,138 @@ class ProjectStorageService {
     ];
     if (paths.isEmpty) throw StateError('empty_video');
 
-    final needsConcat =
-        paths.length > 1 || paths.any(MediaConcatService.isImagePath);
-    if (!needsConcat) {
-      return _createFromSingleVideo(paths.first, onProgress: onProgress);
-    }
-
     final id = const Uuid().v4();
     final dir = await _projectDir(id);
     await dir.create(recursive: true);
-    final workDir = Directory(p.join(dir.path, '.import'));
-    final builder = concat ?? const MediaConcatService();
-    final built = await builder.buildSource(
-      inputPaths: paths,
-      workDir: workDir.path,
-      onProgress: onProgress,
-    );
+    final mediaDir = Directory(p.join(dir.path, kProjectMediaDirName));
+    await mediaDir.create(recursive: true);
 
-    final sourcePath = p.join(dir.path, kProjectSourceFileName);
-    await File(built.outputPath).copy(sourcePath);
-    if (await workDir.exists()) {
-      await workDir.delete(recursive: true);
-    }
-
+    final probe = concat ?? const MediaConcatService();
+    final mediaAssets = <MediaAsset>[];
     final segments = <ClipSegment>[];
-    var cursor = Duration.zero;
-    for (var i = 0; i < built.pieceDurations.length; i++) {
-      final piece = built.pieceDurations[i];
-      if (piece <= Duration.zero) continue;
-      final pieceEnd = cursor + piece;
-      // Stills are baked longer than the default so the right handle can grow
-      // into unused source without crossing into the next clip.
-      final kept = i < paths.length && MediaConcatService.isImagePath(paths[i])
-          ? (piece < kDefaultImageClipDuration ? piece : kDefaultImageClipDuration)
-          : piece;
-      segments.add(ClipSegment(start: cursor, end: cursor + kept));
-      cursor = pieceEnd;
-    }
-    if (segments.isEmpty) throw StateError('empty_video');
+    String? primaryPath;
 
+    for (var i = 0; i < paths.length; i++) {
+      onProgress?.call(i / (paths.length + 1));
+      final pickedPath = paths[i];
+      final picked = File(pickedPath);
+      if (!await picked.exists() || await picked.length() == 0) {
+        throw StateError('empty_video');
+      }
+
+      final isImage = MediaConcatService.isImagePath(pickedPath);
+      final assetId = const Uuid().v4();
+      final ext = p.extension(pickedPath);
+      final relativeName =
+          p.join(kProjectMediaDirName, '$assetId${ext.isEmpty ? (isImage ? '.jpg' : '.mp4') : ext}');
+      final destPath = p.join(dir.path, relativeName);
+      await picked.copy(destPath);
+      if (!await File(destPath).exists() || await File(destPath).length() == 0) {
+        throw StateError('empty_video');
+      }
+
+      Duration assetDuration = Duration.zero;
+      if (!isImage) {
+        assetDuration =
+            await probe.probeDuration(destPath) ?? Duration.zero;
+        if (assetDuration <= Duration.zero) {
+          throw StateError('empty_video');
+        }
+      }
+
+      final asset = MediaAsset(
+        id: assetId,
+        fileName: relativeName,
+        kind: isImage ? MediaAssetKind.image : MediaAssetKind.video,
+        duration: assetDuration,
+      );
+      mediaAssets.add(asset);
+      primaryPath ??= destPath;
+
+      final clipEnd = isImage ? kDefaultImageHoldDuration : assetDuration;
+      segments.add(
+        ClipSegment(
+          mediaId: assetId,
+          start: Duration.zero,
+          end: clipEnd,
+        ),
+      );
+    }
+
+    if (segments.isEmpty || primaryPath == null) {
+      throw StateError('empty_video');
+    }
+    onProgress?.call(1);
+
+    final packed = exportTimelineDuration(segments);
     final project = VideoProject(
       id: id,
-      sourcePath: sourcePath,
-      duration: cursor,
+      sourcePath: primaryPath,
+      duration: packed,
       segments: segments,
+      mediaAssets: mediaAssets,
     );
     await save(project);
     final stored = await ensurePlayableSource(project, onProgress: onProgress);
     return stored.id;
   }
 
-  Future<String> _createFromSingleVideo(
-    String pickedPath, {
-    void Function(double progress)? onProgress,
-  }) async {
-    final id = const Uuid().v4();
-    final dir = await _projectDir(id);
-    await dir.create(recursive: true);
-
-    final ext = p.extension(pickedPath);
-    final sourceFileName = 'source${ext.isEmpty ? '.mp4' : ext}';
-    final sourcePath = p.join(dir.path, sourceFileName);
-    final picked = File(pickedPath);
-    if (!await picked.exists() || await picked.length() == 0) {
-      throw StateError('empty_video');
-    }
-    await picked.copy(sourcePath);
-    final storedFile = File(sourcePath);
-    if (!await storedFile.exists() || await storedFile.length() == 0) {
-      throw StateError('empty_video');
-    }
-
-    final project = VideoProject(
-      id: id,
-      sourcePath: sourcePath,
-      duration: Duration.zero,
-      trim: ClipTrim(start: Duration.zero, end: Duration.zero),
-    );
-    await save(project);
-    final stored = await ensurePlayableSource(project, onProgress: onProgress);
-    return stored.id;
-  }
-
-  /// Replaces a stored HEVC, ProRes, or HDR file with H.264 SDR.
+  /// Replaces unplayable video assets with H.264 SDR copies in place.
   Future<VideoProject> ensurePlayableSource(
     VideoProject project, {
     void Function(double progress)? onProgress,
   }) async {
     final converter = transcoder ?? const PlaybackFallbackTranscoder();
-    if (!await converter.shouldReplace(project.sourcePath)) return project;
-    avEditorLog('store playable source ${project.sourcePath}');
-    final output = await converter.transcode(
-      project.sourcePath,
-      onProgress: onProgress,
-    );
-    if (output == project.sourcePath) return project;
-    final updated = project.withSourcePath(output);
+    if (project.mediaAssets.isEmpty) {
+      if (!await converter.shouldReplace(project.sourcePath)) return project;
+      avEditorLog('store playable source ${project.sourcePath}');
+      final output = await converter.transcode(
+        project.sourcePath,
+        onProgress: onProgress,
+      );
+      if (output == project.sourcePath) return project;
+      final updated = project.withSourcePath(output);
+      await save(updated);
+      return updated;
+    }
+
+    var changed = false;
+    final nextAssets = <MediaAsset>[];
+    String? primaryPath = project.sourcePath;
+    for (var i = 0; i < project.mediaAssets.length; i++) {
+      final asset = project.mediaAssets[i];
+      if (asset.isImage) {
+        nextAssets.add(asset);
+        continue;
+      }
+      final path = project.absoluteMediaPath(asset);
+      if (!await converter.shouldReplace(path)) {
+        nextAssets.add(asset);
+        primaryPath ??= path;
+        continue;
+      }
+      avEditorLog('store playable media ${asset.fileName}');
+      final output = await converter.transcode(
+        path,
+        onProgress: onProgress == null
+            ? null
+            : (t) => onProgress((i + t) / project.mediaAssets.length),
+      );
+      if (output == path) {
+        nextAssets.add(asset);
+        primaryPath ??= path;
+        continue;
+      }
+      // Transcoder writes beside the source; point the asset at the new file.
+      final relative = p.relative(output, from: project.projectDir);
+      nextAssets.add(asset.copyWith(fileName: relative));
+      primaryPath = output;
+      changed = true;
+    }
+    if (!changed) return project;
+    final updated = project.copyWith(mediaAssets: nextAssets).withSourcePath(
+          primaryPath ?? project.sourcePath,
+        );
     await save(updated);
     return updated;
   }
@@ -178,12 +218,27 @@ class ProjectStorageService {
     if (!await file.exists()) return null;
 
     final json = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+    final dir = await _projectDir(projectId);
     final sourceFileName =
         json['sourceFileName'] as String? ?? kProjectSourceFileName;
-    final sourcePath = p.join(
-      (await _projectDir(projectId)).path,
-      sourceFileName,
-    );
+    var sourcePath = p.join(dir.path, sourceFileName);
+
+    // v2: primary file may live under media/.
+    if (!await File(sourcePath).exists()) {
+      final mediaJson = json['mediaAssets'] as List<dynamic>?;
+      if (mediaJson != null) {
+        for (final raw in mediaJson) {
+          if (raw is! Map) continue;
+          final name = raw['fileName'] as String?;
+          if (name == null) continue;
+          final candidate = p.isAbsolute(name) ? name : p.join(dir.path, name);
+          if (await File(candidate).exists()) {
+            sourcePath = candidate;
+            break;
+          }
+        }
+      }
+    }
     if (!await File(sourcePath).exists()) return null;
 
     return VideoProject.fromJson(json, sourcePath: sourcePath);
@@ -244,7 +299,11 @@ class ProjectStorageService {
 
     final project = await load(summary.id);
     if (project == null) return null;
-    final source = File(project.sourcePath);
+    final coverPath = project.segments.isEmpty
+        ? project.primaryVideoPath
+        : (project.pathForSegment(project.segments.first) ??
+            project.primaryVideoPath);
+    final source = File(coverPath);
     if (!await source.exists()) return null;
     final sourceSize = await source.length();
     final target = p.join(
@@ -264,14 +323,27 @@ class ProjectStorageService {
       }
     }
 
-    final generated = await grab.jpegFile(
-      video: project.sourcePath,
-      thumbnailPath: target,
-      maxWidth: 240,
-      timeMs: summary.coverTimeMs,
-      quality: 70,
-      accurate: true,
-    );
+    final first = project.segments.isEmpty ? null : project.segments.first;
+    final firstAsset =
+        first == null ? null : project.assetById(first.mediaId);
+    final generated = firstAsset != null && firstAsset.isImage
+        ? coverPath // still: use the image file itself as cover when possible
+        : await grab.jpegFile(
+            video: coverPath,
+            thumbnailPath: target,
+            maxWidth: 240,
+            timeMs: summary.coverTimeMs,
+            quality: 70,
+            accurate: true,
+          );
+    if (firstAsset != null && firstAsset.isImage) {
+      try {
+        await File(coverPath).copy(target);
+        return target;
+      } catch (_) {
+        return coverPath;
+      }
+    }
     if (generated == null) return null;
     if (generated != target) {
       try {

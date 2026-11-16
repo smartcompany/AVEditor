@@ -2,6 +2,8 @@ import 'package:aveditor/models/applied_transition.dart';
 import 'package:aveditor/models/transition_item.dart';
 import 'package:aveditor/models/transition_role_effect.dart';
 import 'package:aveditor/models/clip_segment.dart';
+import 'package:aveditor/models/media_asset.dart';
+import 'package:aveditor/models/video_project.dart';
 import 'package:aveditor/services/transition_engine.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
 import 'package:aveditor/widgets/transition_layer_runtime.dart';
@@ -52,34 +54,52 @@ List<Map<String, Object>> compositionMotion(AppliedTransition? applied) {
 
 /// Identity of the frames the native preview actually draws.
 ///
-/// A split only adds a cut marker. Adjacent pieces with no transition and no
-/// gap still show the same frames, so this key stays the same and the player
-/// is left alone. Rebuilding it flashed black, then stopped on the new clip
-/// boundary.
+/// Never hard-joins across different [ClipSegment.mediaId]s.
 String timelineCompositionSignature(List<ClipSegment> segments) {
   final parts = <String>[];
-  var rangeStartMs = -1;
   for (var i = 0; i < segments.length; i++) {
     final segment = segments[i];
-    if (rangeStartMs < 0) rangeStartMs = segment.start.inMilliseconds;
     final next = i + 1 < segments.length ? segments[i + 1] : null;
-    final hardJoin =
-        next != null && segment.end == next.start && !segment.hasTransition;
-    if (hardJoin) continue;
+    final sameMedia = next != null &&
+        segment.mediaId == next.mediaId &&
+        segment.end == next.start &&
+        !segment.hasTransition;
+    if (sameMedia) {
+      // Coalesce contiguous pieces of the same asset until a cut/transition.
+      continue;
+    }
+    // Walk back to the start of this same-media hard-joined run.
+    var rangeStart = segment.start.inMilliseconds;
+    var j = i;
+    while (j > 0) {
+      final prev = segments[j - 1];
+      final cur = segments[j];
+      if (prev.mediaId != cur.mediaId ||
+          prev.end != cur.start ||
+          prev.hasTransition) {
+        break;
+      }
+      rangeStart = prev.start.inMilliseconds;
+      j--;
+    }
     final transition = segment.hasTransition
         ? '${segment.transitionId}-${segment.transitionDuration.inMilliseconds}'
         : 'cut';
-    parts.add('$rangeStartMs-${segment.end.inMilliseconds}-$transition');
-    rangeStartMs = -1;
+    parts.add(
+      '${segment.mediaId ?? '_'}:$rangeStart-${segment.end.inMilliseconds}-$transition',
+    );
   }
   return parts.join('|');
 }
 
 /// Transition description shared by timeline playback and album export.
 ///
-/// iOS and Android native engines both receive this map. They may draw it
-/// with different renderers, but they do not build a second transition plan.
-List<Map<String, dynamic>> encodeCompositionSegments(List<ClipSegment> segments) {
+/// Each segment includes its resolved [sourcePath] and media [kind].
+List<Map<String, dynamic>> encodeCompositionSegments(
+  List<ClipSegment> segments, {
+  VideoProject? project,
+  String? fallbackSourcePath,
+}) {
   final encoded = <Map<String, dynamic>>[];
   for (var i = 0; i < segments.length; i++) {
     final segment = segments[i];
@@ -96,9 +116,16 @@ List<Map<String, dynamic>> encodeCompositionSegments(List<ClipSegment> segments)
     final role = segment.hasTransition
         ? TransitionEngine.instance.plan(segment.transition).definition?.roleEffect
         : null;
+    final asset = project?.assetById(segment.mediaId);
+    final path = project?.pathForSegment(segment) ?? fallbackSourcePath;
+    final kind = asset?.kind.name ?? MediaAssetKind.video.name;
     encoded.add({
       'startMs': segment.start.inMilliseconds,
       'endMs': segment.end.inMilliseconds,
+      'durationMs': segment.duration.inMilliseconds,
+      if (segment.mediaId != null) 'mediaId': segment.mediaId,
+      if (path != null) 'sourcePath': path,
+      'kind': kind,
       if (effect != null) ...{
         'transitionEffect': effect,
         'transitionDurationMs': td.inMilliseconds,

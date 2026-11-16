@@ -286,10 +286,18 @@ class _EditorScreenState extends State<EditorScreen>
     return _controller?.value.position ?? Duration.zero;
   }
 
-  /// Native timeline clock → source time (UI / segment ops).
+  /// Multi-source: UI + native share the packed sequence clock.
+  bool get _usesPackedPlayhead {
+    final project = _project;
+    return project != null && project.mediaAssets.isNotEmpty;
+  }
+
+  /// Native timeline clock → UI playhead time.
   Duration _nativePackedToSource(Duration packed) {
     final project = _project;
-    if (project == null || project.segments.isEmpty) return packed;
+    if (project == null || project.segments.isEmpty || _usesPackedPlayhead) {
+      return packed;
+    }
     return exportTimeToSourceTime(
       project.segments,
       packed,
@@ -297,10 +305,12 @@ class _EditorScreenState extends State<EditorScreen>
     );
   }
 
-  /// Source time → native timeline clock (seek / preroll).
+  /// UI playhead time → native timeline clock (seek / preroll).
   Duration _sourceToNativePacked(Duration source) {
     final project = _project;
-    if (project == null || project.segments.isEmpty) return source;
+    if (project == null || project.segments.isEmpty || _usesPackedPlayhead) {
+      return source;
+    }
     return sourceTimeToExportTime(
           project.segments,
           source,
@@ -773,6 +783,7 @@ class _EditorScreenState extends State<EditorScreen>
       // would wipe cuts (empty → single full-length segment).
       final normalized = normalizeSegments(
         List<ClipSegment>.from(project.segments),
+        mediaAssets: project.mediaAssets,
         sourceDuration: duration,
       );
       project.segments
@@ -782,6 +793,7 @@ class _EditorScreenState extends State<EditorScreen>
               ? segmentsFromTrim(start: Duration.zero, end: duration)
               : normalized,
         );
+      _syncPackedDuration(project);
 
       _slotMain = controller;
       _slotsSwapped = false;
@@ -797,13 +809,7 @@ class _EditorScreenState extends State<EditorScreen>
         _ready = true;
         _errorMessage = null;
       });
-      unawaited(
-        _loadFilmstrip(
-          project.sourcePath,
-          project.duration,
-          List<ClipSegment>.from(project.segments),
-        ),
-      );
+      unawaited(_loadFilmstrip(project));
       unawaited(_loadMusicWaveforms(project));
       unawaited(_loadSourceAudioWaveform(project.sourcePath));
 
@@ -860,18 +866,10 @@ class _EditorScreenState extends State<EditorScreen>
     return null;
   }
 
-  Future<void> _loadFilmstrip(
-    String sourcePath,
-    Duration duration, [
-    List<ClipSegment> segments = const [],
-  ]) async {
+  Future<void> _loadFilmstrip(VideoProject project) async {
     late final List<TimelineFilmstripFrame> frames;
     try {
-      frames = await _thumbnailService.loadFilmstrip(
-        videoPath: sourcePath,
-        duration: duration,
-        segments: segments,
-      );
+      frames = await _thumbnailService.loadProjectFilmstrip(project);
     } catch (error, stack) {
       avEditorLog('filmstrip failed: $error\n$stack');
       return;
@@ -886,6 +884,14 @@ class _EditorScreenState extends State<EditorScreen>
       frame.image.dispose();
     }
     setState(() => _filmstripFrames = frames);
+  }
+
+  void _syncPackedDuration(VideoProject project) {
+    final packed = exportTimelineDuration(project.segments);
+    if (packed > Duration.zero && packed != project.duration) {
+      // VideoProject.duration is mutable via copy — keep in sync for UI scale.
+      project.duration = packed;
+    }
   }
 
   void _disposeFilmstrip() {
@@ -947,6 +953,7 @@ class _EditorScreenState extends State<EditorScreen>
 
     var fixed = normalizeSegments(
       project.segments,
+      mediaAssets: project.mediaAssets,
       sourceDuration: project.duration,
     );
     if (fixed.isEmpty || totalKeptDuration(fixed) <= Duration.zero) {
@@ -964,7 +971,11 @@ class _EditorScreenState extends State<EditorScreen>
   bool _segmentsMatch(List<ClipSegment> a, List<ClipSegment> b) {
     if (a.length != b.length) return false;
     for (var i = 0; i < a.length; i++) {
-      if (a[i].start != b[i].start || a[i].end != b[i].end) return false;
+      if (a[i].start != b[i].start ||
+        a[i].end != b[i].end ||
+        a[i].mediaId != b[i].mediaId) {
+      return false;
+    }
     }
     return true;
   }
@@ -976,7 +987,9 @@ class _EditorScreenState extends State<EditorScreen>
     final kept = totalKeptDuration(segments);
     if (kept <= Duration.zero) return Duration.zero;
 
-    var sequenceTime = timelinePlayheadFromSource(segments, rawPlayhead);
+    var sequenceTime = _usesPackedPlayhead
+        ? rawPlayhead
+        : timelinePlayheadFromSource(segments, rawPlayhead);
     if (sequenceTime >= kept) {
       sequenceTime = kept - const Duration(milliseconds: 100);
     }
@@ -1114,26 +1127,36 @@ class _EditorScreenState extends State<EditorScreen>
     final rawPlayhead = _playhead;
     final working = List<ClipSegment>.from(project.segments);
     final sequenceTime = _sequenceTimeForSplit(working, rawPlayhead);
-    final playhead = splitSourceFromSequence(working, sequenceTime);
+    final packedClock = project.mediaAssets.isNotEmpty;
 
     try {
-      if (!isInKeptRegion(working, playhead)) {
-        throw StateError('split_out_of_range');
-      }
-
-      final splitPoint = resolveSplitPoint(working, playhead);
-      if (isAlreadySplitAt(working, splitPoint)) {
-        OverlayEventLog.log('split', 'already_split', {
-          'sequenceTime': sequenceTime,
-          'splitPoint': splitPoint,
-        });
-        return;
+      late final List<ClipSegment> newSegments;
+      late final Duration splitPoint;
+      if (packedClock) {
+        if (segmentIndexAtSequenceTime(working, sequenceTime) < 0) {
+          throw StateError('split_out_of_range');
+        }
+        newSegments = splitSegmentsAtSequenceTime(working, sequenceTime);
+        splitPoint = exportTimeToSourceTime(newSegments, sequenceTime);
+      } else {
+        final playhead = splitSourceFromSequence(working, sequenceTime);
+        if (!isInKeptRegion(working, playhead)) {
+          throw StateError('split_out_of_range');
+        }
+        splitPoint = resolveSplitPoint(working, playhead);
+        if (isAlreadySplitAt(working, splitPoint)) {
+          OverlayEventLog.log('split', 'already_split', {
+            'sequenceTime': sequenceTime,
+            'splitPoint': splitPoint,
+          });
+          return;
+        }
+        newSegments = splitSegmentsAt(working, splitPoint);
       }
 
       OverlayEventLog.log('split', 'attempt', {
         'rawPlayhead': rawPlayhead,
         'sequenceTime': sequenceTime,
-        'playhead': playhead,
         'splitPoint': splitPoint,
         'segmentCount': working.length,
         'segmentDurations': working
@@ -1141,7 +1164,6 @@ class _EditorScreenState extends State<EditorScreen>
             .join(','),
       });
 
-      final newSegments = splitSegmentsAt(working, splitPoint);
       ClipSegment? rightPiece;
       for (final segment in newSegments) {
         if (segment.start == splitPoint) {
@@ -1154,6 +1176,7 @@ class _EditorScreenState extends State<EditorScreen>
         p.segments
           ..clear()
           ..addAll(newSegments);
+        _syncPackedDuration(p);
         _selectedSegmentId = (rightPiece ?? newSegments.last).id;
         _selectedOverlayId = null;
         _selectedMusicId = null;
@@ -1186,6 +1209,7 @@ class _EditorScreenState extends State<EditorScreen>
         p.segments
           ..clear()
           ..addAll(updated);
+        _syncPackedDuration(p);
         _selectedSegmentId = null;
       });
     } on StateError catch (e, st) {
@@ -1294,8 +1318,9 @@ class _EditorScreenState extends State<EditorScreen>
       }
     }
     final id = await NativeVideoEngine.instance.prepareTimeline(
-      sourcePath: project.sourcePath,
+      sourcePath: project.primaryVideoPath,
       segments: project.segments,
+      project: project,
       ffmpegPlayer: _ffmpegPlayback,
     );
     if (!mounted) return;
@@ -1397,7 +1422,10 @@ class _EditorScreenState extends State<EditorScreen>
         unawaited(_stopTransitionPreview(reason: 'position>=until'));
         return;
       }
-      if (_scrubPlayhead == null &&
+      // Multi-source packed clock: segment start/end are per-asset locals, so
+      // isInKeptRegion(packed) falsely looks like a "gap" and seeks to 0.
+      if (!_usesPackedPlayhead &&
+          _scrubPlayhead == null &&
           _pendingTimelineSeek == null &&
           !isInKeptRegion(current.segments, position)) {
         final next = nextSegmentStartAfter(current.segments, position);
@@ -1440,6 +1468,9 @@ class _EditorScreenState extends State<EditorScreen>
       return;
     }
     if (_fadeHandoffInFlight) return;
+    // Multi-source: the Flutter VideoPlayer only has one file. Seeking to the
+    // next clip's local start (often 0) looks like a jump back to the beginning.
+    if (project.mediaAssets.isNotEmpty) return;
 
     final pos = controller.value.position;
 
@@ -4480,6 +4511,7 @@ class _EditorScreenState extends State<EditorScreen>
       trimStart: project.trim.start,
       trimEnd: project.trim.end,
       segments: project.segments,
+      mediaAssets: project.mediaAssets,
       overlays: project.overlays,
       musicTracks: project.musicTracks,
       musicWaveforms: _musicWaveforms,
@@ -4529,6 +4561,7 @@ class _EditorScreenState extends State<EditorScreen>
         _mutate((p) {
           final i = p.segments.indexWhere((s) => s.id == segment.id);
           if (i >= 0) p.segments[i] = segment;
+          _syncPackedDuration(p);
         });
         _syncVideoAudioVolume();
       },
@@ -4538,6 +4571,7 @@ class _EditorScreenState extends State<EditorScreen>
             ..clear()
             ..addAll(segments);
           _selectedTransitionAfterIndex = null;
+          _syncPackedDuration(p);
         });
       },
       onMusicSelected: (music) {

@@ -3,7 +3,9 @@ import 'dart:io';
 
 import 'package:aveditor/models/applied_transition.dart';
 import 'package:aveditor/models/clip_segment.dart';
+import 'package:aveditor/models/video_project.dart';
 import 'package:aveditor/services/composition_segments.dart';
+import 'package:aveditor/utils/clip_segment_ops.dart';
 import 'package:aveditor/services/export_service.dart';
 import 'package:aveditor/services/transition_engine.dart';
 import 'package:aveditor/utils/debug_agent_log.dart';
@@ -122,12 +124,14 @@ class NativeVideoEngine {
   Future<int?> prepareTimeline({
     required String sourcePath,
     required List<ClipSegment> segments,
+    VideoProject? project,
     bool ffmpegPlayer = false,
   }) {
     return _exclusive(
       () => _prepareTimeline(
         sourcePath: sourcePath,
         segments: segments,
+        project: project,
         ffmpegPlayer: ffmpegPlayer,
       ),
     );
@@ -136,10 +140,15 @@ class NativeVideoEngine {
   Future<int?> _prepareTimeline({
     required String sourcePath,
     required List<ClipSegment> segments,
+    VideoProject? project,
     bool ffmpegPlayer = false,
   }) async {
     if (!isPlatformSupported) return null;
-    final encoded = encodeCompositionSegments(segments);
+    final encoded = encodeCompositionSegments(
+      segments,
+      project: project,
+      fallbackSourcePath: sourcePath,
+    );
     if (kDebugMode) {
       final brief = encoded
           .map(
@@ -168,13 +177,7 @@ class NativeVideoEngine {
       if (durationMs != null && durationMs > 0) {
         _duration = Duration(milliseconds: durationMs);
       } else {
-        // Fallback: source-time composition spans the last segment end.
-        var endMs = 0;
-        for (final segment in segments) {
-          final ms = segment.end.inMilliseconds;
-          if (ms > endMs) endMs = ms;
-        }
-        _duration = Duration(milliseconds: endMs);
+        _duration = exportTimelineDuration(segments);
       }
       _active = true;
       _timelineActive = true;

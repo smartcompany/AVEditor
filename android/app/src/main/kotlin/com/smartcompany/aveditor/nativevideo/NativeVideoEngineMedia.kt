@@ -110,8 +110,11 @@ object NativeVideoEngineMedia {
   }
 
   /** Segment packing for the C++ engine (visible pieces only; no gap fillers). */
-  internal fun packSegmentsForEngine(segments: List<*>): ExportPlan {
-    return packSegments(parseSegments(segments))
+  internal fun packSegmentsForEngine(
+    segments: List<*>,
+    fallbackPath: String = "",
+  ): ExportPlan {
+    return packSegments(parseSegments(segments, fallbackPath))
   }
 
   fun decodeWaveform(path: String, peakCount: Int): Map<String, Any> {
@@ -171,29 +174,8 @@ object NativeVideoEngineMedia {
     segments: List<*>,
     mix: TimelineMix? = null,
   ): TimelinePreview {
-    val retriever = MediaMetadataRetriever()
-    val oriented = try {
-      retriever.setDataSource(sourcePath)
-      var width =
-        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull()
-          ?: 720
-      var height =
-        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull()
-          ?: 1280
-      val rotation =
-        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull()
-          ?: 0
-      if (rotation == 90 || rotation == 270) {
-        val swap = width
-        width = height
-        height = swap
-      }
-      val hasAudio =
-        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO) == "yes"
-      Triple(max(1, width), max(1, height), hasAudio)
-    } finally {
-      retriever.release()
-    }
+    val probePath = firstVideoPath(segments, sourcePath) ?: sourcePath
+    val oriented = probeFrameSize(probePath)
     val longSide = max(oriented.first, oriented.second).coerceAtLeast(1)
     val fit = min(1.0, 720.0 / longSide)
     val outW = max(2, (kotlin.math.floor(oriented.first * fit / 2.0) * 2.0).toInt())
@@ -217,7 +199,9 @@ object NativeVideoEngineMedia {
       val segment = raw as? Map<*, *> ?: continue
       val startMs = (segment["startMs"] as? Number)?.toLong() ?: 0L
       val endMs = (segment["endMs"] as? Number)?.toLong() ?: startMs
-      durationMs += (endMs - startMs).coerceAtLeast(0L)
+      val media = (endMs - startMs).coerceAtLeast(0L)
+      val declared = (segment["durationMs"] as? Number)?.toLong()?.coerceAtLeast(0L)
+      durationMs += if (declared != null && declared > 0L) declared else media
     }
     Log.i(
       "NativeVideoEngine",
@@ -233,13 +217,22 @@ object NativeVideoEngineMedia {
   }
 
   /** Clips played when the preview has no transition. */
-  private fun previewPlan(segments: List<*>): ExportPlan {
-    val clips = coalesceHardCuts(parseSegments(segments))
+  private fun previewPlan(segments: List<*>, fallbackPath: String = ""): ExportPlan {
+    val clips = coalesceHardCuts(parseSegments(segments, fallbackPath))
     val pieces = ArrayList<VideoPiece>()
     var cursor = 0L
     for (seg in clips) {
-      val dur = (seg.endMs - seg.startMs).coerceAtLeast(0L)
-      pieces.add(VideoPiece(cursor, dur, seg.startMs, dur))
+      val media = (seg.endMs - seg.startMs).coerceAtLeast(0L)
+      val dur = if (seg.durationMs > 0L) seg.durationMs else media
+      pieces.add(
+        pieceOf(
+          seg,
+          compStartMs = cursor,
+          compDurMs = dur,
+          srcStartMs = seg.startMs,
+          srcDurMs = if (seg.isImage) dur else media.coerceAtLeast(1L),
+        ),
+      )
       cursor += dur
     }
     return ExportPlan(arrayOf(pieces, ArrayList()), emptyList(), cursor)
@@ -250,10 +243,65 @@ object NativeVideoEngineMedia {
   }
 
   /** Same track layout preview and export share for a segment list. */
-  private fun playbackLayout(segments: List<*>): ExportPlan {
-    val packed = packSegments(parseSegments(segments))
-    if (packed.blends.isEmpty()) return previewPlan(segments)
+  private fun playbackLayout(segments: List<*>, fallbackPath: String = ""): ExportPlan {
+    val packed = packSegments(parseSegments(segments, fallbackPath))
+    if (packed.blends.isEmpty()) return previewPlan(segments, fallbackPath)
     return fillDecoderGaps(packed)
+  }
+
+  private fun firstVideoPath(segments: List<*>, fallback: String): String? {
+    for (raw in segments) {
+      val segment = raw as? Map<*, *> ?: continue
+      val kind = (segment["kind"] as? String)?.lowercase(Locale.US) ?: "video"
+      if (kind == "image") continue
+      val path = segment["sourcePath"] as? String
+      if (!path.isNullOrBlank()) return path
+    }
+    return fallback.takeIf { it.isNotBlank() }
+  }
+
+  private fun probeFrameSize(path: String): Triple<Int, Int, Boolean> {
+    val lower = path.lowercase(Locale.US)
+    if (lower.endsWith(".jpg") ||
+      lower.endsWith(".jpeg") ||
+      lower.endsWith(".png") ||
+      lower.endsWith(".webp") ||
+      lower.endsWith(".heic") ||
+      lower.endsWith(".heif") ||
+      lower.endsWith(".bmp") ||
+      lower.endsWith(".gif")
+    ) {
+      val opts = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+      android.graphics.BitmapFactory.decodeFile(path, opts)
+      val w = opts.outWidth.takeIf { it > 0 } ?: 1080
+      val h = opts.outHeight.takeIf { it > 0 } ?: 1920
+      return Triple(w, h, false)
+    }
+    val retriever = MediaMetadataRetriever()
+    return try {
+      retriever.setDataSource(path)
+      var width =
+        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull()
+          ?: 720
+      var height =
+        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull()
+          ?: 1280
+      val rotation =
+        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull()
+          ?: 0
+      if (rotation == 90 || rotation == 270) {
+        val swap = width
+        width = height
+        height = swap
+      }
+      val hasAudio =
+        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO) == "yes"
+      Triple(max(1, width), max(1, height), hasAudio)
+    } catch (_: Exception) {
+      Triple(1080, 1920, false)
+    } finally {
+      retriever.release()
+    }
   }
 
   /**
@@ -282,10 +330,17 @@ object NativeVideoEngineMedia {
     forPlayback: Boolean = false,
     mix: TimelineMix? = null,
   ): Composition {
-    val parsed = parseSegments(segments)
+    val parsed = parseSegments(segments, sourcePath)
     if (streamCopy && parsed.size == 1) {
       val only = parsed.first()
-      val item = clipItem(sourcePath, only.startMs, only.endMs)
+      val path = only.sourcePath.ifBlank { sourcePath }
+      val item = clipItem(
+        path,
+        only.startMs,
+        only.endMs,
+        mediaKind = only.mediaKind,
+        holdDurationMs = only.durationMs,
+      )
       return Composition.Builder(
         EditedMediaItemSequence.withAudioAndVideoFrom(listOf(item)),
       ).build()
@@ -313,7 +368,7 @@ object NativeVideoEngineMedia {
       // Empty sourcePath → TransitionBlendEffect uses the packed compositor frame
       // (same as export / iOS), not a bolt-on IncomingGpu decoder.
       mix.sourcePath = ""
-      mix.setPlayback(playbackLayout(segments))
+      mix.setPlayback(playbackLayout(segments, sourcePath))
       mix.set(
         if (blends.isNotEmpty()) {
           plan
@@ -333,15 +388,17 @@ object NativeVideoEngineMedia {
       }
     }
     if (blends.isEmpty()) {
-      // A split is a marker. Separate clipped items make the export join at a
-      // boundary that does not exist in the source.
+      // One item per asset run (same-file hard cuts may still coalesce).
       val items = coalesceHardCuts(parsed).map { seg ->
+        val path = seg.sourcePath.ifBlank { sourcePath }
         clipItem(
-          sourcePath,
+          path,
           seg.startMs,
           seg.endMs,
-          removeAudio = !hasVideoAudio,
+          removeAudio = !hasVideoAudio || seg.isImage,
           effects = videoEffects,
+          mediaKind = seg.mediaKind,
+          holdDurationMs = seg.durationMs,
         )
       }
       sequences.add(
@@ -493,14 +550,17 @@ object NativeVideoEngineMedia {
         builder.addGap((piece.compStartMs - cursor) * 1000L)
       }
       val speed = piece.srcDurMs.toFloat() / piece.compDurMs.toFloat()
+      val path = piece.sourcePath.ifBlank { sourcePath }
       val item = clipItem(
-        sourcePath,
+        path,
         piece.srcStartMs,
         piece.srcStartMs + piece.srcDurMs,
-        removeAudio = removeAudio,
+        removeAudio = removeAudio || piece.isImage,
         effects = effects,
         speed = speed,
         idSuffix = "$idSuffix@${piece.compStartMs}",
+        mediaKind = piece.mediaKind,
+        holdDurationMs = piece.compDurMs,
       )
       builder.addItem(item)
       cursor = piece.compStartMs + piece.compDurMs
@@ -541,6 +601,7 @@ object NativeVideoEngineMedia {
       if (first.compStartMs > cursor) {
         builder.addGap((first.compStartMs - cursor) * 1000L)
       }
+      // Never merge across different media files.
       var srcEnd = first.srcStartMs + first.srcDurMs
       var compEnd = first.compStartMs + first.compDurMs
       val changes = ArrayList<Pair<Long, Float>>()
@@ -551,6 +612,9 @@ object NativeVideoEngineMedia {
       while (next < pieces.size) {
         val piece = pieces[next]
         if (piece.compStartMs != compEnd) break
+        if (piece.sourcePath != first.sourcePath) break
+        if (piece.mediaKind != first.mediaKind) break
+        if (piece.isImage || first.isImage) break
         if (piece.srcStartMs != srcEnd) break
         val speed = pieceSpeed(piece)
         if (abs(speed - changes.last().second) > 0.01f) {
@@ -561,20 +625,25 @@ object NativeVideoEngineMedia {
         compEnd = piece.compStartMs + piece.compDurMs
         next++
       }
-      val provider = if (changes.size == 1 && abs(changes[0].second - 1f) <= 0.01f) {
+      val provider = if (first.isImage ||
+        (changes.size == 1 && abs(changes[0].second - 1f) <= 0.01f)
+      ) {
         null
       } else {
         PiecewiseSpeed(changes)
       }
+      val path = first.sourcePath.ifBlank { sourcePath }
       builder.addItem(
         clipItem(
-          sourcePath,
+          path,
           first.srcStartMs,
           srcEnd,
-          removeAudio = removeAudio,
+          removeAudio = removeAudio || first.isImage,
           effects = effects,
           speedProvider = provider,
           idSuffix = "@${first.compStartMs}",
+          mediaKind = first.mediaKind,
+          holdDurationMs = (compEnd - first.compStartMs).coerceAtLeast(1L),
         ),
       )
       cursor = compEnd
@@ -608,7 +677,23 @@ object NativeVideoEngineMedia {
     speed: Float = 1f,
     speedProvider: SpeedProvider? = null,
     idSuffix: String = "",
+    mediaKind: String = "video",
+    holdDurationMs: Long = 0L,
   ): EditedMediaItem {
+    if (mediaKind == "image") {
+      val holdMs = holdDurationMs.coerceAtLeast((endMs - startMs).coerceAtLeast(1L))
+      val item = EditedMediaItem.Builder(
+        MediaItem.Builder()
+          .setUri(Uri.fromFile(File(path)))
+          .setMediaId("image-$holdMs$idSuffix")
+          .build(),
+      )
+        .setRemoveAudio(true)
+        .setRemoveVideo(removeVideo)
+        .setDurationUs(holdMs * 1000L)
+      if (effects != null) item.setEffects(effects)
+      return item.build()
+    }
     val end = endMs.coerceAtLeast(startMs + 1L)
     val item = EditedMediaItem.Builder(clipped(path, startMs, end, idSuffix))
       .setRemoveAudio(removeAudio)
@@ -661,16 +746,27 @@ object NativeVideoEngineMedia {
     return spans
   }
 
-  private fun parseSegments(rawSegments: List<*>): List<ExportSegment> {
+  private fun parseSegments(
+    rawSegments: List<*>,
+    fallbackPath: String = "",
+  ): List<ExportSegment> {
     val parsed = ArrayList<ExportSegment>()
     for (raw in rawSegments) {
       val segment = raw as? Map<*, *> ?: continue
       val startMs = (segment["startMs"] as? Number)?.toLong() ?: 0L
       val endMs = (segment["endMs"] as? Number)?.toLong() ?: startMs
+      val media = (endMs - startMs).coerceAtLeast(0L)
+      val durationMs = (segment["durationMs"] as? Number)?.toLong()?.coerceAtLeast(0L)
+        ?: media
+      val path = (segment["sourcePath"] as? String)?.takeIf { it.isNotBlank() }
+        ?: fallbackPath
       parsed.add(
         ExportSegment(
           startMs = startMs,
           endMs = endMs,
+          durationMs = if (durationMs > 0L) durationMs else media,
+          sourcePath = path,
+          mediaKind = (segment["kind"] as? String)?.lowercase(Locale.US) ?: "video",
           transitionMs = (segment["transitionDurationMs"] as? Number)?.toLong() ?: 0L,
           effect = (segment["transitionEffect"] as? String)?.lowercase(Locale.US) ?: "fade",
           layers = parseMotionLayers(segment["transitionLayers"]),
@@ -689,8 +785,7 @@ object NativeVideoEngineMedia {
   }
 
   /**
-   * Adjacent hard cuts are one source range. A split does not remove frames,
-   * and a new item at the cut is where playback stops.
+   * Adjacent hard cuts of the **same file** are one source range.
    */
   private fun coalesceHardCuts(segments: List<ExportSegment>): List<ExportSegment> {
     if (segments.isEmpty()) return segments
@@ -698,9 +793,16 @@ object NativeVideoEngineMedia {
     var current = segments.first()
     for (index in 1 until segments.size) {
       val next = segments[index]
-      if (current.transitionMs <= 0L && current.endMs == next.startMs) {
+      if (!current.isImage &&
+        !next.isImage &&
+        current.sourcePath.isNotEmpty() &&
+        current.sourcePath == next.sourcePath &&
+        current.transitionMs <= 0L &&
+        current.endMs == next.startMs
+      ) {
         current = current.copy(
           endMs = next.endMs,
+          durationMs = current.durationMs + next.durationMs,
           transitionMs = next.transitionMs,
           effect = next.effect,
           layers = next.layers,
@@ -719,6 +821,34 @@ object NativeVideoEngineMedia {
     return merged
   }
 
+  private fun pieceOf(
+    seg: ExportSegment,
+    compStartMs: Long,
+    compDurMs: Long,
+    srcStartMs: Long,
+    srcDurMs: Long,
+  ): VideoPiece {
+    // Images: hold one frame across the composition duration.
+    if (seg.isImage) {
+      return VideoPiece(
+        compStartMs = compStartMs,
+        compDurMs = compDurMs,
+        srcStartMs = 0L,
+        srcDurMs = compDurMs.coerceAtLeast(1L),
+        sourcePath = seg.sourcePath,
+        mediaKind = seg.mediaKind,
+      )
+    }
+    return VideoPiece(
+      compStartMs = compStartMs,
+      compDurMs = compDurMs,
+      srcStartMs = srcStartMs,
+      srcDurMs = srcDurMs.coerceAtLeast(1L),
+      sourcePath = seg.sourcePath,
+      mediaKind = seg.mediaKind,
+    )
+  }
+
   /** Same duration-preserving packing as iOS: timeline length is the sum of segment lengths. */
   private fun packSegments(segments: List<ExportSegment>): ExportPlan {
     val tracks = arrayOf(ArrayList<VideoPiece>(), ArrayList<VideoPiece>())
@@ -727,14 +857,16 @@ object NativeVideoEngineMedia {
     var prevTd = 0L
     for (index in segments.indices) {
       val seg = segments[index]
-      val segDur = (seg.endMs - seg.startMs).coerceAtLeast(0L)
+      val mediaDur = (seg.endMs - seg.startMs).coerceAtLeast(0L)
+      val segDur = if (seg.durationMs > 0L) seg.durationMs else mediaDur
       val track = index % 2
       val td = if (index < segments.lastIndex) seg.transitionMs.coerceAtLeast(0L) else 0L
       val inHalf = transitionHalf(prevTd)
       val outHalf = transitionHalf(td)
       if (prevTd > 0L && inHalf.second > 0L) {
         tracks[track].add(
-          VideoPiece(
+          pieceOf(
+            seg,
             compStartMs = cursor - inHalf.first,
             compDurMs = prevTd,
             srcStartMs = seg.startMs,
@@ -745,7 +877,8 @@ object NativeVideoEngineMedia {
       val soloDur = (segDur - inHalf.second - outHalf.first).coerceAtLeast(0L)
       if (soloDur > 0L) {
         tracks[track].add(
-          VideoPiece(
+          pieceOf(
+            seg,
             compStartMs = cursor + inHalf.second,
             compDurMs = soloDur,
             srcStartMs = seg.startMs + inHalf.second,
@@ -756,7 +889,8 @@ object NativeVideoEngineMedia {
       if (td > 0L && outHalf.first > 0L) {
         val blendStart = cursor + segDur - outHalf.first
         tracks[track].add(
-          VideoPiece(
+          pieceOf(
+            seg,
             compStartMs = blendStart,
             compDurMs = td,
             srcStartMs = seg.endMs - outHalf.first,
@@ -916,6 +1050,9 @@ object NativeVideoEngineMedia {
 private data class ExportSegment(
   val startMs: Long,
   val endMs: Long,
+  val durationMs: Long,
+  val sourcePath: String,
+  val mediaKind: String = "video",
   val transitionMs: Long,
   val effect: String,
   val layers: List<MotionLayer> = emptyList(),
@@ -924,15 +1061,21 @@ private data class ExportSegment(
   val edge: String = "",
   val scaleFrom: Float = 0.84f,
   val scaleTo: Float = 1f,
-)
+) {
+  val isImage: Boolean get() = mediaKind == "image"
+}
 
 internal data class VideoPiece(
   val compStartMs: Long,
   val compDurMs: Long,
   val srcStartMs: Long,
   val srcDurMs: Long,
+  val sourcePath: String = "",
+  val mediaKind: String = "video",
   val hidden: Boolean = false,
-)
+) {
+  val isImage: Boolean get() = mediaKind == "image"
+}
 
 internal data class BlendWindow(
   val startMs: Long,

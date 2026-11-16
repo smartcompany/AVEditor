@@ -1,4 +1,5 @@
 import 'package:aveditor/models/clip_segment.dart';
+import 'package:aveditor/models/media_asset.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/services/transition_engine.dart';
 import 'package:aveditor/utils/duration_format.dart';
@@ -20,14 +21,62 @@ List<ClipSegment> splitSegmentsAt(
   if (index == -1) {
     throw StateError('split_out_of_range');
   }
+  return _splitSegmentAtLocal(segments, index, point);
+}
 
+/// Splits the clip under [sequenceTime] on the packed timeline.
+///
+/// Use this when segments use per-asset local clocks ([ClipSegment.mediaId])
+/// so overlapping local ranges cannot pick the wrong clip.
+List<ClipSegment> splitSegmentsAtSequenceTime(
+  List<ClipSegment> segments,
+  Duration sequenceTime,
+) {
+  final index = segmentIndexAtSequenceTime(segments, sequenceTime);
+  if (index < 0) {
+    throw StateError('split_out_of_range');
+  }
   final segment = segments[index];
+  final local = exportTimeToSourceTime(segments, sequenceTime);
+  final point = resolveSplitPoint([segment], local);
+  return _splitSegmentAtLocal(segments, index, point);
+}
+
+/// Index of the clip covering [sequenceTime] on the packed timeline, or -1.
+int segmentIndexAtSequenceTime(
+  List<ClipSegment> segments,
+  Duration sequenceTime,
+) {
+  if (segments.isEmpty) return -1;
+  var offset = Duration.zero;
+  for (var i = 0; i < segments.length; i++) {
+    final next = offset + segments[i].duration;
+    if (segments[i].duration > Duration.zero &&
+        sequenceTime >= offset &&
+        sequenceTime < next) {
+      return i;
+    }
+    offset = next;
+  }
+  return -1;
+}
+
+List<ClipSegment> _splitSegmentAtLocal(
+  List<ClipSegment> segments,
+  int index,
+  Duration point,
+) {
+  final segment = segments[index];
+  if (point <= segment.start || point >= segment.end) {
+    throw StateError('split_out_of_range');
+  }
   final left = segment.copyWith(
     end: point,
     fadeOut: Duration.zero,
     clearTransition: true,
   );
   final right = ClipSegment(
+    mediaId: segment.mediaId,
     start: point,
     end: segment.end,
     volume: segment.volume,
@@ -101,22 +150,41 @@ List<ClipSegment> collapseMicroSegments(List<ClipSegment> segments) {
 /// Normalizes segment lists for editing, playback, and export.
 List<ClipSegment> normalizeSegments(
   List<ClipSegment> segments, {
-  required Duration sourceDuration,
+  List<MediaAsset> mediaAssets = const [],
+  Duration? sourceDuration,
 }) {
   return collapseMicroSegments(
-    repairSegments(segments, sourceDuration: sourceDuration),
+    repairSegments(
+      segments,
+      mediaAssets: mediaAssets,
+      sourceDuration: sourceDuration,
+    ),
   );
 }
 
-/// Drops invalid segments and clamps bounds to the source file duration.
+MediaAsset? _assetFor(
+  List<MediaAsset> mediaAssets,
+  ClipSegment segment,
+) {
+  final id = segment.mediaId;
+  if (id == null) return null;
+  for (final asset in mediaAssets) {
+    if (asset.id == id) return asset;
+  }
+  return null;
+}
+
+/// Drops invalid segments and clamps bounds per media asset.
 ///
 /// Preserves list order so drag-reorder of cut clips is not undone.
 List<ClipSegment> repairSegments(
   List<ClipSegment> segments, {
-  required Duration sourceDuration,
+  List<MediaAsset> mediaAssets = const [],
+  Duration? sourceDuration,
 }) {
+  final fallback = sourceDuration ?? Duration.zero;
   if (segments.isEmpty) {
-    return segmentsFromTrim(start: Duration.zero, end: sourceDuration);
+    return segmentsFromTrim(start: Duration.zero, end: fallback);
   }
 
   final valid = <ClipSegment>[];
@@ -124,13 +192,16 @@ List<ClipSegment> repairSegments(
     var start = segment.start;
     var end = segment.end;
     if (start < Duration.zero) start = Duration.zero;
-    if (end > sourceDuration) end = sourceDuration;
+    final asset = _assetFor(mediaAssets, segment);
+    final maxEnd = asset?.maxClipEnd ??
+        (fallback > Duration.zero ? fallback : const Duration(hours: 12));
+    if (end > maxEnd) end = maxEnd;
     if (end <= start) continue;
     valid.add(segment.copyWith(start: start, end: end));
   }
 
   if (valid.isEmpty) {
-    return segmentsFromTrim(start: Duration.zero, end: sourceDuration);
+    return segmentsFromTrim(start: Duration.zero, end: fallback);
   }
   return valid;
 }
@@ -230,41 +301,35 @@ List<ClipSegment> deleteSegment(
   return next;
 }
 
-/// Earliest source time [segment] may start — nearest earlier source clip end.
+/// Earliest in-point on the clip's own media (multi-source: always zero).
 Duration segmentTrimMinStart(List<ClipSegment> segments, ClipSegment segment) {
-  Duration? prevEnd;
-  for (final other in segments) {
-    if (other.id == segment.id) continue;
-    if (other.end <= segment.start) {
-      if (prevEnd == null || other.end > prevEnd) prevEnd = other.end;
-    }
-  }
-  return prevEnd ?? Duration.zero;
+  return Duration.zero;
 }
 
-/// Latest source time [segment] may end — nearest later source clip start.
+/// Latest out-point on the clip's own media (asset duration or image hold max).
 Duration segmentTrimMaxEnd(
   List<ClipSegment> segments,
   ClipSegment segment, {
-  required Duration sourceDuration,
+  MediaAsset? asset,
+  Duration? sourceDuration,
 }) {
-  Duration? nextStart;
-  for (final other in segments) {
-    if (other.id == segment.id) continue;
-    if (other.start >= segment.end) {
-      if (nextStart == null || other.start < nextStart) nextStart = other.start;
-    }
+  if (asset != null) return asset.maxClipEnd;
+  if (sourceDuration != null && sourceDuration > Duration.zero) {
+    return sourceDuration;
   }
-  return nextStart ?? sourceDuration;
+  return kMaxImageHoldDuration;
 }
 
-/// Trims [segment] start in place; packed timeline ripples followers automatically.
+/// Trims [segment] start; packed timeline ripples followers automatically.
+/// Image clips keep start at zero (hold length changes via the right edge).
 ClipSegment? trimSegmentStart(
   List<ClipSegment> segments,
   ClipSegment segment, {
   required Duration nextStart,
-  required Duration sourceDuration,
+  MediaAsset? asset,
+  Duration? sourceDuration,
 }) {
+  if (asset != null && asset.isImage) return segment;
   final minStart = segmentTrimMinStart(segments, segment);
   final maxStart = segment.end - minTrimDuration;
   if (maxStart < minStart) return null;
@@ -278,12 +343,14 @@ ClipSegment? trimSegmentEnd(
   List<ClipSegment> segments,
   ClipSegment segment, {
   required Duration nextEnd,
-  required Duration sourceDuration,
+  MediaAsset? asset,
+  Duration? sourceDuration,
 }) {
   final minEnd = segment.start + minTrimDuration;
   final maxEnd = segmentTrimMaxEnd(
     segments,
     segment,
+    asset: asset,
     sourceDuration: sourceDuration,
   );
   if (maxEnd < minEnd) return null;
@@ -746,6 +813,11 @@ Duration? overlayExportTimeForEnd(
   TextOverlay overlay,
   List<ClipSegment> segments,
 ) {
+  // Multi-source: overlay times live on the packed sequence clock.
+  if (segments.any((s) => s.mediaId != null)) {
+    if (overlay.end <= overlay.start) return null;
+    return (start: overlay.start, end: overlay.end);
+  }
   // Direct mapping first so text can live (and move) past the video end.
   final directStart = sourceTimeToExportTime(segments, overlay.start);
   final directEnd = sourceTimeToExportTime(segments, overlay.end) ??

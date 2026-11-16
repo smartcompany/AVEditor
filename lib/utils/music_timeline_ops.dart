@@ -4,12 +4,20 @@ import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
 import 'package:aveditor/utils/timeline_math.dart';
 
+/// True when clips carry per-asset local clocks (multi-source timeline).
+bool segmentsUseLocalMediaClocks(List<ClipSegment> segments) {
+  for (final segment in segments) {
+    if (segment.mediaId != null) return true;
+  }
+  return false;
+}
+
 /// Maps a music clip's source range onto the packed sequence timeline.
 ({Duration start, Duration end})? musicSequenceSpan(
   ProjectMusic music,
   List<ClipSegment> segments,
 ) {
-  if (segments.isEmpty) {
+  if (segments.isEmpty || segmentsUseLocalMediaClocks(segments)) {
     return (start: music.timelineStart, end: music.timelineEnd);
   }
 
@@ -75,6 +83,6 @@ Duration projectMaxScrubSourceTime({
     musicTracks: musicTracks,
     overlays: overlays,
   );
-  if (segments.isEmpty) return seq;
+  if (segments.isEmpty || segmentsUseLocalMediaClocks(segments)) return seq;
   return exportTimeToSourceTime(segments, seq);
 }

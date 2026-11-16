@@ -34,7 +34,7 @@ internal object EnginePlanBuilder {
 
   fun build(sourcePath: String, segments: List<*>): EngineTimeline {
     val meta = NativeVideoEngineMedia.probeOriented(sourcePath)
-    val packed = NativeVideoEngineMedia.packSegmentsForEngine(segments)
+    val packed = NativeVideoEngineMedia.packSegmentsForEngine(segments, sourcePath)
     val pieces = JSONArray()
     for (track in 0..1) {
       for (piece in packed.tracks[track]) {
@@ -46,6 +46,8 @@ internal object EnginePlanBuilder {
             .put("compDurMs", piece.compDurMs)
             .put("srcStartMs", piece.srcStartMs)
             .put("srcDurMs", piece.srcDurMs)
+            .put("sourcePath", piece.sourcePath.ifBlank { sourcePath })
+            .put("kind", piece.mediaKind)
             .put("hidden", false),
         )
       }

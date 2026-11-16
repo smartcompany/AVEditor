@@ -138,9 +138,14 @@ class VideoFrameGrab {
     );
     if (written) return output;
     // A seek on the last millisecond lands past the final frame and ffmpeg
-    // still exits 0 with no image. Pull back and take the frame that exists.
-    if (timeMs > 0) {
-      final pulled = timeMs > 400 ? timeMs - 400 : 0;
+    // still exits 0 with no image. Pull back / try mid / try start.
+    final fallbacks = <int>[
+      if (timeMs > 400) timeMs - 400,
+      if (timeMs > 0) timeMs ~/ 2,
+      0,
+    ];
+    for (final pulled in fallbacks) {
+      if (pulled == timeMs) continue;
       final retry = await _encodeJpeg(
         video: video,
         output: output,

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:aveditor/models/media_asset.dart';
 import 'package:aveditor/utils/av_editor_log.dart';
 import 'package:ffmpeg_kit_flutter_new_min_gpl/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_min_gpl/ffmpeg_session.dart';
@@ -8,12 +9,8 @@ import 'package:ffmpeg_kit_flutter_new_min_gpl/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_min_gpl/return_code.dart';
 import 'package:path/path.dart' as p;
 
-/// Default on-timeline length for a still image imported as a clip.
-const Duration kDefaultImageClipDuration = Duration(seconds: 3);
-
-/// How long the still is baked into the source so the right trim handle can
-/// extend past the default without showing the next clip's frames.
-const Duration kMaxImageClipDuration = Duration(seconds: 60);
+/// Legacy alias — prefer [kDefaultImageHoldDuration].
+const Duration kDefaultImageClipDuration = kDefaultImageHoldDuration;
 
 /// Builds one H.264 source from ordered video/image paths and cut boundaries.
 class MediaConcatService {
@@ -128,9 +125,7 @@ class MediaConcatService {
     required int width,
     required int height,
   }) async {
-    // Encode the full extendable window; import only keeps the first
-    // [kDefaultImageClipDuration] on the timeline until the user drags.
-    final seconds = kMaxImageClipDuration.inMilliseconds / 1000.0;
+    final seconds = kDefaultImageHoldDuration.inMilliseconds / 1000.0;
     final ok = await _execute([
       '-y',
       '-loop',
@@ -169,7 +164,7 @@ class MediaConcatService {
     if (probed != null && probed > 0) {
       return Duration(milliseconds: probed);
     }
-    return kMaxImageClipDuration;
+    return kDefaultImageHoldDuration;
   }
 
   Future<Duration> _normalizeVideo(
@@ -294,6 +289,13 @@ class MediaConcatService {
   }
 
   int _even(int value) => value.isEven ? value : value - 1;
+
+  /// Public duration probe for multi-source import.
+  Future<Duration?> probeDuration(String path) async {
+    final ms = await _probeDurationMs(path);
+    if (ms == null || ms <= 0) return null;
+    return Duration(milliseconds: ms);
+  }
 
   Future<int?> _probeDurationMs(String path) async {
     try {

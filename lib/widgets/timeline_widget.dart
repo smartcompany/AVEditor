@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:aveditor/models/clip_segment.dart';
+import 'package:aveditor/models/media_asset.dart';
 import 'package:aveditor/models/project_music.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/timeline_filmstrip_frame.dart';
@@ -255,6 +256,7 @@ class TimelineWidget extends StatefulWidget {
     required this.trimStart,
     required this.trimEnd,
     required this.segments,
+    this.mediaAssets = const [],
     required this.overlays,
     required this.playhead,
     required this.onPlayheadChanged,
@@ -291,6 +293,7 @@ class TimelineWidget extends StatefulWidget {
   final Duration trimStart;
   final Duration trimEnd;
   final List<ClipSegment> segments;
+  final List<MediaAsset> mediaAssets;
   final List<TextOverlay> overlays;
   final List<ProjectMusic> musicTracks;
 
@@ -598,8 +601,12 @@ class TimelineWidgetState extends State<TimelineWidget>
     overlays: widget.overlays,
   );
 
-  Duration get _sequencePlayhead =>
-      timelinePlayheadFromSource(widget.segments, widget.playhead);
+  /// Multi-source projects keep the UI playhead on the packed sequence clock.
+  bool get _usesPackedPlayhead => widget.mediaAssets.isNotEmpty;
+
+  Duration get _sequencePlayhead => _usesPackedPlayhead
+      ? widget.playhead
+      : timelinePlayheadFromSource(widget.segments, widget.playhead);
 
   /// Derived, never stored: the playhead defines where the strip sits.
   double get _scrollPx => scrollPxForPlayhead(
@@ -621,6 +628,16 @@ class TimelineWidgetState extends State<TimelineWidget>
 
   Duration _timeAtViewportX(double x, {bool snap = true}) {
     final sequenceTime = _sequenceTimeAtViewportX(x, snap: snap);
+    return _uiTimeFromSequence(sequenceTime);
+  }
+
+  /// Sequence (packed) time → UI playhead / seek time.
+  ///
+  /// Multi-source clips share overlapping local clocks, so converting through
+  /// [exportTimeToSourceTime] would jump the centre playhead back to the first
+  /// clip whenever the scrub crosses a segment boundary.
+  Duration _uiTimeFromSequence(Duration sequenceTime) {
+    if (_usesPackedPlayhead) return sequenceTime;
     return exportTimeToSourceTime(widget.segments, sequenceTime);
   }
 
@@ -764,18 +781,19 @@ class TimelineWidgetState extends State<TimelineWidget>
     final seqMs = (fromMs + (toMs - fromMs) * t).round();
     // Animate in sequence space so the strip slides at a steady visual speed.
     // Video already shows the edge frame from [onEdgeFramePreview].
-    final source = exportTimeToSourceTime(
-      widget.segments,
-      Duration(milliseconds: seqMs),
+    _emitPlayhead(
+      _uiTimeFromSequence(Duration(milliseconds: seqMs)),
+      seekVideo: false,
     );
-    _emitPlayhead(source, seekVideo: false);
   }
 
   void _onEdgeSettleStatus(AnimationStatus status) {
     if (status == AnimationStatus.completed) {
       if (!mounted) return;
-      final source = exportTimeToSourceTime(widget.segments, _edgeSettleTo);
-      _emitPlayhead(snapDuration(source), seekVideo: true);
+      _emitPlayhead(
+        snapDuration(_uiTimeFromSequence(_edgeSettleTo)),
+        seekVideo: true,
+      );
     }
   }
 
@@ -787,8 +805,10 @@ class TimelineWidgetState extends State<TimelineWidget>
     final to = targetSequence;
     final deltaMs = (from - to).inMilliseconds.abs();
     if (deltaMs < 12) {
-      final source = exportTimeToSourceTime(widget.segments, to);
-      _emitPlayhead(snapDuration(source), seekVideo: true);
+      _emitPlayhead(
+        snapDuration(_uiTimeFromSequence(to)),
+        seekVideo: true,
+      );
       return;
     }
     _edgeSettleFrom = from;
@@ -807,10 +827,7 @@ class TimelineWidgetState extends State<TimelineWidget>
       _panFlingMaxMs,
     );
     widget.onPlayheadChanged(
-      exportTimeToSourceTime(
-        widget.segments,
-        Duration(milliseconds: nextMs.round()),
-      ),
+      _uiTimeFromSequence(Duration(milliseconds: nextMs.round())),
     );
     if (nextMs <= 0.0 || nextMs >= _panFlingMaxMs) {
       _finishPanFling();
@@ -1324,6 +1341,15 @@ class TimelineWidgetState extends State<TimelineWidget>
     if (id == null) return null;
     for (final segment in widget.segments) {
       if (segment.id == id) return segment;
+    }
+    return null;
+  }
+
+  MediaAsset? _assetForSegment(ClipSegment segment) {
+    final id = segment.mediaId;
+    if (id == null) return null;
+    for (final asset in widget.mediaAssets) {
+      if (asset.id == id) return asset;
     }
     return null;
   }
@@ -2016,10 +2042,7 @@ class TimelineWidgetState extends State<TimelineWidget>
         if (nextMs < 0) nextMs = 0;
         if (nextMs > maxMs) nextMs = maxMs;
         widget.onPlayheadChanged(
-          exportTimeToSourceTime(
-            widget.segments,
-            Duration(milliseconds: nextMs),
-          ),
+          _uiTimeFromSequence(Duration(milliseconds: nextMs)),
         );
       case TimelineDragTarget.trimStart:
         if (widget.segments.isEmpty) return;
@@ -2042,6 +2065,8 @@ class TimelineWidgetState extends State<TimelineWidget>
         if (segment == null || anchorStart == null || downLocal == null) {
           return;
         }
+        final asset = _assetForSegment(segment);
+        if (asset != null && asset.isImage) return;
         final msPerPx = _msPerPx;
         // Drag right → later source start (trim head); followers ripple via pack.
         final deltaMs = ((x - downLocal.dx) * msPerPx).round();
@@ -2063,10 +2088,11 @@ class TimelineWidgetState extends State<TimelineWidget>
           widget.segments,
           segment,
           nextStart: desired,
+          asset: asset,
           sourceDuration: widget.duration,
         );
         if (next != null) {
-          _previewEdgeDragTime(next.start);
+          _previewEdgeDragTime(next.start, forSegment: next);
           widget.onSegmentChanged?.call(next);
         }
       case TimelineDragTarget.segmentEnd:
@@ -2076,6 +2102,7 @@ class TimelineWidgetState extends State<TimelineWidget>
         if (segment == null || anchorEnd == null || downLocal == null) {
           return;
         }
+        final asset = _assetForSegment(segment);
         final msPerPx = _msPerPx;
         final deltaMs = ((x - downLocal.dx) * msPerPx).round();
         final desired = Duration(
@@ -2085,6 +2112,7 @@ class TimelineWidgetState extends State<TimelineWidget>
         final maxEnd = segmentTrimMaxEnd(
           widget.segments,
           segment,
+          asset: asset,
           sourceDuration: widget.duration,
         );
         final clamped = maxEnd < minEnd
@@ -2100,10 +2128,11 @@ class TimelineWidgetState extends State<TimelineWidget>
           widget.segments,
           segment,
           nextEnd: desired,
+          asset: asset,
           sourceDuration: widget.duration,
         );
         if (next != null) {
-          _previewEdgeDragTime(next.end);
+          _previewEdgeDragTime(next.end, forSegment: next);
           widget.onSegmentChanged?.call(next);
         }
       case TimelineDragTarget.overlayStart:
@@ -2431,9 +2460,7 @@ class TimelineWidgetState extends State<TimelineWidget>
               _dragTarget == TimelineDragTarget.transitionEnd
                   ? span.end
                   : span.start;
-          final edgeSource =
-              exportTimeToSourceTime(widget.segments, edgeSeq);
-          _previewEdgeDragTime(edgeSource);
+          _previewEdgeDragTime(_uiTimeFromSequence(edgeSeq));
         }
     }
   }
@@ -2507,9 +2534,31 @@ class TimelineWidgetState extends State<TimelineWidget>
     return minStart;
   }
 
-  void _previewEdgeDragTime(Duration sourceTime) {
-    final seq =
-        sourceTimeToExportTime(widget.segments, sourceTime) ?? sourceTime;
+  /// Packed sequence time of [local] on [segment]'s own media clock.
+  Duration _sequenceTimeForSegmentLocal(ClipSegment segment, Duration local) {
+    var offset = Duration.zero;
+    for (final s in widget.segments) {
+      if (s.id == segment.id) {
+        final clamped = local < s.start
+            ? s.start
+            : (local > s.end ? s.end : local);
+        return offset + (clamped - s.start);
+      }
+      offset += s.duration;
+    }
+    return local;
+  }
+
+  void _previewEdgeDragTime(
+    Duration sourceTime, {
+    ClipSegment? forSegment,
+  }) {
+    // Multi-source: UI times are packed unless [forSegment] pins a local in/out.
+    final seq = _usesPackedPlayhead
+        ? (forSegment != null
+            ? _sequenceTimeForSegmentLocal(forSegment, sourceTime)
+            : sourceTime)
+        : (sourceTimeToExportTime(widget.segments, sourceTime) ?? sourceTime);
     if (_edgeDragSequenceTime == seq && _edgeDragSourceTime == sourceTime) {
       return;
     }
@@ -2517,7 +2566,7 @@ class TimelineWidgetState extends State<TimelineWidget>
       _edgeDragSequenceTime = seq;
       _edgeDragSourceTime = sourceTime;
     });
-    // Decoder source for the frame under the handle (clock uses [seq]).
+    // Decoder needs local media time for the frame under the handle.
     final frameSource = exportTimeToSourceTime(widget.segments, seq);
     widget.onEdgeFramePreview?.call(frameSource);
   }
@@ -4409,13 +4458,29 @@ class _TimelinePainter extends CustomPainter {
     var bestInDelta = 1 << 62;
     TimelineFilmstripFrame? bestAny;
     var bestAnyDelta = 1 << 62;
+    final mediaId = within?.mediaId;
     for (final frame in filmstripFrames) {
+      if (mediaId != null &&
+          frame.mediaId != null &&
+          frame.mediaId != mediaId) {
+        continue;
+      }
       final deltaMs = (frame.sourceTime - sourceTime).inMilliseconds.abs();
       if (deltaMs < bestAnyDelta) {
         bestAnyDelta = deltaMs;
         bestAny = frame;
       }
       if (within == null) continue;
+      // Image holds: a single still at t=0 tiles across the whole clip.
+      if (frame.mediaId != null &&
+          frame.mediaId == mediaId &&
+          within.mediaId == mediaId) {
+        if (deltaMs < bestInDelta) {
+          bestInDelta = deltaMs;
+          bestInSegment = frame;
+        }
+        continue;
+      }
       if (frame.sourceTime < within.start || frame.sourceTime >= within.end) {
         continue;
       }

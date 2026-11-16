@@ -283,11 +283,14 @@ private func exportReencode(
   }
 
   let composition = AVMutableComposition()
-  // Two video tracks so overlapping transition windows can composite.
-  let videoTracks = [
-    composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)!,
-    composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)!,
-  ]
+  // One composition track per segment — mixing different source formats
+  // (video A + photo still + video B) on the same track throws
+  // "작업을 완료할 수 없습니다". Transitions still work: each segment keeps
+  // its own track, and the compositor reads two track IDs during a blend.
+  let videoTracks = makeCompositionVideoTracks(
+    composition: composition,
+    count: request.segments.count
+  )
   // Keep audio on one track without overlap so transitions don't double volume.
   // A track with no samples makes AVAssetExportSession fail at once
   // (AVErrorOperationNotSupportedForAsset -11838, underlying -16976).
@@ -301,7 +304,8 @@ private func exportReencode(
     sourceVideo: sourceVideo,
     videoTracks: videoTracks,
     sourceAudio: sourceAudio,
-    compAudio: compAudio
+    compAudio: compAudio,
+    fallbackSourcePath: request.sourcePath
   )
 
   for clip in request.music {
@@ -521,22 +525,87 @@ private func transitionHalfMs(_ tdMs: Int) -> (before: Int, after: Int) {
   return (before, max(0, tdMs) - before)
 }
 
+/// At least two tracks (transition blends); otherwise one per segment so
+/// mismatched source formats never share a composition track.
+private func makeCompositionVideoTracks(
+  composition: AVMutableComposition,
+  count: Int
+) -> [AVMutableCompositionTrack] {
+  let n = max(2, count)
+  var tracks: [AVMutableCompositionTrack] = []
+  tracks.reserveCapacity(n)
+  for _ in 0..<n {
+    tracks.append(
+      composition.addMutableTrack(
+        withMediaType: .video,
+        preferredTrackID: kCMPersistentTrackID_Invalid
+      )!
+    )
+  }
+  return tracks
+}
+
+private func loadLocalAsset(path: String) -> AVURLAsset {
+  let asset = AVURLAsset(url: URL(fileURLWithPath: path))
+  let keys = ["tracks", "duration", "playable"]
+  var status = asset.statusOfValue(forKey: "tracks", error: nil)
+  if status != .loaded {
+    let sem = DispatchSemaphore(value: 0)
+    asset.loadValuesAsynchronously(forKeys: keys) { sem.signal() }
+    _ = sem.wait(timeout: .now() + 5.0)
+    status = asset.statusOfValue(forKey: "tracks", error: nil)
+  }
+  return asset
+}
+
 private func packTransitionPlacements(
   segments: [[String: Any]],
   sourceVideo: AVAssetTrack,
   videoTracks: [AVMutableCompositionTrack],
   sourceAudio: AVAssetTrack?,
-  compAudio: AVMutableCompositionTrack?
+  compAudio: AVMutableCompositionTrack?,
+  fallbackSourcePath: String = ""
 ) throws -> [ExportPlacement] {
   var placements = [ExportPlacement]()
   var cursorMs = 0
   var prevOutTdMs = 0
+  var assetCache: [String: AVURLAsset] = [:]
+
+  func asset(for path: String) -> AVURLAsset {
+    if let cached = assetCache[path] { return cached }
+    let loaded = loadLocalAsset(path: path)
+    assetCache[path] = loaded
+    return loaded
+  }
 
   for (index, segment) in segments.enumerated() {
     let startMs = segment["startMs"] as? Int ?? 0
     let endMs = segment["endMs"] as? Int ?? startMs
-    let segDurMs = max(0, endMs - startMs)
-    let trackIndex = index % 2
+    let mediaDurMs = max(0, endMs - startMs)
+    let mediaKind = (segment["kind"] as? String)?.lowercased() ?? "video"
+    let isImage = mediaKind == "image"
+    let declaredDur = segment["durationMs"] as? Int ?? mediaDurMs
+    let segDurMs = max(0, declaredDur)
+    let path = (segment["sourcePath"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let resolvedPath = (path?.isEmpty == false ? path! : fallbackSourcePath)
+    // Never reuse a track across different source files (format mismatch).
+    let trackIndex = min(index, videoTracks.count - 1)
+
+    let segAsset = asset(for: resolvedPath)
+    let segVideo: AVAssetTrack? = {
+      if isImage {
+        // Must keep the still AVURLAsset alive in assetCache — a track whose
+        // asset was released makes insertTimeRange fail with
+        // "작업을 완료할 수 없습니다" even for a valid source range.
+        return ensureStillVideoTrack(
+          imagePath: resolvedPath,
+          holdMs: max(segDurMs, 1),
+          assetCache: &assetCache
+        )
+      }
+      return segAsset.tracks(withMediaType: .video).first ?? sourceVideo
+    }()
+    let segAudio = isImage ? nil : segAsset.tracks(withMediaType: .audio).first
 
     let outTdMs: Int
     let effect: String
@@ -569,65 +638,81 @@ private func packTransitionPlacements(
 
     let inHalf = transitionHalfMs(prevOutTdMs)
     let outHalf = transitionHalfMs(outTdMs)
+    guard let videoTrack = segVideo else {
+      throw NSError(domain: "NativeVideoEngine", code: 32, userInfo: [
+        NSLocalizedDescriptionKey: "No video track for segment \(index) (\(resolvedPath))",
+      ])
+    }
+    let availableMs = trackDurationMs(videoTrack)
+    // Clamp declared in/out to the real file so insertTimeRange cannot fail.
+    let safeStartMs = isImage ? 0 : min(max(0, startMs), max(0, availableMs - 1))
+    let safeEndMs = isImage
+      ? availableMs
+      : min(max(safeStartMs + 1, endMs), availableMs)
 
-    // Incoming half of the *previous* transition: B[start, start+after) stretched
-    // across [C−before, C+after).
+    // Incoming half of the *previous* transition.
     if prevOutTdMs > 0, inHalf.after > 0 {
       let blendStartMs = cursorMs - inHalf.before
-      let src = CMTimeRange(
-        start: cmTimeMs(startMs),
-        duration: cmTimeMs(inHalf.after)
-      )
-      try videoTracks[trackIndex].insertTimeRange(
-        src,
-        of: sourceVideo,
-        at: cmTimeMs(blendStartMs)
-      )
-      videoTracks[trackIndex].scaleTimeRange(
-        CMTimeRange(start: cmTimeMs(blendStartMs), duration: cmTimeMs(inHalf.after)),
-        toDuration: cmTimeMs(prevOutTdMs)
+      let srcStart = isImage ? 0 : safeStartMs
+      let wantSrc = isImage ? min(availableMs, max(1, inHalf.after)) : inHalf.after
+      try insertScaledClip(
+        into: videoTracks[trackIndex],
+        from: videoTrack,
+        srcStartMs: srcStart,
+        srcDurMs: wantSrc,
+        atMs: blendStartMs,
+        compDurMs: prevOutTdMs,
+        availableMs: availableMs
       )
     }
 
-    // Solo body at 1x between blends.
-    let soloSrcStartMs = startMs + inHalf.after
-    let soloSrcEndMs = endMs - outHalf.before
-    let soloDurMs = max(0, soloSrcEndMs - soloSrcStartMs)
+    let soloCompDurMs = max(0, segDurMs - inHalf.after - outHalf.before)
     let soloAtMs = cursorMs + inHalf.after
-    if soloDurMs > 0 {
-      try videoTracks[trackIndex].insertTimeRange(
-        CMTimeRange(start: cmTimeMs(soloSrcStartMs), duration: cmTimeMs(soloDurMs)),
-        of: sourceVideo,
-        at: cmTimeMs(soloAtMs)
+    if soloCompDurMs > 0 {
+      let soloSrcStart = isImage ? 0 : (safeStartMs + inHalf.after)
+      let soloSrcDur = isImage
+        ? min(availableMs, max(1, soloCompDurMs))
+        : min(soloCompDurMs, max(1, safeEndMs - soloSrcStart))
+      try insertScaledClip(
+        into: videoTracks[trackIndex],
+        from: videoTrack,
+        srcStartMs: soloSrcStart,
+        srcDurMs: max(1, soloSrcDur),
+        atMs: soloAtMs,
+        compDurMs: soloCompDurMs,
+        availableMs: availableMs
       )
     }
 
-    // Outgoing half of *this* transition: A[end−before, end) stretched across
-    // [C−before, C+after).
     if outTdMs > 0, outHalf.before > 0 {
       let blendStartMs = cursorMs + segDurMs - outHalf.before
-      let src = CMTimeRange(
-        start: cmTimeMs(endMs - outHalf.before),
-        duration: cmTimeMs(outHalf.before)
-      )
-      try videoTracks[trackIndex].insertTimeRange(
-        src,
-        of: sourceVideo,
-        at: cmTimeMs(blendStartMs)
-      )
-      videoTracks[trackIndex].scaleTimeRange(
-        CMTimeRange(start: cmTimeMs(blendStartMs), duration: cmTimeMs(outHalf.before)),
-        toDuration: cmTimeMs(outTdMs)
+      let srcStart = isImage
+        ? 0
+        : max(safeStartMs, safeEndMs - outHalf.before)
+      let wantSrc = isImage ? min(availableMs, max(1, outHalf.before)) : outHalf.before
+      try insertScaledClip(
+        into: videoTracks[trackIndex],
+        from: videoTrack,
+        srcStartMs: srcStart,
+        srcDurMs: wantSrc,
+        atMs: blendStartMs,
+        compDurMs: outTdMs,
+        availableMs: availableMs
       )
     }
 
-    // Audio stays on the hard-cut grid.
-    if let compAudio, let sourceAudio, segDurMs > 0 {
-      try? compAudio.insertTimeRange(
-        CMTimeRange(start: cmTimeMs(startMs), duration: cmTimeMs(segDurMs)),
-        of: sourceAudio,
-        at: cmTimeMs(cursorMs)
-      )
+    if let compAudio, let audio = segAudio ?? sourceAudio, !isImage {
+      let audioDur = max(0, safeEndMs - safeStartMs)
+      if audioDur > 0 {
+        let audioAvail = trackDurationMs(audio)
+        let aStart = min(safeStartMs, max(0, audioAvail - 1))
+        let aDur = min(audioDur, max(1, audioAvail - aStart))
+        try? compAudio.insertTimeRange(
+          CMTimeRange(start: cmTimeMs(aStart), duration: cmTimeMs(aDur)),
+          of: audio,
+          at: cmTimeMs(cursorMs)
+        )
+      }
     }
 
     let mediaStartMs = prevOutTdMs > 0 ? cursorMs - inHalf.before : cursorMs
@@ -656,6 +741,243 @@ private func packTransitionPlacements(
   }
 
   return placements
+}
+
+/// Insert [srcDurMs] from [sourceTrack], then scale to [compDurMs] when needed.
+///
+/// Still holds are often longer than the cached 1s `.hold.mp4` — never ask
+/// AVFoundation for a source range past the track end (that throws
+/// "작업을 완료할 수 없습니다" / prepare_failed).
+private func insertScaledClip(
+  into compositionTrack: AVMutableCompositionTrack,
+  from sourceTrack: AVAssetTrack,
+  srcStartMs: Int,
+  srcDurMs: Int,
+  atMs: Int,
+  compDurMs: Int,
+  availableMs: Int
+) throws {
+  if compDurMs <= 0 { return }
+
+  let trackRange = sourceTrack.timeRange
+  guard CMTimeCompare(trackRange.duration, .zero) > 0 else {
+    throw NSError(domain: "NativeVideoEngine", code: 34, userInfo: [
+      NSLocalizedDescriptionKey: "Source track has empty timeRange",
+    ])
+  }
+
+  // Short source slice (≥1 frame, ≤1s) then scale — more reliable than
+  // requesting the full still duration on Simulator.
+  let oneFrame = CMTime(value: 1, timescale: 30)
+  let maxSlice = CMTimeMultiply(oneFrame, multiplier: 30)
+  var srcRange = CMTimeRange(
+    start: trackRange.start,
+    duration: CMTimeMinimum(trackRange.duration, maxSlice)
+  )
+  if srcStartMs > 0 {
+    let start = CMTimeAdd(trackRange.start, cmTimeMs(srcStartMs))
+    let want = cmTimeMs(max(1, min(srcDurMs, 1000)))
+    srcRange = CMTimeRangeGetIntersection(
+      CMTimeRange(start: start, duration: want),
+      otherRange: trackRange
+    )
+  }
+  if CMTimeCompare(srcRange.duration, .zero) <= 0 {
+    srcRange = CMTimeRange(
+      start: trackRange.start,
+      duration: CMTimeMinimum(trackRange.duration, oneFrame)
+    )
+  }
+
+  let targetDur = cmTimeMs(compDurMs)
+  let desiredStart = cmTimeMs(atMs)
+
+  // Empty-track + insert at t>0 fails on Simulator ("작업을 완료할 수 없습니다").
+  // Insert at 0 → scale → push with empty time so the clip lands at atMs.
+  if compositionTrack.segments.isEmpty {
+    do {
+      try compositionTrack.insertTimeRange(srcRange, of: sourceTrack, at: .zero)
+    } catch {
+      let trackDurMs = Int((CMTimeGetSeconds(trackRange.duration) * 1000).rounded())
+      throw NSError(domain: "NativeVideoEngine", code: 33, userInfo: [
+        NSLocalizedDescriptionKey:
+          "insertTimeRange(at:0) failed wantAt=\(atMs)ms trackDur=\(trackDurMs)ms "
+          + "availArg=\(availableMs)ms: \(error.localizedDescription)",
+      ])
+    }
+    if CMTimeCompare(srcRange.duration, targetDur) != 0 {
+      compositionTrack.scaleTimeRange(
+        CMTimeRange(start: .zero, duration: srcRange.duration),
+        toDuration: targetDur
+      )
+    }
+    if atMs > 0 {
+      compositionTrack.insertEmptyTimeRange(
+        CMTimeRange(start: .zero, duration: desiredStart)
+      )
+    }
+    return
+  }
+
+  do {
+    try compositionTrack.insertTimeRange(srcRange, of: sourceTrack, at: desiredStart)
+  } catch {
+    let trackDurMs = Int((CMTimeGetSeconds(trackRange.duration) * 1000).rounded())
+    throw NSError(domain: "NativeVideoEngine", code: 33, userInfo: [
+      NSLocalizedDescriptionKey:
+        "insertTimeRange failed at=\(atMs)ms trackDur=\(trackDurMs)ms "
+        + "availArg=\(availableMs)ms: \(error.localizedDescription)",
+    ])
+  }
+  if CMTimeCompare(srcRange.duration, targetDur) != 0 {
+    compositionTrack.scaleTimeRange(
+      CMTimeRange(start: desiredStart, duration: srcRange.duration),
+      toDuration: targetDur
+    )
+  }
+}
+
+private func trackDurationMs(_ track: AVAssetTrack) -> Int {
+  let seconds = CMTimeGetSeconds(track.timeRange.duration)
+  if seconds.isFinite && seconds > 0 {
+    return max(1, Int((seconds * 1000).rounded()))
+  }
+  let assetSeconds = CMTimeGetSeconds(track.asset?.duration ?? .zero)
+  if assetSeconds.isFinite && assetSeconds > 0 {
+    return max(1, Int((assetSeconds * 1000).rounded()))
+  }
+  return 1000
+}
+
+/// Returns a video track for a still image (cached H.264 beside the image).
+///
+/// [assetCache] retains the still's AVURLAsset for the whole pack — tracks
+/// become unusable for insertTimeRange once their asset is released.
+private func ensureStillVideoTrack(
+  imagePath: String,
+  holdMs: Int,
+  assetCache: inout [String: AVURLAsset]
+) -> AVAssetTrack? {
+  let hold = max(holdMs, 1)
+  // Cap cache variants; long holds still scale from a short still.
+  // ".v3" busts stills baked without H.264 baseline profile (un-insertable).
+  let bakeMs = min(hold, 1000)
+  let cachePath = imagePath + ".\(bakeMs).hold.v3.mp4"
+  if !FileManager.default.fileExists(atPath: cachePath) {
+    guard writeStillVideo(imagePath: imagePath, outputPath: cachePath, durationMs: bakeMs) else {
+      NSLog("NativeVideoEngine still bake failed path=%@", imagePath)
+      return nil
+    }
+  }
+  if let cached = assetCache[cachePath] {
+    return cached.tracks(withMediaType: .video).first
+  }
+  let asset = loadLocalAsset(path: cachePath)
+  assetCache[cachePath] = asset
+  return asset.tracks(withMediaType: .video).first
+}
+
+private func writeStillVideo(imagePath: String, outputPath: String, durationMs: Int) -> Bool {
+  guard let image = UIImage(contentsOfFile: imagePath),
+        let cgImage = image.cgImage
+  else { return false }
+  // Cap still bake size — full camera photos are huge and slow to encode,
+  // and odd sizes break H.264. Preview/export scale to canvas anyway.
+  let maxEdge = 1280
+  var width = cgImage.width
+  var height = cgImage.height
+  let longest = max(width, height)
+  if longest > maxEdge {
+    let scale = CGFloat(maxEdge) / CGFloat(longest)
+    width = Int((CGFloat(width) * scale).rounded())
+    height = Int((CGFloat(height) * scale).rounded())
+  }
+  width -= width % 2
+  height -= height % 2
+  guard width > 0, height > 0 else { return false }
+  let url = URL(fileURLWithPath: outputPath)
+  try? FileManager.default.removeItem(at: url)
+  guard let writer = try? AVAssetWriter(outputURL: url, fileType: .mp4) else { return false }
+  // Without a profile/bitrate, Simulator stills look "playable" but
+  // insertTimeRange into AVMutableComposition fails with
+  // "작업을 완료할 수 없습니다".
+  let settings: [String: Any] = [
+    AVVideoCodecKey: AVVideoCodecType.h264,
+    AVVideoWidthKey: width,
+    AVVideoHeightKey: height,
+    AVVideoCompressionPropertiesKey: [
+      AVVideoAverageBitRateKey: max(400_000, width * height * 2),
+      AVVideoProfileLevelKey: AVVideoProfileLevelH264BaselineAutoLevel,
+    ],
+  ]
+  let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
+  input.expectsMediaDataInRealTime = false
+  let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+    assetWriterInput: input,
+    sourcePixelBufferAttributes: [
+      // BGRA is the format AVAssetWriter H.264 expects most reliably.
+      kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
+      kCVPixelBufferWidthKey as String: width,
+      kCVPixelBufferHeightKey as String: height,
+    ]
+  )
+  guard writer.canAdd(input) else { return false }
+  writer.add(input)
+  guard writer.startWriting() else {
+    NSLog("NativeVideoEngine still writer start failed: %@", writer.error?.localizedDescription ?? "?")
+    return false
+  }
+  writer.startSession(atSourceTime: .zero)
+  // Pixel buffer pool can be nil briefly after startWriting.
+  var poolTries = 0
+  while adaptor.pixelBufferPool == nil && poolTries < 50 {
+    usleep(10_000)
+    poolTries += 1
+  }
+  guard let pool = adaptor.pixelBufferPool else { return false }
+  var buffer: CVPixelBuffer?
+  CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
+  guard let pixelBuffer = buffer else { return false }
+  CVPixelBufferLockBaseAddress(pixelBuffer, [])
+  if let ctx = CGContext(
+    data: CVPixelBufferGetBaseAddress(pixelBuffer),
+    width: width,
+    height: height,
+    bitsPerComponent: 8,
+    bytesPerRow: CVPixelBufferGetBytesPerRow(pixelBuffer),
+    space: CGColorSpaceCreateDeviceRGB(),
+    bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
+      | CGBitmapInfo.byteOrder32Little.rawValue
+  ) {
+    ctx.interpolationQuality = .medium
+    ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+  }
+  CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
+  let frameDuration = CMTime(value: 1, timescale: 30)
+  var frameTime = CMTime.zero
+  // Write one extra frame past the requested end so the track duration is
+  // never shorter than durationMs (frame-aligned writers often undershoot).
+  let end = CMTimeAdd(
+    CMTime(value: CMTimeValue(max(1, durationMs)), timescale: 1000),
+    frameDuration
+  )
+  while frameTime < end {
+    while !input.isReadyForMoreMediaData { usleep(5_000) }
+    if !adaptor.append(pixelBuffer, withPresentationTime: frameTime) {
+      NSLog("NativeVideoEngine still append failed: %@", writer.error?.localizedDescription ?? "?")
+      return false
+    }
+    frameTime = CMTimeAdd(frameTime, frameDuration)
+  }
+  input.markAsFinished()
+  let done = DispatchSemaphore(value: 0)
+  writer.finishWriting { done.signal() }
+  done.wait()
+  if writer.status != .completed {
+    NSLog("NativeVideoEngine still finish failed: %@", writer.error?.localizedDescription ?? "?")
+    return false
+  }
+  return true
 }
 
 private func buildExportInstructions(
@@ -1082,17 +1404,44 @@ func makeTimelinePreviewItem(args: [String: Any]) throws -> (item: AVPlayerItem,
       NSLocalizedDescriptionKey: "Missing timeline",
     ])
   }
-  let source = AVURLAsset(url: URL(fileURLWithPath: sourcePath))
-  guard let sourceVideo = source.tracks(withMediaType: .video).first else {
+  // Prefer a real video asset for canvas size; images use a cached still track.
+  var probePath = sourcePath
+  for segment in segments {
+    let kind = (segment["kind"] as? String)?.lowercased() ?? "video"
+    if kind == "image" { continue }
+    if let path = segment["sourcePath"] as? String, !path.isEmpty {
+      probePath = path
+      break
+    }
+  }
+  // Retained for the whole build — AVAssetTracks are unusable after their
+  // owning AVURLAsset is released.
+  var retainedAssets: [String: AVURLAsset] = [:]
+  let source = loadLocalAsset(path: probePath)
+  retainedAssets[probePath] = source
+  var sourceVideo = source.tracks(withMediaType: .video).first
+  if sourceVideo == nil {
+    // Image-only timeline: synthesize a still video for sizing/fallback.
+    if let first = segments.first,
+       let path = (first["sourcePath"] as? String) ?? Optional(sourcePath),
+       let hold = first["durationMs"] as? Int {
+      sourceVideo = ensureStillVideoTrack(
+        imagePath: path,
+        holdMs: max(hold, 1),
+        assetCache: &retainedAssets
+      )
+    }
+  }
+  guard let sourceVideo else {
     throw NSError(domain: "NativeVideoEngine", code: 31, userInfo: [
       NSLocalizedDescriptionKey: "No video track",
     ])
   }
   let composition = AVMutableComposition()
-  let videoTracks = [
-    composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)!,
-    composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)!,
-  ]
+  let videoTracks = makeCompositionVideoTracks(
+    composition: composition,
+    count: segments.count
+  )
   let sourceAudio = source.tracks(withMediaType: .audio).first
   let compAudio = sourceAudio == nil
     ? nil
@@ -1105,7 +1454,8 @@ func makeTimelinePreviewItem(args: [String: Any]) throws -> (item: AVPlayerItem,
     sourceVideo: sourceVideo,
     videoTracks: videoTracks,
     sourceAudio: sourceAudio,
-    compAudio: compAudio
+    compAudio: compAudio,
+    fallbackSourcePath: sourcePath
   )
 
   let natural = sourceVideo.naturalSize.applying(sourceVideo.preferredTransform)
@@ -1131,6 +1481,8 @@ func makeTimelinePreviewItem(args: [String: Any]) throws -> (item: AVPlayerItem,
   let item = AVPlayerItem(asset: composition)
   item.videoComposition = videoComp
   item.seekingWaitsForVideoCompositionRendering = true
+  // Touch retainedAssets so still/probe AVURLAssets stay alive through build.
+  _ = retainedAssets.count
   return (item, Int(renderSize.width), Int(renderSize.height))
 }
 

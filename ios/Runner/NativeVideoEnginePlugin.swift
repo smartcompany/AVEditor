@@ -52,7 +52,8 @@ final class NativeVideoEnginePlugin: NSObject, FlutterPlugin {
             "durationMs": max(0, durationMs),
           ])
         } catch {
-          result(FlutterError(code: "prepare_failed", message: error.localizedDescription, details: nil))
+          NSLog("NativeVideoEngine prepareTimeline failed: %@", error.localizedDescription)
+          result(FlutterError(code: "prepare_failed", message: error.localizedDescription, details: String(describing: error)))
         }
         return
       }
@@ -73,7 +74,8 @@ final class NativeVideoEnginePlugin: NSObject, FlutterPlugin {
           "durationMs": max(0, durationMs),
         ])
       } catch {
-        result(FlutterError(code: "prepare_failed", message: error.localizedDescription, details: nil))
+        NSLog("NativeVideoEngine prepareTimeline failed: %@", error.localizedDescription)
+        result(FlutterError(code: "prepare_failed", message: error.localizedDescription, details: String(describing: error)))
       }
 
     case "prepareTransition":
