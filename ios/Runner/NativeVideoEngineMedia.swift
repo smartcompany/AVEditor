@@ -334,12 +334,6 @@ private func exportReencode(
     renderSize: renderSize,
     rotationDegrees: request.rotationDegrees
   )
-  var compositorTransform = sourceVideo.preferredTransform
-  if request.rotationDegrees != 0 {
-    compositorTransform = compositorTransform.concatenating(
-      CGAffineTransform(rotationAngle: CGFloat(request.rotationDegrees))
-    )
-  }
 
   let videoComp = AVMutableVideoComposition()
   videoComp.renderSize = renderSize
@@ -350,10 +344,16 @@ private func exportReencode(
   if needsCompositor {
     ExportOverlayStore.set(request.overlays)
     videoComp.customVideoCompositorClass = ExportFrameCompositor.self
+    // Global rotation is applied on top of each clip's own orientation —
+    // never replace a still's identity with the first video's transform.
+    // Arg name is historical — Dart sends radians (see VideoProject.rotation).
+    let global = request.rotationDegrees == 0
+      ? CGAffineTransform.identity
+      : CGAffineTransform(rotationAngle: CGFloat(request.rotationDegrees))
     videoComp.instructions = buildCustomExportInstructions(
       placements: placements,
       videoTracks: videoTracks,
-      baseTransform: compositorTransform
+      globalTransform: global
     )
   } else {
     ExportOverlayStore.clear()
@@ -509,6 +509,8 @@ private struct ExportPlacement {
   let incomingScaleFrom: CGFloat
   let incomingScaleTo: CGFloat
   let wipeEdge: String
+  /// Orientation of this segment's source track (identity for baked stills).
+  let preferredTransform: CGAffineTransform
 }
 
 /// Duration-preserving packing (all transitions): composition length = A+B.
@@ -735,7 +737,9 @@ private func packTransitionPlacements(
         reverse: reverse,
         incomingScaleFrom: scaleFrom,
         incomingScaleTo: scaleTo,
-        wipeEdge: wipeEdge
+        wipeEdge: wipeEdge,
+        // Stills bake upright; never inherit another clip's phone rotation.
+        preferredTransform: isImage ? .identity : videoTrack.preferredTransform
       )
     )
 
@@ -890,9 +894,9 @@ private func ensureStillVideoTrack(
 ) -> AVAssetTrack? {
   let hold = max(holdMs, 1)
   // Cap cache variants; long holds still scale from a short still.
-  // ".v3" busts stills baked without H.264 baseline profile (un-insertable).
+  // ".v4" applies EXIF/imageOrientation when baking (v3 drew raw cgImage).
   let bakeMs = min(hold, 1000)
-  let cachePath = imagePath + ".\(bakeMs).hold.v3.mp4"
+  let cachePath = imagePath + ".\(bakeMs).hold.v4.mp4"
   if !FileManager.default.fileExists(atPath: cachePath) {
     guard writeStillVideo(imagePath: imagePath, outputPath: cachePath, durationMs: bakeMs) else {
       NSLog("NativeVideoEngine still bake failed path=%@", imagePath)
@@ -908,9 +912,22 @@ private func ensureStillVideoTrack(
 }
 
 private func writeStillVideo(imagePath: String, outputPath: String, durationMs: Int) -> Bool {
-  guard let image = UIImage(contentsOfFile: imagePath),
-        let cgImage = image.cgImage
-  else { return false }
+  guard let raw = UIImage(contentsOfFile: imagePath) else { return false }
+  // UIImage.cgImage ignores EXIF orientation — redraw so portrait photos
+  // bake upright instead of sideways / upside-down.
+  let normalized: UIImage
+  if raw.imageOrientation == .up {
+    normalized = raw
+  } else {
+    let format = UIGraphicsImageRendererFormat.default()
+    format.scale = 1
+    format.opaque = true
+    let renderer = UIGraphicsImageRenderer(size: raw.size, format: format)
+    normalized = renderer.image { _ in
+      raw.draw(in: CGRect(origin: .zero, size: raw.size))
+    }
+  }
+  guard let cgImage = normalized.cgImage else { return false }
   // Cap still bake size — full camera photos are huge and slow to encode,
   // and odd sizes break H.264. Preview/export scale to canvas anyway.
   let maxEdge = 1280
@@ -1364,9 +1381,12 @@ private func exportTransitionLayers(
 private func buildCustomExportInstructions(
   placements: [ExportPlacement],
   videoTracks: [AVMutableCompositionTrack],
-  baseTransform: CGAffineTransform
+  globalTransform: CGAffineTransform
 ) -> [AVVideoCompositionInstructionProtocol] {
   var instructions: [ExportCompositionInstruction] = []
+  func oriented(_ placement: ExportPlacement) -> CGAffineTransform {
+    placement.preferredTransform.concatenating(globalTransform)
+  }
   for (index, placement) in placements.enumerated() {
     let tdMs = max(0, placement.transitionMs)
     let td = cmTimeMs(tdMs)
@@ -1377,6 +1397,7 @@ private func buildCustomExportInstructions(
     let soloEnd = hasTransition
       ? CMTimeSubtract(placement.end, td)
       : placement.end
+    let outTx = oriented(placement)
     if CMTimeCompare(soloEnd, soloStart) > 0 {
       instructions.append(
         ExportCompositionInstruction(
@@ -1390,7 +1411,8 @@ private func buildCustomExportInstructions(
           kind: "",
           reverse: false,
           layers: [],
-          preferredTransform: baseTransform,
+          preferredTransform: outTx,
+          incomingPreferredTransform: outTx,
           incomingScaleFrom: 0.84,
           incomingScaleTo: 1
         )
@@ -1414,7 +1436,8 @@ private func buildCustomExportInstructions(
           kind: placement.kind,
           reverse: placement.reverse,
           layers: placement.motion,
-          preferredTransform: baseTransform,
+          preferredTransform: outTx,
+          incomingPreferredTransform: oriented(next),
           incomingScaleFrom: placement.incomingScaleFrom,
           incomingScaleTo: placement.incomingScaleTo,
           wipeEdge: placement.wipeEdge
@@ -1495,10 +1518,8 @@ func makeTimelinePreviewItem(args: [String: Any]) throws -> (item: AVPlayerItem,
     width: max(2, floor(oriented.width * fit / 2) * 2),
     height: max(2, floor(oriented.height * fit / 2) * 2)
   )
-  // Raw track transform. The compositor fits it in Core Image space.
-  // exportFitTransform is for AVFoundation layer instructions, which use the
-  // opposite Y axis and turn phone video upside down here.
-  let baseTransform = sourceVideo.preferredTransform
+  // Per-clip preferredTransform lives on each placement. Using the probe
+  // video's transform for every instruction flipped stills (photo upside-down).
   let videoComp = AVMutableVideoComposition()
   videoComp.renderSize = renderSize
   videoComp.frameDuration = CMTime(value: 1, timescale: 30)
@@ -1506,7 +1527,7 @@ func makeTimelinePreviewItem(args: [String: Any]) throws -> (item: AVPlayerItem,
   videoComp.instructions = buildCustomExportInstructions(
     placements: placements,
     videoTracks: videoTracks,
-    baseTransform: baseTransform
+    globalTransform: .identity
   )
   let item = AVPlayerItem(asset: composition)
   item.videoComposition = videoComp
@@ -1521,6 +1542,8 @@ private func buildSourceTimePreviewInstructions(
   videoTracks: [AVMutableCompositionTrack],
   baseTransform: CGAffineTransform
 ) -> [AVVideoCompositionInstructionProtocol] {
+  // Prefer each placement's own orientation; fall back to baseTransform only
+  // for gap passthrough (no media).
   var instructions: [ExportCompositionInstruction] = []
   func passthrough(_ range: CMTimeRange) {
     if CMTimeCompare(range.duration, .zero) <= 0 { return }
@@ -1553,6 +1576,7 @@ private func buildSourceTimePreviewInstructions(
     let soloEnd = hasTransition
       ? CMTimeSubtract(placement.end, td)
       : placement.end
+    let outTx = placement.preferredTransform
     if CMTimeCompare(soloEnd, soloStart) > 0 {
       instructions.append(
         ExportCompositionInstruction(
@@ -1563,7 +1587,8 @@ private func buildSourceTimePreviewInstructions(
           kind: "",
           reverse: false,
           layers: [],
-          preferredTransform: baseTransform,
+          preferredTransform: outTx,
+          incomingPreferredTransform: outTx,
           incomingScaleFrom: 0.84,
           incomingScaleTo: 1
         )
@@ -1580,7 +1605,8 @@ private func buildSourceTimePreviewInstructions(
           kind: placement.kind,
           reverse: placement.reverse,
           layers: placement.motion,
-          preferredTransform: baseTransform,
+          preferredTransform: outTx,
+          incomingPreferredTransform: next.preferredTransform,
           incomingScaleFrom: placement.incomingScaleFrom,
           incomingScaleTo: placement.incomingScaleTo,
           wipeEdge: placement.wipeEdge
@@ -1605,6 +1631,7 @@ final class ExportCompositionInstruction: NSObject, AVVideoCompositionInstructio
   let reverse: Bool
   let layers: [ExportMotion]
   let preferredTransform: CGAffineTransform
+  let incomingPreferredTransform: CGAffineTransform
   let incomingScaleFrom: CGFloat
   let incomingScaleTo: CGFloat
   let wipeEdge: String
@@ -1618,6 +1645,7 @@ final class ExportCompositionInstruction: NSObject, AVVideoCompositionInstructio
     reverse: Bool,
     layers: [ExportMotion],
     preferredTransform: CGAffineTransform,
+    incomingPreferredTransform: CGAffineTransform? = nil,
     incomingScaleFrom: CGFloat,
     incomingScaleTo: CGFloat,
     wipeEdge: String = ""
@@ -1630,6 +1658,7 @@ final class ExportCompositionInstruction: NSObject, AVVideoCompositionInstructio
     self.reverse = reverse
     self.layers = layers
     self.preferredTransform = preferredTransform
+    self.incomingPreferredTransform = incomingPreferredTransform ?? preferredTransform
     self.incomingScaleFrom = incomingScaleFrom
     self.incomingScaleTo = incomingScaleTo
     self.wipeEdge = wipeEdge
@@ -1755,7 +1784,9 @@ private final class ExportFrameRenderer {
     let h = CGFloat(CVPixelBufferGetHeight(destination))
     let canvas = CGRect(x: 0, y: 0, width: w, height: h)
     let outImage = outgoing.map { placed($0, instruction.preferredTransform, canvas) }
-    let inImage = incoming.map { placed($0, instruction.preferredTransform, canvas) }
+    let inImage = incoming.map {
+      placed($0, instruction.incomingPreferredTransform, canvas)
+    }
     var composed: CIImage
     if let outImage, let inImage {
       composed = compose(outImage: outImage, inImage: inImage, t: t, instruction: instruction, canvas: canvas)

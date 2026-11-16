@@ -2535,14 +2535,17 @@ class TimelineWidgetState extends State<TimelineWidget>
   }
 
   /// Packed sequence time of [local] on [segment]'s own media clock.
+  ///
+  /// Uses the live [segment] in/out (not the possibly-stale list entry) so
+  /// extending an image hold during drag maps past the old end.
   Duration _sequenceTimeForSegmentLocal(ClipSegment segment, Duration local) {
     var offset = Duration.zero;
     for (final s in widget.segments) {
       if (s.id == segment.id) {
-        final clamped = local < s.start
-            ? s.start
-            : (local > s.end ? s.end : local);
-        return offset + (clamped - s.start);
+        final clamped = local < segment.start
+            ? segment.start
+            : (local > segment.end ? segment.end : local);
+        return offset + (clamped - segment.start);
       }
       offset += s.duration;
     }
@@ -2553,12 +2556,21 @@ class TimelineWidgetState extends State<TimelineWidget>
     Duration sourceTime, {
     ClipSegment? forSegment,
   }) {
-    // Multi-source: UI times are packed unless [forSegment] pins a local in/out.
-    final seq = _usesPackedPlayhead
+    // Multi-source: UI + native share the packed sequence clock.
+    var seq = _usesPackedPlayhead
         ? (forSegment != null
             ? _sequenceTimeForSegmentLocal(forSegment, sourceTime)
             : sourceTime)
         : (sourceTimeToExportTime(widget.segments, sourceTime) ?? sourceTime);
+    // Exact segment end equals the next clip's start on the packed clock —
+    // nudge back so the preview stays on this clip (photo, not the next video).
+    if (_usesPackedPlayhead && forSegment != null) {
+      final end = _sequenceTimeForSegmentLocal(forSegment, forSegment.end);
+      if (seq >= end && end > Duration.zero) {
+        seq = end - const Duration(milliseconds: 1);
+        if (seq < Duration.zero) seq = Duration.zero;
+      }
+    }
     if (_edgeDragSequenceTime == seq && _edgeDragSourceTime == sourceTime) {
       return;
     }
@@ -2566,7 +2578,12 @@ class TimelineWidgetState extends State<TimelineWidget>
       _edgeDragSequenceTime = seq;
       _edgeDragSourceTime = sourceTime;
     });
-    // Decoder needs local media time for the frame under the handle.
+    // Packed mode: seek the native timeline with [seq]. Converting back to
+    // per-asset local time made image-hold drags seek into the previous video.
+    if (_usesPackedPlayhead) {
+      widget.onEdgeFramePreview?.call(seq);
+      return;
+    }
     final frameSource = exportTimeToSourceTime(widget.segments, seq);
     widget.onEdgeFramePreview?.call(frameSource);
   }
@@ -4419,18 +4436,21 @@ class _TimelinePainter extends CustomPainter {
       final left = rect.left + i * _filmstripTileWidth;
       if (left >= rect.right) break;
 
-      // Last tile stretches to the segment edge so no black strip remains.
-      final width = rect.right - left;
+      // Fixed tile width — only the last tile stretches to the segment edge.
+      // Using (rect.right - left) for every tile made sampleX the midpoint of
+      // the *remaining* span, so early tiles showed mid/end frames (e.g. E
+      // under a playhead that should show A).
+      final isLast =
+          i == tileCount - 1 || left + _filmstripTileWidth >= rect.right;
+      final width = isLast ? (rect.right - left) : _filmstripTileWidth;
       if (width <= 0) break;
 
-      final sampleX = left + width / 2;
-      var centerFraction = (sampleX - rect.left) / rect.width;
-      if (i == tileCount - 1) {
-        centerFraction = 1.0;
-      }
+      final centerFraction =
+          ((left - rect.left) + width / 2) / rect.width;
       final sourceMs =
           segment.start.inMilliseconds +
-          (segment.duration.inMilliseconds * centerFraction).round();
+          (segment.duration.inMilliseconds * centerFraction.clamp(0.0, 1.0))
+              .round();
       final endMs = segment.end.inMilliseconds - 1;
       final upperMs = endMs >= segment.start.inMilliseconds
           ? endMs
