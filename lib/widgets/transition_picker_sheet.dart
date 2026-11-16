@@ -62,7 +62,11 @@ class _TransitionPickerPanelState extends State<TransitionPickerPanel> {
     _parameters = Map<String, double>.from(widget.initialParameters);
     _service.addListener(_onChanged);
     _assets.addListener(_onChanged);
-    _bootstrap();
+    // Never finish bootstrap synchronously inside initState — if the catalog
+    // is already warm, setState() there throws and leaves the spinner up.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_bootstrap());
+    });
   }
 
   @override
@@ -84,25 +88,39 @@ class _TransitionPickerPanelState extends State<TransitionPickerPanel> {
     setState(() {});
   }
 
+  void _applyCatalogToState() {
+    final categories = _service.catalog.displayCategories;
+    if (categories.isNotEmpty) {
+      _categoryId ??= categories.first.id;
+    }
+    final selected = _service.itemById(_selectedId);
+    if (selected != null && _parameters.isEmpty) {
+      _parameters = selected.defaultParameters();
+    }
+    _duration = _clampDuration(_duration, selected);
+  }
+
   Future<void> _bootstrap() async {
     try {
+      // Already warm (main post-frame init) — paint tiles immediately.
+      if (_service.isReady && _service.catalog.items.isNotEmpty) {
+        _applyCatalogToState();
+        if (mounted) setState(() => _loading = false);
+        unawaited(_assets.ensureScanned());
+        return;
+      }
       // Catalog first so tiles can paint; asset scan is optional chrome.
-      await _service.ensureInitialized();
+      await _service.ensureInitialized().timeout(const Duration(seconds: 5));
       if (!mounted) return;
-      final categories = _service.catalog.displayCategories;
-      if (categories.isNotEmpty) {
-        _categoryId ??= categories.first.id;
-      }
-      final selected = _service.itemById(_selectedId);
-      if (selected != null && _parameters.isEmpty) {
-        _parameters = selected.defaultParameters();
-      }
-      _duration = _clampDuration(_duration, selected);
+      _applyCatalogToState();
       setState(() => _loading = false);
       unawaited(_assets.ensureScanned());
     } catch (error, stack) {
       debugPrint('TransitionPickerPanel bootstrap failed: $error\n$stack');
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        _applyCatalogToState();
+        setState(() => _loading = false);
+      }
     }
   }
 

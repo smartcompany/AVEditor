@@ -2092,8 +2092,10 @@ class TimelineWidgetState extends State<TimelineWidget>
           sourceDuration: widget.duration,
         );
         if (next != null) {
-          _previewEdgeDragTime(next.start, forSegment: next);
+          // Mutate pack first so edge preview/rebuild uses the dragged lengths
+          // (not the pre-drag duration clamp / stale compositor).
           widget.onSegmentChanged?.call(next);
+          _previewEdgeDragTime(next.start, forSegment: next);
         }
       case TimelineDragTarget.segmentEnd:
         final segment = _liveSegment(_dragSegment) ?? _dragSegment;
@@ -2132,8 +2134,13 @@ class TimelineWidgetState extends State<TimelineWidget>
           sourceDuration: widget.duration,
         );
         if (next != null) {
-          _previewEdgeDragTime(next.end, forSegment: next);
           widget.onSegmentChanged?.call(next);
+          _previewEdgeDragTime(
+            next.end > next.start
+                ? next.end - const Duration(milliseconds: 1)
+                : next.end,
+            forSegment: next,
+          );
         }
       case TimelineDragTarget.overlayStart:
         final overlay = _dragOverlay;

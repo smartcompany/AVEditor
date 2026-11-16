@@ -681,7 +681,15 @@ class TransitionCatalog {
 
   /// Categories for UI; synthesizes a single "All" group when none provided.
   List<TransitionCategory> get displayCategories {
-    if (categories.isNotEmpty) return categories;
+    // Prefer categories that actually have tiles. A remote merge can leave
+    // empty category shells that would make the picker look "stuck loading".
+    if (categories.isNotEmpty) {
+      final withItems = [
+        for (final category in categories)
+          if (category.items.isNotEmpty) category,
+      ];
+      if (withItems.isNotEmpty) return withItems;
+    }
     if (items.isEmpty) return const [];
     return [
       TransitionCategory(id: 'all', title: 'All', titles: const {

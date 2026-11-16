@@ -190,6 +190,11 @@ class _EditorScreenState extends State<EditorScreen>
   bool _edgeFramePreviewActive = false;
   Duration? _lastEdgePreviewSeek;
 
+  /// Coalesced mid-drag packed rebuild: only the latest drag state is applied,
+  /// so in-flight prepares never flash a stale pack after a newer one.
+  Duration? _pendingPackedEdgeSeek;
+  bool _packedEdgeRebuildInFlight = false;
+
   final _projectStorage = const ProjectStorageService();
   final _history = EditorHistory();
   final _thumbnailService = const TimelineThumbnailService();
@@ -209,6 +214,10 @@ class _EditorScreenState extends State<EditorScreen>
   bool _hasSourceAudio = false;
 
   Timer? _saveDebounce;
+
+  /// Fast rebuild while resizing a clip hold so packed preview matches the
+  /// centre playhead (save debounce alone is too slow / deferred mid-drag).
+  Timer? _segmentLayoutRebuildDebounce;
 
   /// Bottom-dock height.
   ///
@@ -909,13 +918,68 @@ class _EditorScreenState extends State<EditorScreen>
       if (_transitionPreviewArmed || _transitionStudioCutIndex != null) {
         return;
       }
+      // Mid trim/hold drag: packed rebuild is coalesced via
+      // [_schedulePackedEdgeRebuild]; a save attach would race a stale pack.
+      if (_edgeFramePreviewActive) {
+        return;
+      }
       // Never rebuild/preroll while the user is watching — that paused playback
       // at whatever frame they had reached (often a cut).
       if (NativeVideoEngine.instance.isPlaying) {
         return;
       }
+      // A pending layout rebuild already targets the right seek.
+      if (_segmentLayoutRebuildDebounce?.isActive ?? false) {
+        return;
+      }
       unawaited(_attachTimelineCompositor());
     });
+  }
+
+  void _scheduleSegmentLayoutRebuild({Duration? seekTo}) {
+    if (_transitionPreviewArmed || _transitionStudioCutIndex != null) {
+      return;
+    }
+    _segmentLayoutRebuildDebounce?.cancel();
+    _segmentLayoutRebuildDebounce = Timer(const Duration(milliseconds: 16), () {
+      if (!mounted) return;
+      final land = seekTo ?? _scrubPlayhead ?? _playhead;
+      unawaited(
+        _attachTimelineCompositor(resume: false, seekTo: land),
+      );
+    });
+  }
+
+  /// Rebuild the packed compositor from the live dragged segments and seek to
+  /// the edge. Coalesces so only the newest drag state is shown — queued
+  /// intermediate prepares were flashing pre-drag ↔ mid-drag packs.
+  void _schedulePackedEdgeRebuild(Duration seekTo) {
+    if (_transitionPreviewArmed || _transitionStudioCutIndex != null) {
+      return;
+    }
+    _pendingPackedEdgeSeek = seekTo;
+    _segmentLayoutRebuildDebounce?.cancel();
+    _segmentLayoutRebuildDebounce = Timer(const Duration(milliseconds: 16), () {
+      if (!mounted) return;
+      unawaited(_drainPackedEdgeRebuild());
+    });
+  }
+
+  Future<void> _drainPackedEdgeRebuild() async {
+    if (_packedEdgeRebuildInFlight) return;
+    _packedEdgeRebuildInFlight = true;
+    try {
+      while (mounted && _pendingPackedEdgeSeek != null) {
+        final land = _pendingPackedEdgeSeek!;
+        _pendingPackedEdgeSeek = null;
+        await _attachTimelineCompositor(resume: false, seekTo: land);
+      }
+    } finally {
+      _packedEdgeRebuildInFlight = false;
+      if (mounted && _pendingPackedEdgeSeek != null) {
+        unawaited(_drainPackedEdgeRebuild());
+      }
+    }
   }
 
   Future<void> _persistProject() async {
@@ -2277,6 +2341,7 @@ class _EditorScreenState extends State<EditorScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _saveDebounce?.cancel();
+    _segmentLayoutRebuildDebounce?.cancel();
     _transitionPreviewTimer?.cancel();
     _fadeHoldTimer?.cancel();
     unawaited(_timelinePositionSub?.cancel());
@@ -2435,22 +2500,30 @@ class _EditorScreenState extends State<EditorScreen>
     setState(() {});
   }
 
-  /// While dragging a clip edge, show that edge's frame without moving the
-  /// centre playhead (so the handle stays under the finger).
+  /// While dragging a clip edge, keep the centre needle pinned.
+  ///
+  /// Multi-source: rebuild the pack from the dragged lengths and keep the
+  /// preview on that centre — do not seek the handle/end (that is the
+  /// post-release settle target). On pointer-up we land on the edge.
   void _onEdgeFramePreview(Duration? sourceTime) {
     final controller = _controller;
     final project = _project;
     if (project == null || (controller == null && !_ffmpegPlayback)) return;
 
     if (sourceTime == null) {
+      final land = _lastEdgePreviewSeek ?? _scrubPlayhead ?? _playhead;
       _edgeFramePreviewActive = false;
       _lastEdgePreviewSeek = null;
+      _pendingPackedEdgeSeek = land;
+      _scrubPlayhead = null;
+      // Pointer-up: seek the edge so settle / header move matches the handle.
+      unawaited(_drainPackedEdgeRebuild());
       return;
     }
 
     if (!_edgeFramePreviewActive) {
       _edgeFramePreviewActive = true;
-      // Freeze the timeline on the current centre; only the decoder moves.
+      // Pin the timeline needle at the current centre for the whole drag.
       _scrubPlayhead = _playhead;
       if (_transportPlaying) {
         if (NativeVideoEngine.instance.isTimelineActive) {
@@ -2468,6 +2541,16 @@ class _EditorScreenState extends State<EditorScreen>
       Duration.zero,
       project.duration,
     );
+
+    // Multi-source: remember the handle for release, but preview the pinned
+    // centre with the already-dragged pack (not the release/end frame).
+    if (project.mediaAssets.isNotEmpty) {
+      _lastEdgePreviewSeek = videoSeek;
+      final centre = _scrubPlayhead ?? _playhead;
+      _schedulePackedEdgeRebuild(centre);
+      return;
+    }
+
     if (_lastEdgePreviewSeek != null &&
         (videoSeek - _lastEdgePreviewSeek!).inMilliseconds.abs() < 16) {
       return;
@@ -2731,6 +2814,9 @@ class _EditorScreenState extends State<EditorScreen>
     if (index < 0 || index >= project.segments.length - 1) {
       return;
     }
+
+    // Warm the catalog without blocking the dock open.
+    unawaited(TransitionCatalogService.instance.ensureInitialized());
 
     // Open the studio immediately — don't block the first tap on pause/IME.
     _presentStudioDock(() {
@@ -4579,6 +4665,8 @@ class _EditorScreenState extends State<EditorScreen>
           _syncPackedDuration(p);
         });
         _syncVideoAudioVolume();
+        // Packed edge preview/rebuild is driven by [onEdgeFramePreview] after
+        // this mutation so seeks use the already-dragged duration.
       },
       onSegmentsReordered: (segments) {
         _mutate((p) {

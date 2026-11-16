@@ -26,6 +26,7 @@ class TransitionCatalogService extends ChangeNotifier {
   TransitionCatalog _catalog = const TransitionCatalog(version: 0, items: []);
   var _ready = false;
   String? _lastError;
+  Future<void>? _initFuture;
 
   TransitionCatalog get catalog => _catalog;
   bool get isReady => _ready;
@@ -36,7 +37,28 @@ class TransitionCatalogService extends ChangeNotifier {
 
   Future<void> ensureInitialized() async {
     if (_ready && _catalog.items.isNotEmpty) return;
-    await refresh();
+    // Share one in-flight load; drop it on failure so the next open can retry.
+    final existing = _initFuture;
+    if (existing != null) {
+      await existing;
+      if (_ready && _catalog.items.isNotEmpty) return;
+    }
+    final run = refresh();
+    _initFuture = run;
+    try {
+      await run.timeout(const Duration(seconds: 4));
+    } on TimeoutException {
+      debugPrint('TransitionCatalogService: init timed out');
+      _lastError = 'timeout';
+      _initFuture = null;
+      if (!_ready) {
+        _ready = true;
+        notifyListeners();
+      }
+    } catch (_) {
+      _initFuture = null;
+      rethrow;
+    }
   }
 
   Future<void> refresh({bool awaitRemote = false}) async {
@@ -45,7 +67,7 @@ class TransitionCatalogService extends ChangeNotifier {
       // Show bundled catalog immediately so the picker is never blocked on
       // the network. Remote merge happens afterward (non-blocking for callers
       // that await this method after bundled is ready).
-      final bundled = await _loadBundled();
+      final bundled = await _loadBundled().timeout(const Duration(seconds: 3));
       _catalog = bundled;
       _ready = true;
       notifyListeners();
@@ -66,7 +88,7 @@ class TransitionCatalogService extends ChangeNotifier {
     } catch (error) {
       _lastError = error.toString();
       try {
-        _catalog = await _loadBundled();
+        _catalog = await _loadBundled().timeout(const Duration(seconds: 2));
       } catch (bundledError) {
         debugPrint(
           'TransitionCatalogService: bundled load failed: $bundledError',
