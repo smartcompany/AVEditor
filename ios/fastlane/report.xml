@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="fastlane.lanes">
+    
+    
+    
+      
+      <testcase classname="fastlane.lanes" name="00: app_store_connect_api_key" time="0.002902">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="01: default_platform" time="0.00012">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="02: flutter pub get" time="1.037358">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="03: cocoapods" time="4.376144">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="04: increment_build_number" time="0.595256">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="05: get_provisioning_profile" time="4.653523">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="06: update_code_signing_settings" time="0.097723">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="07: clean_build_artifacts" time="0.000412">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="08: build_app" time="194.663393">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="09: update_code_signing_settings" time="0.018349">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="10: upload_to_app_store" time="61.558058">
+        
+      </testcase>
+    
+  </testsuite>
+</testsuites>

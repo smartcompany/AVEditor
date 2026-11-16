@@ -2682,10 +2682,14 @@ class _EditorScreenState extends State<EditorScreen>
         return;
       }
       final desired = parked ?? _playhead;
-      final start = isInKeptRegion(project.segments, desired)
-          ? desired
-          : (segmentAt(project.segments, desired)?.start ??
-                project.segments.first.start);
+      // Multi-source playhead is packed sequence time; segment in/out are
+      // per-asset locals. isInKeptRegion would miss and snap to clip 0.
+      final start = _usesPackedPlayhead
+          ? clampDuration(desired, Duration.zero, project.duration)
+          : (isInKeptRegion(project.segments, desired)
+              ? desired
+              : (segmentAt(project.segments, desired)?.start ??
+                    project.segments.first.start));
       // Always seek to the scrubbed time, then play. The clock can already
       // show that time while the decoder is still on the previous frame.
       final packed = _sourceToNativePacked(start);

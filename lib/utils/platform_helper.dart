@@ -9,5 +9,6 @@ class PlatformHelper {
 
   static bool get supportsGallery => isMobile;
 
-  static bool get supportsFilePicker => Platform.isMacOS || Platform.isAndroid;
+  /// Desktop only — mobile matches iOS: gallery + camera, no separate file button.
+  static bool get supportsFilePicker => Platform.isMacOS;
 }
