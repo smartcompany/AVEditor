@@ -100,10 +100,11 @@ class NativeVideoEnginePlugin :
           result.error("bad_args", "prepareTimeline", null)
           return
         }
+        val requestedDurationMs = (args["durationMs"] as? Number)?.toInt() ?: 0
         val current = timeline
         if (current != null) {
           try {
-            current.update(sourcePath, segments)
+            current.update(sourcePath, segments, requestedDurationMs)
             result.success(
               mapOf(
                 "textureId" to current.textureId,
@@ -119,7 +120,11 @@ class NativeVideoEnginePlugin :
           return
         }
         try {
-          val enginePlan = EnginePlanBuilder.build(sourcePath, segments)
+          val enginePlan = EnginePlanBuilder.build(
+            sourcePath,
+            segments,
+            requestedDurationMs = requestedDurationMs,
+          )
           val created = registry.createSurfaceTexture()
           try {
             val playing = TimelineEngineSession(

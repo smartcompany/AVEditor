@@ -6,6 +6,7 @@ import 'package:aveditor/services/music_catalog_service.dart';
 import 'package:aveditor/services/video_probe_service.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
+import 'package:uuid/uuid.dart';
 
 /// Copies or downloads music into a project folder.
 class MusicStorageService {
@@ -29,7 +30,7 @@ class MusicStorageService {
     Duration? duration,
   }) async {
     final ext = p.extension(pickedPath);
-    final fileName = 'music${ext.isEmpty ? '.mp3' : ext}';
+    final fileName = 'music_${const Uuid().v4()}${ext.isEmpty ? '.mp3' : ext}';
     final dest = File(p.join(projectDir, fileName));
     await File(pickedPath).copy(dest.path);
 
@@ -42,6 +43,37 @@ class MusicStorageService {
       fileName: fileName,
       fileDuration: fileDuration,
       clipDuration: fileDuration,
+      source: MusicSource.local,
+    );
+  }
+
+  /// Copies a mic take into the project folder as a timeline music clip.
+  Future<ProjectMusic> importRecording({
+    required String projectDir,
+    required String recordedPath,
+    required String title,
+    Duration? duration,
+    Duration timelineStart = Duration.zero,
+  }) async {
+    final ext = p.extension(recordedPath);
+    final fileName =
+        'recording_${const Uuid().v4()}${ext.isEmpty ? '.m4a' : ext}';
+    final dest = File(p.join(projectDir, fileName));
+    await File(recordedPath).copy(dest.path);
+
+    final fileDuration =
+        duration ?? await _probe.readDuration(dest.path) ?? Duration.zero;
+    final clipDuration = fileDuration <= Duration.zero
+        ? minMusicClipDuration
+        : fileDuration;
+
+    return ProjectMusic(
+      title: title,
+      fileName: fileName,
+      fileDuration: fileDuration <= Duration.zero ? clipDuration : fileDuration,
+      clipDuration: clipDuration,
+      timelineStart: timelineStart,
+      volume: 1.0,
       source: MusicSource.local,
     );
   }

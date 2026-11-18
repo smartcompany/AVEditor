@@ -20,13 +20,13 @@ class YouTubeAuthService {
 
   static const uploadScope = 'https://www.googleapis.com/auth/youtube.upload';
 
-  /// Playlists and age restriction use `videos.update` / `playlistItems.insert`,
-  /// which are not covered by [uploadScope].
-  static const accountScope = 'https://www.googleapis.com/auth/youtube';
-
   /// `email` and `profile` are requested by Google Sign-In itself.
   /// Restoring a previous session does not add [uploadScope], so callers
   /// must go through [accessToken], which asks for it.
+  ///
+  /// Only [uploadScope] is used — playlist / age-restriction / location
+  /// updates that need `youtube` were removed to keep OAuth verification
+  /// on a single sensitive scope.
   static const scopes = <String>[uploadScope];
 
   /// Public iOS OAuth client. Override with `--dart-define=YOUTUBE_IOS_CLIENT_ID`.
@@ -123,12 +123,6 @@ class YouTubeAuthService {
       debugPrint('YouTubeAuthService.signOut failed: $error\n$stack');
     }
     await _storage.delete(key: _sessionKey);
-  }
-
-  /// Asks for channel management when the upload needs a playlist or an
-  /// age restriction. Call from a tap, then read [accessToken] again.
-  Future<void> ensureAccountScope() {
-    return _requestScope(accountScope, label: '재생목록·연령제한');
   }
 
   /// Silent sign-in restores the old grant. `videos.insert` needs a token

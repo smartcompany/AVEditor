@@ -58,7 +58,8 @@ enum NativeVideoEngineMedia {
   private static func decodeWaveformAssetReader(url: URL, peakCount: Int) throws -> [String: Any] {
     let asset = AVURLAsset(url: url)
     guard let track = asset.tracks(withMediaType: .audio).first else {
-      return ["peaks": [Double](repeating: 0.05, count: max(1, peakCount)), "durationMs": 0]
+      // No audio stream — empty peaks (never fabricate a flat "waveform").
+      return ["peaks": [Double](), "durationMs": 0]
     }
     let reader = try AVAssetReader(asset: asset)
     let output = AVAssetReaderTrackOutput(
@@ -95,7 +96,7 @@ enum NativeVideoEngineMedia {
 
     let durationMs = Int((CMTimeGetSeconds(asset.duration) * 1000).rounded())
     if samples.isEmpty {
-      return ["peaks": [Double](repeating: 0.05, count: max(1, peakCount)), "durationMs": durationMs]
+      return ["peaks": [Double](), "durationMs": durationMs]
     }
     let buckets = max(1, peakCount)
     let bucketSize = max(1, samples.count / buckets)
@@ -1569,11 +1570,46 @@ func makeTimelinePreviewItem(args: [String: Any]) throws -> (item: AVPlayerItem,
   videoComp.renderSize = renderSize
   videoComp.frameDuration = CMTime(value: 1, timescale: 30)
   videoComp.customVideoCompositorClass = ExportFrameCompositor.self
-  videoComp.instructions = buildCustomExportInstructions(
+  var instructions = buildCustomExportInstructions(
     placements: placements,
     videoTracks: videoTracks,
     globalTransform: .identity
   )
+  // Music/text past picture: pad black frames so preview length matches export.
+  let videoEnd = placements.last?.end ?? composition.duration
+  let requestedMs = args["durationMs"] as? Int ?? 0
+  let requested = requestedMs > 0
+    ? CMTime(value: CMTimeValue(requestedMs), timescale: 1000)
+    : videoEnd
+  if CMTimeCompare(requested, videoEnd) > 0 {
+    let pad = CMTimeSubtract(requested, videoEnd)
+    let trackIndex = placements.last?.trackIndex ?? 0
+    if trackIndex >= 0, trackIndex < videoTracks.count {
+      videoTracks[trackIndex].insertEmptyTimeRange(
+        CMTimeRange(start: videoEnd, duration: pad)
+      )
+    }
+    let padTrackIndex = placements.last?.trackIndex ?? 0
+    let padTrackID = (padTrackIndex >= 0 && padTrackIndex < videoTracks.count)
+      ? videoTracks[padTrackIndex].trackID
+      : kCMPersistentTrackID_Invalid
+    instructions.append(
+      ExportCompositionInstruction(
+        timeRange: CMTimeRange(start: videoEnd, duration: pad),
+        outgoingTrackID: padTrackID,
+        incomingTrackID: kCMPersistentTrackID_Invalid,
+        effect: "",
+        kind: "",
+        reverse: false,
+        layers: [],
+        preferredTransform: .identity,
+        incomingPreferredTransform: .identity,
+        incomingScaleFrom: 1,
+        incomingScaleTo: 1
+      )
+    )
+  }
+  videoComp.instructions = instructions
   let item = AVPlayerItem(asset: composition)
   item.videoComposition = videoComp
   item.seekingWaitsForVideoCompositionRendering = true

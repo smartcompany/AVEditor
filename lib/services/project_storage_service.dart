@@ -164,6 +164,91 @@ class ProjectStorageService {
     return stored.id;
   }
 
+  /// Copies [pickedPaths] into [project] and appends clips after the last segment.
+  Future<VideoProject> appendImports(
+    VideoProject project,
+    List<String> pickedPaths, {
+    void Function(double progress)? onProgress,
+    MediaConcatService? concat,
+  }) async {
+    final paths = [
+      for (final path in pickedPaths)
+        if (path.trim().isNotEmpty) path.trim(),
+    ];
+    if (paths.isEmpty) return project;
+
+    final dir = await _projectDir(project.id);
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    final mediaDir = Directory(p.join(dir.path, kProjectMediaDirName));
+    await mediaDir.create(recursive: true);
+
+    final probe = concat ?? const MediaConcatService();
+    final added = <MediaAsset>[];
+    final newSegments = <ClipSegment>[];
+
+    for (var i = 0; i < paths.length; i++) {
+      onProgress?.call(i / (paths.length + 1));
+      final pickedPath = paths[i];
+      final picked = File(pickedPath);
+      if (!await picked.exists() || await picked.length() == 0) {
+        throw StateError('empty_video');
+      }
+
+      final isImage = MediaConcatService.isImagePath(pickedPath);
+      final assetId = const Uuid().v4();
+      final ext = p.extension(pickedPath);
+      final relativeName = p.join(
+        kProjectMediaDirName,
+        '$assetId${ext.isEmpty ? (isImage ? '.jpg' : '.mp4') : ext}',
+      );
+      final destPath = p.join(dir.path, relativeName);
+      await picked.copy(destPath);
+      if (!await File(destPath).exists() || await File(destPath).length() == 0) {
+        throw StateError('empty_video');
+      }
+
+      Duration assetDuration = Duration.zero;
+      if (!isImage) {
+        assetDuration = await probe.probeDuration(destPath) ?? Duration.zero;
+        if (assetDuration <= Duration.zero) {
+          throw StateError('empty_video');
+        }
+      }
+
+      final asset = MediaAsset(
+        id: assetId,
+        fileName: relativeName,
+        kind: isImage ? MediaAssetKind.image : MediaAssetKind.video,
+        duration: assetDuration,
+      );
+      added.add(asset);
+      newSegments.add(
+        ClipSegment(
+          mediaId: assetId,
+          start: Duration.zero,
+          end: isImage ? kDefaultImageHoldDuration : assetDuration,
+        ),
+      );
+    }
+
+    if (added.isEmpty) return project;
+
+    project.mediaAssets.addAll(added);
+    project.segments.addAll(newSegments);
+    final packed = exportTimelineDuration(project.segments);
+    if (packed > Duration.zero) {
+      project.duration = packed;
+    }
+
+    onProgress?.call(paths.length / (paths.length + 1));
+    final playable = await ensurePlayableSource(project, onProgress: onProgress);
+    await save(playable);
+    onProgress?.call(1);
+    return playable;
+  }
+
   /// Replaces unplayable video assets with H.264 SDR copies in place.
   Future<VideoProject> ensurePlayableSource(
     VideoProject project, {

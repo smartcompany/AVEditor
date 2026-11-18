@@ -6,6 +6,7 @@ import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/video_project.dart';
 import 'package:aveditor/services/composition_segments.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
+import 'package:aveditor/utils/music_timeline_ops.dart';
 import 'package:aveditor/services/export_service.dart';
 import 'package:aveditor/services/transition_engine.dart';
 import 'package:aveditor/utils/debug_agent_log.dart';
@@ -158,6 +159,15 @@ class NativeVideoEngine {
           .join(' | ');
       debugPrint('prepareTimeline segments: $brief');
     }
+    // Video ∪ music ∪ text. Past picture is black on native (same as export).
+    final requestedDuration = project == null
+        ? exportTimelineDuration(segments)
+        : projectSequenceDuration(
+            segments: segments,
+            sourceDuration: project.duration,
+            musicTracks: project.musicTracks,
+            overlays: project.overlays,
+          );
     final keepPlayer = _timelineActive && _textureId != null;
     if (!keepPlayer) await _disposePlayer();
     try {
@@ -167,6 +177,7 @@ class NativeVideoEngine {
           'sourcePath': sourcePath,
           'segments': encoded,
           'ffmpegPlayer': ffmpegPlayer,
+          'durationMs': requestedDuration.inMilliseconds,
         },
       );
       final textureId = result?['textureId'] as int?;
@@ -175,9 +186,10 @@ class NativeVideoEngine {
       _previewHeight = result?['height'] as int? ?? _previewHeight;
       final durationMs = result?['durationMs'] as int?;
       if (durationMs != null && durationMs > 0) {
-        _duration = Duration(milliseconds: durationMs);
+        final platform = Duration(milliseconds: durationMs);
+        _duration = platform > requestedDuration ? platform : requestedDuration;
       } else {
-        _duration = exportTimelineDuration(segments);
+        _duration = requestedDuration;
       }
       _active = true;
       _timelineActive = true;
@@ -412,8 +424,9 @@ class NativeVideoEngine {
     );
     if (result == null) return null;
     final raw = result['peaks'];
-    if (raw is! List) return null;
+    if (raw is! List || raw.isEmpty) return null;
     final peaks = raw.map((e) => (e as num).toDouble()).toList(growable: false);
+    if (peaks.isEmpty) return null;
     final durationMs = result['durationMs'] as int? ?? 0;
     return (peaks: peaks, duration: Duration(milliseconds: durationMs));
   }

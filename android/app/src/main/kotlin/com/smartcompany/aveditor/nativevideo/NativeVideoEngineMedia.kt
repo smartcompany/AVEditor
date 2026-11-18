@@ -134,7 +134,7 @@ object NativeVideoEngineMedia {
       )
     } catch (_: Exception) {
       mapOf(
-        "peaks" to List(peakCount) { 0.05 },
+        "peaks" to emptyList<Double>(),
         "durationMs" to 0,
       )
     } finally {
@@ -1588,7 +1588,7 @@ private object WaveformDecoder {
       }
       if (track < 0 || format == null) {
         extractor.release()
-        return List(peakCount) { 0.08 }
+        return emptyList()
       }
       extractor.selectTrack(track)
       val mime = format.getString(MediaFormat.KEY_MIME)!!
@@ -1630,7 +1630,7 @@ private object WaveformDecoder {
       codec.release()
       extractor.release()
 
-      if (samples.isEmpty()) return List(peakCount) { 0.08 }
+      if (samples.isEmpty()) return emptyList()
       val bucket = max(1, samples.size / peakCount)
       val peaks = DoubleArray(peakCount)
       var tallest = 0.0
@@ -1651,7 +1651,7 @@ private object WaveformDecoder {
       }
       peaks.toList()
     } catch (_: Exception) {
-      List(peakCount) { 0.08 }
+      emptyList()
     }
   }
 }

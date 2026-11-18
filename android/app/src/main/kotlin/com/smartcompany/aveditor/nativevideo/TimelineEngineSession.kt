@@ -161,10 +161,18 @@ internal class TimelineEngineSession(
     }
   }
 
-  override fun update(sourcePath: String, segments: List<*>) {
+  override fun update(
+    sourcePath: String,
+    segments: List<*>,
+    requestedDurationMs: Int,
+  ) {
     // set_plan resets the engine clock to 0; keep the playhead where it was.
     val keepMs = nativePositionMs(handle)
-    plan = EnginePlanBuilder.build(sourcePath, segments)
+    plan = EnginePlanBuilder.build(
+      sourcePath,
+      segments,
+      requestedDurationMs = requestedDurationMs,
+    )
     nativeSetPlan(handle, plan.json)
     prepareAudio()
     nativeSeek(handle, keepMs.coerceIn(0L, plan.durationMs.toLong()))

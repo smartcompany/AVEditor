@@ -114,6 +114,12 @@ abstract class AppLocalizations {
   /// **'Choose from gallery'**
   String get pickFromGallery;
 
+  /// No description provided for @addTimelineMedia.
+  ///
+  /// In en, this message translates to:
+  /// **'Add video or photo'**
+  String get addTimelineMedia;
+
   /// No description provided for @galleryPickerTitle.
   ///
   /// In en, this message translates to:
@@ -785,6 +791,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Add music'**
   String get addMusic;
+
+  /// No description provided for @recordVoice.
+  ///
+  /// In en, this message translates to:
+  /// **'Record'**
+  String get recordVoice;
+
+  /// No description provided for @startVoiceRecording.
+  ///
+  /// In en, this message translates to:
+  /// **'Start recording'**
+  String get startVoiceRecording;
+
+  /// No description provided for @stopVoiceRecording.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop'**
+  String get stopVoiceRecording;
+
+  /// No description provided for @voiceRecordingTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Recording'**
+  String get voiceRecordingTitle;
+
+  /// No description provided for @voiceRecordPermissionDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'Microphone permission is required to record.'**
+  String get voiceRecordPermissionDenied;
+
+  /// No description provided for @voiceRecordTooShort.
+  ///
+  /// In en, this message translates to:
+  /// **'Recording was too short.'**
+  String get voiceRecordTooShort;
+
+  /// No description provided for @voiceRecordFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save the recording.'**
+  String get voiceRecordFailed;
 
   /// No description provided for @importMusicFile.
   ///

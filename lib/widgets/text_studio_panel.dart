@@ -85,10 +85,14 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
   }
 
   void _selectDefaultLook() {
+    // Intrinsic default look — never keep pack font/color from the last tile.
     _emitOverlay(
       widget.overlay.copyWith(
         packItemId: null,
         templateId: null,
+        style: TextOverlayStyle.plain,
+        fontFamily: null,
+        color: Colors.white,
         // Clear pack-driven entrance; static basic text has none.
         animationId: null,
         animationDurationMs: null,

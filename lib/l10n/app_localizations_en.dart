@@ -15,6 +15,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get pickFromGallery => 'Choose from gallery';
 
   @override
+  String get addTimelineMedia => 'Add video or photo';
+
+  @override
   String get galleryPickerTitle => 'Gallery';
 
   @override
@@ -395,6 +398,28 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get addMusic => 'Add music';
+
+  @override
+  String get recordVoice => 'Record';
+
+  @override
+  String get startVoiceRecording => 'Start recording';
+
+  @override
+  String get stopVoiceRecording => 'Stop';
+
+  @override
+  String get voiceRecordingTitle => 'Recording';
+
+  @override
+  String get voiceRecordPermissionDenied =>
+      'Microphone permission is required to record.';
+
+  @override
+  String get voiceRecordTooShort => 'Recording was too short.';
+
+  @override
+  String get voiceRecordFailed => 'Could not save the recording.';
 
   @override
   String get importMusicFile => 'Import audio file';

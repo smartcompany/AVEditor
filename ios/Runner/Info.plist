@@ -106,7 +106,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Camera access is needed to record videos for Shorts editing.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Microphone access is needed to record audio when capturing video.</string>
+	<string>Microphone access is needed to record voice-overs on the timeline and when capturing video.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Photo library access is needed to save exported Shorts to your device.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

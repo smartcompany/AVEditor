@@ -23,8 +23,14 @@ import 'package:aveditor/screens/export_share_screen.dart';
 import 'package:aveditor/screens/music_picker_screen.dart';
 import 'package:aveditor/services/editor_history.dart';
 import 'package:aveditor/services/audio_waveform_service.dart';
+import 'package:aveditor/services/media_concat_service.dart';
 import 'package:aveditor/services/music_storage_service.dart';
 import 'package:aveditor/services/project_storage_service.dart';
+import 'package:aveditor/services/video_import_service.dart';
+import 'package:aveditor/services/voice_record_service.dart';
+import 'package:aveditor/utils/platform_helper.dart';
+import 'package:path/path.dart' as p;
+import 'package:uuid/uuid.dart';
 import 'package:aveditor/services/retention_notification_service.dart';
 import 'package:aveditor/services/timeline_thumbnail_service.dart';
 import 'package:aveditor/services/video_probe_service.dart';
@@ -90,7 +96,18 @@ class _EditorScreenState extends State<EditorScreen>
   var _ffmpegPlayback = false;
   var _sourceAspect = 9 / 16;
 
+  /// Wall-clock play through music/text after the last video frame.
+  Timer? _sequenceTailTimer;
+  DateTime? _sequenceTailAnchorAt;
+  Duration? _sequenceTailAnchorPlayhead;
+  var _sequenceTailPlaying = false;
+
+  /// User wants transport to keep going (native EOF → audio/text black tail).
+  var _wantPlayback = false;
+  StreamSubscription<bool>? _timelinePlayingSub;
+
   bool get _transportPlaying {
+    if (_sequenceTailPlaying) return true;
     if (NativeVideoEngine.instance.isTimelineActive) {
       return NativeVideoEngine.instance.isPlaying;
     }
@@ -177,7 +194,21 @@ class _EditorScreenState extends State<EditorScreen>
   String? _textStudioOverlayId;
   bool _ready = false;
   double? _convertProgress;
+  var _appendingMedia = false;
   final bool _exporting = false;
+  final _import = VideoImportService();
+  final _musicStorage = MusicStorageService();
+  final _voiceRecorder = VoiceRecordService();
+
+  /// Mic → start button → 3-2-1 → live take → stop.
+  _VoiceRecordPhase _voicePhase = _VoiceRecordPhase.idle;
+  Timer? _voiceCountdownTimer;
+  Timer? _voiceTickTimer;
+  int _voiceCountdown = 0;
+  String? _voiceDraftId;
+  Duration? _voiceTimelineStart;
+  DateTime? _voiceStartedAt;
+  var _voiceBusy = false;
   var _canvasRatioOpen = false;
   bool _applyingHistory = false;
   String? _errorMessage;
@@ -260,6 +291,17 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   Duration get _playhead {
+    if (_sequenceTailPlaying) {
+      final anchorAt = _sequenceTailAnchorAt;
+      final anchorHead = _sequenceTailAnchorPlayhead;
+      if (anchorAt != null && anchorHead != null) {
+        final advanced =
+            anchorHead + DateTime.now().difference(anchorAt);
+        final end = _sequenceDuration;
+        if (advanced >= end) return end;
+        return advanced;
+      }
+    }
     if (_scrubPlayhead != null) return _scrubPlayhead!;
     // Short panel preview clock is 0…td — map it onto the source cut window.
     if (_spatialPreviewActive) {
@@ -300,6 +342,25 @@ class _EditorScreenState extends State<EditorScreen>
   bool get _usesPackedPlayhead {
     final project = _project;
     return project != null && project.mediaAssets.isNotEmpty;
+  }
+
+  /// Video ∪ music ∪ text end (black pad past picture). Playback/export stop here.
+  Duration get _sequenceDuration {
+    final project = _project;
+    if (project == null) return Duration.zero;
+    return projectSequenceDuration(
+      segments: project.segments,
+      sourceDuration: project.duration,
+      musicTracks: project.musicTracks,
+      overlays: project.overlays,
+    );
+  }
+
+  /// True when the playhead is past the last video frame (show black).
+  bool get _playheadPastPicture {
+    final project = _project;
+    if (project == null || project.segments.isEmpty) return false;
+    return _playhead >= exportTimelineDuration(project.segments);
   }
 
   /// Native timeline clock → UI playhead time.
@@ -805,7 +866,9 @@ class _EditorScreenState extends State<EditorScreen>
         ..clear()
         ..addAll(
           normalized.isEmpty || totalKeptDuration(normalized) <= Duration.zero
-              ? segmentsFromTrim(start: Duration.zero, end: duration)
+              ? (duration > Duration.zero
+                  ? segmentsFromTrim(start: Duration.zero, end: duration)
+                  : const <ClipSegment>[])
               : normalized,
         );
       _syncPackedDuration(project);
@@ -823,6 +886,11 @@ class _EditorScreenState extends State<EditorScreen>
       setState(() {
         _ready = true;
         _errorMessage = null;
+        // Clear until decode finishes — photo-only projects must not keep a
+        // stale audio band from a previous video project.
+        _hasSourceAudio = false;
+        _sourceAudioWaveforms.clear();
+        _sourceAudioDurations.clear();
       });
       unawaited(_loadFilmstrip(project));
       unawaited(_loadMusicWaveforms(project));
@@ -904,10 +972,90 @@ class _EditorScreenState extends State<EditorScreen>
     avEditorLog('filmstrip loaded frames=${frames.length}');
   }
 
+  Future<void> _addTimelineMedia() async {
+    final project = _project;
+    if (project == null || _appendingMedia || _exporting) return;
+
+    List<String> paths;
+    try {
+      if (PlatformHelper.supportsGallery) {
+        paths = await _import.pickFromGallery(context);
+      } else if (PlatformHelper.supportsFilePicker) {
+        paths = await _import.pickFromFiles();
+      } else {
+        return;
+      }
+    } catch (e, st) {
+      if (!mounted) return;
+      final detail = e.toString();
+      final message = detail.contains('empty_video')
+          ? context.l10n.videoPickEmpty
+          : context.l10n.videoPickError(detail);
+      showLoggedSnackBar(context, message, error: e, stackTrace: st);
+      return;
+    }
+    if (!mounted || paths.isEmpty) return;
+
+    final joinAt = exportTimelineDuration(project.segments);
+    final priorAssetIds = project.mediaAssets.map((a) => a.id).toSet();
+    final rollback = _snapshot();
+    _history.record(rollback);
+    setState(() {
+      _appendingMedia = true;
+      _convertProgress = null;
+    });
+
+    try {
+      final updated = await _projectStorage.appendImports(
+        project,
+        paths,
+        onProgress: (p) {
+          if (!mounted) return;
+          setState(() => _convertProgress = p.clamp(0.0, 1.0));
+        },
+      );
+      if (!mounted) return;
+      _project = updated;
+      _selectedSegmentId =
+          updated.segments.isEmpty ? null : updated.segments.last.id;
+      _selectedOverlayId = null;
+      _selectedMusicId = null;
+      _selectedTransitionAfterIndex = null;
+      _syncPackedDuration(updated);
+      setState(() {
+        _appendingMedia = false;
+        _convertProgress = null;
+      });
+      await _attachTimelineCompositor(resume: false, seekTo: joinAt);
+      if (!mounted) return;
+      unawaited(_loadFilmstrip(updated));
+      unawaited(_loadSourceAudioWaveforms(updated));
+      _scheduleSave();
+      AnalyticsService.instance.log('timeline_media_appended');
+    } catch (e, st) {
+      if (!mounted) return;
+      rollback.applyTo(project);
+      project.mediaAssets.removeWhere((a) => !priorAssetIds.contains(a.id));
+      _syncPackedDuration(project);
+      _selectedSegmentId = rollback.selectedSegmentId;
+      _selectedOverlayId = rollback.selectedOverlayId;
+      _selectedMusicId = rollback.selectedMusicId;
+      setState(() {
+        _appendingMedia = false;
+        _convertProgress = null;
+      });
+      final detail = e.toString();
+      final message = detail.contains('empty_video')
+          ? context.l10n.videoPickEmpty
+          : context.l10n.videoPickError(detail);
+      showLoggedSnackBar(context, message, error: e, stackTrace: st);
+    }
+  }
+
   void _syncPackedDuration(VideoProject project) {
     final packed = exportTimelineDuration(project.segments);
-    if (packed > Duration.zero && packed != project.duration) {
-      // VideoProject.duration is mutable via copy — keep in sync for UI scale.
+    if (packed != project.duration) {
+      // Includes Duration.zero after deleting the last clip.
       project.duration = packed;
     }
   }
@@ -1022,6 +1170,13 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   void _ensureHealthySegments(VideoProject project) {
+    // Empty picture track is valid (user deleted every clip).
+    if (project.segments.isEmpty) {
+      if (project.duration != Duration.zero) {
+        project.duration = Duration.zero;
+      }
+      return;
+    }
     if (project.duration <= Duration.zero) return;
 
     var fixed = normalizeSegments(
@@ -1276,17 +1431,22 @@ class _EditorScreenState extends State<EditorScreen>
     final segmentId = _selectedSegmentId;
     if (project == null || segmentId == null || _exporting) return;
 
-    try {
-      final updated = deleteSegment(project.segments, segmentId);
-      _mutate((p) {
-        p.segments
-          ..clear()
-          ..addAll(updated);
-        _syncPackedDuration(p);
-        _selectedSegmentId = null;
-      });
-    } on StateError catch (e, st) {
-      _showSnack(_splitErrorMessage(e.message), error: e, stackTrace: st);
+    final updated = deleteSegment(project.segments, segmentId);
+    _mutate((p) {
+      p.segments
+        ..clear()
+        ..addAll(updated);
+      _syncPackedDuration(p);
+      _selectedSegmentId = null;
+      _selectedTransitionAfterIndex = null;
+    });
+    final land = updated.isEmpty
+        ? Duration.zero
+        : clampDuration(_playhead, Duration.zero, project.duration);
+    unawaited(_attachTimelineCompositor(resume: false, seekTo: land));
+    if (updated.isEmpty) {
+      unawaited(_loadFilmstrip(project));
+      unawaited(_loadSourceAudioWaveforms(project));
     }
   }
 
@@ -1344,7 +1504,10 @@ class _EditorScreenState extends State<EditorScreen>
     if (_spatialPreviewActive) return;
     // Background refresh (save debounce) must not pause mid-transition.
     if (_transitionPreviewArmed && seekTo == null) return;
-    final sig = timelineCompositionSignature(project.segments);
+    // Include sequence length so music/text tails past picture rebuild the
+    // native black pad (segment signature alone stays the same).
+    final sig =
+        '${timelineCompositionSignature(project.segments)}|${_sequenceDuration.inMilliseconds}';
     final desired =
         seekTo ??
         _pendingTimelineSeek ??
@@ -1521,6 +1684,20 @@ class _EditorScreenState extends State<EditorScreen>
       // (Flutter VideoPlayer is muted while the timeline engine owns audio).
       _syncVideoAudioVolume();
       unawaited(_syncMusicOnTick());
+      // Native often ends at picture EOF; hand off to wall-clock black tail.
+      _maybeContinuePastPicture(position: position);
+      setState(() {});
+    });
+    await _timelinePlayingSub?.cancel();
+    _timelinePlayingSub = NativeVideoEngine.instance.playingStream.listen((
+      playing,
+    ) {
+      if (!mounted) return;
+      if (!playing) {
+        final land = _scrubPlayhead ??
+            _nativePackedToSource(NativeVideoEngine.instance.position);
+        _maybeContinuePastPicture(position: land);
+      }
       setState(() {});
     });
     if (!mounted || !_ownsEngine) return;
@@ -1528,6 +1705,7 @@ class _EditorScreenState extends State<EditorScreen>
     if (!mounted || !_ownsEngine) return;
     _logTimeline('attach.preroll', land: pos);
     if (wasPlaying) {
+      _wantPlayback = true;
       await NativeVideoEngine.instance.play();
     }
     if (mounted) setState(() {});
@@ -1666,7 +1844,9 @@ class _EditorScreenState extends State<EditorScreen>
         } else {
           controller.pause();
           controller.seekTo(segment.end);
-          unawaited(_syncMusicPlayback());
+          if (!_tryStartSequenceTail(from: segment.end)) {
+            unawaited(_syncMusicPlayback());
+          }
         }
       }
       return;
@@ -1680,8 +1860,72 @@ class _EditorScreenState extends State<EditorScreen>
       final last = project.segments.last;
       controller.pause();
       controller.seekTo(last.end);
-      unawaited(_syncMusicPlayback());
+      if (!_tryStartSequenceTail(from: last.end)) {
+        unawaited(_syncMusicPlayback());
+      }
     }
+  }
+
+  /// Continue playhead + music after picture EOF (black canvas).
+  /// Works with native timeline too — native clock often stops at video end.
+  bool _tryStartSequenceTail({required Duration from}) {
+    final end = _sequenceDuration;
+    if (end <= from) return false;
+    if (_sequenceTailPlaying) return true;
+    // Mark first so a pause→playing=false event cannot start a second tail.
+    _wantPlayback = true;
+    _sequenceTailPlaying = true;
+    if (NativeVideoEngine.instance.isTimelineActive &&
+        NativeVideoEngine.instance.isPlaying) {
+      unawaited(NativeVideoEngine.instance.pause());
+    }
+    _sequenceTailTimer?.cancel();
+    _sequenceTailAnchorAt = DateTime.now();
+    _sequenceTailAnchorPlayhead = from;
+    _scrubPlayhead = from;
+    _sequenceTailTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+      if (!mounted || !_sequenceTailPlaying) {
+        _stopSequenceTail();
+        return;
+      }
+      final now = _playhead;
+      if (now >= _sequenceDuration) {
+        _stopSequenceTail(land: _sequenceDuration, endPlayback: true);
+        return;
+      }
+      _scrubPlayhead = now;
+      unawaited(_syncMusicOnTick());
+      setState(() {});
+    });
+    unawaited(_syncMusicPlayback());
+    setState(() {});
+    return true;
+  }
+
+  void _stopSequenceTail({Duration? land, bool endPlayback = false}) {
+    _sequenceTailTimer?.cancel();
+    _sequenceTailTimer = null;
+    _sequenceTailPlaying = false;
+    _sequenceTailAnchorAt = null;
+    _sequenceTailAnchorPlayhead = null;
+    if (endPlayback) _wantPlayback = false;
+    if (land != null) _scrubPlayhead = land;
+    unawaited(_syncMusicPlayback());
+    if (mounted) setState(() {});
+  }
+
+  /// When native stops at picture EOF but music/text continue past it.
+  void _maybeContinuePastPicture({required Duration position}) {
+    if (_sequenceTailPlaying || !_wantPlayback) return;
+    final project = _project;
+    if (project == null || project.segments.isEmpty) return;
+    final videoEnd = exportTimelineDuration(project.segments);
+    final seqEnd = _sequenceDuration;
+    if (seqEnd <= videoEnd) return;
+    if (position < videoEnd - const Duration(milliseconds: 80)) return;
+    final from = position < videoEnd ? videoEnd : position;
+    if (from >= seqEnd) return;
+    _tryStartSequenceTail(from: from);
   }
 
   /// Commit dual-layer blend progress. Flutter dual-player uses wall clock;
@@ -2224,13 +2468,16 @@ class _EditorScreenState extends State<EditorScreen>
     Future<AudioWaveformData?> decodePath(String path) async {
       final cached = peaksByPath[path];
       if (cached != null) return cached;
+      if (MediaConcatService.isImagePath(path)) return null;
       if (!await File(path).exists()) {
         avEditorLog('waveform missing file $path');
         return null;
       }
-      // Decode even when the probe says "no audio" — some containers lie.
       final wave = await AudioWaveformService.instance.waveformForFile(path);
-      if (!mounted || wave == null || wave.peaks.isEmpty) {
+      if (!mounted ||
+          wave == null ||
+          wave.peaks.isEmpty ||
+          !AudioWaveformService.looksLikeRealAudio(wave.peaks)) {
         avEditorLog('waveform decode empty path=$path');
         return null;
       }
@@ -2239,29 +2486,32 @@ class _EditorScreenState extends State<EditorScreen>
     }
 
     if (assets.isEmpty) {
-      final wave = await decodePath(project.sourcePath);
-      if (wave != null) {
-        anyAudio = true;
-        final duration = wave.duration > Duration.zero
-            ? wave.duration
-            : project.duration;
-        var keyed = false;
-        for (final segment in project.segments) {
-          final id = segment.mediaId;
-          if (id == null) continue;
-          peaksByMedia[id] = wave.peaks;
-          durationByMedia[id] = duration;
-          keyed = true;
-        }
-        if (!keyed) {
-          peaksByMedia[''] = wave.peaks;
-          durationByMedia[''] = duration;
+      if (!MediaConcatService.isImagePath(project.sourcePath)) {
+        final wave = await decodePath(project.sourcePath);
+        if (wave != null) {
+          anyAudio = true;
+          final duration = wave.duration > Duration.zero
+              ? wave.duration
+              : project.duration;
+          var keyed = false;
+          for (final segment in project.segments) {
+            final id = segment.mediaId;
+            if (id == null) continue;
+            peaksByMedia[id] = wave.peaks;
+            durationByMedia[id] = duration;
+            keyed = true;
+          }
+          if (!keyed) {
+            peaksByMedia[''] = wave.peaks;
+            durationByMedia[''] = duration;
+          }
         }
       }
     } else {
       for (final asset in assets) {
         if (asset.isImage) continue;
         final path = project.absoluteMediaPath(asset);
+        if (MediaConcatService.isImagePath(path)) continue;
         final wave = await decodePath(path);
         if (wave == null) continue;
         anyAudio = true;
@@ -2407,7 +2657,11 @@ class _EditorScreenState extends State<EditorScreen>
     _segmentLayoutRebuildDebounce?.cancel();
     _transitionPreviewTimer?.cancel();
     _fadeHoldTimer?.cancel();
+    _sequenceTailTimer?.cancel();
+    _cancelVoiceTimers();
+    unawaited(_voiceRecorder.dispose());
     unawaited(_timelinePositionSub?.cancel());
+    unawaited(_timelinePlayingSub?.cancel());
     final project = _project;
     if (project != null) {
       unawaited(_projectStorage.save(project));
@@ -2503,6 +2757,15 @@ class _EditorScreenState extends State<EditorScreen>
     final controller = _controller;
     final project = _project;
     if (project == null || (controller == null && !_ffmpegPlayback)) return;
+
+    _wantPlayback = false;
+    if (_sequenceTailPlaying) {
+      _sequenceTailTimer?.cancel();
+      _sequenceTailTimer = null;
+      _sequenceTailPlaying = false;
+      _sequenceTailAnchorAt = null;
+      _sequenceTailAnchorPlayhead = null;
+    }
 
     // Allow scrubbing through the full packed sequence (video ∪ music ∪ text).
     // Restricting to [project.duration] parked the centre playhead at EOF and
@@ -2733,26 +2996,53 @@ class _EditorScreenState extends State<EditorScreen>
     _transitionPreviewWindowStart = null;
     _transitionPreviewTimer?.cancel();
     _transitionPreviewTimer = null;
+    if (_sequenceTailPlaying) {
+      _wantPlayback = false;
+      _stopSequenceTail(land: _playhead);
+      return;
+    }
     // Scrub is the time under the finger. Clearing it first made play read
     // the decoder clock, which was still at the previous position.
     final parked = _scrubPlayhead;
     _scrubPlayhead = null;
     if (NativeVideoEngine.instance.isTimelineActive) {
       if (NativeVideoEngine.instance.isPlaying) {
+        _wantPlayback = false;
         unawaited(NativeVideoEngine.instance.pause());
         unawaited(_syncMusicPlayback());
         setState(() {});
         return;
       }
       final desired = parked ?? _playhead;
+      final seqEnd = _sequenceDuration;
+      final videoEnd = exportTimelineDuration(project.segments);
       // Multi-source playhead is packed sequence time; segment in/out are
       // per-asset locals. isInKeptRegion would miss and snap to clip 0.
+      // Clamp to sequence (video ∪ music ∪ text), not picture-only duration.
       final start = _usesPackedPlayhead
-          ? clampDuration(desired, Duration.zero, project.duration)
+          ? (desired >= seqEnd && seqEnd > Duration.zero
+              ? Duration.zero
+              : clampDuration(desired, Duration.zero, seqEnd))
           : (isInKeptRegion(project.segments, desired)
               ? desired
               : (segmentAt(project.segments, desired)?.start ??
                     project.segments.first.start));
+      // Music/text-only region: native clock stops at picture — wall-clock tail.
+      if (start >= videoEnd && seqEnd > videoEnd) {
+        _wantPlayback = true;
+        final nativeLand = videoEnd > Duration.zero
+            ? videoEnd - const Duration(milliseconds: 1)
+            : Duration.zero;
+        unawaited(() async {
+          await NativeVideoEngine.instance.seek(
+            _sourceToNativePacked(nativeLand),
+          );
+          if (!mounted) return;
+          _tryStartSequenceTail(from: start);
+        }());
+        return;
+      }
+      _wantPlayback = true;
       // Always seek to the scrubbed time, then play. The clock can already
       // show that time while the decoder is still on the previous frame.
       final packed = _sourceToNativePacked(start);
@@ -2767,9 +3057,21 @@ class _EditorScreenState extends State<EditorScreen>
     }
     if (controller == null) return;
     if (controller.value.isPlaying) {
+      _wantPlayback = false;
       controller.pause();
       unawaited(_auxController?.pause() ?? Future<void>.value());
     } else {
+      final desired = parked ?? _playhead;
+      final videoEnd = exportTimelineDuration(project.segments);
+      final seqEnd = _sequenceDuration;
+      // Already in the music/text-only black tail — resume wall clock there.
+      if (desired >= videoEnd && seqEnd > videoEnd) {
+        final from = desired >= seqEnd ? videoEnd : desired;
+        _wantPlayback = true;
+        _tryStartSequenceTail(from: from);
+        return;
+      }
+      _wantPlayback = true;
       if (controller.value.position >= project.trim.end ||
           controller.value.position < project.trim.start ||
           !isInKeptRegion(project.segments, controller.value.position)) {
@@ -2860,6 +3162,301 @@ class _EditorScreenState extends State<EditorScreen>
     });
     unawaited(_ensureMusicWaveform(clip));
     await _syncMusicPlayback();
+  }
+
+  void _cancelVoiceTimers() {
+    _voiceCountdownTimer?.cancel();
+    _voiceCountdownTimer = null;
+    _voiceTickTimer?.cancel();
+    _voiceTickTimer = null;
+  }
+
+  Future<void> _pauseTransportForVoice() async {
+    if (NativeVideoEngine.instance.isTimelineActive) {
+      await NativeVideoEngine.instance.pause();
+    }
+    await _controller?.pause();
+    await _auxController?.pause();
+    await _musicSafe(_musicPlayer.pause);
+    if (mounted) setState(() {});
+  }
+
+  /// Toolbar mic: show start-recording control immediately.
+  Future<void> _onVoiceRecordPressed() async {
+    if (_exporting || _appendingMedia || _voiceBusy) return;
+    if (_voicePhase != _VoiceRecordPhase.idle) {
+      await _cancelVoiceFlow();
+      return;
+    }
+
+    final allowed = await _voiceRecorder.ensurePermission();
+    if (!mounted) return;
+    if (!allowed) {
+      _showSnack(context.l10n.voiceRecordPermissionDenied);
+      return;
+    }
+
+    await _pauseTransportForVoice();
+    if (!mounted) return;
+    setState(() => _voicePhase = _VoiceRecordPhase.armed);
+  }
+
+  Future<void> _cancelVoiceFlow({bool discardDraft = true}) async {
+    _cancelVoiceTimers();
+    final draftId = _voiceDraftId;
+    _voiceDraftId = null;
+    _voiceTimelineStart = null;
+    _voiceStartedAt = null;
+    _voiceCountdown = 0;
+    _voiceBusy = false;
+    try {
+      await _voiceRecorder.cancel();
+    } catch (_) {}
+
+    if (discardDraft && draftId != null) {
+      final project = _project;
+      if (project != null) {
+        project.musicTracks.removeWhere((m) => m.id == draftId);
+        final compacted = compactMusicLanes(project.musicTracks);
+        project.musicTracks
+          ..clear()
+          ..addAll(compacted);
+        if (_selectedMusicId == draftId) _selectedMusicId = null;
+      }
+    }
+    if (mounted) {
+      setState(() => _voicePhase = _VoiceRecordPhase.idle);
+    } else {
+      _voicePhase = _VoiceRecordPhase.idle;
+    }
+  }
+
+  Future<void> _onVoicePrimaryPressed() async {
+    if (_voiceBusy) return;
+    switch (_voicePhase) {
+      case _VoiceRecordPhase.armed:
+        await _beginVoiceCountdown();
+      case _VoiceRecordPhase.recording:
+        await _stopVoiceRecording();
+      case _VoiceRecordPhase.idle:
+      case _VoiceRecordPhase.countdown:
+        break;
+    }
+  }
+
+  Future<void> _beginVoiceCountdown() async {
+    if (_voicePhase != _VoiceRecordPhase.armed) return;
+    await _pauseTransportForVoice();
+    if (!mounted) return;
+    setState(() {
+      _voicePhase = _VoiceRecordPhase.countdown;
+      _voiceCountdown = 3;
+    });
+    _voiceCountdownTimer?.cancel();
+    _voiceCountdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (_voicePhase != _VoiceRecordPhase.countdown) {
+        timer.cancel();
+        return;
+      }
+      if (_voiceCountdown <= 1) {
+        timer.cancel();
+        unawaited(_startVoiceRecording());
+        return;
+      }
+      setState(() => _voiceCountdown -= 1);
+    });
+  }
+
+  Future<void> _startVoiceRecording() async {
+    final project = _project;
+    if (project == null || _voiceBusy) return;
+    _voiceBusy = true;
+    try {
+      await _pauseTransportForVoice();
+      final path = await _voiceRecorder.start();
+      if (!mounted) {
+        await _voiceRecorder.cancel();
+        return;
+      }
+
+      final start = _playhead < Duration.zero ? Duration.zero : _playhead;
+      final draftId = const Uuid().v4();
+      final draft = ProjectMusic(
+        id: draftId,
+        title: context.l10n.voiceRecordingTitle,
+        fileName: p.basename(path),
+        fileDuration: const Duration(milliseconds: 100),
+        clipDuration: const Duration(milliseconds: 100),
+        timelineStart: start,
+        volume: 1.0,
+        source: MusicSource.local,
+      );
+
+      _history.record(_snapshot());
+      final placed = assignMusicLane(project.musicTracks, draft);
+      project.musicTracks.add(placed);
+      final compacted = compactMusicLanes(project.musicTracks);
+      project.musicTracks
+        ..clear()
+        ..addAll(compacted);
+
+      _voiceDraftId = placed.id;
+      _voiceTimelineStart = start;
+      _voiceStartedAt = DateTime.now();
+      setState(() {
+        _voicePhase = _VoiceRecordPhase.recording;
+        _selectedMusicId = placed.id;
+        _selectedOverlayId = null;
+        _selectedSegmentId = null;
+        _selectedTransitionAfterIndex = null;
+      });
+
+      _voiceTickTimer?.cancel();
+      _voiceTickTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+        _onVoiceRecordTick();
+      });
+      AnalyticsService.instance.log('voice_record_started');
+    } catch (e, st) {
+      await _cancelVoiceFlow();
+      if (mounted) {
+        showLoggedSnackBar(
+          context,
+          context.l10n.voiceRecordFailed,
+          error: e,
+          stackTrace: st,
+        );
+      }
+    } finally {
+      _voiceBusy = false;
+    }
+  }
+
+  void _onVoiceRecordTick() {
+    if (!mounted || _voicePhase != _VoiceRecordPhase.recording) return;
+    final project = _project;
+    final draftId = _voiceDraftId;
+    final start = _voiceTimelineStart;
+    final begun = _voiceStartedAt;
+    if (project == null || draftId == null || start == null || begun == null) {
+      return;
+    }
+
+    var elapsed = DateTime.now().difference(begun);
+    if (elapsed < const Duration(milliseconds: 100)) {
+      elapsed = const Duration(milliseconds: 100);
+    }
+
+    final i = project.musicTracks.indexWhere((m) => m.id == draftId);
+    if (i < 0) return;
+    final next = project.musicTracks[i].copyWith(
+      clipDuration: elapsed,
+      fileDuration: elapsed,
+    );
+    project.musicTracks[i] = next;
+
+    final playhead = start + elapsed;
+    setState(() {
+      _scrubPlayhead = playhead;
+    });
+    _seek(playhead, seekVideo: true);
+  }
+
+  Future<void> _stopVoiceRecording() async {
+    if (_voicePhase != _VoiceRecordPhase.recording || _voiceBusy) return;
+    final project = _project;
+    final draftId = _voiceDraftId;
+    final start = _voiceTimelineStart;
+    final begun = _voiceStartedAt;
+    if (project == null || draftId == null || start == null || begun == null) {
+      await _cancelVoiceFlow();
+      return;
+    }
+
+    _voiceBusy = true;
+    _cancelVoiceTimers();
+    try {
+      final recordedPath = await _voiceRecorder.stop();
+      final wallElapsed = DateTime.now().difference(begun);
+      if (recordedPath == null || wallElapsed < const Duration(milliseconds: 250)) {
+        await _cancelVoiceFlow();
+        if (mounted) _showSnack(context.l10n.voiceRecordTooShort);
+        return;
+      }
+
+      final dir = await _projectStorage.projectDirectory(project.id);
+      if (!mounted) return;
+      final title = context.l10n.voiceRecordingTitle;
+      final imported = await _musicStorage.importRecording(
+        projectDir: dir.path,
+        recordedPath: recordedPath,
+        title: title,
+        timelineStart: start,
+        duration: wallElapsed,
+      );
+
+      // Keep the same clip id / lane so the live bar becomes the final take.
+      final i = project.musicTracks.indexWhere((m) => m.id == draftId);
+      final lane = i >= 0 ? project.musicTracks[i].lane : 0;
+      final clipDur = imported.clipDuration < minMusicClipDuration
+          ? minMusicClipDuration
+          : imported.clipDuration;
+      final committed = ProjectMusic(
+        id: draftId,
+        title: imported.title,
+        fileName: imported.fileName,
+        fileDuration: imported.fileDuration ?? clipDur,
+        clipDuration: clipDur,
+        timelineStart: start,
+        volume: 1.0,
+        source: MusicSource.local,
+        lane: lane,
+      );
+
+      if (i >= 0) {
+        project.musicTracks[i] = committed;
+      } else {
+        project.musicTracks.add(committed);
+      }
+      final compacted = compactMusicLanes(project.musicTracks);
+      project.musicTracks
+        ..clear()
+        ..addAll(compacted);
+
+      _voiceDraftId = null;
+      _voiceTimelineStart = null;
+      _voiceStartedAt = null;
+      setState(() {
+        _voicePhase = _VoiceRecordPhase.idle;
+        _selectedMusicId = draftId;
+      });
+      _scheduleSave();
+      unawaited(_ensureMusicWaveform(committed));
+      await _syncMusicPlayback();
+      unawaited(
+        _attachTimelineCompositor(resume: false, seekTo: _playhead),
+      );
+      AnalyticsService.instance.log('voice_record_committed');
+
+      try {
+        await File(recordedPath).delete();
+      } catch (_) {}
+    } catch (e, st) {
+      await _cancelVoiceFlow();
+      if (mounted) {
+        showLoggedSnackBar(
+          context,
+          context.l10n.voiceRecordFailed,
+          error: e,
+          stackTrace: st,
+        );
+      }
+    } finally {
+      _voiceBusy = false;
+    }
   }
 
   Future<void> _openTransitionPicker({int? cutIndex}) async {
@@ -3472,6 +4069,10 @@ class _EditorScreenState extends State<EditorScreen>
         ..addAll(compacted);
     });
     unawaited(_syncMusicPlayback());
+    // Rebuild native length when music extends past picture (black pad).
+    unawaited(
+      _attachTimelineCompositor(resume: false, seekTo: _playhead),
+    );
   }
 
   void _removeSelectedMusic() {
@@ -4265,21 +4866,23 @@ class _EditorScreenState extends State<EditorScreen>
                                                 key: _previewKey,
                                                 videoAspectRatio: sourceAspect,
                                                 canvasAspectRatio: canvasAspect,
-                                                videoChild:
+                                                videoChild: Stack(
+                                                  fit: StackFit.expand,
+                                                  children: [
                                                     _buildPreviewVideoChild(
                                                       controller,
                                                     ),
+                                                    // Music/text past picture → solid black.
+                                                    if (_playheadPastPicture)
+                                                      const ColoredBox(
+                                                        color: Colors.black,
+                                                      ),
+                                                  ],
+                                                ),
                                                 overlays: project.overlays,
                                                 segments: project.segments,
                                                 position: _playhead,
-                                                isPlaying:
-                                                    NativeVideoEngine
-                                                        .instance
-                                                        .isTimelineActive
-                                                    ? NativeVideoEngine
-                                                          .instance
-                                                          .isPlaying
-                                                    : _transportPlaying,
+                                                isPlaying: _transportPlaying,
                                                 clipRotation: project.rotation,
                                                 hostViewportSize: Size(
                                                   constraints.maxWidth,
@@ -4458,6 +5061,7 @@ class _EditorScreenState extends State<EditorScreen>
                                         ),
                                       ),
                                     ),
+                                  ?_buildVoiceRecordOverlay(l10n),
                                 ],
                               );
                             },
@@ -4480,7 +5084,7 @@ class _EditorScreenState extends State<EditorScreen>
                   ],
                 ),
                 // Keyboard tray — same strip for basic text and effect/template edit.
-                if (editingOverlay != null)
+                  if (editingOverlay != null)
                   Positioned(
                     left: 0,
                     right: 0,
@@ -4488,6 +5092,18 @@ class _EditorScreenState extends State<EditorScreen>
                     child: BasicTextEditKeyboardTray(
                       overlay: editingOverlay,
                       onChanged: _updateOverlay,
+                    ),
+                  ),
+                if (_appendingMedia)
+                  Positioned.fill(
+                    child: ColoredBox(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      child: Center(
+                        child: ConvertProgressView(
+                          label: l10n.convertingVideo,
+                          progress: _convertProgress,
+                        ),
+                      ),
                     ),
                   ),
               ],
@@ -4710,13 +5326,13 @@ class _EditorScreenState extends State<EditorScreen>
       hasSourceAudio: _hasSourceAudio,
       filmstripFrames: _filmstripFrames,
       playhead: _timelinePlayhead,
-      isPlaying: NativeVideoEngine.instance.isTimelineActive
-          ? NativeVideoEngine.instance.isPlaying
-          : (controller?.value.isPlaying ?? false),
+      isPlaying: _transportPlaying,
       onTogglePlay: _togglePlay,
       onHandleDragUpdate: _onChromeDragUpdate,
       onHandleDragEnd: _onChromeDragEnd,
       expandToFill: expandToFill,
+      onAddMedia: _appendingMedia || _exporting ? null : _addTimelineMedia,
+      addMediaTooltip: context.l10n.addTimelineMedia,
       selectedOverlayId: _selectedOverlayId,
       selectedSegmentId: _selectedSegmentId,
       selectedMusicId: _selectedMusicId,
@@ -4876,9 +5492,29 @@ class _EditorScreenState extends State<EditorScreen>
                 ),
                 const SizedBox(width: 8),
                 IconButton.outlined(
-                  onPressed: _exporting ? null : _openMusicPicker,
+                  onPressed: _exporting || _voicePhase != _VoiceRecordPhase.idle
+                      ? null
+                      : _openMusicPicker,
                   icon: const Icon(Icons.music_note),
                   tooltip: l10n.addMusic,
+                ),
+                const SizedBox(width: 8),
+                IconButton.outlined(
+                  onPressed: _exporting || _appendingMedia
+                      ? null
+                      : () => unawaited(_onVoiceRecordPressed()),
+                  style: _voicePhase == _VoiceRecordPhase.idle
+                      ? null
+                      : IconButton.styleFrom(
+                          foregroundColor: AppTheme.accent,
+                          side: const BorderSide(color: AppTheme.accent),
+                        ),
+                  icon: Icon(
+                    _voicePhase == _VoiceRecordPhase.recording
+                        ? Icons.mic
+                        : Icons.mic_none,
+                  ),
+                  tooltip: l10n.recordVoice,
                 ),
               ],
             ),
@@ -4887,7 +5523,80 @@ class _EditorScreenState extends State<EditorScreen>
       ),
     );
   }
+
+  Widget? _buildVoiceRecordOverlay(AppLocalizations l10n) {
+    switch (_voicePhase) {
+      case _VoiceRecordPhase.idle:
+        return null;
+      case _VoiceRecordPhase.countdown:
+        return Positioned.fill(
+          child: ColoredBox(
+            color: const Color(0x66000000),
+            child: Center(
+              child: Text(
+                '$_voiceCountdown',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 96,
+                  fontWeight: FontWeight.w700,
+                  height: 1,
+                ),
+              ),
+            ),
+          ),
+        );
+      case _VoiceRecordPhase.armed:
+      case _VoiceRecordPhase.recording:
+        final recording = _voicePhase == _VoiceRecordPhase.recording;
+        return Positioned(
+          left: 0,
+          right: 0,
+          bottom: 16,
+          child: Center(
+            child: Material(
+              color: recording ? const Color(0xFFE53935) : AppTheme.accent,
+              borderRadius: BorderRadius.circular(28),
+              elevation: 4,
+              shadowColor: Colors.black54,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(28),
+                onTap: _voiceBusy
+                    ? null
+                    : () => unawaited(_onVoicePrimaryPressed()),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        recording ? Icons.stop_rounded : Icons.fiber_manual_record,
+                        color: Colors.white,
+                        size: 22,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        recording
+                            ? l10n.stopVoiceRecording
+                            : l10n.startVoiceRecording,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+    }
+  }
 }
+
+enum _VoiceRecordPhase { idle, armed, countdown, recording }
 
 class _CanvasRatioButton extends StatelessWidget {
   const _CanvasRatioButton({required this.label, required this.onPressed});

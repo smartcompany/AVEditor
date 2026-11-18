@@ -333,9 +333,7 @@ class VideoProject {
     }
 
     final resolvedSegments = normalizeSegments(
-      segments.isEmpty
-          ? segmentsFromTrim(start: Duration.zero, end: duration)
-          : segments,
+      segments,
       mediaAssets: mediaAssets,
       sourceDuration: duration,
     );

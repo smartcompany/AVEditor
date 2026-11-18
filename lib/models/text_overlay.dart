@@ -26,7 +26,7 @@ class TextOverlay {
     required this.text,
     required this.start,
     required this.end,
-    this.fontSize = 84,
+    this.fontSize = 120,
     this.color = Colors.white,
     this.style = TextOverlayStyle.plain,
     this.templateId,

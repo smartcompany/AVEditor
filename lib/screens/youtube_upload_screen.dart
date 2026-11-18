@@ -38,21 +38,15 @@ class YouTubeUploadScreen extends StatefulWidget {
 
 class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
   final _descriptionController = TextEditingController();
-  final _locationController = TextEditingController();
   final _relatedController = TextEditingController();
   final _tagsController = TextEditingController();
   String _privacy = 'public';
   bool _madeForKids = false;
-  bool _ageRestricted = false;
   bool _paidPromotion = false;
   bool _syntheticMedia = false;
   bool _busy = false;
   bool _moreOpen = false;
   String? _thumbnailPath;
-  String? _playlistId;
-  List<YouTubePlaylist> _playlists = const [];
-  bool _playlistsLoading = false;
-  String? _playlistsError;
   GoogleSignInAccount? _account;
   bool _accountLoading = true;
 
@@ -86,8 +80,7 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
     });
   }
 
-  /// Connects an account, or replaces the current one. Playlists belong to
-  /// the account, so they are reset.
+  /// Connects an account, or replaces the current one.
   Future<bool> _changeAccount() async {
     setState(() => _accountLoading = true);
     try {
@@ -95,12 +88,7 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
           ? await _connectAccount()
           : await _auth.switchAccount();
       if (!mounted) return false;
-      setState(() {
-        _account = account;
-        _playlists = const [];
-        _playlistId = null;
-        _playlistsError = null;
-      });
+      setState(() => _account = account);
       AnalyticsService.instance.log('youtube_account_switched');
       return true;
     } catch (error, stack) {
@@ -195,7 +183,6 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
   void dispose() {
     _preview?.dispose();
     _descriptionController.dispose();
-    _locationController.dispose();
     _relatedController.dispose();
     _tagsController.dispose();
     super.dispose();
@@ -251,85 +238,6 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
     setState(() => _thumbnailPath = path);
   }
 
-  Future<void> _loadPlaylists() async {
-    setState(() {
-      _playlistsLoading = true;
-      _playlistsError = null;
-    });
-    try {
-      if (!await _auth.isSignedIn) {
-        await _auth.signIn();
-        final account = await _auth.currentAccount();
-        if (mounted) setState(() => _account = account);
-      }
-      await _auth.ensureAccountScope();
-      final token = await _auth.accessToken();
-      final playlists = await _upload.listPlaylists(token);
-      if (!mounted) return;
-      setState(() => _playlists = playlists);
-    } catch (error, stack) {
-      debugPrint('[YouTubeUpload] 재생목록 실패: $error\n$stack');
-      if (!mounted) return;
-      setState(() => _playlistsError = context.l10n.uploadPlaylistFailed);
-    } finally {
-      if (mounted) setState(() => _playlistsLoading = false);
-    }
-  }
-
-  Future<void> _pickPlaylist() async {
-    if (_playlists.isEmpty && !_playlistsLoading) {
-      await _loadPlaylists();
-      if (!mounted || _playlistsError != null) return;
-    }
-    if (!mounted) return;
-    final l10n = context.l10n;
-    final selected = await showModalBottomSheet<String?>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) {
-        return SafeArea(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.sizeOf(context).height * 0.6,
-            ),
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                ListTile(
-                  title: Text(l10n.uploadPlaylistNone),
-                  trailing: _playlistId == null
-                      ? const Icon(Icons.check)
-                      : null,
-                  onTap: () => Navigator.pop(context, ''),
-                ),
-                for (final playlist in _playlists)
-                  ListTile(
-                    title: Text(playlist.title),
-                    trailing: _playlistId == playlist.id
-                        ? const Icon(Icons.check)
-                        : null,
-                    onTap: () => Navigator.pop(context, playlist.id),
-                  ),
-                if (_playlists.isEmpty)
-                  ListTile(title: Text(l10n.uploadPlaylistEmpty)),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-    if (!mounted || selected == null) return;
-    setState(() => _playlistId = selected.isEmpty ? null : selected);
-  }
-
-  String _playlistLabel(AppLocalizations l10n) {
-    if (_playlistId == null) return l10n.uploadPlaylistNone;
-    for (final playlist in _playlists) {
-      if (playlist.id == _playlistId) return playlist.title;
-    }
-    return l10n.uploadPlaylistNone;
-  }
-
   Future<void> _submit() async {
     final l10n = context.l10n;
     var description = _descriptionController.text.trim();
@@ -356,25 +264,13 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
     await _preview?.pause();
     debugPrint(
       '[YouTubeUpload] 시작 title="$title" '
-      'privacy=$_privacy kids=$_madeForKids ageRestricted=$_ageRestricted '
+      'privacy=$_privacy kids=$_madeForKids '
       'paid=$_paidPromotion synthetic=$_syntheticMedia '
-      'tags=${tags.length} location="${_locationController.text.trim()}" '
-      'related=${relatedId ?? "none"} '
-      'playlist=${_playlistId ?? "none"} '
+      'tags=${tags.length} related=${relatedId ?? "none"} '
       'thumbnail=${_thumbnailPath == null ? "auto" : "custom"}',
     );
     String? videoId;
     try {
-      ({double latitude, double longitude})? place;
-      final location = _locationController.text.trim();
-      if (location.isNotEmpty) {
-        place = await _upload.lookupPlace(location);
-        if (!mounted) return;
-        if (place == null) {
-          showLoggedSnackBar(context, l10n.uploadLocationNotFound);
-          return;
-        }
-      }
       final signedIn = await _auth.isSignedIn;
       debugPrint(
         signedIn ? '[YouTubeUpload] 이미 로그인됨' : '[YouTubeUpload] 로그인 필요',
@@ -384,9 +280,6 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
         debugPrint('[YouTubeUpload] 로그인 완료');
         final account = await _auth.currentAccount();
         if (mounted) setState(() => _account = account);
-      }
-      if (_playlistId != null || _ageRestricted || place != null) {
-        await _auth.ensureAccountScope();
       }
       debugPrint('[YouTubeUpload] 액세스 토큰 요청');
       final token = await _auth.accessToken();
@@ -427,11 +320,7 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
       );
       debugPrint('[YouTubeUpload] 업로드 완료 videoId=$videoId');
       AnalyticsService.instance.log('youtube_upload_completed');
-      final followUp = await _applyDetails(
-        token: token,
-        videoId: videoId,
-        place: place,
-      );
+      final followUp = await _applyDetails(token: token, videoId: videoId);
       if (!mounted) return;
       await _preview?.pause();
       setState(() {
@@ -463,76 +352,30 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
     final step = error is YouTubeApiException ? error.step : '';
     return switch (step) {
       'thumbnail' => l10n.uploadStepThumbnail,
-      'playlist' => l10n.uploadStepPlaylist,
-      'ageRestriction' => l10n.uploadStepAgeRestriction,
-      'location' => l10n.uploadStepLocation,
-      _ => [
-        l10n.uploadStepThumbnail,
-        l10n.uploadStepPlaylist,
-        l10n.uploadStepAgeRestriction,
-        l10n.uploadStepLocation,
-      ].join(', '),
+      _ => l10n.uploadStepThumbnail,
     };
   }
 
-  /// Applies the settings that need extra calls after the upload. Returns
-  /// the names of the settings that failed, or null when all succeeded.
+  /// Applies post-upload settings that still work with `youtube.upload`
+  /// (custom thumbnail). Returns failed step names, or null on success.
   Future<String?> _applyDetails({
     required String token,
     required String videoId,
-    ({double latitude, double longitude})? place,
   }) async {
     final l10n = context.l10n;
-    final errors = <String>[];
     final thumbnail = _thumbnailPath;
-    if (thumbnail != null) {
-      try {
-        await _upload.setThumbnail(
-          accessToken: token,
-          videoId: videoId,
-          imagePath: thumbnail,
-        );
-      } catch (error) {
-        debugPrint('[YouTubeUpload] 후속 단계 실패: $error');
-        errors.add(l10n.uploadStepThumbnail);
-      }
+    if (thumbnail == null) return null;
+    try {
+      await _upload.setThumbnail(
+        accessToken: token,
+        videoId: videoId,
+        imagePath: thumbnail,
+      );
+      return null;
+    } catch (error) {
+      debugPrint('[YouTubeUpload] 후속 단계 실패: $error');
+      return l10n.uploadStepThumbnail;
     }
-    final playlistId = _playlistId;
-    if (playlistId != null) {
-      try {
-        await _upload.addToPlaylist(
-          accessToken: token,
-          videoId: videoId,
-          playlistId: playlistId,
-        );
-      } catch (error) {
-        debugPrint('[YouTubeUpload] 후속 단계 실패: $error');
-        errors.add(l10n.uploadStepPlaylist);
-      }
-    }
-    if (_ageRestricted && !_madeForKids) {
-      try {
-        await _upload.setAgeRestricted(accessToken: token, videoId: videoId);
-      } catch (error) {
-        debugPrint('[YouTubeUpload] 후속 단계 실패: $error');
-        errors.add(l10n.uploadStepAgeRestriction);
-      }
-    }
-    if (place != null) {
-      try {
-        await _upload.setRecordingLocation(
-          accessToken: token,
-          videoId: videoId,
-          latitude: place.latitude,
-          longitude: place.longitude,
-        );
-      } catch (error) {
-        debugPrint('[YouTubeUpload] 후속 단계 실패: $error');
-        errors.add(l10n.uploadStepLocation);
-      }
-    }
-    if (errors.isEmpty) return null;
-    return errors.join(', ');
   }
 
   @override
@@ -543,170 +386,153 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
     final uploadedId = _uploadedId;
     if (uploadedId != null) return _buildDone(l10n, uploadedId);
 
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     return Scaffold(
       appBar: AppBar(title: Text(l10n.uploadShorts)),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+      resizeToAvoidBottomInset: true,
+      body: Column(
         children: [
-          _buildAccountCard(l10n),
-          const SizedBox(height: 16),
-          _buildPreview(l10n, preview),
-          const SizedBox(height: 20),
-          DropdownButtonFormField<String>(
-            initialValue: _privacy,
-            decoration: InputDecoration(labelText: l10n.uploadVisibility),
-            items: [
-              DropdownMenuItem(
-                value: 'public',
-                child: Text(l10n.privacyPublic),
-              ),
-              DropdownMenuItem(
-                value: 'unlisted',
-                child: Text(l10n.privacyUnlisted),
-              ),
-              DropdownMenuItem(
-                value: 'private',
-                child: Text(l10n.privacyPrivate),
-              ),
-            ],
-            onChanged: _busy
-                ? null
-                : (value) {
-                    if (value != null) setState(() => _privacy = value);
-                  },
-          ),
-          const SizedBox(height: 8),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(l10n.uploadPlaylist),
-            subtitle: Text(_playlistsError ?? _playlistLabel(l10n)),
-            trailing: _playlistsLoading
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.chevron_right),
-            onTap: _busy ? null : _pickPlaylist,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            l10n.uploadAudience,
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            l10n.uploadAudienceHelp,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          const SizedBox(height: 8),
-          SegmentedButton<bool>(
-            showSelectedIcon: false,
-            segments: [
-              ButtonSegment(
-                value: false,
-                label: Text(
-                  l10n.uploadAudienceNotForKids,
-                  textAlign: TextAlign.center,
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              children: [
+                _buildAccountCard(l10n),
+                const SizedBox(height: 16),
+                _buildPreview(l10n, preview),
+                const SizedBox(height: 20),
+                DropdownButtonFormField<String>(
+                  initialValue: _privacy,
+                  decoration: InputDecoration(labelText: l10n.uploadVisibility),
+                  items: [
+                    DropdownMenuItem(
+                      value: 'public',
+                      child: Text(l10n.privacyPublic),
+                    ),
+                    DropdownMenuItem(
+                      value: 'unlisted',
+                      child: Text(l10n.privacyUnlisted),
+                    ),
+                    DropdownMenuItem(
+                      value: 'private',
+                      child: Text(l10n.privacyPrivate),
+                    ),
+                  ],
+                  onChanged: _busy
+                      ? null
+                      : (value) {
+                          if (value != null) setState(() => _privacy = value);
+                        },
                 ),
-              ),
-              ButtonSegment(
-                value: true,
-                label: Text(
-                  l10n.uploadAudienceForKids,
-                  textAlign: TextAlign.center,
+                const SizedBox(height: 8),
+                Text(
+                  l10n.uploadAudience,
+                  style: Theme.of(context).textTheme.titleMedium,
                 ),
-              ),
-            ],
-            selected: {_madeForKids},
-            onSelectionChanged: _busy
-                ? null
-                : (selection) {
-                    setState(() {
-                      _madeForKids = selection.first;
-                      if (_madeForKids) _ageRestricted = false;
-                    });
-                  },
+                const SizedBox(height: 4),
+                Text(
+                  l10n.uploadAudienceHelp,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 8),
+                SegmentedButton<bool>(
+                  showSelectedIcon: false,
+                  segments: [
+                    ButtonSegment(
+                      value: false,
+                      label: Text(
+                        l10n.uploadAudienceNotForKids,
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                    ButtonSegment(
+                      value: true,
+                      label: Text(
+                        l10n.uploadAudienceForKids,
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ],
+                  selected: {_madeForKids},
+                  onSelectionChanged: _busy
+                      ? null
+                      : (selection) {
+                          setState(() => _madeForKids = selection.first);
+                        },
+                ),
+                const SizedBox(height: 8),
+                if (_moreOpen) ...[
+                  TextField(
+                    controller: _relatedController,
+                    enabled: !_busy,
+                    textInputAction: TextInputAction.done,
+                    onEditingComplete: _dismissKeyboard,
+                    decoration: InputDecoration(
+                      labelText: l10n.uploadRelatedVideo,
+                      hintText: l10n.uploadRelatedVideoHint,
+                    ),
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(l10n.uploadPaidPromotion),
+                    subtitle: Text(l10n.uploadPaidPromotionHelp),
+                    value: _paidPromotion,
+                    onChanged: _busy
+                        ? null
+                        : (value) => setState(() => _paidPromotion = value),
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(l10n.uploadAlteredContent),
+                    subtitle: Text(l10n.uploadAlteredContentHelp),
+                    value: _syntheticMedia,
+                    onChanged: _busy
+                        ? null
+                        : (value) => setState(() => _syntheticMedia = value),
+                  ),
+                  TextField(
+                    controller: _tagsController,
+                    enabled: !_busy,
+                    textInputAction: TextInputAction.done,
+                    onEditingComplete: _dismissKeyboard,
+                    decoration: InputDecoration(
+                      labelText: l10n.uploadTags,
+                      hintText: l10n.uploadTagsHint,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton.icon(
+                    onPressed: _busy
+                        ? null
+                        : () => setState(() => _moreOpen = !_moreOpen),
+                    icon: Icon(
+                      _moreOpen ? Icons.expand_less : Icons.expand_more,
+                    ),
+                    label: Text(
+                      _moreOpen
+                          ? l10n.uploadFewerDetails
+                          : l10n.uploadMoreDetails,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: _busy ? null : _submit,
+                  child: _busy
+                      ? const SizedBox(
+                          height: 22,
+                          width: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text(l10n.uploadShorts),
+                ),
+              ],
+            ),
           ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(l10n.uploadAgeRestriction),
-            subtitle: Text(l10n.uploadAgeRestrictionHelp),
-            value: _ageRestricted && !_madeForKids,
-            onChanged: _busy || _madeForKids
-                ? null
-                : (value) => setState(() => _ageRestricted = value),
-          ),
-          const SizedBox(height: 8),
-          if (_moreOpen) ...[
-            TextField(
-              controller: _locationController,
-              enabled: !_busy,
-              decoration: InputDecoration(
-                labelText: l10n.uploadLocation,
-                hintText: l10n.uploadLocationHint,
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _relatedController,
-              enabled: !_busy,
-              decoration: InputDecoration(
-                labelText: l10n.uploadRelatedVideo,
-                hintText: l10n.uploadRelatedVideoHint,
-              ),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(l10n.uploadPaidPromotion),
-              subtitle: Text(l10n.uploadPaidPromotionHelp),
-              value: _paidPromotion,
-              onChanged: _busy
-                  ? null
-                  : (value) => setState(() => _paidPromotion = value),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(l10n.uploadAlteredContent),
-              subtitle: Text(l10n.uploadAlteredContentHelp),
-              value: _syntheticMedia,
-              onChanged: _busy
-                  ? null
-                  : (value) => setState(() => _syntheticMedia = value),
-            ),
-            TextField(
-              controller: _tagsController,
-              enabled: !_busy,
-              decoration: InputDecoration(
-                labelText: l10n.uploadTags,
-                hintText: l10n.uploadTagsHint,
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
-          SizedBox(
-            width: double.infinity,
-            child: TextButton.icon(
-              onPressed: _busy
-                  ? null
-                  : () => setState(() => _moreOpen = !_moreOpen),
-              icon: Icon(_moreOpen ? Icons.expand_less : Icons.expand_more),
-              label: Text(
-                _moreOpen ? l10n.uploadFewerDetails : l10n.uploadMoreDetails,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: _busy ? null : _submit,
-            child: _busy
-                ? const SizedBox(
-                    height: 22,
-                    width: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Text(l10n.uploadShorts),
-          ),
+          if (keyboardOpen) _buildKeyboardDismissBar(l10n),
         ],
       ),
     );
@@ -1018,6 +844,7 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
             enabled: !_busy,
             minLines: 1,
             maxLines: 4,
+            textInputAction: TextInputAction.newline,
             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
             decoration: InputDecoration(
               hintText: l10n.uploadShortsCaption,
@@ -1033,6 +860,34 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  void _dismissKeyboard() {
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
+  /// Sits just above the system keyboard while a field is focused.
+  Widget _buildKeyboardDismissBar(AppLocalizations l10n) {
+    return Material(
+      color: AppTheme.surfaceElevated,
+      elevation: 6,
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 44,
+          child: Row(
+            children: [
+              const Spacer(),
+              TextButton(
+                onPressed: _dismissKeyboard,
+                child: Text(l10n.uploadDoneClose),
+              ),
+              const SizedBox(width: 8),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

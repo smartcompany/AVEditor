@@ -184,6 +184,9 @@ List<ClipSegment> repairSegments(
 }) {
   final fallback = sourceDuration ?? Duration.zero;
   if (segments.isEmpty) {
+    // Intentionally empty timeline (all clips deleted) stays empty when there
+    // is no positive source duration to restore from.
+    if (fallback <= Duration.zero) return const [];
     return segmentsFromTrim(start: Duration.zero, end: fallback);
   }
 
@@ -201,6 +204,7 @@ List<ClipSegment> repairSegments(
   }
 
   if (valid.isEmpty) {
+    if (fallback <= Duration.zero) return const [];
     return segmentsFromTrim(start: Duration.zero, end: fallback);
   }
   return valid;
@@ -286,19 +290,10 @@ List<ClipSegment> deleteSegment(
   List<ClipSegment> segments,
   String segmentId,
 ) {
-  if (segments.length <= 1) {
-    throw StateError('cannot_delete_last_segment');
-  }
-  final next = segments.where((s) => s.id != segmentId).toList(growable: false);
-  if (next.isEmpty) {
-    throw StateError('cannot_delete_last_segment');
-  }
-  for (final segment in next) {
-    if (segment.duration < minTrimDuration) {
-      throw StateError('segment_too_short');
-    }
-  }
-  return next;
+  // Empty timeline is allowed — user can re-add via the + control.
+  return segments
+      .where((s) => s.id != segmentId)
+      .toList(growable: false);
 }
 
 /// Earliest in-point on the clip's own media (multi-source: always zero).

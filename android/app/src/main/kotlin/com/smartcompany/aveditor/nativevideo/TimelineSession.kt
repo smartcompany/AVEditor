@@ -6,7 +6,7 @@ internal interface TimelineSession {
   val width: Int
   val height: Int
 
-  fun update(sourcePath: String, segments: List<*>)
+  fun update(sourcePath: String, segments: List<*>, requestedDurationMs: Int = 0)
   fun start()
   fun play(done: (String?) -> Unit)
   fun playbackSnapshot(): Map<String, Any>

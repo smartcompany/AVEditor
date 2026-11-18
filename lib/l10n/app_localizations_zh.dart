@@ -15,6 +15,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get pickFromGallery => '从相册选择';
 
   @override
+  String get addTimelineMedia => '添加视频或照片';
+
+  @override
   String get galleryPickerTitle => '相册';
 
   @override
@@ -379,6 +382,27 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get addMusic => '添加音乐';
+
+  @override
+  String get recordVoice => '录音';
+
+  @override
+  String get startVoiceRecording => '开始录音';
+
+  @override
+  String get stopVoiceRecording => '停止';
+
+  @override
+  String get voiceRecordingTitle => '录音';
+
+  @override
+  String get voiceRecordPermissionDenied => '录音需要麦克风权限。';
+
+  @override
+  String get voiceRecordTooShort => '录音太短。';
+
+  @override
+  String get voiceRecordFailed => '无法保存录音。';
 
   @override
   String get importMusicFile => '导入音频文件';

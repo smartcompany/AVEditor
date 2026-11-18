@@ -226,13 +226,28 @@ void main() {
     expect(result.map((s) => s.id), ['a', 'c']);
   });
 
-  test('deleteSegment rejects an empty segment list', () {
-    expect(
-      () => deleteSegment([], 'missing'),
-      throwsA(
-        predicate<StateError>((error) => error.message == 'cannot_delete_last_segment'),
-      ),
+  test('deleteSegment may empty the timeline', () {
+    final result = deleteSegment(
+      [seg(Duration.zero, const Duration(seconds: 3), id: 'only')],
+      'only',
     );
+    expect(result, isEmpty);
+  });
+
+  test('deleteSegment allows survivors shorter than minTrimDuration', () {
+    final result = deleteSegment(
+      [
+        seg(Duration.zero, const Duration(milliseconds: 400), id: 'short'),
+        seg(
+          const Duration(milliseconds: 400),
+          const Duration(seconds: 3),
+          id: 'photo',
+        ),
+      ],
+      'photo',
+    );
+    expect(result.length, 1);
+    expect(result.single.id, 'short');
   });
 
   test('sourceTimeToExportTime skips deleted gaps', () {

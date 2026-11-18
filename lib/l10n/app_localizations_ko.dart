@@ -15,6 +15,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get pickFromGallery => '갤러리에서 선택';
 
   @override
+  String get addTimelineMedia => '영상 또는 사진 추가';
+
+  @override
   String get galleryPickerTitle => '갤러리';
 
   @override
@@ -383,6 +386,27 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get addMusic => '음악 추가';
+
+  @override
+  String get recordVoice => '녹음';
+
+  @override
+  String get startVoiceRecording => '녹음 시작';
+
+  @override
+  String get stopVoiceRecording => '정지';
+
+  @override
+  String get voiceRecordingTitle => '녹음';
+
+  @override
+  String get voiceRecordPermissionDenied => '녹음하려면 마이크 권한이 필요합니다.';
+
+  @override
+  String get voiceRecordTooShort => '녹음이 너무 짧습니다.';
+
+  @override
+  String get voiceRecordFailed => '녹음을 저장하지 못했습니다.';
 
   @override
   String get importMusicFile => '오디오 파일 가져오기';

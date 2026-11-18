@@ -195,18 +195,17 @@ class ExportService {
     }
 
     final music = <Map<String, dynamic>>[];
-    if (musicPath != null) {
-      for (final clip in project.musicTracks) {
-        music.add({
-          'path': musicPath,
-          'timelineStartMs': clip.timelineStart.inMilliseconds,
-          'sourceOffsetMs': clip.sourceOffset.inMilliseconds,
-          'durationMs': clip.clipDuration.inMilliseconds,
-          'volume': clip.volume,
-          'fadeInMs': clip.effectiveFadeIn.inMilliseconds,
-          'fadeOutMs': clip.effectiveFadeOut.inMilliseconds,
-        });
-      }
+    for (final clip in project.musicTracks) {
+      final path = MusicStorageService.musicPath(project.projectDir, clip);
+      music.add({
+        'path': path,
+        'timelineStartMs': clip.timelineStart.inMilliseconds,
+        'sourceOffsetMs': clip.sourceOffset.inMilliseconds,
+        'durationMs': clip.clipDuration.inMilliseconds,
+        'volume': clip.volume,
+        'fadeInMs': clip.effectiveFadeIn.inMilliseconds,
+        'fadeOutMs': clip.effectiveFadeOut.inMilliseconds,
+      });
     }
 
     return {
