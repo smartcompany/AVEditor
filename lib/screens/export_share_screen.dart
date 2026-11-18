@@ -10,14 +10,17 @@ import 'package:aveditor/screens/youtube_upload_screen.dart';
 import 'package:aveditor/services/app_settings_service.dart';
 import 'package:aveditor/services/export_save_service.dart';
 import 'package:aveditor/services/export_service.dart';
-import 'package:aveditor/services/native_video_engine.dart';
 import 'package:aveditor/services/export_share_service.dart';
+import 'package:aveditor/services/native_video_engine.dart';
+import 'package:aveditor/services/project_storage_service.dart';
+import 'package:aveditor/services/retention_notification_service.dart';
 import 'package:aveditor/services/share_catalog_service.dart';
+import 'package:aveditor/services/video_frame_grab.dart';
 import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/utils/logged_snackbar.dart';
 import 'package:aveditor/widgets/video_thumbnail_scrubber.dart';
 import 'package:flutter/material.dart';
-import 'package:aveditor/services/video_frame_grab.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:video_player/video_player.dart';
 
 /// Presented after Export. Shows encode progress, then the video and the
@@ -38,6 +41,7 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
   final _settings = const AppSettingsService();
   final _catalog = ShareCatalogService();
   final _share = ExportShareService();
+  final _projects = const ProjectStorageService();
 
   double _progress = 0;
   var _cancelled = false;
@@ -143,6 +147,19 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
       AnalyticsService.instance.log('export_completed', {
         'seconds': DateTime.now().difference(started).inSeconds,
       });
+      unawaited(_projects.markExported(widget.project.id));
+      unawaited(RetentionNotificationService.instance.cancelDraftAbandon());
+      // Priority 2: nudge to share if they leave without posting.
+      if (mounted) {
+        final l10n = context.l10n;
+        unawaited(
+          RetentionNotificationService.instance.scheduleShareNudge(
+            projectId: widget.project.id,
+            title: l10n.pushShareTitle,
+            body: l10n.pushShareBody,
+          ),
+        );
+      }
       if (_cancelled || !mounted) return;
       await thumbFuture;
       final targets = await catalogFuture;
@@ -221,6 +238,10 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
   Future<void> _onTarget(ShareTarget target) async {
     final path = _exportedPath;
     if (path == null) return;
+    AnalyticsService.instance.log('share_target_tap', {
+      'target': target.kind.name,
+    });
+    unawaited(RetentionNotificationService.instance.cancelShareNudge());
     await _player?.pause();
     if (!await _saveToAlbumIfNeeded() || !mounted) return;
     // YouTube: in-app API upload (no iOS share sheet — YouTube has no
@@ -283,9 +304,21 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
   Future<void> _shareMore() async {
     final path = _exportedPath;
     if (path == null) return;
+    AnalyticsService.instance.log('share_more_tap');
+    unawaited(RetentionNotificationService.instance.cancelShareNudge());
     await _player?.pause();
     if (!await _saveToAlbumIfNeeded() || !mounted) return;
     await _share.shareFile(path);
+  }
+
+  void _continueEditing() {
+    AnalyticsService.instance.log('continue_after_export');
+    Navigator.of(context).pop();
+  }
+
+  void _startNewClip() {
+    AnalyticsService.instance.log('start_new_after_export');
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   @override
@@ -391,7 +424,17 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
                   videoPath: _exportedPath!,
                 ),
               ],
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
+              Text(
+                l10n.exportShareHint,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.dmSans(
+                  fontSize: 13,
+                  height: 1.35,
+                  color: AppTheme.muted,
+                ),
+              ),
+              const SizedBox(height: 12),
               // Equal-weight 2×2 share grid (no YouTube-primary CTA).
               for (var i = 0; i < buttons.length; i += 2) ...[
                 if (i > 0) const SizedBox(height: 10),
@@ -407,6 +450,36 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
                   ],
                 ),
               ],
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _continueEditing,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.ink,
+                        side: BorderSide(
+                          color: AppTheme.accentCyan.withValues(alpha: 0.45),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: Text(l10n.resumeEditing),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: _startNewClip,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppTheme.accent,
+                        foregroundColor: AppTheme.ink,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: Text(l10n.startNewClip),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),

@@ -73,7 +73,12 @@ internal object EngineExporter {
         val segments = args["segments"] as? List<*> ?: emptyList<Any>()
         val width = (args["width"] as? Number)?.toInt() ?: 1080
         val height = (args["height"] as? Number)?.toInt() ?: 1920
-        val plan = EnginePlanBuilder.build(sourcePath, segments)
+        val requestedMs = (args["durationMs"] as? Number)?.toInt() ?: 0
+        val plan = EnginePlanBuilder.build(
+          sourcePath,
+          segments,
+          requestedDurationMs = requestedMs,
+        )
         exportPlan = plan
         val overlays = args["overlays"] as? List<*> ?: emptyList<Any>()
         val music = args["music"] as? List<*> ?: emptyList<Any>()

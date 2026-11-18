@@ -25,6 +25,7 @@ import 'package:aveditor/services/editor_history.dart';
 import 'package:aveditor/services/audio_waveform_service.dart';
 import 'package:aveditor/services/music_storage_service.dart';
 import 'package:aveditor/services/project_storage_service.dart';
+import 'package:aveditor/services/retention_notification_service.dart';
 import 'package:aveditor/services/timeline_thumbnail_service.dart';
 import 'package:aveditor/services/video_probe_service.dart';
 import 'package:aveditor/utils/av_editor_log.dart';
@@ -53,7 +54,6 @@ import 'package:aveditor/widgets/video_preview.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as p;
 import 'package:video_player/video_player.dart';
 
 class EditorScreen extends StatefulWidget {
@@ -210,7 +210,8 @@ class _EditorScreenState extends State<EditorScreen>
 
   List<TimelineFilmstripFrame> _filmstripFrames = [];
   final Map<String, List<double>> _musicWaveforms = {};
-  List<double> _sourceAudioWaveform = const [];
+  final Map<String, List<double>> _sourceAudioWaveforms = {};
+  final Map<String, Duration> _sourceAudioDurations = {};
   bool _hasSourceAudio = false;
 
   Timer? _saveDebounce;
@@ -363,6 +364,8 @@ class _EditorScreenState extends State<EditorScreen>
     WidgetsBinding.instance.addObserver(this);
     _engineClaim = NativeVideoEngine.instance.claim();
     AnalyticsService.instance.log('editor_open');
+    // User opened the draft — drop pending abandon reminders.
+    unawaited(RetentionNotificationService.instance.cancelDraftAbandon());
     _initVideo();
   }
 
@@ -778,6 +781,9 @@ class _EditorScreenState extends State<EditorScreen>
               trim: ClipTrim(start: Duration.zero, end: duration),
               // Keep any cuts already saved before duration was known.
               segments: List<ClipSegment>.from(playable.segments),
+              mediaAssets: playable.mediaAssets
+                  .map((a) => a.copyWith())
+                  .toList(),
               overlays: playable.overlays,
               musicTracks: List<ProjectMusic>.from(playable.musicTracks),
               preset: playable.preset,
@@ -820,7 +826,7 @@ class _EditorScreenState extends State<EditorScreen>
       });
       unawaited(_loadFilmstrip(project));
       unawaited(_loadMusicWaveforms(project));
-      unawaited(_loadSourceAudioWaveform(project.sourcePath));
+      unawaited(_loadSourceAudioWaveforms(project));
 
       if (stored.duration == Duration.zero) {
         _scheduleSave();
@@ -889,10 +895,13 @@ class _EditorScreenState extends State<EditorScreen>
       }
       return;
     }
-    for (final frame in _filmstripFrames) {
+    // Swap first, then dispose — painting a disposed ui.Image blanks tiles.
+    final previous = _filmstripFrames;
+    setState(() => _filmstripFrames = frames);
+    for (final frame in previous) {
       frame.image.dispose();
     }
-    setState(() => _filmstripFrames = frames);
+    avEditorLog('filmstrip loaded frames=${frames.length}');
   }
 
   void _syncPackedDuration(VideoProject project) {
@@ -2203,24 +2212,78 @@ class _EditorScreenState extends State<EditorScreen>
     );
   }
 
-  Future<void> _loadSourceAudioWaveform(String sourcePath) async {
-    final hasAudio = await _probe.hasAudioStream(sourcePath);
-    if (!mounted) return;
-    if (!hasAudio) {
-      setState(() {
-        _hasSourceAudio = false;
-        _sourceAudioWaveform = const [];
-      });
-      return;
+  Future<void> _loadSourceAudioWaveforms(VideoProject project) async {
+    final peaksByMedia = <String, List<double>>{};
+    final durationByMedia = <String, Duration>{};
+    var anyAudio = false;
+
+    // Decode once per path, then attach peaks to every mediaId on that file.
+    final peaksByPath = <String, AudioWaveformData>{};
+    final assets = project.mediaAssets;
+
+    Future<AudioWaveformData?> decodePath(String path) async {
+      final cached = peaksByPath[path];
+      if (cached != null) return cached;
+      if (!await File(path).exists()) {
+        avEditorLog('waveform missing file $path');
+        return null;
+      }
+      // Decode even when the probe says "no audio" — some containers lie.
+      final wave = await AudioWaveformService.instance.waveformForFile(path);
+      if (!mounted || wave == null || wave.peaks.isEmpty) {
+        avEditorLog('waveform decode empty path=$path');
+        return null;
+      }
+      peaksByPath[path] = wave;
+      return wave;
     }
 
-    final wave = await AudioWaveformService.instance.waveformForFile(
-      sourcePath,
-    );
+    if (assets.isEmpty) {
+      final wave = await decodePath(project.sourcePath);
+      if (wave != null) {
+        anyAudio = true;
+        final duration = wave.duration > Duration.zero
+            ? wave.duration
+            : project.duration;
+        var keyed = false;
+        for (final segment in project.segments) {
+          final id = segment.mediaId;
+          if (id == null) continue;
+          peaksByMedia[id] = wave.peaks;
+          durationByMedia[id] = duration;
+          keyed = true;
+        }
+        if (!keyed) {
+          peaksByMedia[''] = wave.peaks;
+          durationByMedia[''] = duration;
+        }
+      }
+    } else {
+      for (final asset in assets) {
+        if (asset.isImage) continue;
+        final path = project.absoluteMediaPath(asset);
+        final wave = await decodePath(path);
+        if (wave == null) continue;
+        anyAudio = true;
+        peaksByMedia[asset.id] = wave.peaks;
+        durationByMedia[asset.id] = wave.duration > Duration.zero
+            ? wave.duration
+            : (asset.duration > Duration.zero ? asset.duration : wave.duration);
+      }
+    }
+
     if (!mounted) return;
+    avEditorLog(
+      'waveform loaded media=${peaksByMedia.length} anyAudio=$anyAudio',
+    );
     setState(() {
-      _hasSourceAudio = true;
-      _sourceAudioWaveform = wave?.peaks ?? const [];
+      _hasSourceAudio = anyAudio;
+      _sourceAudioWaveforms
+        ..clear()
+        ..addAll(peaksByMedia);
+      _sourceAudioDurations
+        ..clear()
+        ..addAll(durationByMedia);
     });
   }
 
@@ -2595,7 +2658,7 @@ class _EditorScreenState extends State<EditorScreen>
     }
 
     final musicPath = MusicStorageService.musicPath(
-      p.dirname(project.sourcePath),
+      project.projectDir,
       music,
     );
     if (!await File(musicPath).exists()) {
@@ -3335,7 +3398,7 @@ class _EditorScreenState extends State<EditorScreen>
     final project = _project;
     if (project == null) return;
     final path = MusicStorageService.musicPath(
-      p.dirname(project.sourcePath),
+      project.projectDir,
       music,
     );
 
@@ -3345,13 +3408,22 @@ class _EditorScreenState extends State<EditorScreen>
     }
 
     if (!_musicWaveforms.containsKey(music.fileName)) {
-      final wave = await AudioWaveformService.instance.waveformForFile(path);
-      if (!mounted) return;
-      if (wave != null) {
-        if (fileDuration == null || fileDuration <= Duration.zero) {
-          fileDuration = wave.duration;
+      if (!await File(path).exists()) {
+        avEditorLog('music waveform missing file $path');
+      } else {
+        final wave = await AudioWaveformService.instance.waveformForFile(path);
+        if (!mounted) return;
+        if (wave != null && wave.peaks.isNotEmpty) {
+          if (fileDuration == null || fileDuration <= Duration.zero) {
+            fileDuration = wave.duration;
+          }
+          setState(() => _musicWaveforms[music.fileName] = wave.peaks);
+          avEditorLog(
+            'music waveform loaded file=${music.fileName} peaks=${wave.peaks.length}',
+          );
+        } else {
+          avEditorLog('music waveform decode empty $path');
         }
-        setState(() => _musicWaveforms[music.fileName] = wave.peaks);
       }
     }
 
@@ -3962,6 +4034,19 @@ class _EditorScreenState extends State<EditorScreen>
       } finally {
         _namingProject = false;
       }
+    }
+    // Priority 1: unfinished draft → local push in 24h / 72h.
+    final leaving = _project;
+    if (leaving != null && leaving.isDraft && mounted) {
+      final l10n = context.l10n;
+      unawaited(
+        RetentionNotificationService.instance.scheduleDraftAbandon(
+          projectId: leaving.id,
+          title: l10n.pushDraftTitle,
+          body24: l10n.pushDraftBody24,
+          body72: l10n.pushDraftBody72,
+        ),
+      );
     }
     if (mounted) Navigator.of(context).pop();
   }
@@ -4620,7 +4705,8 @@ class _EditorScreenState extends State<EditorScreen>
       overlays: project.overlays,
       musicTracks: project.musicTracks,
       musicWaveforms: _musicWaveforms,
-      sourceAudioWaveform: _sourceAudioWaveform,
+      sourceAudioWaveforms: _sourceAudioWaveforms,
+      sourceAudioDurations: _sourceAudioDurations,
       hasSourceAudio: _hasSourceAudio,
       filmstripFrames: _filmstripFrames,
       playhead: _timelinePlayhead,

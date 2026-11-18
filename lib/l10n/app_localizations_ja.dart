@@ -294,6 +294,36 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
+  String get draftBadge => '下書き';
+
+  @override
+  String get startNewClip => '次のクリップを作る';
+
+  @override
+  String get exportShareHint => 'シェアしたら、次のクリップを作りに戻ってみましょう。';
+
+  @override
+  String get pushDraftTitle => 'クリップを仕上げよう';
+
+  @override
+  String get pushDraftBody24 => '編集中のプロジェクトが残っています。EasyClipで続きからどうぞ。';
+
+  @override
+  String get pushDraftBody72 => 'まだ未完成です。開いて書き出せば完了です。';
+
+  @override
+  String get pushShareTitle => '投稿の準備はできた？';
+
+  @override
+  String get pushShareBody => '書き出した動画が保存されています。Shorts・Reels・TikTokへシェアしましょう。';
+
+  @override
+  String get pushCatalogTitle => '新しい編集ツール';
+
+  @override
+  String get pushCatalogBody => '新しいトランジションとテキストスタイルが追加されました。';
+
+  @override
   String get projectsSection => 'プロジェクト';
 
   @override

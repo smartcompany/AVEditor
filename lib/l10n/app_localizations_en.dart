@@ -298,6 +298,41 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get draftBadge => 'Draft';
+
+  @override
+  String get startNewClip => 'Make another';
+
+  @override
+  String get exportShareHint =>
+      'Share it, then come back to make the next one.';
+
+  @override
+  String get pushDraftTitle => 'Finish your clip';
+
+  @override
+  String get pushDraftBody24 =>
+      'Your edit is still waiting. Open EasyClip to pick up where you left off.';
+
+  @override
+  String get pushDraftBody72 =>
+      'Still unfinished — open it and export in a few taps.';
+
+  @override
+  String get pushShareTitle => 'Ready to post?';
+
+  @override
+  String get pushShareBody =>
+      'Your export is saved. Share it to Shorts, Reels, or TikTok.';
+
+  @override
+  String get pushCatalogTitle => 'New editing tools';
+
+  @override
+  String get pushCatalogBody =>
+      'Fresh transitions and text styles just landed. Try them on your next clip.';
+
+  @override
   String get projectsSection => 'Projects';
 
   @override

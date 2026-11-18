@@ -291,6 +291,36 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get draftBadge => '草稿';
+
+  @override
+  String get startNewClip => '再做一个';
+
+  @override
+  String get exportShareHint => '分享后，回来再做下一条。';
+
+  @override
+  String get pushDraftTitle => '继续完成你的片段';
+
+  @override
+  String get pushDraftBody24 => '你有未完成的编辑项目。打开 EasyClip 接着做吧。';
+
+  @override
+  String get pushDraftBody72 => '还没完成——打开后导出即可。';
+
+  @override
+  String get pushShareTitle => '准备发布了吗？';
+
+  @override
+  String get pushShareBody => '导出视频已保存。分享到 Shorts、Reels 或 TikTok。';
+
+  @override
+  String get pushCatalogTitle => '新编辑素材';
+
+  @override
+  String get pushCatalogBody => '新的转场和文字样式已上线，下一条试试吧。';
+
+  @override
   String get projectsSection => '项目';
 
   @override

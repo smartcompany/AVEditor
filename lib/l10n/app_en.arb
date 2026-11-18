@@ -129,6 +129,16 @@
   "showTimeline": "Show timeline",
   "resumeEditing": "Continue editing",
   "resumeEditingSubtitle": "{count, plural, =0{No text layers · updated {updated}} other{{count} text layers · updated {updated}}}",
+  "draftBadge": "Draft",
+  "startNewClip": "Make another",
+  "exportShareHint": "Share it, then come back to make the next one.",
+  "pushDraftTitle": "Finish your clip",
+  "pushDraftBody24": "Your edit is still waiting. Open EasyClip to pick up where you left off.",
+  "pushDraftBody72": "Still unfinished — open it and export in a few taps.",
+  "pushShareTitle": "Ready to post?",
+  "pushShareBody": "Your export is saved. Share it to Shorts, Reels, or TikTok.",
+  "pushCatalogTitle": "New editing tools",
+  "pushCatalogBody": "Fresh transitions and text styles just landed. Try them on your next clip.",
   "@resumeEditingSubtitle": {
     "placeholders": {
       "count": {

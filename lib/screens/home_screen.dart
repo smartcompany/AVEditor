@@ -1,15 +1,15 @@
 import 'dart:io';
 
-import 'package:aveditor/services/analytics_service.dart';
 import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/screens/editor_screen.dart';
 import 'package:aveditor/screens/settings_screen.dart';
+import 'package:aveditor/services/analytics_service.dart';
 import 'package:aveditor/services/project_storage_service.dart';
 import 'package:aveditor/services/video_import_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
-import 'package:aveditor/widgets/convert_progress_view.dart';
 import 'package:aveditor/utils/logged_snackbar.dart';
 import 'package:aveditor/utils/platform_helper.dart';
+import 'package:aveditor/widgets/convert_progress_view.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -159,6 +159,14 @@ class _HomeScreenState extends State<HomeScreen> {
     return DateFormat.yMMMd().add_jm().format(summary.updatedAt.toLocal());
   }
 
+  /// Newest draft (never exported, or edited after export), if any.
+  ProjectSummary? get _resumeDraft {
+    for (final project in _projects) {
+      if (project.isDraft) return project;
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
@@ -227,50 +235,200 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ],
                 ],
-                const SizedBox(height: 28),
-                Text(
-                  l10n.projectsSection,
-                  style: GoogleFonts.dmSans(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.ink,
+                if (_projectsLoading || _projects.isNotEmpty) ...[
+                  const SizedBox(height: 28),
+                  Text(
+                    l10n.projectsSection,
+                    style: GoogleFonts.dmSans(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.ink,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 10),
+                  const SizedBox(height: 10),
+                ],
                 Expanded(
                   child: _projectsLoading
                       ? const Center(child: CircularProgressIndicator())
                       : _projects.isEmpty
-                      ? Align(
-                          alignment: Alignment.topLeft,
-                          child: Text(
-                            l10n.noProjectsYet,
-                            style: GoogleFonts.dmSans(
-                              fontSize: 14,
-                              height: 1.45,
-                              color: AppTheme.muted,
-                            ),
-                          ),
-                        )
-                      : ListView.separated(
-                          itemCount: _projects.length,
-                          separatorBuilder: (_, _) =>
-                              const SizedBox(height: 10),
-                          itemBuilder: (context, index) {
-                            final project = _projects[index];
-                            return _ProjectTile(
-                              cover: _coverFor(project),
-                              title: _projectTitle(project),
-                              subtitle: l10n.projectListSubtitle(
-                                project.overlayCount,
-                              ),
-                              enabled: !_loading,
-                              onOpen: () => _openEditor(project.id),
-                              onDelete: () => _deleteProject(project),
-                              deleteTooltip: l10n.deleteProject,
+                      ? const SizedBox.shrink()
+                      : Builder(
+                          builder: (context) {
+                            final draft = _resumeDraft;
+                            return ListView(
+                              children: [
+                                if (draft != null) ...[
+                                  _ResumeDraftCard(
+                                    cover: _coverFor(draft),
+                                    title: _projectTitle(draft),
+                                    subtitle: l10n.resumeEditingSubtitle(
+                                      draft.overlayCount,
+                                      DateFormat.MMMd().add_jm().format(
+                                        draft.updatedAt.toLocal(),
+                                      ),
+                                    ),
+                                    badge: l10n.draftBadge,
+                                    actionLabel: l10n.resumeEditing,
+                                    enabled: !_loading,
+                                    onOpen: () {
+                                      AnalyticsService.instance.log(
+                                        'resume_draft_tap',
+                                      );
+                                      _openEditor(draft.id);
+                                    },
+                                  ),
+                                  const SizedBox(height: 10),
+                                ],
+                                for (var i = 0; i < _projects.length; i++) ...[
+                                  if (i > 0) const SizedBox(height: 10),
+                                  Builder(
+                                    builder: (context) {
+                                      final project = _projects[i];
+                                      return _ProjectTile(
+                                        cover: _coverFor(project),
+                                        title: _projectTitle(project),
+                                        subtitle: l10n.projectListSubtitle(
+                                          project.overlayCount,
+                                        ),
+                                        draftBadge: project.isDraft
+                                            ? l10n.draftBadge
+                                            : null,
+                                        enabled: !_loading,
+                                        onOpen: () =>
+                                            _openEditor(project.id),
+                                        onDelete: () =>
+                                            _deleteProject(project),
+                                        deleteTooltip: l10n.deleteProject,
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ],
                             );
                           },
                         ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ResumeDraftCard extends StatelessWidget {
+  const _ResumeDraftCard({
+    required this.cover,
+    required this.title,
+    required this.subtitle,
+    required this.badge,
+    required this.actionLabel,
+    required this.enabled,
+    required this.onOpen,
+  });
+
+  final Future<String?> cover;
+  final String title;
+  final String subtitle;
+  final String badge;
+  final String actionLabel;
+  final bool enabled;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: enabled ? onOpen : null,
+        borderRadius: BorderRadius.circular(16),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                AppTheme.accent.withValues(alpha: 0.22),
+                AppTheme.accentCyan.withValues(alpha: 0.12),
+              ],
+            ),
+            border: Border.all(color: AppTheme.accent.withValues(alpha: 0.35)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    _ProjectCover(cover: cover),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.accent.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  badge,
+                                  style: GoogleFonts.dmSans(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.ink,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.dmSans(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.ink,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            subtitle,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.dmSans(
+                              fontSize: 12,
+                              height: 1.35,
+                              color: AppTheme.muted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  actionLabel,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.ink,
+                  ),
                 ),
               ],
             ),
@@ -290,12 +448,14 @@ class _ProjectTile extends StatelessWidget {
     required this.onOpen,
     required this.onDelete,
     required this.deleteTooltip,
+    this.draftBadge,
   });
 
   /// Path of the cover JPEG (first frame), or null when none could be made.
   final Future<String?> cover;
   final String title;
   final String subtitle;
+  final String? draftBadge;
   final bool enabled;
   final VoidCallback onOpen;
   final VoidCallback onDelete;
@@ -334,10 +494,37 @@ class _ProjectTile extends StatelessWidget {
                       vertical: 6,
                     ),
                     leading: _ProjectCover(cover: cover),
-                    title: Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    title: Row(
+                      children: [
+                        if (draftBadge != null) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 1,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppTheme.accent.withValues(alpha: 0.18),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              draftBadge!,
+                              style: GoogleFonts.dmSans(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.ink,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                        ],
+                        Expanded(
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                     subtitle: Text(subtitle),
                     trailing: Row(

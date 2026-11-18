@@ -17,6 +17,29 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('VideoProject serialization', () {
+    test('isDraft reflects lastExportedAt vs updatedAt', () {
+      final edited = DateTime.utc(2026, 3, 1, 12);
+      final project = VideoProject(
+        id: 'draft-1',
+        sourcePath: '/tmp/projects/draft-1/source.mp4',
+        duration: const Duration(seconds: 5),
+        updatedAt: edited,
+      );
+      expect(project.isDraft, isTrue);
+
+      project.lastExportedAt = edited;
+      expect(project.isDraft, isFalse);
+
+      project.updatedAt = edited.add(const Duration(minutes: 1));
+      expect(project.isDraft, isTrue);
+
+      final restored = VideoProject.fromJson(
+        project.copyWith(lastExportedAt: edited).toJson(),
+        sourcePath: project.sourcePath,
+      );
+      expect(restored.lastExportedAt, edited);
+    });
+
     test('round-trips overlays, trim, and rotation', () {
       final overlay = TextOverlay(
         id: 'overlay-1',

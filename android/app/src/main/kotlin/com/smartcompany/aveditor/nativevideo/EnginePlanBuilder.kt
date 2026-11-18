@@ -32,9 +32,15 @@ internal object EnginePlanBuilder {
     }
   }
 
-  fun build(sourcePath: String, segments: List<*>): EngineTimeline {
+  fun build(
+    sourcePath: String,
+    segments: List<*>,
+    /** Video ∪ music ∪ text end; past picture is black (no pieces). */
+    requestedDurationMs: Int = 0,
+  ): EngineTimeline {
     val meta = NativeVideoEngineMedia.probeOriented(sourcePath)
     val packed = NativeVideoEngineMedia.packSegmentsForEngine(segments, sourcePath)
+    val totalMs = maxOf(packed.totalMs, requestedDurationMs.toLong().coerceAtLeast(0L))
     val pieces = JSONArray()
     for (track in 0..1) {
       for (piece in packed.tracks[track]) {
@@ -70,14 +76,14 @@ internal object EnginePlanBuilder {
     }
     val root = JSONObject()
       .put("sourcePath", sourcePath)
-      .put("totalMs", packed.totalMs)
+      .put("totalMs", totalMs)
       .put("width", meta.width)
       .put("height", meta.height)
       .put("pieces", pieces)
       .put("blends", blends)
     return EngineTimeline(
       json = root.toString(),
-      durationMs = packed.totalMs.toInt().coerceAtLeast(0),
+      durationMs = totalMs.toInt().coerceAtLeast(0),
       width = meta.width,
       height = meta.height,
       sourcePath = sourcePath,

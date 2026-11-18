@@ -1,9 +1,33 @@
 import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/project_music.dart';
+import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/utils/music_timeline_ops.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('projectSequenceDuration grows when text extends past video', () {
+    final segments = [
+      ClipSegment(
+        start: Duration.zero,
+        end: const Duration(seconds: 8),
+      ),
+    ];
+    final overlay = TextOverlay(
+      text: 'hello',
+      start: const Duration(seconds: 6),
+      end: const Duration(seconds: 14),
+    );
+
+    expect(
+      projectSequenceDuration(
+        segments: segments,
+        sourceDuration: const Duration(seconds: 8),
+        overlays: [overlay],
+      ),
+      const Duration(seconds: 14),
+    );
+  });
+
   test('projectSequenceDuration grows when music extends past video', () {
     final segments = [
       ClipSegment(

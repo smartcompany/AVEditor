@@ -624,6 +624,66 @@ abstract class AppLocalizations {
   /// **'{count, plural, =0{No text layers · updated {updated}} other{{count} text layers · updated {updated}}}'**
   String resumeEditingSubtitle(int count, String updated);
 
+  /// No description provided for @draftBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Draft'**
+  String get draftBadge;
+
+  /// No description provided for @startNewClip.
+  ///
+  /// In en, this message translates to:
+  /// **'Make another'**
+  String get startNewClip;
+
+  /// No description provided for @exportShareHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Share it, then come back to make the next one.'**
+  String get exportShareHint;
+
+  /// No description provided for @pushDraftTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish your clip'**
+  String get pushDraftTitle;
+
+  /// No description provided for @pushDraftBody24.
+  ///
+  /// In en, this message translates to:
+  /// **'Your edit is still waiting. Open EasyClip to pick up where you left off.'**
+  String get pushDraftBody24;
+
+  /// No description provided for @pushDraftBody72.
+  ///
+  /// In en, this message translates to:
+  /// **'Still unfinished — open it and export in a few taps.'**
+  String get pushDraftBody72;
+
+  /// No description provided for @pushShareTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Ready to post?'**
+  String get pushShareTitle;
+
+  /// No description provided for @pushShareBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Your export is saved. Share it to Shorts, Reels, or TikTok.'**
+  String get pushShareBody;
+
+  /// No description provided for @pushCatalogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'New editing tools'**
+  String get pushCatalogTitle;
+
+  /// No description provided for @pushCatalogBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Fresh transitions and text styles just landed. Try them on your next clip.'**
+  String get pushCatalogBody;
+
   /// No description provided for @projectsSection.
   ///
   /// In en, this message translates to:

@@ -105,6 +105,14 @@ internal class EngineCompositor {
     GLES20.glViewport(0, 0, w[0].coerceAtLeast(1), h[0].coerceAtLeast(1))
     GLES20.glClearColor(0f, 0f, 0f, 1f)
     GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+    // No picture (music/text past video EOF) → leave the clear black.
+    if (mask == 0) {
+      if (presentationNs != null) {
+        EGLExt.eglPresentationTimeANDROID(eglDisplay, eglSurface, presentationNs)
+      }
+      EGL14.eglSwapBuffers(eglDisplay, eglSurface)
+      return
+    }
     GLES20.glUseProgram(program)
 
     val dual = mask and 1 != 0 && mask and 2 != 0

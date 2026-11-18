@@ -24,6 +24,7 @@ class ProjectSummary {
     required this.sourceExists,
     this.name,
     this.coverTimeMs = 0,
+    this.lastExportedAt,
   });
 
   final String id;
@@ -37,6 +38,16 @@ class ProjectSummary {
   /// Source time of the project's first frame (start of the first clip),
   /// used for the home-screen cover thumbnail.
   final int coverTimeMs;
+
+  /// Null until the first successful export.
+  final DateTime? lastExportedAt;
+
+  /// Never exported, or edited after the last export.
+  bool get isDraft {
+    final exported = lastExportedAt;
+    if (exported == null) return true;
+    return updatedAt.isAfter(exported);
+  }
 }
 
 /// Persists edit projects as JSON + a copied source video on disk.
@@ -283,8 +294,27 @@ class ProjectStorageService {
       coverTimeMs: project.segments.isEmpty
           ? 0
           : project.segments.first.start.inMilliseconds,
+      lastExportedAt: project.lastExportedAt,
     );
   }
+
+  /// Marks a successful export so home can demote the project from “draft”.
+  ///
+  /// Writes without [save]'s [VideoProject.touch] — otherwise `updatedAt`
+  /// would land after `lastExportedAt` and the project would stay a draft.
+  Future<void> markExported(String projectId, {DateTime? at}) async {
+    final project = await load(projectId);
+    if (project == null) return;
+    final when = at ?? DateTime.now();
+    project.lastExportedAt =
+        project.updatedAt.isAfter(when) ? project.updatedAt : when;
+    final file = await _projectFile(project.id);
+    await file.writeAsString(
+      const JsonEncoder.withIndent('  ').convert(project.toJson()),
+      flush: true,
+    );
+  }
+
 
   /// Cover thumbnail for the home list: one frame at the start of the first
   /// clip, cached as `cover_<ms>.jpg` in the project folder. Trimming the

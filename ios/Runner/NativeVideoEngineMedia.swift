@@ -338,9 +338,26 @@ private func exportReencode(
   let videoComp = AVMutableVideoComposition()
   videoComp.renderSize = renderSize
   videoComp.frameDuration = CMTime(value: 1, timescale: 30)
+  let videoEnd = placements.last?.end ?? composition.duration
+  let requested = request.durationMs > 0
+    ? CMTime(value: CMTimeValue(request.durationMs), timescale: 1000)
+    : videoEnd
+  // Music/text past picture: pad black frames so export length = requested.
+  let needsBlackPad = CMTimeCompare(requested, videoEnd) > 0
+  if needsBlackPad {
+    let pad = CMTimeSubtract(requested, videoEnd)
+    let trackIndex = placements.last?.trackIndex ?? 0
+    if trackIndex >= 0, trackIndex < videoTracks.count {
+      videoTracks[trackIndex].insertEmptyTimeRange(
+        CMTimeRange(start: videoEnd, duration: pad)
+      )
+    }
+  }
   // Core Animation export crashes in the simulator (IOSurface / xpc_shmem)
   // while burning text. The frame compositor already paints those images.
-  let needsCompositor = placements.contains { $0.transitionMs > 0 } || !request.overlays.isEmpty
+  let needsCompositor = placements.contains { $0.transitionMs > 0 }
+    || !request.overlays.isEmpty
+    || needsBlackPad
   if needsCompositor {
     ExportOverlayStore.set(request.overlays)
     videoComp.customVideoCompositorClass = ExportFrameCompositor.self
@@ -350,11 +367,38 @@ private func exportReencode(
     let global = request.rotationDegrees == 0
       ? CGAffineTransform.identity
       : CGAffineTransform(rotationAngle: CGFloat(request.rotationDegrees))
-    videoComp.instructions = buildCustomExportInstructions(
+    var instructions = buildCustomExportInstructions(
       placements: placements,
       videoTracks: videoTracks,
       globalTransform: global
     )
+    if needsBlackPad {
+      // Empty media on the last video track → compositor paints black while
+      // still burning overlays that extend past picture EOF.
+      let padTrackIndex = placements.last?.trackIndex ?? 0
+      let padTrackID = (padTrackIndex >= 0 && padTrackIndex < videoTracks.count)
+        ? videoTracks[padTrackIndex].trackID
+        : kCMPersistentTrackID_Invalid
+      instructions.append(
+        ExportCompositionInstruction(
+          timeRange: CMTimeRange(
+            start: videoEnd,
+            duration: CMTimeSubtract(requested, videoEnd)
+          ),
+          outgoingTrackID: padTrackID,
+          incomingTrackID: kCMPersistentTrackID_Invalid,
+          effect: "",
+          kind: "",
+          reverse: false,
+          layers: [],
+          preferredTransform: .identity,
+          incomingPreferredTransform: .identity,
+          incomingScaleFrom: 1,
+          incomingScaleTo: 1
+        )
+      )
+    }
+    videoComp.instructions = instructions
   } else {
     ExportOverlayStore.clear()
     videoComp.instructions = buildExportInstructions(
@@ -377,11 +421,12 @@ private func exportReencode(
   session.outputURL = URL(fileURLWithPath: request.outputPath)
   session.outputFileType = .mp4
   session.videoComposition = videoComp
-  let videoEnd = placements.last?.end ?? composition.duration
-  let requested = request.durationMs > 0
-    ? CMTime(value: CMTimeValue(request.durationMs), timescale: 1000)
-    : videoEnd
-  let exportDuration = CMTimeMinimum(CMTimeMinimum(requested, videoEnd), composition.duration)
+  // Prefer requested (video ∪ music ∪ text). Never clamp to picture EOF —
+  // black pad + music may extend past placements.last.end.
+  let exportDuration = CMTimeMinimum(
+    requested > .zero ? requested : composition.duration,
+    composition.duration
+  )
   session.timeRange = CMTimeRange(start: .zero, duration: exportDuration)
   activeExportSession = session
   for (index, instruction) in videoComp.instructions.enumerated() {

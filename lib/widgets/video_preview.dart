@@ -1296,9 +1296,12 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
 
     if (widget.editing) {
       final live = _controller.text;
-      final isHint = live.isEmpty;
-      final displayText = isHint ? (widget.textHint ?? '') : live;
-      final maxW = layoutMaxWidth(displayText);
+      // Once the keyboard is up, hide the "tap to enter text" placeholder —
+      // show only real typed characters (empty → caret only).
+      final displayText = live;
+      final maxW = layoutMaxWidth(
+        live.isEmpty ? (widget.textHint ?? '') : live,
+      );
       final painted = IgnorePointer(
         child: OverlayTextDisplay(
           text: displayText,
@@ -1308,8 +1311,6 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
           template: template,
           fontFamily: widget.overlay.fontFamily,
           textAlign: widget.overlay.textAlign,
-          // Hint uses the full text style (opaque, with outline/shadow) so it
-          // stays readable on bright video.
           hintColor: null,
           entrance: TextEntranceState.fullyVisible,
         ),

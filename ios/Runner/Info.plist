@@ -82,7 +82,7 @@
 	<key>FacebookAdvertiserIDCollectionEnabled</key>
 	<false/>
 	<key>CFBundleVersion</key>
-	<string>5</string>
+	<string>6</string>
 	<key>GADApplicationIdentifier</key>
 	<string>ca-app-pub-3940256099942544~1458002511</string>
 	<key>GIDClientID</key>
@@ -142,5 +142,9 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
+	<!-- Standard HTTPS/TLS only — exempt under US EAR. Answers App Store
+	     export compliance so builds are not held for missing documentation. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>

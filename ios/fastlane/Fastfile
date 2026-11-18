@@ -89,10 +89,10 @@ platform :ios do
         skip_app_version_update: true,
         precheck_include_in_app_purchases: false,
         force: true,
+        # Matches Info.plist ITSAppUsesNonExemptEncryption=false (HTTPS/TLS only).
         submission_information: {
-          export_compliance: {
-            uses_non_exempt_encryption: false
-          }
+          export_compliance_uses_encryption: false,
+          export_compliance_encryption_updated: false
         }
       )
     rescue => ex

@@ -11,6 +11,7 @@ import 'package:aveditor/models/applied_transition.dart';
 import 'package:aveditor/models/transition_item.dart';
 import 'package:aveditor/services/composition_segments.dart';
 import 'package:aveditor/services/export_save_service.dart';
+import 'package:aveditor/services/music_storage_service.dart';
 import 'package:aveditor/services/native_video_engine.dart';
 import 'package:aveditor/services/overlay_raster_service.dart';
 import 'package:aveditor/models/transition_role_effect.dart';
@@ -19,6 +20,7 @@ import 'package:aveditor/services/video_probe_service.dart';
 import 'package:aveditor/utils/clip_rotation.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
 import 'package:aveditor/utils/export_dimensions.dart';
+import 'package:aveditor/utils/music_timeline_ops.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -215,7 +217,13 @@ class ExportService {
       'scaleWidth': frame.scaleWidth,
       'scaleHeight': frame.scaleHeight,
       'rotationDegrees': normalizeClipRotation(project.rotation),
-      'durationMs': project.trimmedDuration.inMilliseconds,
+      // Final length = farthest of video / music / text. Past picture → black.
+      'durationMs': projectSequenceDuration(
+        segments: project.segments,
+        sourceDuration: project.duration,
+        musicTracks: project.musicTracks,
+        overlays: project.overlays,
+      ).inMilliseconds,
       'streamCopy': streamCopy,
       'hasVideoAudio': hasVideoAudio,
       'quality': quality.name,
@@ -228,8 +236,7 @@ class ExportService {
   static String? _musicPathForProject(VideoProject project) {
     if (project.musicTracks.isEmpty) return null;
     final music = project.musicTracks.first;
-    final projectDir = p.dirname(project.sourcePath);
-    return p.join(projectDir, music.fileName);
+    return MusicStorageService.musicPath(project.projectDir, music);
   }
 
   @visibleForTesting

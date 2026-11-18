@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -9,6 +10,7 @@ import 'package:aveditor/services/video_frame_grab.dart';
 import 'package:aveditor/utils/av_editor_log.dart';
 import 'package:ffmpeg_kit_flutter_new_min_gpl/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_min_gpl/return_code.dart';
+import 'package:flutter/painting.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -29,20 +31,50 @@ class TimelineThumbnailService {
     if (segs.isEmpty) return const [];
 
     if (project.mediaAssets.isEmpty) {
+      // project.duration is packed timeline length — never use it as the
+      // source-file sample window. Cover every segment's local in/out.
+      var minStart = segs.first.start;
+      var maxEnd = segs.first.end;
+      String? mediaId;
+      for (final segment in segs) {
+        if (segment.start < minStart) minStart = segment.start;
+        if (segment.end > maxEnd) maxEnd = segment.end;
+        mediaId ??= segment.mediaId;
+      }
+      if (maxEnd <= minStart) {
+        maxEnd = minStart + const Duration(seconds: 1);
+      }
       return loadFilmstrip(
         videoPath: project.sourcePath,
-        duration: project.duration,
+        duration: maxEnd - minStart,
         segments: segs,
+        mediaId: mediaId,
+        baseTime: minStart,
       );
     }
 
     final frames = <TimelineFilmstripFrame>[];
-    final seen = <String>{};
+    final byMedia = <String, List<ClipSegment>>{};
+    final fallbackId = project.mediaAssets.first.id;
     for (final segment in segs) {
-      final id = segment.mediaId;
-      if (id == null || !seen.add(id)) continue;
+      final id = segment.mediaId ?? fallbackId;
+      (byMedia[id] ??= <ClipSegment>[]).add(segment);
+    }
+
+    if (byMedia.isEmpty) {
+      for (final asset in project.mediaAssets) {
+        byMedia[asset.id] = List<ClipSegment>.from(segs);
+      }
+    }
+
+    for (final entry in byMedia.entries) {
+      final id = entry.key;
+      final mediaSegs = entry.value;
       final asset = project.assetById(id);
-      if (asset == null) continue;
+      if (asset == null) {
+        avEditorLog('filmstrip missing asset id=$id');
+        continue;
+      }
       final path = project.absoluteMediaPath(asset);
       if (!await File(path).exists()) {
         avEditorLog('filmstrip missing media $path');
@@ -50,30 +82,39 @@ class TimelineThumbnailService {
       }
       if (asset.isImage || MediaConcatService.isImagePath(path)) {
         frames.addAll(await _loadImageStill(path, mediaId: id));
-      } else {
-        // Prefer the clip's in/out window so tiles match what the user sees,
-        // not an unused tail of the source file.
-        final clipEnd = segment.end > segment.start
-            ? segment.end
-            : (asset.duration > Duration.zero
-                ? asset.duration
-                : const Duration(seconds: 1));
-        final span = clipEnd - segment.start;
-        final duration = span > Duration.zero
-            ? span
-            : (asset.duration > Duration.zero
-                ? asset.duration
-                : const Duration(seconds: 1));
-        frames.addAll(
-          await loadFilmstrip(
-            videoPath: path,
-            duration: duration,
-            segments: [segment],
-            mediaId: id,
-            baseTime: segment.start,
-          ),
-        );
+        continue;
       }
+
+      // Sample the union of kept windows (+ small pad), not the whole file —
+      // full-file accurate ffmpeg grabs were empty/slow and wiped the strip.
+      var minStart = mediaSegs.first.start;
+      var maxEnd = mediaSegs.first.end;
+      for (final segment in mediaSegs) {
+        if (segment.start < minStart) minStart = segment.start;
+        if (segment.end > maxEnd) maxEnd = segment.end;
+      }
+      const pad = Duration(milliseconds: 400);
+      var base = minStart > pad ? minStart - pad : Duration.zero;
+      var end = maxEnd + pad;
+      if (asset.duration > Duration.zero && end > asset.duration) {
+        end = asset.duration;
+      }
+      if (end <= base) {
+        end = base + const Duration(milliseconds: 1);
+      }
+
+      final loaded = await loadFilmstrip(
+        videoPath: path,
+        duration: end - base,
+        segments: mediaSegs,
+        mediaId: id,
+        baseTime: base,
+      );
+      avEditorLog(
+        'filmstrip media=$id frames=${loaded.length} '
+        'baseMs=${base.inMilliseconds} endMs=${end.inMilliseconds}',
+      );
+      frames.addAll(loaded);
     }
     frames.sort((a, b) {
       final byMedia = (a.mediaId ?? '').compareTo(b.mediaId ?? '');
@@ -103,8 +144,7 @@ class TimelineThumbnailService {
     final lastOffsetMs = durationMs <= 1
         ? 0
         : (durationMs > 500 ? durationMs - 250 : durationMs ~/ 2);
-    final stepMs =
-        (durationMs / frameCount).ceil().clamp(1, 1 << 30);
+    final stepMs = (durationMs / frameCount).ceil().clamp(1, 1 << 30);
     final cacheDir = await _cacheDirectory(videoPath);
     final frames = <TimelineFilmstripFrame>[];
     final capturedMs = <int>{};
@@ -115,39 +155,51 @@ class TimelineThumbnailService {
       final clampedMs = mediaTimeMs.clamp(lo, hi);
       if (!capturedMs.add(clampedMs)) return;
 
-      final cacheFile = File(
-        p.join(cacheDir.path, 'thumb_${clampedMs}ms.jpg'),
-      );
-
-      if (!await cacheFile.exists()) {
-        final generated = await const VideoFrameGrab().jpegFile(
-          video: videoPath,
-          thumbnailPath: cacheFile.path,
-          timeMs: clampedMs,
-          maxHeight: _thumbHeight,
-          quality: 65,
-          accurate: true,
+      try {
+        final cacheFile = File(
+          p.join(cacheDir.path, 'thumb_${clampedMs}ms.jpg'),
         );
-        if (generated != null &&
-            p.normalize(generated) != p.normalize(cacheFile.path)) {
-          await File(generated).copy(cacheFile.path);
+
+        // Empty / corrupt leftovers from failed grabs must be regenerated.
+        if (await cacheFile.exists() && await cacheFile.length() == 0) {
+          await cacheFile.delete();
         }
+
+        if (!await cacheFile.exists()) {
+          // Prefer the platform thumbnailer; ffmpeg only as fallback.
+          final generated = await const VideoFrameGrab().jpegFile(
+            video: videoPath,
+            thumbnailPath: cacheFile.path,
+            timeMs: clampedMs,
+            maxHeight: _thumbHeight,
+            quality: 65,
+          );
+          if (generated != null &&
+              p.normalize(generated) != p.normalize(cacheFile.path)) {
+            await File(generated).copy(cacheFile.path);
+          }
+        }
+
+        if (!await cacheFile.exists() || await cacheFile.length() == 0) {
+          return;
+        }
+
+        final bytes = await cacheFile.readAsBytes();
+        if (bytes.isEmpty) return;
+
+        final codec = await ui.instantiateImageCodec(bytes);
+        final frame = await codec.getNextFrame();
+        frames.add(
+          TimelineFilmstripFrame(
+            sourceTime: Duration(milliseconds: clampedMs),
+            image: frame.image,
+            mediaId: mediaId,
+          ),
+        );
+      } catch (error) {
+        // One bad tile must not abort the whole strip.
+        avEditorLog('filmstrip frame failed ms=$clampedMs: $error');
       }
-
-      if (!await cacheFile.exists()) return;
-
-      final bytes = await cacheFile.readAsBytes();
-      if (bytes.isEmpty) return;
-
-      final codec = await ui.instantiateImageCodec(bytes);
-      final frame = await codec.getNextFrame();
-      frames.add(
-        TimelineFilmstripFrame(
-          sourceTime: Duration(milliseconds: clampedMs),
-          image: frame.image,
-          mediaId: mediaId,
-        ),
-      );
     }
 
     for (var i = 0; i < frameCount; i++) {
@@ -177,25 +229,56 @@ class TimelineThumbnailService {
     required String mediaId,
   }) async {
     if (!await File(imagePath).exists()) return const [];
-    final cacheDir = await _cacheDirectory(imagePath);
-    final cacheFile = File(p.join(cacheDir.path, 'still.jpg'));
 
-    if (!await cacheFile.exists() || await cacheFile.length() == 0) {
-      var ready = false;
-      // Prefer a JPEG copy so ui.instantiateImageCodec can decode HEIC/PNG too.
-      try {
-        final ext = p.extension(imagePath).toLowerCase();
-        if (ext == '.jpg' || ext == '.jpeg') {
-          await File(imagePath).copy(cacheFile.path);
-          ready = await cacheFile.exists() && await cacheFile.length() > 0;
-        }
-      } catch (_) {}
-      if (!ready) {
-        ready = await _ffmpegImageJpeg(imagePath, cacheFile.path);
-      }
-      if (!ready) return const [];
+    // 1) Platform image pipeline (FileImage) — required for iPhone HEIC/HEIF.
+    //    Raw instantiateImageCodec / min-gpl ffmpeg often cannot decode those.
+    final platformImage = await _decodeStillViaFileImage(imagePath);
+    if (platformImage != null) {
+      avEditorLog('filmstrip image via FileImage $imagePath');
+      return [
+        TimelineFilmstripFrame(
+          sourceTime: Duration.zero,
+          image: platformImage,
+          mediaId: mediaId,
+        ),
+      ];
     }
 
+    // 2) JPEG/PNG/WebP bytes via dart:ui codec.
+    try {
+      final bytes = await File(imagePath).readAsBytes();
+      if (bytes.isNotEmpty) {
+        final codec = await ui.instantiateImageCodec(
+          bytes,
+          targetHeight: _thumbHeight,
+        );
+        final frame = await codec.getNextFrame();
+        avEditorLog('filmstrip image via codec $imagePath');
+        return [
+          TimelineFilmstripFrame(
+            sourceTime: Duration.zero,
+            image: frame.image,
+            mediaId: mediaId,
+          ),
+        ];
+      }
+    } catch (error) {
+      avEditorLog('filmstrip image codec failed: $error');
+    }
+
+    // 3) ffmpeg → JPEG cache, then codec.
+    final cacheDir = await _cacheDirectory(imagePath);
+    final cacheFile = File(p.join(cacheDir.path, 'still.jpg'));
+    if (await cacheFile.exists() && await cacheFile.length() == 0) {
+      await cacheFile.delete();
+    }
+    if (!await cacheFile.exists()) {
+      final ready = await _ffmpegImageJpeg(imagePath, cacheFile.path);
+      if (!ready) {
+        avEditorLog('filmstrip image all decoders failed $imagePath');
+        return const [];
+      }
+    }
     try {
       final bytes = await cacheFile.readAsBytes();
       if (bytes.isEmpty) return const [];
@@ -212,9 +295,43 @@ class TimelineThumbnailService {
         ),
       ];
     } catch (error) {
-      avEditorLog('filmstrip image decode failed: $error');
+      avEditorLog('filmstrip image jpeg-cache decode failed: $error');
       return const [];
     }
+  }
+
+  /// Uses the same OS decoder as [Image.file] (HEIC on iOS, etc.).
+  Future<ui.Image?> _decodeStillViaFileImage(String imagePath) async {
+    final completer = Completer<ui.Image?>();
+    final provider = ResizeImage(
+      FileImage(File(imagePath)),
+      height: _thumbHeight,
+      allowUpscaling: false,
+    );
+    late final ImageStreamListener listener;
+    final stream = provider.resolve(ImageConfiguration.empty);
+    listener = ImageStreamListener(
+      (info, _) {
+        if (!completer.isCompleted) {
+          completer.complete(info.image.clone());
+        }
+        stream.removeListener(listener);
+      },
+      onError: (error, stack) {
+        avEditorLog('filmstrip FileImage failed: $error');
+        if (!completer.isCompleted) completer.complete(null);
+        stream.removeListener(listener);
+      },
+    );
+    stream.addListener(listener);
+    return completer.future.timeout(
+      const Duration(seconds: 8),
+      onTimeout: () {
+        stream.removeListener(listener);
+        avEditorLog('filmstrip FileImage timeout $imagePath');
+        return null;
+      },
+    );
   }
 
   Future<bool> _ffmpegImageJpeg(String imagePath, String output) async {
@@ -227,6 +344,8 @@ class TimelineThumbnailService {
         '1',
         '-update',
         '1',
+        '-vf',
+        'scale=-2:$_thumbHeight',
         '-q:v',
         '4',
         output,

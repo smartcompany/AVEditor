@@ -294,6 +294,36 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
+  String get draftBadge => '작성 중';
+
+  @override
+  String get startNewClip => '새 클립 만들기';
+
+  @override
+  String get exportShareHint => '공유한 뒤, 다음 클립을 만들러 돌아와 보세요.';
+
+  @override
+  String get pushDraftTitle => '클립을 이어서 완성하세요';
+
+  @override
+  String get pushDraftBody24 => '편집하던 프로젝트가 남아 있어요. EasyClip에서 이어서 작업해 보세요.';
+
+  @override
+  String get pushDraftBody72 => '아직 미완성이에요. 열고 내보내기만 하면 끝나요.';
+
+  @override
+  String get pushShareTitle => '올릴 준비 됐나요?';
+
+  @override
+  String get pushShareBody => '내보낸 영상이 저장돼 있어요. Shorts·릴스·TikTok으로 공유해 보세요.';
+
+  @override
+  String get pushCatalogTitle => '새 편집 도구';
+
+  @override
+  String get pushCatalogBody => '새로운 전환·텍스트 스타일이 추가됐어요. 다음 클립에 써 보세요.';
+
+  @override
   String get projectsSection => '프로젝트';
 
   @override

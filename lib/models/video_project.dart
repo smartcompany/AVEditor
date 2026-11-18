@@ -44,6 +44,7 @@ class VideoProject {
     this.rotation = 0,
     this.name,
     DateTime? updatedAt,
+    this.lastExportedAt,
   })  : mediaAssets = mediaAssets ?? [],
         segments = segments ??
             segmentsFromTrim(
@@ -81,6 +82,17 @@ class VideoProject {
   double rotation;
 
   DateTime updatedAt;
+
+  /// Last successful export time. Null until the user has exported once.
+  /// Used for home “continue draft” when [updatedAt] is newer than this.
+  DateTime? lastExportedAt;
+
+  /// True when the project has never been exported, or was edited after export.
+  bool get isDraft {
+    final exported = lastExportedAt;
+    if (exported == null) return true;
+    return updatedAt.isAfter(exported);
+  }
 
   /// User-given project name. Null until the user names it (asked on the
   /// first back press out of the editor).
@@ -194,6 +206,7 @@ class VideoProject {
       rotation: rotation,
       name: name,
       updatedAt: updatedAt,
+      lastExportedAt: lastExportedAt,
     );
   }
 
@@ -208,6 +221,8 @@ class VideoProject {
     double? rotation,
     String? name,
     DateTime? updatedAt,
+    DateTime? lastExportedAt,
+    bool clearLastExportedAt = false,
   }) {
     return VideoProject(
       id: id,
@@ -224,6 +239,9 @@ class VideoProject {
       rotation: rotation ?? this.rotation,
       name: name ?? this.name,
       updatedAt: updatedAt ?? this.updatedAt,
+      lastExportedAt: clearLastExportedAt
+          ? null
+          : (lastExportedAt ?? this.lastExportedAt),
     );
   }
 
@@ -232,6 +250,8 @@ class VideoProject {
         'id': id,
         if (name != null) 'name': name,
         'updatedAt': updatedAt.toIso8601String(),
+        if (lastExportedAt != null)
+          'lastExportedAt': lastExportedAt!.toIso8601String(),
         'sourceFileName': sourceFileName,
         'durationMs':
             (segments.isEmpty ? duration : exportTimelineDuration(segments))
@@ -354,6 +374,9 @@ class VideoProject {
       rotation: (json['rotation'] as num?)?.toDouble() ?? 0,
       name: json['name'] as String?,
       updatedAt: DateTime.parse(json['updatedAt'] as String),
+      lastExportedAt: json['lastExportedAt'] == null
+          ? null
+          : DateTime.parse(json['lastExportedAt'] as String),
     );
   }
 }
