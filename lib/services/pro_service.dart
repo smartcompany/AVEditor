@@ -558,6 +558,14 @@ class ProService extends ChangeNotifier {
     );
     final bodyText = utf8.decode(res.bodyBytes);
     _iapLog('verify ← ${res.statusCode} $bodyText');
+    if (res.statusCode == 400) {
+      try {
+        final err = jsonDecode(bodyText);
+        if (err is Map) {
+          _iapLog('verify detail jwsError=${err['jwsError']} lookupError=${err['lookupError']}');
+        }
+      } catch (_) {}
+    }
     if (res.statusCode >= 200 && res.statusCode < 300) {
       final map = jsonDecode(bodyText);
       if (map is Map) {
