@@ -32,41 +32,70 @@ class TransitionCatalogService extends ChangeNotifier {
   bool get isReady => _ready;
   String? get lastError => _lastError;
 
+  /// True when the picker has something to show (flat list or categories).
+  bool get hasItems => _itemCount(_catalog) > 0;
+
   TransitionRepository get repository =>
       _repository ?? TransitionRepository(httpClient: _http);
 
+  static int _itemCount(TransitionCatalog catalog) {
+    if (catalog.items.isNotEmpty) return catalog.items.length;
+    var n = 0;
+    for (final cat in catalog.categories) {
+      n += cat.items.length;
+    }
+    return n;
+  }
+
   Future<void> ensureInitialized() async {
-    if (_ready && _catalog.items.isNotEmpty) return;
-    // Share one in-flight load; drop it on failure so the next open can retry.
+    if (_ready && hasItems) return;
+
     final existing = _initFuture;
     if (existing != null) {
-      await existing;
-      if (_ready && _catalog.items.isNotEmpty) return;
+      try {
+        await existing;
+      } catch (_) {
+        // Fall through and retry below.
+      }
+      if (_ready && hasItems) return;
     }
+
     final run = refresh();
     _initFuture = run;
     try {
-      await run.timeout(const Duration(seconds: 4));
+      await run.timeout(const Duration(seconds: 6));
     } on TimeoutException {
       debugPrint('TransitionCatalogService: init timed out');
       _lastError = 'timeout';
-      _initFuture = null;
-      if (!_ready) {
+      // Never leave the picker on an empty "ready" state — try bundled once.
+      if (!hasItems) {
+        await _loadBundledIntoState();
+      } else if (!_ready) {
         _ready = true;
         notifyListeners();
       }
-    } catch (_) {
+    } catch (error) {
+      debugPrint('TransitionCatalogService: init failed: $error');
+      if (!hasItems) {
+        await _loadBundledIntoState();
+      }
+    } finally {
       _initFuture = null;
-      rethrow;
     }
+  }
+
+  /// Force a reload (picker retry / after hot reload empty state).
+  Future<void> reload() async {
+    _ready = false;
+    _initFuture = null;
+    await refresh(awaitRemote: true);
   }
 
   Future<void> refresh({bool awaitRemote = false}) async {
     _lastError = null;
     try {
       // Show bundled catalog immediately so the picker is never blocked on
-      // the network. Remote merge happens afterward (non-blocking for callers
-      // that await this method after bundled is ready).
+      // the network.
       final bundled = await _loadBundled().timeout(const Duration(seconds: 3));
       _catalog = bundled;
       _ready = true;
@@ -77,9 +106,6 @@ class TransitionCatalogService extends ChangeNotifier {
           ? TextTemplatePackService.instance.remoteBaseUrl.trim()
           : TextTemplatePackService.defaultRemoteBaseUrl;
 
-      // Do not await remote by default — a hung network must not keep the
-      // picker spinner up when the caller awaits [ensureInitialized]/refresh.
-      // Tests pass [awaitRemote] so merge completes before assertions.
       if (awaitRemote) {
         await _mergeRemote(base, bundled);
       } else {
@@ -87,17 +113,24 @@ class TransitionCatalogService extends ChangeNotifier {
       }
     } catch (error) {
       _lastError = error.toString();
-      try {
-        _catalog = await _loadBundled().timeout(const Duration(seconds: 2));
-      } catch (bundledError) {
-        debugPrint(
-          'TransitionCatalogService: bundled load failed: $bundledError',
-        );
+      debugPrint('TransitionCatalogService: refresh failed: $error');
+      await _loadBundledIntoState();
+    }
+  }
+
+  Future<void> _loadBundledIntoState() async {
+    try {
+      _catalog = await _loadBundled().timeout(const Duration(seconds: 2));
+    } catch (bundledError) {
+      debugPrint(
+        'TransitionCatalogService: bundled load failed: $bundledError',
+      );
+      if (!hasItems) {
         _catalog = const TransitionCatalog(version: 0, items: []);
       }
-      _ready = true;
-      notifyListeners();
     }
+    _ready = true;
+    notifyListeners();
   }
 
   Future<void> _mergeRemote(String base, TransitionCatalog bundled) async {
@@ -174,9 +207,6 @@ class TransitionCatalogService extends ChangeNotifier {
     TransitionCatalog remote,
   ) {
     if (remote.items.isEmpty && remote.categories.isEmpty) return bundled;
-    // An older server copy (not yet redeployed) must not roll back items the
-    // newer bundled catalog already has (e.g. new premium flags); it may
-    // still add items that only exist on the server.
     final remoteIsOlder = remote.version < bundled.version;
     final byId = <String, TransitionItem>{
       for (final item in bundled.items) item.id: item,
@@ -206,6 +236,7 @@ class TransitionCatalogService extends ChangeNotifier {
         categories[index] = TransitionCategory(
           id: existing.id,
           title: remoteFirst ? existing.title : category.title,
+          titles: remoteFirst ? existing.titles : category.titles,
           items: [for (final item in merged) byId[item.id] ?? item],
         );
         return;
@@ -215,6 +246,7 @@ class TransitionCatalogService extends ChangeNotifier {
         TransitionCategory(
           id: category.id,
           title: category.title,
+          titles: category.titles,
           items: [for (final item in category.items) byId[item.id] ?? item],
         ),
       );
@@ -236,6 +268,9 @@ class TransitionCatalogService extends ChangeNotifier {
     for (final item in bundled.items) {
       if (seen.add(item.id)) ordered.add(byId[item.id]!);
     }
+
+    // Guard: never publish an empty merge over a non-empty bundled catalog.
+    if (ordered.isEmpty && bundled.items.isNotEmpty) return bundled;
 
     return TransitionCatalog(
       version: remote.version >= bundled.version

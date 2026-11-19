@@ -344,12 +344,108 @@
   "proPurchaseFailed": "The purchase didn't go through. Please try again.",
   "proRestoreNone": "No purchases to restore.",
   "proSection": "Subscription",
-  "premiumExportTitle": "Pro effects are in this video",
-  "premiumExportBody": "Choose how to save it.",
-  "premiumExportWithPro": "Save with Pro",
-  "premiumExportWatchAd": "Watch an ad to save this once",
-  "premiumExportStrip": "Save without Pro effects",
-  "premiumAdNotFinished": "Watch the whole ad to unlock this save.",
+  "premiumExportTitle": "Paid effects are in this video",
+  "premiumExportBody": "Watch an ad for each effect, or subscribe to unlock them all.",
+  "premiumExportWithPro": "Subscribe to unlock all",
+  "premiumExportWatchAd": "Watch ad to use",
+  "premiumExportWatchAdsCount": "Watch {count} ads ({credits} credits)",
+  "@premiumExportWatchAdsCount": {
+    "placeholders": {
+      "count": { "type": "int" },
+      "credits": { "type": "int" }
+    }
+  },
+  "premiumExportSpendCredits": "Use {credits} credits (balance {balance})",
+  "@premiumExportSpendCredits": {
+    "placeholders": {
+      "credits": { "type": "int" },
+      "balance": { "type": "int" }
+    }
+  },
+  "premiumExportCreditCost": "This export costs {credits} credits. Balance: {balance}.",
+  "@premiumExportCreditCost": {
+    "placeholders": {
+      "credits": { "type": "int" },
+      "balance": { "type": "int" }
+    }
+  },
+  "premiumExportStrip": "Save without locked effects",
+  "premiumExportEffectUnlocked": "Ready",
+  "premiumExportContinue": "Continue",
+  "premiumAdNotFinished": "Watch the whole ad to unlock this effect.",
+  "premiumCreditsSpendFailed": "Not enough credits yet. Watch more ads or subscribe.",
+  "loginRequiredForSubscribe": "Sign in to subscribe.",
+  "accountSection": "Account",
+  "accountSignIn": "Sign in",
+  "accountSignOut": "Sign out",
+  "accountSignedInAs": "Signed in as {name}",
+  "@accountSignedInAs": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "creditsBalanceLabel": "{balance} credits",
+  "@creditsBalanceLabel": {
+    "placeholders": {
+      "balance": { "type": "int" }
+    }
+  },
+  "planPlusLabel": "Plus",
+  "planProLabel": "Pro",
+  "planStudioLabel": "Studio",
+  "planBillingMonthly": "Monthly",
+  "planBillingAnnual": "Yearly",
+  "planAnnualSaveBadge": "2 months free",
+  "planPlusTitle": "{appName} Plus",
+  "@planPlusTitle": {
+    "placeholders": { "appName": { "type": "String" } }
+  },
+  "planProTitle": "{appName} Pro",
+  "@planProTitle": {
+    "placeholders": { "appName": { "type": "String" } }
+  },
+  "planStudioTitle": "{appName} Studio",
+  "@planStudioTitle": {
+    "placeholders": { "appName": { "type": "String" } }
+  },
+  "planPlusSubtitle": "{credits} credits each month for premium effects.",
+  "@planPlusSubtitle": {
+    "placeholders": { "credits": { "type": "int" } }
+  },
+  "planProSubtitle": "{credits} credits each month, plus AI tools.",
+  "@planProSubtitle": {
+    "placeholders": { "credits": { "type": "int" } }
+  },
+  "planStudioSubtitle": "{credits} credits each month for heavy creators.",
+  "@planStudioSubtitle": {
+    "placeholders": { "credits": { "type": "int" } }
+  },
+  "planPlusBenefit1": "{credits} credits every month",
+  "@planPlusBenefit1": {
+    "placeholders": { "credits": { "type": "int" } }
+  },
+  "planPlusBenefit2": "All premium transitions and text effects",
+  "planPlusBenefit3": "Spend credits to export — top up with ads anytime",
+  "planProBenefit1": "{credits} credits every month",
+  "@planProBenefit1": {
+    "placeholders": { "credits": { "type": "int" } }
+  },
+  "planProBenefit2": "All premium transitions and text effects",
+  "planProBenefit3": "AI tools unlocked",
+  "planProBenefit4": "Spend credits to export — top up with ads anytime",
+  "planStudioBenefit1": "{credits} credits every month",
+  "@planStudioBenefit1": {
+    "placeholders": { "credits": { "type": "int" } }
+  },
+  "planStudioBenefit2": "All premium transitions and text effects",
+  "planStudioBenefit3": "AI tools unlocked",
+  "planStudioBenefit4": "Studio creative extras and priority access to new tools",
+  "planStudioBenefit5": "Spend credits to export — top up with ads anytime",
+  "planSubscribeCta": "Subscribe to {plan}",
+  "@planSubscribeCta": {
+    "placeholders": { "plan": { "type": "String" } }
+  },
+  "proBenefitAi": "Pro & Studio unlock AI tools",
   "@proTitle": {
     "placeholders": {
       "appName": {

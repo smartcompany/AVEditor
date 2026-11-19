@@ -823,22 +823,173 @@ class AppLocalizationsEn extends AppLocalizations {
   String get proSection => 'Subscription';
 
   @override
-  String get premiumExportTitle => 'Pro effects are in this video';
+  String get premiumExportTitle => 'Paid effects are in this video';
 
   @override
-  String get premiumExportBody => 'Choose how to save it.';
+  String get premiumExportBody =>
+      'Watch an ad for each effect, or subscribe to unlock them all.';
 
   @override
-  String get premiumExportWithPro => 'Save with Pro';
+  String get premiumExportWithPro => 'Subscribe to unlock all';
 
   @override
-  String get premiumExportWatchAd => 'Watch an ad to save this once';
+  String get premiumExportWatchAd => 'Watch ad to use';
 
   @override
-  String get premiumExportStrip => 'Save without Pro effects';
+  String premiumExportWatchAdsCount(int count, int credits) {
+    return 'Watch $count ads ($credits credits)';
+  }
 
   @override
-  String get premiumAdNotFinished => 'Watch the whole ad to unlock this save.';
+  String premiumExportSpendCredits(int credits, int balance) {
+    return 'Use $credits credits (balance $balance)';
+  }
+
+  @override
+  String premiumExportCreditCost(int credits, int balance) {
+    return 'This export costs $credits credits. Balance: $balance.';
+  }
+
+  @override
+  String get premiumExportStrip => 'Save without locked effects';
+
+  @override
+  String get premiumExportEffectUnlocked => 'Ready';
+
+  @override
+  String get premiumExportContinue => 'Continue';
+
+  @override
+  String get premiumAdNotFinished =>
+      'Watch the whole ad to unlock this effect.';
+
+  @override
+  String get premiumCreditsSpendFailed =>
+      'Not enough credits yet. Watch more ads or subscribe.';
+
+  @override
+  String get loginRequiredForSubscribe => 'Sign in to subscribe.';
+
+  @override
+  String get accountSection => 'Account';
+
+  @override
+  String get accountSignIn => 'Sign in';
+
+  @override
+  String get accountSignOut => 'Sign out';
+
+  @override
+  String accountSignedInAs(String name) {
+    return 'Signed in as $name';
+  }
+
+  @override
+  String creditsBalanceLabel(int balance) {
+    return '$balance credits';
+  }
+
+  @override
+  String get planPlusLabel => 'Plus';
+
+  @override
+  String get planProLabel => 'Pro';
+
+  @override
+  String get planStudioLabel => 'Studio';
+
+  @override
+  String get planBillingMonthly => 'Monthly';
+
+  @override
+  String get planBillingAnnual => 'Yearly';
+
+  @override
+  String get planAnnualSaveBadge => '2 months free';
+
+  @override
+  String planPlusTitle(String appName) {
+    return '$appName Plus';
+  }
+
+  @override
+  String planProTitle(String appName) {
+    return '$appName Pro';
+  }
+
+  @override
+  String planStudioTitle(String appName) {
+    return '$appName Studio';
+  }
+
+  @override
+  String planPlusSubtitle(int credits) {
+    return '$credits credits each month for premium effects.';
+  }
+
+  @override
+  String planProSubtitle(int credits) {
+    return '$credits credits each month, plus AI tools.';
+  }
+
+  @override
+  String planStudioSubtitle(int credits) {
+    return '$credits credits each month for heavy creators.';
+  }
+
+  @override
+  String planPlusBenefit1(int credits) {
+    return '$credits credits every month';
+  }
+
+  @override
+  String get planPlusBenefit2 => 'All premium transitions and text effects';
+
+  @override
+  String get planPlusBenefit3 =>
+      'Spend credits to export — top up with ads anytime';
+
+  @override
+  String planProBenefit1(int credits) {
+    return '$credits credits every month';
+  }
+
+  @override
+  String get planProBenefit2 => 'All premium transitions and text effects';
+
+  @override
+  String get planProBenefit3 => 'AI tools unlocked';
+
+  @override
+  String get planProBenefit4 =>
+      'Spend credits to export — top up with ads anytime';
+
+  @override
+  String planStudioBenefit1(int credits) {
+    return '$credits credits every month';
+  }
+
+  @override
+  String get planStudioBenefit2 => 'All premium transitions and text effects';
+
+  @override
+  String get planStudioBenefit3 => 'AI tools unlocked';
+
+  @override
+  String get planStudioBenefit4 =>
+      'Studio creative extras and priority access to new tools';
+
+  @override
+  String get planStudioBenefit5 =>
+      'Spend credits to export — top up with ads anytime';
+
+  @override
+  String planSubscribeCta(String plan) {
+    return 'Subscribe to $plan';
+  }
+
+  @override
+  String get proBenefitAi => 'Pro & Studio unlock AI tools';
 
   @override
   String get uploadAccountTitle => 'YouTube account';

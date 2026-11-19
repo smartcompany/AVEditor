@@ -1,18 +1,26 @@
 import 'dart:async';
 
+import 'package:aveditor/app_auth_provider.dart';
+import 'package:aveditor/config/auth_config.dart';
+import 'package:aveditor/firebase_options.dart';
 import 'package:aveditor/l10n/app_localizations.dart';
+import 'package:aveditor/models/app_user.dart';
 import 'package:aveditor/navigation/app_navigator.dart';
 import 'package:aveditor/screens/home_screen.dart';
 import 'package:aveditor/services/analytics_service.dart';
+import 'package:aveditor/services/credit_service.dart';
 import 'package:aveditor/services/pro_service.dart';
 import 'package:aveditor/services/retention_notification_service.dart';
 import 'package:aveditor/services/text_template_pack_service.dart';
 import 'package:aveditor/services/transition_catalog_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:kakao_flutter_sdk_common/kakao_flutter_sdk_common.dart';
+import 'package:provider/provider.dart';
 import 'package:share_lib/share_lib.dart';
 
 /// Serves `/api/settings` (ad rotation + unit ids) for share_lib's AdService.
@@ -23,19 +31,23 @@ class AveditorApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      navigatorKey: AppNavigator.key,
-      onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.dark(),
-      localizationsDelegates: const [
-        AppLocalizations.delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: AppLocalizations.supportedLocales,
-      home: const HomeScreen(),
+    return ListenableProvider<AuthProvider<AppUser>>.value(
+      value: AppAuthProvider.shared,
+      child: MaterialApp(
+        navigatorKey: AppNavigator.key,
+        onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.dark(),
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          AuthLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: const HomeScreen(),
+      ),
     );
   }
 }
@@ -46,14 +58,27 @@ Future<void> main() async {
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
+
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    debugPrint('[main] Firebase init failed: $e');
+  }
+
+  if (kakaoNativeAppKey.isNotEmpty) {
+    KakaoSdk.init(nativeAppKey: kakaoNativeAppKey);
+  }
+
+  // Touch singleton so initialize() schedules after first frame.
+  AppAuthProvider.shared;
+
   runApp(const AveditorApp());
   unawaited(AnalyticsService.instance.init());
-  // Deliver queued events when the app leaves the foreground.
   AppLifecycleListener(
     onHide: () => unawaited(AnalyticsService.instance.flush()),
   );
-  // Asset reads started before the first frame stay pending, and later
-  // opens of the transition panel wait on that same read.
   WidgetsBinding.instance.addPostFrameCallback((_) {
     unawaited(TextTemplatePackService.instance.ensureInitialized());
     unawaited(TransitionCatalogService.instance.ensureInitialized());
@@ -70,12 +95,10 @@ Future<void> _initRetentionPush() async {
   };
   final launch = push.launchPayload;
   if (launch != null) {
-    // Wait a frame so [navigatorKey] is attached.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(AppNavigator.handleRetentionPayload(launch));
     });
   }
-  // After catalogs load, seed / detect new asset versions (priority 3).
   unawaited(_watchCatalogDrops());
 }
 
@@ -104,10 +127,10 @@ Future<void> _watchCatalogDrops() async {
   texts.addListener(() => unawaited(publish()));
 }
 
-/// Subscription state first; ads are only prepared for free users, since
-/// they are only shown to unlock Pro items for a single export.
+/// Subscription + credits first; ads only prepared for free users.
 Future<void> _initMonetization() async {
   await ProService.instance.ensureInitialized();
+  await CreditService.instance.ensureInitialized();
   try {
     await MobileAds.instance.initialize();
     AdService.shared.setBaseUrl(_settingsBaseUrl);

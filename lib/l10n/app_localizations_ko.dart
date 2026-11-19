@@ -800,22 +800,166 @@ class AppLocalizationsKo extends AppLocalizations {
   String get proSection => '구독';
 
   @override
-  String get premiumExportTitle => 'Pro 효과가 들어 있어요';
+  String get premiumExportTitle => '유료 효과가 들어 있어요';
 
   @override
-  String get premiumExportBody => '어떻게 저장할지 골라 주세요.';
+  String get premiumExportBody => '효과마다 광고를 보거나, 구독으로 한 번에 잠금 해제하세요.';
 
   @override
-  String get premiumExportWithPro => 'Pro로 저장하기';
+  String get premiumExportWithPro => '구독하고 전부 잠금 해제';
 
   @override
-  String get premiumExportWatchAd => '광고 보고 이번만 저장';
+  String get premiumExportWatchAd => '광고 보고 사용';
 
   @override
-  String get premiumExportStrip => 'Pro 효과 빼고 저장';
+  String premiumExportWatchAdsCount(int count, int credits) {
+    return '광고 $count회 보기 (크레딧 $credits)';
+  }
 
   @override
-  String get premiumAdNotFinished => '광고를 끝까지 봐야 저장할 수 있어요.';
+  String premiumExportSpendCredits(int credits, int balance) {
+    return '크레딧 $credits 사용 (잔액 $balance)';
+  }
+
+  @override
+  String premiumExportCreditCost(int credits, int balance) {
+    return '이 내보내기는 크레딧 $credits이 필요합니다. 잔액: $balance.';
+  }
+
+  @override
+  String get premiumExportStrip => '잠긴 효과 빼고 저장';
+
+  @override
+  String get premiumExportEffectUnlocked => '사용 가능';
+
+  @override
+  String get premiumExportContinue => '이어서 저장';
+
+  @override
+  String get premiumAdNotFinished => '광고를 끝까지 봐야 이 효과를 쓸 수 있어요.';
+
+  @override
+  String get premiumCreditsSpendFailed => '크레딧이 부족합니다. 광고를 더 보거나 구독하세요.';
+
+  @override
+  String get loginRequiredForSubscribe => '구독하려면 로그인해 주세요.';
+
+  @override
+  String get accountSection => '계정';
+
+  @override
+  String get accountSignIn => '로그인';
+
+  @override
+  String get accountSignOut => '로그아웃';
+
+  @override
+  String accountSignedInAs(String name) {
+    return '$name으로 로그인됨';
+  }
+
+  @override
+  String creditsBalanceLabel(int balance) {
+    return '크레딧 $balance';
+  }
+
+  @override
+  String get planPlusLabel => 'Plus';
+
+  @override
+  String get planProLabel => 'Pro';
+
+  @override
+  String get planStudioLabel => 'Studio';
+
+  @override
+  String get planBillingMonthly => '월간';
+
+  @override
+  String get planBillingAnnual => '연간';
+
+  @override
+  String get planAnnualSaveBadge => '2개월 무료';
+
+  @override
+  String planPlusTitle(String appName) {
+    return '$appName Plus';
+  }
+
+  @override
+  String planProTitle(String appName) {
+    return '$appName Pro';
+  }
+
+  @override
+  String planStudioTitle(String appName) {
+    return '$appName Studio';
+  }
+
+  @override
+  String planPlusSubtitle(int credits) {
+    return '매월 크레딧 $credits으로 프리미엄 효과를 쓰세요.';
+  }
+
+  @override
+  String planProSubtitle(int credits) {
+    return '매월 크레딧 $credits과 AI 도구를 함께.';
+  }
+
+  @override
+  String planStudioSubtitle(int credits) {
+    return '헤비 크리에이터용 매월 크레딧 $credits.';
+  }
+
+  @override
+  String planPlusBenefit1(int credits) {
+    return '매월 크레딧 $credits 지급';
+  }
+
+  @override
+  String get planPlusBenefit2 => '모든 프리미엄 전환·텍스트 효과';
+
+  @override
+  String get planPlusBenefit3 => '저장 시 크레딧 사용 · 부족하면 광고로 충전';
+
+  @override
+  String planProBenefit1(int credits) {
+    return '매월 크레딧 $credits 지급';
+  }
+
+  @override
+  String get planProBenefit2 => '모든 프리미엄 전환·텍스트 효과';
+
+  @override
+  String get planProBenefit3 => 'AI 도구 사용';
+
+  @override
+  String get planProBenefit4 => '저장 시 크레딧 사용 · 부족하면 광고로 충전';
+
+  @override
+  String planStudioBenefit1(int credits) {
+    return '매월 크레딧 $credits 지급';
+  }
+
+  @override
+  String get planStudioBenefit2 => '모든 프리미엄 전환·텍스트 효과';
+
+  @override
+  String get planStudioBenefit3 => 'AI 도구 사용';
+
+  @override
+  String get planStudioBenefit4 => 'Studio 크리에이티브 추가 기능과 새 도구 우선 이용';
+
+  @override
+  String get planStudioBenefit5 => '저장 시 크레딧 사용 · 부족하면 광고로 충전';
+
+  @override
+  String planSubscribeCta(String plan) {
+    return '$plan 구독하기';
+  }
+
+  @override
+  String get proBenefitAi => 'Pro·Studio에서 AI 도구 사용';
 
   @override
   String get uploadAccountTitle => '업로드할 YouTube 계정';

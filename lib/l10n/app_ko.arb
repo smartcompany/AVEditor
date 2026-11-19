@@ -254,12 +254,108 @@
   "proPurchaseFailed": "결제가 완료되지 않았어요. 다시 시도해 주세요.",
   "proRestoreNone": "복원할 구매 내역이 없어요.",
   "proSection": "구독",
-  "premiumExportTitle": "Pro 효과가 들어 있어요",
-  "premiumExportBody": "어떻게 저장할지 골라 주세요.",
-  "premiumExportWithPro": "Pro로 저장하기",
-  "premiumExportWatchAd": "광고 보고 이번만 저장",
-  "premiumExportStrip": "Pro 효과 빼고 저장",
-  "premiumAdNotFinished": "광고를 끝까지 봐야 저장할 수 있어요.",
+  "premiumExportTitle": "유료 효과가 들어 있어요",
+  "premiumExportBody": "효과마다 광고를 보거나, 구독으로 한 번에 잠금 해제하세요.",
+  "premiumExportWithPro": "구독하고 전부 잠금 해제",
+  "premiumExportWatchAd": "광고 보고 사용",
+  "premiumExportWatchAdsCount": "광고 {count}회 보기 (크레딧 {credits})",
+  "@premiumExportWatchAdsCount": {
+    "placeholders": {
+      "count": { "type": "int" },
+      "credits": { "type": "int" }
+    }
+  },
+  "premiumExportSpendCredits": "크레딧 {credits} 사용 (잔액 {balance})",
+  "@premiumExportSpendCredits": {
+    "placeholders": {
+      "credits": { "type": "int" },
+      "balance": { "type": "int" }
+    }
+  },
+  "premiumExportCreditCost": "이 내보내기는 크레딧 {credits}이 필요합니다. 잔액: {balance}.",
+  "@premiumExportCreditCost": {
+    "placeholders": {
+      "credits": { "type": "int" },
+      "balance": { "type": "int" }
+    }
+  },
+  "premiumExportStrip": "잠긴 효과 빼고 저장",
+  "premiumExportEffectUnlocked": "사용 가능",
+  "premiumExportContinue": "이어서 저장",
+  "premiumAdNotFinished": "광고를 끝까지 봐야 이 효과를 쓸 수 있어요.",
+  "premiumCreditsSpendFailed": "크레딧이 부족합니다. 광고를 더 보거나 구독하세요.",
+  "loginRequiredForSubscribe": "구독하려면 로그인해 주세요.",
+  "accountSection": "계정",
+  "accountSignIn": "로그인",
+  "accountSignOut": "로그아웃",
+  "accountSignedInAs": "{name}으로 로그인됨",
+  "@accountSignedInAs": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "creditsBalanceLabel": "크레딧 {balance}",
+  "@creditsBalanceLabel": {
+    "placeholders": {
+      "balance": { "type": "int" }
+    }
+  },
+  "planPlusLabel": "Plus",
+  "planProLabel": "Pro",
+  "planStudioLabel": "Studio",
+  "planBillingMonthly": "월간",
+  "planBillingAnnual": "연간",
+  "planAnnualSaveBadge": "2개월 무료",
+  "planPlusTitle": "{appName} Plus",
+  "@planPlusTitle": {
+    "placeholders": { "appName": { "type": "String" } }
+  },
+  "planProTitle": "{appName} Pro",
+  "@planProTitle": {
+    "placeholders": { "appName": { "type": "String" } }
+  },
+  "planStudioTitle": "{appName} Studio",
+  "@planStudioTitle": {
+    "placeholders": { "appName": { "type": "String" } }
+  },
+  "planPlusSubtitle": "매월 크레딧 {credits}으로 프리미엄 효과를 쓰세요.",
+  "@planPlusSubtitle": {
+    "placeholders": { "credits": { "type": "int" } }
+  },
+  "planProSubtitle": "매월 크레딧 {credits}과 AI 도구를 함께.",
+  "@planProSubtitle": {
+    "placeholders": { "credits": { "type": "int" } }
+  },
+  "planStudioSubtitle": "헤비 크리에이터용 매월 크레딧 {credits}.",
+  "@planStudioSubtitle": {
+    "placeholders": { "credits": { "type": "int" } }
+  },
+  "planPlusBenefit1": "매월 크레딧 {credits} 지급",
+  "@planPlusBenefit1": {
+    "placeholders": { "credits": { "type": "int" } }
+  },
+  "planPlusBenefit2": "모든 프리미엄 전환·텍스트 효과",
+  "planPlusBenefit3": "저장 시 크레딧 사용 · 부족하면 광고로 충전",
+  "planProBenefit1": "매월 크레딧 {credits} 지급",
+  "@planProBenefit1": {
+    "placeholders": { "credits": { "type": "int" } }
+  },
+  "planProBenefit2": "모든 프리미엄 전환·텍스트 효과",
+  "planProBenefit3": "AI 도구 사용",
+  "planProBenefit4": "저장 시 크레딧 사용 · 부족하면 광고로 충전",
+  "planStudioBenefit1": "매월 크레딧 {credits} 지급",
+  "@planStudioBenefit1": {
+    "placeholders": { "credits": { "type": "int" } }
+  },
+  "planStudioBenefit2": "모든 프리미엄 전환·텍스트 효과",
+  "planStudioBenefit3": "AI 도구 사용",
+  "planStudioBenefit4": "Studio 크리에이티브 추가 기능과 새 도구 우선 이용",
+  "planStudioBenefit5": "저장 시 크레딧 사용 · 부족하면 광고로 충전",
+  "planSubscribeCta": "{plan} 구독하기",
+  "@planSubscribeCta": {
+    "placeholders": { "plan": { "type": "String" } }
+  },
+  "proBenefitAi": "Pro·Studio에서 AI 도구 사용",
   "uploadAccountTitle": "업로드할 YouTube 계정",
   "uploadAccountNone": "아직 연결된 계정이 없어요",
   "uploadAccountConnect": "계정 연결",

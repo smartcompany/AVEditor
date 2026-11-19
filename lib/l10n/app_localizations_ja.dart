@@ -798,22 +798,166 @@ class AppLocalizationsJa extends AppLocalizations {
   String get proSection => 'サブスクリプション';
 
   @override
-  String get premiumExportTitle => 'Proエフェクトが含まれています';
+  String get premiumExportTitle => '有料エフェクトが含まれています';
 
   @override
-  String get premiumExportBody => '保存方法を選んでください。';
+  String get premiumExportBody => 'エフェクトごとに広告を見るか、登録ですべて解除できます。';
 
   @override
-  String get premiumExportWithPro => 'Proで保存';
+  String get premiumExportWithPro => '登録ですべて解除';
 
   @override
-  String get premiumExportWatchAd => '広告を見て今回だけ保存';
+  String get premiumExportWatchAd => '広告を見て使う';
 
   @override
-  String get premiumExportStrip => 'Proエフェクトを外して保存';
+  String premiumExportWatchAdsCount(int count, int credits) {
+    return '広告を$count回見る（$creditsクレジット）';
+  }
 
   @override
-  String get premiumAdNotFinished => '広告を最後まで見ると保存できます。';
+  String premiumExportSpendCredits(int credits, int balance) {
+    return '$creditsクレジットを使う（残高 $balance）';
+  }
+
+  @override
+  String premiumExportCreditCost(int credits, int balance) {
+    return 'この書き出しには$creditsクレジットが必要です。残高: $balance。';
+  }
+
+  @override
+  String get premiumExportStrip => 'ロック中のエフェクトを外して保存';
+
+  @override
+  String get premiumExportEffectUnlocked => '利用可';
+
+  @override
+  String get premiumExportContinue => '続行して保存';
+
+  @override
+  String get premiumAdNotFinished => '広告を最後まで見ると、このエフェクトを使えます。';
+
+  @override
+  String get premiumCreditsSpendFailed => 'クレジットが足りません。広告を見るか登録してください。';
+
+  @override
+  String get loginRequiredForSubscribe => '登録するにはログインしてください。';
+
+  @override
+  String get accountSection => 'アカウント';
+
+  @override
+  String get accountSignIn => 'ログイン';
+
+  @override
+  String get accountSignOut => 'ログアウト';
+
+  @override
+  String accountSignedInAs(String name) {
+    return '$nameでログイン中';
+  }
+
+  @override
+  String creditsBalanceLabel(int balance) {
+    return 'クレジット $balance';
+  }
+
+  @override
+  String get planPlusLabel => 'Plus';
+
+  @override
+  String get planProLabel => 'Pro';
+
+  @override
+  String get planStudioLabel => 'Studio';
+
+  @override
+  String get planBillingMonthly => '月額';
+
+  @override
+  String get planBillingAnnual => '年額';
+
+  @override
+  String get planAnnualSaveBadge => '2ヶ月分お得';
+
+  @override
+  String planPlusTitle(String appName) {
+    return '$appName Plus';
+  }
+
+  @override
+  String planProTitle(String appName) {
+    return '$appName Pro';
+  }
+
+  @override
+  String planStudioTitle(String appName) {
+    return '$appName Studio';
+  }
+
+  @override
+  String planPlusSubtitle(int credits) {
+    return '毎月クレジット $credits でプレミアム効果を使えます。';
+  }
+
+  @override
+  String planProSubtitle(int credits) {
+    return '毎月クレジット $credits と AI ツール。';
+  }
+
+  @override
+  String planStudioSubtitle(int credits) {
+    return 'ヘビー向け毎月クレジット $credits。';
+  }
+
+  @override
+  String planPlusBenefit1(int credits) {
+    return '毎月クレジット $credits 付与';
+  }
+
+  @override
+  String get planPlusBenefit2 => 'すべてのプレミアム遷移・テキスト効果';
+
+  @override
+  String get planPlusBenefit3 => '書き出しでクレジット消費 · 不足時は広告で補充';
+
+  @override
+  String planProBenefit1(int credits) {
+    return '毎月クレジット $credits 付与';
+  }
+
+  @override
+  String get planProBenefit2 => 'すべてのプレミアム遷移・テキスト効果';
+
+  @override
+  String get planProBenefit3 => 'AIツールを利用可能';
+
+  @override
+  String get planProBenefit4 => '書き出しでクレジット消費 · 不足時は広告で補充';
+
+  @override
+  String planStudioBenefit1(int credits) {
+    return '毎月クレジット $credits 付与';
+  }
+
+  @override
+  String get planStudioBenefit2 => 'すべてのプレミアム遷移・テキスト効果';
+
+  @override
+  String get planStudioBenefit3 => 'AIツールを利用可能';
+
+  @override
+  String get planStudioBenefit4 => 'Studio向けクリエイティブ機能と新機能の優先アクセス';
+
+  @override
+  String get planStudioBenefit5 => '書き出しでクレジット消費 · 不足時は広告で補充';
+
+  @override
+  String planSubscribeCta(String plan) {
+    return '$planに登録';
+  }
+
+  @override
+  String get proBenefitAi => 'Pro・StudioでAIツールが使えます';
 
   @override
   String get uploadAccountTitle => 'アップロード先のYouTubeアカウント';

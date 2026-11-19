@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:aveditor/models/effect_access_tier.dart';
 import 'package:aveditor/models/text_template_pack.dart';
 import 'package:aveditor/services/text_template_pack_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
@@ -351,11 +352,28 @@ class _PackTile extends StatelessWidget {
                 ),
               ),
             ),
-            if (item.premium)
-              const Positioned(
+            if (item.accessTier.isPaid)
+              Positioned(
                 left: 8,
                 top: 8,
-                child: Icon(Icons.diamond, size: 14, color: Color(0xFFB388FF)),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: item.accessTier == EffectAccessTier.pro
+                        ? const Color(0xFF7C3AED)
+                        : const Color(0xFF2563EB),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    item.accessTier.badgeLabel,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
               ),
             Positioned(
               right: 8,

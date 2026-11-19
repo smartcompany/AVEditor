@@ -254,12 +254,108 @@
   "proPurchaseFailed": "購入を完了できませんでした。もう一度お試しください。",
   "proRestoreNone": "復元できる購入はありません。",
   "proSection": "サブスクリプション",
-  "premiumExportTitle": "Proエフェクトが含まれています",
-  "premiumExportBody": "保存方法を選んでください。",
-  "premiumExportWithPro": "Proで保存",
-  "premiumExportWatchAd": "広告を見て今回だけ保存",
-  "premiumExportStrip": "Proエフェクトを外して保存",
-  "premiumAdNotFinished": "広告を最後まで見ると保存できます。",
+  "premiumExportTitle": "有料エフェクトが含まれています",
+  "premiumExportBody": "エフェクトごとに広告を見るか、登録ですべて解除できます。",
+  "premiumExportWithPro": "登録ですべて解除",
+  "premiumExportWatchAd": "広告を見て使う",
+  "premiumExportWatchAdsCount": "広告を{count}回見る（{credits}クレジット）",
+  "@premiumExportWatchAdsCount": {
+    "placeholders": {
+      "count": { "type": "int" },
+      "credits": { "type": "int" }
+    }
+  },
+  "premiumExportSpendCredits": "{credits}クレジットを使う（残高 {balance}）",
+  "@premiumExportSpendCredits": {
+    "placeholders": {
+      "credits": { "type": "int" },
+      "balance": { "type": "int" }
+    }
+  },
+  "premiumExportCreditCost": "この書き出しには{credits}クレジットが必要です。残高: {balance}。",
+  "@premiumExportCreditCost": {
+    "placeholders": {
+      "credits": { "type": "int" },
+      "balance": { "type": "int" }
+    }
+  },
+  "premiumExportStrip": "ロック中のエフェクトを外して保存",
+  "premiumExportEffectUnlocked": "利用可",
+  "premiumExportContinue": "続行して保存",
+  "premiumAdNotFinished": "広告を最後まで見ると、このエフェクトを使えます。",
+  "premiumCreditsSpendFailed": "クレジットが足りません。広告を見るか登録してください。",
+  "loginRequiredForSubscribe": "登録するにはログインしてください。",
+  "accountSection": "アカウント",
+  "accountSignIn": "ログイン",
+  "accountSignOut": "ログアウト",
+  "accountSignedInAs": "{name}でログイン中",
+  "@accountSignedInAs": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "creditsBalanceLabel": "クレジット {balance}",
+  "@creditsBalanceLabel": {
+    "placeholders": {
+      "balance": { "type": "int" }
+    }
+  },
+  "planPlusLabel": "Plus",
+  "planProLabel": "Pro",
+  "planStudioLabel": "Studio",
+  "planBillingMonthly": "月額",
+  "planBillingAnnual": "年額",
+  "planAnnualSaveBadge": "2ヶ月分お得",
+  "planPlusTitle": "{appName} Plus",
+  "@planPlusTitle": {
+    "placeholders": { "appName": { "type": "String" } }
+  },
+  "planProTitle": "{appName} Pro",
+  "@planProTitle": {
+    "placeholders": { "appName": { "type": "String" } }
+  },
+  "planStudioTitle": "{appName} Studio",
+  "@planStudioTitle": {
+    "placeholders": { "appName": { "type": "String" } }
+  },
+  "planPlusSubtitle": "毎月クレジット {credits} でプレミアム効果を使えます。",
+  "@planPlusSubtitle": {
+    "placeholders": { "credits": { "type": "int" } }
+  },
+  "planProSubtitle": "毎月クレジット {credits} と AI ツール。",
+  "@planProSubtitle": {
+    "placeholders": { "credits": { "type": "int" } }
+  },
+  "planStudioSubtitle": "ヘビー向け毎月クレジット {credits}。",
+  "@planStudioSubtitle": {
+    "placeholders": { "credits": { "type": "int" } }
+  },
+  "planPlusBenefit1": "毎月クレジット {credits} 付与",
+  "@planPlusBenefit1": {
+    "placeholders": { "credits": { "type": "int" } }
+  },
+  "planPlusBenefit2": "すべてのプレミアム遷移・テキスト効果",
+  "planPlusBenefit3": "書き出しでクレジット消費 · 不足時は広告で補充",
+  "planProBenefit1": "毎月クレジット {credits} 付与",
+  "@planProBenefit1": {
+    "placeholders": { "credits": { "type": "int" } }
+  },
+  "planProBenefit2": "すべてのプレミアム遷移・テキスト効果",
+  "planProBenefit3": "AIツールを利用可能",
+  "planProBenefit4": "書き出しでクレジット消費 · 不足時は広告で補充",
+  "planStudioBenefit1": "毎月クレジット {credits} 付与",
+  "@planStudioBenefit1": {
+    "placeholders": { "credits": { "type": "int" } }
+  },
+  "planStudioBenefit2": "すべてのプレミアム遷移・テキスト効果",
+  "planStudioBenefit3": "AIツールを利用可能",
+  "planStudioBenefit4": "Studio向けクリエイティブ機能と新機能の優先アクセス",
+  "planStudioBenefit5": "書き出しでクレジット消費 · 不足時は広告で補充",
+  "planSubscribeCta": "{plan}に登録",
+  "@planSubscribeCta": {
+    "placeholders": { "plan": { "type": "String" } }
+  },
+  "proBenefitAi": "Pro・StudioでAIツールが使えます",
   "uploadAccountTitle": "アップロード先のYouTubeアカウント",
   "uploadAccountNone": "まだアカウントが接続されていません",
   "uploadAccountConnect": "接続",

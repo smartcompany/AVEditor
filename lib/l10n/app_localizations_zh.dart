@@ -792,22 +792,166 @@ class AppLocalizationsZh extends AppLocalizations {
   String get proSection => '订阅';
 
   @override
-  String get premiumExportTitle => '此视频包含 Pro 特效';
+  String get premiumExportTitle => '此视频包含付费特效';
 
   @override
-  String get premiumExportBody => '请选择保存方式。';
+  String get premiumExportBody => '可为每个特效观看广告解锁，或订阅一次性解锁全部。';
 
   @override
-  String get premiumExportWithPro => '用 Pro 保存';
+  String get premiumExportWithPro => '订阅解锁全部';
 
   @override
-  String get premiumExportWatchAd => '观看广告，本次保存';
+  String get premiumExportWatchAd => '看广告后使用';
 
   @override
-  String get premiumExportStrip => '去除 Pro 特效后保存';
+  String premiumExportWatchAdsCount(int count, int credits) {
+    return '观看 $count 次广告（$credits 积分）';
+  }
 
   @override
-  String get premiumAdNotFinished => '完整观看广告后即可保存。';
+  String premiumExportSpendCredits(int credits, int balance) {
+    return '使用 $credits 积分（余额 $balance）';
+  }
+
+  @override
+  String premiumExportCreditCost(int credits, int balance) {
+    return '本次导出需要 $credits 积分。余额：$balance。';
+  }
+
+  @override
+  String get premiumExportStrip => '去除锁定特效后保存';
+
+  @override
+  String get premiumExportEffectUnlocked => '已解锁';
+
+  @override
+  String get premiumExportContinue => '继续保存';
+
+  @override
+  String get premiumAdNotFinished => '完整观看广告后即可解锁此特效。';
+
+  @override
+  String get premiumCreditsSpendFailed => '积分不足。请继续观看广告或订阅。';
+
+  @override
+  String get loginRequiredForSubscribe => '订阅前请先登录。';
+
+  @override
+  String get accountSection => '账户';
+
+  @override
+  String get accountSignIn => '登录';
+
+  @override
+  String get accountSignOut => '退出登录';
+
+  @override
+  String accountSignedInAs(String name) {
+    return '已登录为 $name';
+  }
+
+  @override
+  String creditsBalanceLabel(int balance) {
+    return '积分 $balance';
+  }
+
+  @override
+  String get planPlusLabel => 'Plus';
+
+  @override
+  String get planProLabel => 'Pro';
+
+  @override
+  String get planStudioLabel => 'Studio';
+
+  @override
+  String get planBillingMonthly => '月付';
+
+  @override
+  String get planBillingAnnual => '年付';
+
+  @override
+  String get planAnnualSaveBadge => '相当于送 2 个月';
+
+  @override
+  String planPlusTitle(String appName) {
+    return '$appName Plus';
+  }
+
+  @override
+  String planProTitle(String appName) {
+    return '$appName Pro';
+  }
+
+  @override
+  String planStudioTitle(String appName) {
+    return '$appName Studio';
+  }
+
+  @override
+  String planPlusSubtitle(int credits) {
+    return '每月 $credits 积分，用于高级效果。';
+  }
+
+  @override
+  String planProSubtitle(int credits) {
+    return '每月 $credits 积分，并解锁 AI 工具。';
+  }
+
+  @override
+  String planStudioSubtitle(int credits) {
+    return '重度创作者每月 $credits 积分。';
+  }
+
+  @override
+  String planPlusBenefit1(int credits) {
+    return '每月发放 $credits 积分';
+  }
+
+  @override
+  String get planPlusBenefit2 => '全部高级转场与文字效果';
+
+  @override
+  String get planPlusBenefit3 => '导出消耗积分 · 不足时可看广告补充';
+
+  @override
+  String planProBenefit1(int credits) {
+    return '每月发放 $credits 积分';
+  }
+
+  @override
+  String get planProBenefit2 => '全部高级转场与文字效果';
+
+  @override
+  String get planProBenefit3 => '解锁 AI 工具';
+
+  @override
+  String get planProBenefit4 => '导出消耗积分 · 不足时可看广告补充';
+
+  @override
+  String planStudioBenefit1(int credits) {
+    return '每月发放 $credits 积分';
+  }
+
+  @override
+  String get planStudioBenefit2 => '全部高级转场与文字效果';
+
+  @override
+  String get planStudioBenefit3 => '解锁 AI 工具';
+
+  @override
+  String get planStudioBenefit4 => 'Studio 创作扩展与新工具优先体验';
+
+  @override
+  String get planStudioBenefit5 => '导出消耗积分 · 不足时可看广告补充';
+
+  @override
+  String planSubscribeCta(String plan) {
+    return '订阅 $plan';
+  }
+
+  @override
+  String get proBenefitAi => 'Pro 与 Studio 可使用 AI 工具';
 
   @override
   String get uploadAccountTitle => '上传到的 YouTube 账号';

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:aveditor/l10n/app_localizations.dart';
 import 'package:aveditor/l10n/l10n_extensions.dart';
+import 'package:aveditor/models/effect_access_tier.dart';
 import 'package:aveditor/models/text_entrance_animation.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/text_overlay_style.dart';
@@ -347,8 +348,17 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
         return _TemplateTile(
           selected: selected,
           label: pack.title,
-          badge: pack.premium
-              ? const Icon(Icons.diamond, size: 12, color: Color(0xFF4CC9F0))
+          badge: pack.accessTier.isPaid
+              ? Text(
+                  pack.accessTier.badgeLabel,
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    color: pack.accessTier == EffectAccessTier.pro
+                        ? const Color(0xFFB388FF)
+                        : const Color(0xFF60A5FA),
+                  ),
+                )
               : downloading
               ? const SizedBox(
                   width: 12,

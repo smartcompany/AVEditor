@@ -1,3 +1,5 @@
+import 'package:aveditor/models/effect_access_tier.dart';
+
 /// Shared easing curves for primitive transition layers.
 enum TransitionEasing {
   linear,
@@ -342,7 +344,7 @@ class TransitionItem {
     this.category = 'basic',
     this.minDurationMs = 50,
     this.maxDurationMs = 5000,
-    this.premium = false,
+    this.accessTier = EffectAccessTier.free,
     this.thumbnailUrl,
     this.previewUrl,
     this.assetUrl,
@@ -403,7 +405,8 @@ class TransitionItem {
   final int minDurationMs;
   final int maxDurationMs;
   final String accent;
-  final bool premium;
+  /// Plus / Pro gate for export. Free effects never require a plan.
+  final EffectAccessTier accessTier;
   final String? thumbnailUrl;
   final String? previewUrl;
   final String? assetUrl;
@@ -425,6 +428,9 @@ class TransitionItem {
           renderer != TransitionRendererKind.shader &&
           renderer != TransitionRendererKind.custom &&
           renderer != TransitionRendererKind.primitive);
+
+  /// Back-compat: any paid access tier.
+  bool get premium => accessTier.isPaid;
 
   bool get needsDownload =>
       renderer == TransitionRendererKind.asset &&
@@ -530,7 +536,10 @@ class TransitionItem {
       renderer: renderer,
       minDurationMs: minMs,
       maxDurationMs: maxMs < minMs ? minMs : maxMs,
-      premium: json['premium'] as bool? ?? false,
+      accessTier: EffectAccessTier.fromJson(
+        json['accessTier'] ?? json['plan'],
+        legacyPremium: json['premium'] as bool?,
+      ),
       thumbnailUrl: json['thumbnailUrl'] as String?,
       previewUrl: json['previewUrl'] as String?,
       assetUrl: json['assetUrl'] as String?,
@@ -574,7 +583,8 @@ class TransitionItem {
         'minDurationMs': minDurationMs,
         'maxDurationMs': maxDurationMs,
         'accent': accent,
-        'premium': premium,
+        'accessTier': accessTier.toJson(),
+        'premium': accessTier.isPaid,
         if (thumbnailUrl != null) 'thumbnailUrl': thumbnailUrl,
         if (previewUrl != null) 'previewUrl': previewUrl,
         if (assetUrl != null) 'assetUrl': assetUrl,

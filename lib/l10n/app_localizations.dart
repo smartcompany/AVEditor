@@ -1587,38 +1587,266 @@ abstract class AppLocalizations {
   /// No description provided for @premiumExportTitle.
   ///
   /// In en, this message translates to:
-  /// **'Pro effects are in this video'**
+  /// **'Paid effects are in this video'**
   String get premiumExportTitle;
 
   /// No description provided for @premiumExportBody.
   ///
   /// In en, this message translates to:
-  /// **'Choose how to save it.'**
+  /// **'Watch an ad for each effect, or subscribe to unlock them all.'**
   String get premiumExportBody;
 
   /// No description provided for @premiumExportWithPro.
   ///
   /// In en, this message translates to:
-  /// **'Save with Pro'**
+  /// **'Subscribe to unlock all'**
   String get premiumExportWithPro;
 
   /// No description provided for @premiumExportWatchAd.
   ///
   /// In en, this message translates to:
-  /// **'Watch an ad to save this once'**
+  /// **'Watch ad to use'**
   String get premiumExportWatchAd;
+
+  /// No description provided for @premiumExportWatchAdsCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Watch {count} ads ({credits} credits)'**
+  String premiumExportWatchAdsCount(int count, int credits);
+
+  /// No description provided for @premiumExportSpendCredits.
+  ///
+  /// In en, this message translates to:
+  /// **'Use {credits} credits (balance {balance})'**
+  String premiumExportSpendCredits(int credits, int balance);
+
+  /// No description provided for @premiumExportCreditCost.
+  ///
+  /// In en, this message translates to:
+  /// **'This export costs {credits} credits. Balance: {balance}.'**
+  String premiumExportCreditCost(int credits, int balance);
 
   /// No description provided for @premiumExportStrip.
   ///
   /// In en, this message translates to:
-  /// **'Save without Pro effects'**
+  /// **'Save without locked effects'**
   String get premiumExportStrip;
+
+  /// No description provided for @premiumExportEffectUnlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Ready'**
+  String get premiumExportEffectUnlocked;
+
+  /// No description provided for @premiumExportContinue.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get premiumExportContinue;
 
   /// No description provided for @premiumAdNotFinished.
   ///
   /// In en, this message translates to:
-  /// **'Watch the whole ad to unlock this save.'**
+  /// **'Watch the whole ad to unlock this effect.'**
   String get premiumAdNotFinished;
+
+  /// No description provided for @premiumCreditsSpendFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Not enough credits yet. Watch more ads or subscribe.'**
+  String get premiumCreditsSpendFailed;
+
+  /// No description provided for @loginRequiredForSubscribe.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in to subscribe.'**
+  String get loginRequiredForSubscribe;
+
+  /// No description provided for @accountSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Account'**
+  String get accountSection;
+
+  /// No description provided for @accountSignIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in'**
+  String get accountSignIn;
+
+  /// No description provided for @accountSignOut.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out'**
+  String get accountSignOut;
+
+  /// No description provided for @accountSignedInAs.
+  ///
+  /// In en, this message translates to:
+  /// **'Signed in as {name}'**
+  String accountSignedInAs(String name);
+
+  /// No description provided for @creditsBalanceLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'{balance} credits'**
+  String creditsBalanceLabel(int balance);
+
+  /// No description provided for @planPlusLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Plus'**
+  String get planPlusLabel;
+
+  /// No description provided for @planProLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Pro'**
+  String get planProLabel;
+
+  /// No description provided for @planStudioLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Studio'**
+  String get planStudioLabel;
+
+  /// No description provided for @planBillingMonthly.
+  ///
+  /// In en, this message translates to:
+  /// **'Monthly'**
+  String get planBillingMonthly;
+
+  /// No description provided for @planBillingAnnual.
+  ///
+  /// In en, this message translates to:
+  /// **'Yearly'**
+  String get planBillingAnnual;
+
+  /// No description provided for @planAnnualSaveBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'2 months free'**
+  String get planAnnualSaveBadge;
+
+  /// No description provided for @planPlusTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{appName} Plus'**
+  String planPlusTitle(String appName);
+
+  /// No description provided for @planProTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{appName} Pro'**
+  String planProTitle(String appName);
+
+  /// No description provided for @planStudioTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{appName} Studio'**
+  String planStudioTitle(String appName);
+
+  /// No description provided for @planPlusSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{credits} credits each month for premium effects.'**
+  String planPlusSubtitle(int credits);
+
+  /// No description provided for @planProSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{credits} credits each month, plus AI tools.'**
+  String planProSubtitle(int credits);
+
+  /// No description provided for @planStudioSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{credits} credits each month for heavy creators.'**
+  String planStudioSubtitle(int credits);
+
+  /// No description provided for @planPlusBenefit1.
+  ///
+  /// In en, this message translates to:
+  /// **'{credits} credits every month'**
+  String planPlusBenefit1(int credits);
+
+  /// No description provided for @planPlusBenefit2.
+  ///
+  /// In en, this message translates to:
+  /// **'All premium transitions and text effects'**
+  String get planPlusBenefit2;
+
+  /// No description provided for @planPlusBenefit3.
+  ///
+  /// In en, this message translates to:
+  /// **'Spend credits to export — top up with ads anytime'**
+  String get planPlusBenefit3;
+
+  /// No description provided for @planProBenefit1.
+  ///
+  /// In en, this message translates to:
+  /// **'{credits} credits every month'**
+  String planProBenefit1(int credits);
+
+  /// No description provided for @planProBenefit2.
+  ///
+  /// In en, this message translates to:
+  /// **'All premium transitions and text effects'**
+  String get planProBenefit2;
+
+  /// No description provided for @planProBenefit3.
+  ///
+  /// In en, this message translates to:
+  /// **'AI tools unlocked'**
+  String get planProBenefit3;
+
+  /// No description provided for @planProBenefit4.
+  ///
+  /// In en, this message translates to:
+  /// **'Spend credits to export — top up with ads anytime'**
+  String get planProBenefit4;
+
+  /// No description provided for @planStudioBenefit1.
+  ///
+  /// In en, this message translates to:
+  /// **'{credits} credits every month'**
+  String planStudioBenefit1(int credits);
+
+  /// No description provided for @planStudioBenefit2.
+  ///
+  /// In en, this message translates to:
+  /// **'All premium transitions and text effects'**
+  String get planStudioBenefit2;
+
+  /// No description provided for @planStudioBenefit3.
+  ///
+  /// In en, this message translates to:
+  /// **'AI tools unlocked'**
+  String get planStudioBenefit3;
+
+  /// No description provided for @planStudioBenefit4.
+  ///
+  /// In en, this message translates to:
+  /// **'Studio creative extras and priority access to new tools'**
+  String get planStudioBenefit4;
+
+  /// No description provided for @planStudioBenefit5.
+  ///
+  /// In en, this message translates to:
+  /// **'Spend credits to export — top up with ads anytime'**
+  String get planStudioBenefit5;
+
+  /// No description provided for @planSubscribeCta.
+  ///
+  /// In en, this message translates to:
+  /// **'Subscribe to {plan}'**
+  String planSubscribeCta(String plan);
+
+  /// No description provided for @proBenefitAi.
+  ///
+  /// In en, this message translates to:
+  /// **'Pro & Studio unlock AI tools'**
+  String get proBenefitAi;
 
   /// No description provided for @uploadAccountTitle.
   ///

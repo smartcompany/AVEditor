@@ -16,6 +16,7 @@ import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/timeline_filmstrip_frame.dart';
 import 'package:aveditor/models/video_project.dart';
 import 'package:aveditor/screens/paywall_screen.dart';
+import 'package:aveditor/services/effect_ad_unlock_service.dart';
 import 'package:aveditor/services/premium_usage.dart';
 import 'package:aveditor/services/pro_service.dart';
 import 'package:aveditor/widgets/premium_export_sheet.dart';
@@ -3567,6 +3568,12 @@ class _EditorScreenState extends State<EditorScreen>
     if (!applied.isNone) {
       AnalyticsService.instance.log('transition_applied', {
         'id': applied.id,
+        'accessTier':
+            TransitionCatalogService.instance
+                .itemById(applied.id)
+                ?.accessTier
+                .name ??
+            'free',
         'premium':
             TransitionCatalogService.instance.itemById(applied.id)?.premium ??
             false,
@@ -4308,6 +4315,12 @@ class _EditorScreenState extends State<EditorScreen>
     if (newPack != null && newPack != project.overlays[index].packItemId) {
       AnalyticsService.instance.log('text_style_applied', {
         'id': newPack,
+        'accessTier':
+            TextTemplatePackService.instance
+                .itemById(newPack)
+                ?.accessTier
+                .name ??
+            'free',
         'premium':
             TextTemplatePackService.instance.itemById(newPack)?.premium ??
             false,
@@ -4548,41 +4561,71 @@ class _EditorScreenState extends State<EditorScreen>
     );
   }
 
-  /// Free users may edit with Pro items but must choose how to export them:
-  /// subscribe, watch an ad for this one export, or drop the Pro items.
-  /// Returns the project to export, or null when the user backed out.
+  /// Effects are gated by plan (Plus / Pro) or per-effect ad unlocks.
+  /// Credits are reserved for AI. Returns the project to export, or null.
   Future<VideoProject?> _resolvePremiumForExport(VideoProject project) async {
     final pro = ProService.instance;
     await pro.ensureInitialized();
-    if (pro.isPro) return project;
+    final unlocks = EffectAdUnlockService.instance;
+    // Each save needs its own ads — do not carry unlocks across exports.
+    unlocks.clear();
+
     final catalog = PremiumCatalog.live();
-    final uses = premiumUsesIn(project, catalog);
-    if (uses.isEmpty || !mounted) return project;
+    bool adUnlocked(PremiumUse use) => unlocks.isUnlocked(use);
+    final locked = lockedUsesIn(
+      project,
+      catalog,
+      pro.tier,
+      isAdUnlocked: adUnlocked,
+    );
+    if (locked.isEmpty || !mounted) return project;
 
     final analytics = AnalyticsService.instance;
     analytics.log('premium_sheet_shown', {
-      'items': uses.map((u) => u.itemId).take(10).toList(),
+      'items': locked.map((u) => u.itemId).take(10).toList(),
+      'tiers': locked.map((u) => u.accessTier.name).take(10).toList(),
+      'plan': pro.tier.name,
     });
-    final choice = await showPremiumExportSheet(context, uses);
+    final choice = await showPremiumExportSheet(context, uses: locked);
     if (!mounted || choice == null) return null;
     switch (choice) {
-      case PremiumExportChoice.pro:
+      case PremiumExportChoice.subscribe:
         analytics.log('premium_choice_pro');
-        final active = await PaywallScreen.open(context, source: 'export');
-        return active ? project : null;
-      case PremiumExportChoice.watchAd:
-        analytics.log('premium_choice_ad');
-        final unlocked = await watchAdToUnlockExport();
-        analytics.log(unlocked ? 'ad_unlock_success' : 'ad_unlock_failed');
-        if (!mounted) return null;
-        if (!unlocked) {
-          showLoggedSnackBar(context, context.l10n.premiumAdNotFinished);
-          return null;
+        final active = await PaywallScreen.open(
+          context,
+          source: 'export',
+          preferAnnual: false,
+        );
+        if (!active || !mounted) return null;
+        // Plus may still be short of Pro effects — only continue when covered.
+        if (lockedUsesIn(
+              project,
+              catalog,
+              pro.tier,
+              isAdUnlocked: adUnlocked,
+            ).isEmpty) {
+          return project;
         }
-        return project;
+        return null;
+      case PremiumExportChoice.continueWithUnlocks:
+        analytics.log('premium_choice_ad');
+        if (lockedUsesIn(
+              project,
+              catalog,
+              pro.tier,
+              isAdUnlocked: adUnlocked,
+            ).isEmpty) {
+          return project;
+        }
+        return null;
       case PremiumExportChoice.strip:
         analytics.log('premium_choice_strip');
-        return withoutPremium(project, catalog);
+        return withoutLocked(
+          project,
+          catalog,
+          pro.tier,
+          isAdUnlocked: adUnlocked,
+        );
     }
   }
 

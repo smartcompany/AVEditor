@@ -1,3 +1,4 @@
+import 'package:aveditor/models/effect_access_tier.dart';
 import 'package:aveditor/models/text_entrance_animation.dart';
 import 'package:aveditor/models/text_style_template.dart';
 import 'package:flutter/foundation.dart';
@@ -10,7 +11,7 @@ class TextTemplatePackItem {
     required this.title,
     required this.style,
     this.kind = 'effect',
-    this.premium = false,
+    this.accessTier = EffectAccessTier.free,
     this.lottieAsset,
     this.lottieUrl,
     this.previewUrl,
@@ -24,7 +25,10 @@ class TextTemplatePackItem {
 
   /// `effect` (static look) or `template` (effect + motion).
   final String kind;
-  final bool premium;
+  final EffectAccessTier accessTier;
+
+  /// Back-compat: any paid access tier.
+  bool get premium => accessTier.isPaid;
 
   /// Bundled Lottie path, e.g. `assets/text_packs/lottie/hearts.json`.
   final String? lottieAsset;
@@ -45,7 +49,8 @@ class TextTemplatePackItem {
     'id': id,
     'title': title,
     'kind': kind,
-    'premium': premium,
+    'accessTier': accessTier.toJson(),
+    'premium': accessTier.isPaid,
     'style': style.toJson(),
     if (lottieAsset != null) 'lottieAsset': lottieAsset,
     if (lottieUrl != null) 'lottieUrl': lottieUrl,
@@ -65,7 +70,10 @@ class TextTemplatePackItem {
       id: json['id'] as String,
       title: json['title'] as String? ?? json['id'] as String,
       kind: json['kind'] as String? ?? 'effect',
-      premium: json['premium'] as bool? ?? false,
+      accessTier: EffectAccessTier.fromJson(
+        json['accessTier'] ?? json['plan'],
+        legacyPremium: json['premium'] as bool?,
+      ),
       style: TextStyleTemplate.fromJson(styleJson),
       lottieAsset: json['lottieAsset'] as String?,
       lottieUrl: json['lottieUrl'] as String?,

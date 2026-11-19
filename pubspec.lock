@@ -217,14 +217,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "5.0.3"
-  equatable:
-    dependency: transitive
-    description:
-      name: equatable
-      sha256: ea36e500cbf0ec18361deabca755434f73e42fe53c5130021c7e2d6b5ebe1702
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.0.0"
   fake_async:
     dependency: transitive
     description:
@@ -330,7 +322,7 @@ packages:
     source: hosted
     version: "0.9.3+6"
   firebase_auth:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: firebase_auth
       sha256: "9580cae2c5aa5cd8f084ddfc8e10dd6fe68740ddca3a738b665b7c18a3680223"
@@ -354,7 +346,7 @@ packages:
     source: hosted
     version: "6.3.0"
   firebase_core:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: firebase_core
       sha256: "253da727a1eb7ed91a72cb4eb4a1b6db6993e04c228c2dcfa9e573901c252e35"
@@ -740,6 +732,38 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.2.2"
+  in_app_purchase:
+    dependency: "direct main"
+    description:
+      name: in_app_purchase
+      sha256: d8317ec2ed6fe33199957d67ee67e08a4fd4871ef93b91d7611d8ee560892afc
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.3.1"
+  in_app_purchase_android:
+    dependency: transitive
+    description:
+      name: in_app_purchase_android
+      sha256: b76ab601573f8a848e72d015496257235066ba3479bef6300482239f417e0d72
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.5.5"
+  in_app_purchase_platform_interface:
+    dependency: transitive
+    description:
+      name: in_app_purchase_platform_interface
+      sha256: "0b0076cac8ce4fa7048f01e76af8b123aeb6a7c4e0dea2a5206d6664454f3e36"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.4.1"
+  in_app_purchase_storekit:
+    dependency: transitive
+    description:
+      name: in_app_purchase_storekit
+      sha256: e9278eb778170ce65a9e2d17672924f41b0f2f3ad958cd9f6ea7ffc0826efa29
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.4.17"
   intl:
     dependency: "direct main"
     description:
@@ -805,7 +829,7 @@ packages:
     source: hosted
     version: "1.10.0"
   kakao_flutter_sdk_common:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: kakao_flutter_sdk_common
       sha256: e00122b2a6158853adfbb8d51f71f11f7c2cbbbe21f29b0d7494b0de5ec5e4fd
@@ -1125,21 +1149,13 @@ packages:
     source: hosted
     version: "6.5.4"
   provider:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: provider
       sha256: "4e82183fa20e5ca25703ead7e05de9e4cceed1fbd1eadc1ac3cb6f565a09f272"
       url: "https://pub.dev"
     source: hosted
     version: "6.1.5+1"
-  purchases_flutter:
-    dependency: "direct main"
-    description:
-      name: purchases_flutter
-      sha256: "703170fc93a10ce2e6f82792bd93eb9ce3174130880d852874d672e0f640c95d"
-      url: "https://pub.dev"
-    source: hosted
-    version: "11.0.2"
   record:
     dependency: "direct main"
     description:

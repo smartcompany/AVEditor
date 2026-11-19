@@ -1,9 +1,12 @@
-import 'package:aveditor/screens/paywall_screen.dart';
-import 'package:aveditor/services/pro_service.dart';
-import 'package:aveditor/theme/app_theme.dart';
+import 'package:aveditor/app_auth_provider.dart';
 import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/models/export_quality_profile.dart';
+import 'package:aveditor/screens/paywall_screen.dart';
 import 'package:aveditor/services/app_settings_service.dart';
+import 'package:aveditor/services/credit_service.dart';
+import 'package:aveditor/services/pro_service.dart';
+import 'package:aveditor/theme/app_theme.dart';
+import 'package:aveditor/utils/auth_helper.dart';
 import 'package:flutter/material.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -22,6 +25,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _load();
+    AppAuthProvider.shared.addListener(_onAuthChanged);
+    CreditService.instance.addListener(_onAuthChanged);
+  }
+
+  @override
+  void dispose() {
+    AppAuthProvider.shared.removeListener(_onAuthChanged);
+    CreditService.instance.removeListener(_onAuthChanged);
+    super.dispose();
+  }
+
+  void _onAuthChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _load() async {
@@ -39,9 +55,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _selected = profile);
   }
 
+  Future<void> _signIn() async {
+    await AuthHelper.requireAuth(context);
+  }
+
+  Future<void> _signOut() async {
+    await AppAuthProvider.shared.logout();
+  }
+
+  String _tierLabel(BuildContext context) {
+    final l10n = context.l10n;
+    return switch (ProService.instance.tier) {
+      PlanTier.studio => l10n.planStudioLabel,
+      PlanTier.pro => l10n.planProLabel,
+      PlanTier.plus => l10n.planPlusLabel,
+      PlanTier.free => l10n.proInactive,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final auth = AppAuthProvider.shared;
+    final loggedIn = auth.isLoggedIn();
+    final user = auth.userProfile;
+    final display = user?.displayName ??
+        user?.email ??
+        (loggedIn ? '—' : l10n.accountSignIn);
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.settingsTitle)),
@@ -50,6 +90,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
               children: [
+                Text(
+                  l10n.accountSection,
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const SizedBox(height: 8),
+                Card(
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: Icon(
+                          loggedIn
+                              ? Icons.account_circle
+                              : Icons.login,
+                          color: loggedIn ? AppTheme.accent : null,
+                        ),
+                        title: Text(
+                          loggedIn
+                              ? l10n.accountSignedInAs(display)
+                              : l10n.accountSignIn,
+                        ),
+                        subtitle: ListenableBuilder(
+                          listenable: CreditService.instance,
+                          builder: (context, _) {
+                            final credits = CreditService.instance;
+                            if (!credits.isReady) {
+                              return Text(l10n.creditsBalanceLabel(0));
+                            }
+                            return Text(
+                              l10n.creditsBalanceLabel(credits.balance),
+                            );
+                          },
+                        ),
+                        trailing: loggedIn
+                            ? TextButton(
+                                onPressed: _signOut,
+                                child: Text(l10n.accountSignOut),
+                              )
+                            : const Icon(Icons.chevron_right),
+                        onTap: loggedIn ? null : _signIn,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
                 Text(
                   l10n.proSection,
                   style: Theme.of(context).textTheme.titleSmall,
@@ -65,9 +149,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           Icons.workspace_premium,
                           color: pro.isPro ? AppTheme.accent : null,
                         ),
-                        title: Text(
-                          pro.isPro ? l10n.proActive : l10n.proInactive,
-                        ),
+                        title: Text(_tierLabel(context)),
                         subtitle: Text(l10n.proTitle(l10n.appTitle)),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () => PaywallScreen.open(context),
@@ -83,8 +165,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 8),
                 ...ExportQualityProfile.values.map(
                   (profile) => _QualityTile(
-                    profile: profile,
-                    groupValue: _selected,
+                    selected: _selected == profile,
                     title: _titleFor(profile, l10n),
                     subtitle: _subtitleFor(profile, l10n),
                     onTap: () => _select(profile),
@@ -129,15 +210,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
 class _QualityTile extends StatelessWidget {
   const _QualityTile({
-    required this.profile,
-    required this.groupValue,
+    required this.selected,
     required this.title,
     required this.subtitle,
     required this.onTap,
   });
 
-  final ExportQualityProfile profile;
-  final ExportQualityProfile? groupValue;
+  final bool selected;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
@@ -145,14 +224,16 @@ class _QualityTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: RadioListTile<ExportQualityProfile>(
-        value: profile,
-        groupValue: groupValue,
-        onChanged: (_) => onTap(),
+      child: ListTile(
+        leading: Icon(
+          selected
+              ? Icons.radio_button_checked
+              : Icons.radio_button_unchecked,
+          color: selected ? AppTheme.accent : null,
+        ),
         title: Text(title),
         subtitle: Text(subtitle),
-        controlAffinity: ListTileControlAffinity.trailing,
+        onTap: onTap,
       ),
     );
   }

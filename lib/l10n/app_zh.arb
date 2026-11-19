@@ -254,12 +254,108 @@
   "proPurchaseFailed": "购买未完成，请重试。",
   "proRestoreNone": "没有可恢复的购买。",
   "proSection": "订阅",
-  "premiumExportTitle": "此视频包含 Pro 特效",
-  "premiumExportBody": "请选择保存方式。",
-  "premiumExportWithPro": "用 Pro 保存",
-  "premiumExportWatchAd": "观看广告，本次保存",
-  "premiumExportStrip": "去除 Pro 特效后保存",
-  "premiumAdNotFinished": "完整观看广告后即可保存。",
+  "premiumExportTitle": "此视频包含付费特效",
+  "premiumExportBody": "可为每个特效观看广告解锁，或订阅一次性解锁全部。",
+  "premiumExportWithPro": "订阅解锁全部",
+  "premiumExportWatchAd": "看广告后使用",
+  "premiumExportWatchAdsCount": "观看 {count} 次广告（{credits} 积分）",
+  "@premiumExportWatchAdsCount": {
+    "placeholders": {
+      "count": { "type": "int" },
+      "credits": { "type": "int" }
+    }
+  },
+  "premiumExportSpendCredits": "使用 {credits} 积分（余额 {balance}）",
+  "@premiumExportSpendCredits": {
+    "placeholders": {
+      "credits": { "type": "int" },
+      "balance": { "type": "int" }
+    }
+  },
+  "premiumExportCreditCost": "本次导出需要 {credits} 积分。余额：{balance}。",
+  "@premiumExportCreditCost": {
+    "placeholders": {
+      "credits": { "type": "int" },
+      "balance": { "type": "int" }
+    }
+  },
+  "premiumExportStrip": "去除锁定特效后保存",
+  "premiumExportEffectUnlocked": "已解锁",
+  "premiumExportContinue": "继续保存",
+  "premiumAdNotFinished": "完整观看广告后即可解锁此特效。",
+  "premiumCreditsSpendFailed": "积分不足。请继续观看广告或订阅。",
+  "loginRequiredForSubscribe": "订阅前请先登录。",
+  "accountSection": "账户",
+  "accountSignIn": "登录",
+  "accountSignOut": "退出登录",
+  "accountSignedInAs": "已登录为 {name}",
+  "@accountSignedInAs": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "creditsBalanceLabel": "积分 {balance}",
+  "@creditsBalanceLabel": {
+    "placeholders": {
+      "balance": { "type": "int" }
+    }
+  },
+  "planPlusLabel": "Plus",
+  "planProLabel": "Pro",
+  "planStudioLabel": "Studio",
+  "planBillingMonthly": "月付",
+  "planBillingAnnual": "年付",
+  "planAnnualSaveBadge": "相当于送 2 个月",
+  "planPlusTitle": "{appName} Plus",
+  "@planPlusTitle": {
+    "placeholders": { "appName": { "type": "String" } }
+  },
+  "planProTitle": "{appName} Pro",
+  "@planProTitle": {
+    "placeholders": { "appName": { "type": "String" } }
+  },
+  "planStudioTitle": "{appName} Studio",
+  "@planStudioTitle": {
+    "placeholders": { "appName": { "type": "String" } }
+  },
+  "planPlusSubtitle": "每月 {credits} 积分，用于高级效果。",
+  "@planPlusSubtitle": {
+    "placeholders": { "credits": { "type": "int" } }
+  },
+  "planProSubtitle": "每月 {credits} 积分，并解锁 AI 工具。",
+  "@planProSubtitle": {
+    "placeholders": { "credits": { "type": "int" } }
+  },
+  "planStudioSubtitle": "重度创作者每月 {credits} 积分。",
+  "@planStudioSubtitle": {
+    "placeholders": { "credits": { "type": "int" } }
+  },
+  "planPlusBenefit1": "每月发放 {credits} 积分",
+  "@planPlusBenefit1": {
+    "placeholders": { "credits": { "type": "int" } }
+  },
+  "planPlusBenefit2": "全部高级转场与文字效果",
+  "planPlusBenefit3": "导出消耗积分 · 不足时可看广告补充",
+  "planProBenefit1": "每月发放 {credits} 积分",
+  "@planProBenefit1": {
+    "placeholders": { "credits": { "type": "int" } }
+  },
+  "planProBenefit2": "全部高级转场与文字效果",
+  "planProBenefit3": "解锁 AI 工具",
+  "planProBenefit4": "导出消耗积分 · 不足时可看广告补充",
+  "planStudioBenefit1": "每月发放 {credits} 积分",
+  "@planStudioBenefit1": {
+    "placeholders": { "credits": { "type": "int" } }
+  },
+  "planStudioBenefit2": "全部高级转场与文字效果",
+  "planStudioBenefit3": "解锁 AI 工具",
+  "planStudioBenefit4": "Studio 创作扩展与新工具优先体验",
+  "planStudioBenefit5": "导出消耗积分 · 不足时可看广告补充",
+  "planSubscribeCta": "订阅 {plan}",
+  "@planSubscribeCta": {
+    "placeholders": { "plan": { "type": "String" } }
+  },
+  "proBenefitAi": "Pro 与 Studio 可使用 AI 工具",
   "uploadAccountTitle": "上传到的 YouTube 账号",
   "uploadAccountNone": "尚未连接账号",
   "uploadAccountConnect": "连接",

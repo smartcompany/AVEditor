@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:aveditor/l10n/app_localizations.dart';
 import 'package:aveditor/models/applied_transition.dart';
+import 'package:aveditor/models/effect_access_tier.dart';
 import 'package:aveditor/models/transition_item.dart';
 import 'package:aveditor/services/transition_asset_store.dart';
 import 'package:aveditor/services/transition_catalog_service.dart';
@@ -79,9 +80,8 @@ class _TransitionPickerPanelState extends State<TransitionPickerPanel> {
   void _onChanged() {
     if (!mounted) return;
     // Hot reload / late catalog ready: clear spinner without re-bootstrap.
-    if (_loading &&
-        _service.isReady &&
-        _service.catalog.items.isNotEmpty) {
+    if (_loading && _service.isReady && _service.hasItems) {
+      _applyCatalogToState();
       setState(() => _loading = false);
       return;
     }
@@ -103,14 +103,19 @@ class _TransitionPickerPanelState extends State<TransitionPickerPanel> {
   Future<void> _bootstrap() async {
     try {
       // Already warm (main post-frame init) — paint tiles immediately.
-      if (_service.isReady && _service.catalog.items.isNotEmpty) {
+      if (_service.isReady && _service.hasItems) {
         _applyCatalogToState();
         if (mounted) setState(() => _loading = false);
         unawaited(_assets.ensureScanned());
         return;
       }
       // Catalog first so tiles can paint; asset scan is optional chrome.
-      await _service.ensureInitialized().timeout(const Duration(seconds: 5));
+      await _service.ensureInitialized().timeout(const Duration(seconds: 8));
+      if (!mounted) return;
+      // Empty after init (timeout race) — force one more bundled reload.
+      if (!_service.hasItems) {
+        await _service.reload().timeout(const Duration(seconds: 5));
+      }
       if (!mounted) return;
       _applyCatalogToState();
       setState(() => _loading = false);
@@ -122,6 +127,18 @@ class _TransitionPickerPanelState extends State<TransitionPickerPanel> {
         setState(() => _loading = false);
       }
     }
+  }
+
+  Future<void> _retryCatalog() async {
+    setState(() => _loading = true);
+    try {
+      await _service.reload().timeout(const Duration(seconds: 8));
+    } catch (error, stack) {
+      debugPrint('TransitionPickerPanel retry failed: $error\n$stack');
+    }
+    if (!mounted) return;
+    _applyCatalogToState();
+    setState(() => _loading = false);
   }
 
   TransitionItem? get _selectedItem {
@@ -251,8 +268,7 @@ class _TransitionPickerPanelState extends State<TransitionPickerPanel> {
     final categories = _service.catalog.displayCategories;
     // Recover if catalog became ready while this State was stuck mid-bootstrap
     // (common after hot reload).
-    final loading = _loading &&
-        !(_service.isReady && _service.catalog.items.isNotEmpty);
+    final loading = _loading && !(_service.isReady && _service.hasItems);
     TransitionCategory? category;
     if (categories.isNotEmpty) {
       category = categories.firstWhere(
@@ -382,9 +398,22 @@ class _TransitionPickerPanelState extends State<TransitionPickerPanel> {
                                 horizontal: 16,
                                 vertical: 24,
                               ),
-                              child: Text(
-                                l10n.transitionCatalogUnavailable,
-                                style: const TextStyle(color: Colors.white70),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    l10n.transitionCatalogUnavailable,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  TextButton(
+                                    onPressed: _loading ? null : _retryCatalog,
+                                    child: Text(l10n.retry),
+                                  ),
+                                ],
                               ),
                             )
                           : GridView.builder(
@@ -660,11 +689,15 @@ class _TransitionTileState extends State<_TransitionTile>
                                     ),
                                   ),
                                 ),
-                              if (widget.item.premium)
-                                const Positioned(
+                              if (widget.item.accessTier.isPaid)
+                                Positioned(
                                   left: 4,
                                   top: 4,
-                                  child: _PremiumBadge(),
+                                  child: _AccessBadge(
+                                    label: widget.item.accessTier.badgeLabel,
+                                    pro: widget.item.accessTier ==
+                                        EffectAccessTier.pro,
+                                  ),
                                 ),
                               if (widget.downloading)
                                 const Positioned(
@@ -717,19 +750,29 @@ class _TransitionTileState extends State<_TransitionTile>
   }
 }
 
-class _PremiumBadge extends StatelessWidget {
-  const _PremiumBadge();
+class _AccessBadge extends StatelessWidget {
+  const _AccessBadge({required this.label, required this.pro});
+
+  final String label;
+  final bool pro;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 16,
-      height: 16,
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
       decoration: BoxDecoration(
-        color: const Color(0xFF7C3AED),
+        color: pro ? const Color(0xFF7C3AED) : const Color(0xFF2563EB),
         borderRadius: BorderRadius.circular(4),
       ),
-      child: const Icon(Icons.diamond, size: 10, color: Colors.white),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 8,
+          fontWeight: FontWeight.w700,
+          height: 1.2,
+        ),
+      ),
     );
   }
 }
