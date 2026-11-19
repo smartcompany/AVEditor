@@ -1,10 +1,19 @@
-# aveditor
+# AVEditor (EasyClip client)
 
-A new Flutter project.
+## Firebase setup (required once)
+
+`lib/firebase_options.dart` is **not** committed (GitHub flags Google API keys).
+
+1. Place native configs (already gitignored):
+   - `ios/Runner/GoogleService-Info.plist`
+   - `android/app/google-services.json`
+2. Generate Dart options:
+
+```bash
+python3 tool/generate_firebase_options.py
+```
 
 ## Getting Started
-
-This project is a starting point for a Flutter application.
 
 A few resources to get you started if this is your first Flutter project:
 
