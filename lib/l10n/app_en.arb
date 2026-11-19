@@ -340,6 +340,12 @@
   "proStoreUnavailable": "The store isn't connected yet.",
   "proDebugToggle": "Test Pro (debug only)",
   "proActive": "Pro is active",
+  "planActive": "{plan} is active",
+  "@planActive": {
+    "placeholders": {
+      "plan": { "type": "String" }
+    }
+  },
   "proInactive": "Free plan",
   "proPurchaseFailed": "The purchase didn't go through. Please try again.",
   "proRestoreNone": "No purchases to restore.",

@@ -1560,6 +1560,12 @@ abstract class AppLocalizations {
   /// **'Pro is active'**
   String get proActive;
 
+  /// No description provided for @planActive.
+  ///
+  /// In en, this message translates to:
+  /// **'{plan} is active'**
+  String planActive(String plan);
+
   /// No description provided for @proInactive.
   ///
   /// In en, this message translates to:

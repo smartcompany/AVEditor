@@ -780,6 +780,11 @@ class AppLocalizationsZh extends AppLocalizations {
   String get proActive => 'Pro 已开通';
 
   @override
+  String planActive(String plan) {
+    return '$plan 已开通';
+  }
+
+  @override
   String get proInactive => '免费版';
 
   @override

@@ -19,14 +19,14 @@ class CreditService extends ChangeNotifier {
 
   int _balance = 0;
   String _planTier = 'free';
-  int _adReward = 25;
-  int _startingCredits = 100;
+  int _adReward = 0;
+  int _startingCredits = 0;
   Map<String, int> _transitionCosts = const {};
   Map<String, int> _textCosts = const {};
   Map<String, int> _monthlyCredits = const {
-    'plus': 500,
-    'pro': 1500,
-    'studio': 4000,
+    'plus': 0,
+    'pro': 0,
+    'studio': 0,
   };
   List<RemotePlan> _plans = const [];
   int _defaultTransition = 40;
@@ -223,8 +223,9 @@ class CreditService extends ChangeNotifier {
   int adsNeededFor(int cost) {
     final need = cost - _balance;
     if (need <= 0) return 0;
-    final reward = _adReward <= 0 ? 25 : _adReward;
-    return ((need + reward - 1) / reward).floor();
+    // Dashboard adRewardCredits is authoritative — including 0 (ads disabled).
+    if (_adReward <= 0) return need;
+    return ((need + _adReward - 1) / _adReward).floor();
   }
 
   Future<bool> claimAdReward() async {

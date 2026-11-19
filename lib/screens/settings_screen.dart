@@ -65,11 +65,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   String _tierLabel(BuildContext context) {
     final l10n = context.l10n;
+    final app = l10n.appTitle;
     return switch (ProService.instance.tier) {
-      PlanTier.studio => l10n.planStudioLabel,
-      PlanTier.pro => l10n.planProLabel,
-      PlanTier.plus => l10n.planPlusLabel,
-      PlanTier.free => l10n.proInactive,
+      PlanTier.studio => l10n.planStudioTitle(app),
+      PlanTier.pro => l10n.planProTitle(app),
+      PlanTier.plus => l10n.planPlusTitle(app),
+      PlanTier.free => l10n.planPlusTitle(app),
+    };
+  }
+
+  String _tierSubtitle(BuildContext context) {
+    final l10n = context.l10n;
+    return switch (ProService.instance.tier) {
+      PlanTier.studio => l10n.planActive(l10n.planStudioLabel),
+      PlanTier.pro => l10n.planActive(l10n.planProLabel),
+      PlanTier.plus => l10n.planActive(l10n.planPlusLabel),
+      PlanTier.free => l10n.planSubscribeCta(l10n.planPlusLabel),
     };
   }
 
@@ -150,7 +161,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           color: pro.isPro ? AppTheme.accent : null,
                         ),
                         title: Text(_tierLabel(context)),
-                        subtitle: Text(l10n.proTitle(l10n.appTitle)),
+                        subtitle: Text(_tierSubtitle(context)),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () => PaywallScreen.open(context),
                       ),

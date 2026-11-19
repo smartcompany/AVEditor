@@ -87,6 +87,10 @@ class ProService extends ChangeNotifier {
   Completer<PurchaseDetails?>? _purchaseCompleter;
   String? _pendingProductId;
 
+  /// True while launch/restore is collecting StoreKit purchases.
+  bool _iapSyncActive = false;
+  PlanTier _iapSyncBest = PlanTier.free;
+
   /// True when editing unlock is active (Plus / Pro / Studio / debug).
   bool get isPro =>
       _storeTier != PlanTier.free ||
@@ -180,8 +184,66 @@ class ProService extends ChangeNotifier {
       _iapLog('skipping store init on unsupported platform');
     }
 
-    unawaited(refreshEntitlementFromServer());
+    // Entitlement at launch: StoreKit first, then /me (never wipe IAP with free).
+    unawaited(_syncSubscriptionAtLaunch());
     notifyListeners();
+  }
+
+  int _tierRank(PlanTier tier) => switch (tier) {
+        PlanTier.studio => 3,
+        PlanTier.pro => 2,
+        PlanTier.plus => 1,
+        PlanTier.free => 0,
+      };
+
+  Future<void> _applyTier(
+    PlanTier tier, {
+    required bool allowDowngrade,
+  }) async {
+    if (!allowDowngrade && _tierRank(tier) < _tierRank(_storeTier)) {
+      _iapLog(
+        'ignore downgrade ${_storeTier.name} → ${tier.name}',
+      );
+      return;
+    }
+    await _setStoreTier(tier);
+  }
+
+  /// App start: ask StoreKit what is owned, then reconcile with server /me.
+  Future<void> _syncSubscriptionAtLaunch() async {
+    if (!_storeConfigured) {
+      await refreshEntitlementFromServer();
+      return;
+    }
+
+    _iapLog('launch IAP sync start');
+    _iapSyncActive = true;
+    _iapSyncBest = PlanTier.free;
+    try {
+      await _iap.restorePurchases();
+      // StoreKit delivers restored items asynchronously on purchaseStream.
+      await Future<void>.delayed(const Duration(seconds: 2));
+      if (_tierRank(_iapSyncBest) > _tierRank(_storeTier)) {
+        await _setStoreTier(_iapSyncBest);
+      }
+      _iapLog(
+        'launch IAP sync done best=${_iapSyncBest.name} '
+        'local=${_storeTier.name}',
+      );
+    } catch (e) {
+      _iapLog('launch IAP sync failed: $e');
+    } finally {
+      _iapSyncActive = false;
+    }
+
+    final iapTier = _storeTier;
+    await refreshEntitlementFromServer();
+    if (_tierRank(_storeTier) < _tierRank(iapTier)) {
+      _iapLog(
+        'keeping IAP tier ${iapTier.name} over server ${_storeTier.name}',
+      );
+      await _setStoreTier(iapTier);
+    }
   }
 
   Future<void> disposeListeners() async {
@@ -259,7 +321,8 @@ class ProService extends ChangeNotifier {
         final map = jsonDecode(utf8.decode(res.bodyBytes));
         if (map is Map) {
           final tier = _parseTier(map['planTier'] as String?) ?? PlanTier.free;
-          await _setStoreTier(tier);
+          // /me can lag Sandbox renewals as free — don't wipe a paid IAP tier.
+          await _applyTier(tier, allowDowngrade: false);
         }
       }
     } catch (e) {
@@ -418,11 +481,34 @@ class ProService extends ChangeNotifier {
               purchase.productID == _pendingProductId)) {
         if (purchase.status == PurchaseStatus.pending) continue;
         _purchaseCompleter!.complete(purchase);
-      } else if (purchase.status == PurchaseStatus.purchased ||
+        continue;
+      }
+
+      if (purchase.status == PurchaseStatus.purchased ||
           purchase.status == PurchaseStatus.restored) {
-        // Deliver outside an explicit purchase() await (e.g. restore).
-        unawaited(_verifyAndFinish(purchase));
-      } else if (purchase.pendingCompletePurchase) {
+        if (_iapSyncActive) {
+          // Launch / restore: trust StoreKit product ownership locally.
+          final fromStore = tierFromProductId(purchase.productID);
+          if (_tierRank(fromStore) > _tierRank(_iapSyncBest)) {
+            _iapSyncBest = fromStore;
+          }
+          unawaited(_applyTier(fromStore, allowDowngrade: false));
+          // Keep server in sync, but never let an expired Sandbox JWS wipe Plus.
+          unawaited(_verifyAndFinish(purchase, allowDowngrade: false));
+        } else {
+          // Unsolicited redelivery — finish only; entitlement already from launch.
+          _iapLog(
+            'complete-only unsolicited ${purchase.status.name} '
+            'product=${purchase.productID}',
+          );
+          if (purchase.pendingCompletePurchase) {
+            unawaited(_iap.completePurchase(purchase));
+          }
+        }
+        continue;
+      }
+
+      if (purchase.pendingCompletePurchase) {
         unawaited(_iap.completePurchase(purchase));
       }
     }
@@ -466,7 +552,7 @@ class ProService extends ChangeNotifier {
         }
         return ProPurchaseResult.failed;
       }
-      final ok = await _verifyAndFinish(details);
+      final ok = await _verifyAndFinish(details, allowDowngrade: true);
       return ok ? ProPurchaseResult.purchased : ProPurchaseResult.failed;
     } catch (e) {
       debugPrint('[ProService] purchase failed: $e');
@@ -483,20 +569,36 @@ class ProService extends ChangeNotifier {
       await refreshEntitlementFromServer();
       return isPro;
     }
+    _iapSyncActive = true;
+    _iapSyncBest = PlanTier.free;
     try {
       await _iap.restorePurchases();
-      // Give the purchase stream a moment to deliver restored items.
       await Future<void>.delayed(const Duration(seconds: 2));
+      if (_tierRank(_iapSyncBest) > _tierRank(_storeTier)) {
+        await _setStoreTier(_iapSyncBest);
+      }
+      final iapTier = _storeTier;
       await refreshEntitlementFromServer();
+      if (_tierRank(_storeTier) < _tierRank(iapTier)) {
+        await _setStoreTier(iapTier);
+      }
     } catch (e) {
       debugPrint('[ProService] restore failed: $e');
+    } finally {
+      _iapSyncActive = false;
     }
     return isPro;
   }
 
-  Future<bool> _verifyAndFinish(PurchaseDetails purchase) async {
+  Future<bool> _verifyAndFinish(
+    PurchaseDetails purchase, {
+    bool allowDowngrade = true,
+  }) async {
     try {
-      final verified = await _verifyWithServer(purchase);
+      final verified = await _verifyWithServer(
+        purchase,
+        allowDowngrade: allowDowngrade,
+      );
       if (purchase.pendingCompletePurchase) {
         await _iap.completePurchase(purchase);
       }
@@ -510,7 +612,10 @@ class ProService extends ChangeNotifier {
     }
   }
 
-  Future<bool> _verifyWithServer(PurchaseDetails purchase) async {
+  Future<bool> _verifyWithServer(
+    PurchaseDetails purchase, {
+    required bool allowDowngrade,
+  }) async {
     await CreditService.instance.ensureInitialized();
     final deviceKey = await CreditService.instance.deviceKey();
     final api = ApiService.shared;
@@ -562,7 +667,10 @@ class ProService extends ChangeNotifier {
       try {
         final err = jsonDecode(bodyText);
         if (err is Map) {
-          _iapLog('verify detail jwsError=${err['jwsError']} lookupError=${err['lookupError']}');
+          _iapLog(
+            'verify detail jwsError=${err['jwsError']} '
+            'lookupError=${err['lookupError']}',
+          );
         }
       } catch (_) {}
     }
@@ -571,18 +679,16 @@ class ProService extends ChangeNotifier {
       if (map is Map) {
         final tier = _parseTier(map['planTier'] as String?) ??
             tierFromProductId(purchase.productID);
-        await _setStoreTier(tier);
-        return tier != PlanTier.free;
+        await _applyTier(tier, allowDowngrade: allowDowngrade);
+        return _tierRank(tier) > 0 || _tierRank(_storeTier) > 0;
       }
     } else {
-      // Do not unlock locally on verify failure — otherwise the paywall
-      // looks "purchased" until the next entitlement refresh resets to free.
       _iapLog(
-        'verify failed — keeping locked until server accepts the receipt '
-        '(status=${res.statusCode})',
+        'verify failed — keeping current tier '
+        '(status=${res.statusCode} local=${_storeTier.name})',
       );
     }
-    return false;
+    return _tierRank(_storeTier) > 0;
   }
 
   /// Debug-only switch on the paywall (maps to Pro tier when on).

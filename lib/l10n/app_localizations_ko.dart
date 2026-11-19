@@ -788,6 +788,11 @@ class AppLocalizationsKo extends AppLocalizations {
   String get proActive => 'Pro 사용 중';
 
   @override
+  String planActive(String plan) {
+    return '$plan 사용 중';
+  }
+
+  @override
   String get proInactive => '무료 플랜';
 
   @override

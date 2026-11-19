@@ -1,5 +1,5 @@
 {
-  "version": 8,
+  "version": 10,
   "baseUrl": "",
   "categories": [
     {
@@ -38,7 +38,8 @@
               "color": 4278190080,
               "opacity": 0.55
             }
-          }
+          },
+          "accessTier": "free"
         },
         {
           "id": "effect_pastel",
@@ -59,7 +60,8 @@
                 4291408117
               ]
             }
-          }
+          },
+          "accessTier": "free"
         },
         {
           "id": "effect_torn_label",
@@ -84,7 +86,8 @@
               "shadowOpacity": 0.4,
               "shadowBlurFactor": 0.2
             }
-          }
+          },
+          "accessTier": "free"
         },
         {
           "id": "effect_outline",
@@ -105,7 +108,8 @@
                 "color": 4279308561
               }
             ]
-          }
+          },
+          "accessTier": "free"
         },
         {
           "id": "effect_caption",
@@ -128,7 +132,8 @@
               "radiusFactor": 0.14,
               "shape": "capsule"
             }
-          }
+          },
+          "accessTier": "free"
         },
         {
           "id": "effect_highlight",
@@ -151,7 +156,8 @@
               "radiusFactor": 0.08,
               "shape": "capsule"
             }
-          }
+          },
+          "accessTier": "free"
         },
         {
           "id": "effect_news",
@@ -174,7 +180,8 @@
               "radiusFactor": 0.06,
               "shape": "capsule"
             }
-          }
+          },
+          "accessTier": "free"
         },
         {
           "id": "effect_neon_pink",
@@ -202,7 +209,8 @@
               "color": 4294922147,
               "opacity": 0.95
             }
-          }
+          },
+          "accessTier": "plus"
         },
         {
           "id": "effect_neon_blue",
@@ -230,7 +238,8 @@
               "color": 4281721087,
               "opacity": 0.95
             }
-          }
+          },
+          "accessTier": "plus"
         },
         {
           "id": "effect_gold",
@@ -266,7 +275,8 @@
               "color": 4278190080,
               "opacity": 0.55
             }
-          }
+          },
+          "accessTier": "plus"
         },
         {
           "id": "effect_fire",
@@ -301,7 +311,8 @@
               "color": 4294928896,
               "opacity": 0.7
             }
-          }
+          },
+          "accessTier": "plus"
         },
         {
           "id": "effect_ice",
@@ -336,7 +347,8 @@
               "color": 4290767615,
               "opacity": 0.8
             }
-          }
+          },
+          "accessTier": "plus"
         },
         {
           "id": "effect_retro",
@@ -365,7 +377,8 @@
               "color": 4293212469,
               "opacity": 1
             }
-          }
+          },
+          "accessTier": "free"
         },
         {
           "id": "effect_comic",
@@ -394,7 +407,8 @@
               "color": 4279308561,
               "opacity": 1
             }
-          }
+          },
+          "accessTier": "free"
         },
         {
           "id": "effect_candy",
@@ -428,7 +442,8 @@
               "color": 4278190080,
               "opacity": 0.35
             }
-          }
+          },
+          "accessTier": "plus"
         },
         {
           "id": "effect_sunset",
@@ -457,7 +472,8 @@
               "color": 4278190080,
               "opacity": 0.5
             }
-          }
+          },
+          "accessTier": "free"
         },
         {
           "id": "effect_ocean",
@@ -485,7 +501,8 @@
                 "color": 4294967295
               }
             ]
-          }
+          },
+          "accessTier": "free"
         },
         {
           "id": "effect_soft_shadow",
@@ -507,7 +524,8 @@
               "color": 4278190080,
               "opacity": 0.75
             }
-          }
+          },
+          "accessTier": "free"
         },
         {
           "id": "effect_glow",
@@ -528,7 +546,8 @@
               "color": 4294967295,
               "opacity": 0.85
             }
-          }
+          },
+          "accessTier": "plus"
         },
         {
           "id": "effect_color_pop",
@@ -553,7 +572,8 @@
                 "color": 4279308561
               }
             ]
-          }
+          },
+          "accessTier": "plus"
         }
       ]
     },
@@ -588,7 +608,8 @@
               "shadowOpacity": 0.55,
               "shadowBlurFactor": 0.28
             }
-          }
+          },
+          "accessTier": "free"
         },
         {
           "id": "pack_neon_pulse",
@@ -631,7 +652,8 @@
               "color": 4278190080,
               "opacity": 0.5
             }
-          }
+          },
+          "accessTier": "free"
         },
         {
           "id": "pack_sticker",
@@ -668,7 +690,8 @@
               "color": 4278190080,
               "opacity": 0.85
             }
-          }
+          },
+          "accessTier": "free"
         },
         {
           "id": "pack_subtitle",
@@ -695,7 +718,8 @@
               "radiusFactor": 0.14,
               "shape": "capsule"
             }
-          }
+          },
+          "accessTier": "free"
         },
         {
           "id": "pack_typing",
@@ -722,7 +746,8 @@
               "radiusFactor": 0.1,
               "shape": "capsule"
             }
-          }
+          },
+          "accessTier": "free"
         },
         {
           "id": "pack_breaking",
@@ -749,7 +774,8 @@
               "radiusFactor": 0.06,
               "shape": "capsule"
             }
-          }
+          },
+          "accessTier": "plus"
         },
         {
           "id": "pack_marker",
@@ -776,7 +802,8 @@
               "radiusFactor": 0.08,
               "shape": "capsule"
             }
-          }
+          },
+          "accessTier": "free"
         },
         {
           "id": "pack_memo",
@@ -805,7 +832,8 @@
               "shadowOpacity": 0.45,
               "shadowBlurFactor": 0.25
             }
-          }
+          },
+          "accessTier": "free"
         },
         {
           "id": "pack_neon_pink",
@@ -837,7 +865,8 @@
               "color": 4294922147,
               "opacity": 0.95
             }
-          }
+          },
+          "accessTier": "plus"
         },
         {
           "id": "pack_cyber",
@@ -869,7 +898,8 @@
               "color": 4281721087,
               "opacity": 0.95
             }
-          }
+          },
+          "accessTier": "plus"
         },
         {
           "id": "pack_gold_title",
@@ -909,7 +939,8 @@
               "color": 4278190080,
               "opacity": 0.55
             }
-          }
+          },
+          "accessTier": "plus"
         },
         {
           "id": "pack_hot",
@@ -948,7 +979,8 @@
               "color": 4294928896,
               "opacity": 0.7
             }
-          }
+          },
+          "accessTier": "plus"
         },
         {
           "id": "pack_frost",
@@ -987,7 +1019,8 @@
               "color": 4290767615,
               "opacity": 0.8
             }
-          }
+          },
+          "accessTier": "plus"
         },
         {
           "id": "pack_retro",
@@ -1020,7 +1053,8 @@
               "color": 4293212469,
               "opacity": 1
             }
-          }
+          },
+          "accessTier": "free"
         },
         {
           "id": "pack_comic",
@@ -1053,7 +1087,8 @@
               "color": 4279308561,
               "opacity": 1
             }
-          }
+          },
+          "accessTier": "free"
         },
         {
           "id": "pack_candy",
@@ -1091,7 +1126,8 @@
               "color": 4278190080,
               "opacity": 0.35
             }
-          }
+          },
+          "accessTier": "plus"
         },
         {
           "id": "pack_sunset",
@@ -1124,7 +1160,8 @@
               "color": 4278190080,
               "opacity": 0.5
             }
-          }
+          },
+          "accessTier": "plus"
         },
         {
           "id": "pack_vlog",
@@ -1150,7 +1187,8 @@
               "color": 4278190080,
               "opacity": 0.7
             }
-          }
+          },
+          "accessTier": "free"
         },
         {
           "id": "pack_quote",
@@ -1176,7 +1214,8 @@
               "color": 4278190080,
               "opacity": 0.8
             }
-          }
+          },
+          "accessTier": "free"
         },
         {
           "id": "pack_label",
@@ -1203,7 +1242,8 @@
               "radiusFactor": 0.12,
               "shape": "capsule"
             }
-          }
+          },
+          "accessTier": "free"
         }
       ]
     }

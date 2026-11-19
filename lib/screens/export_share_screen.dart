@@ -23,13 +23,21 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:video_player/video_player.dart';
 
-/// Presented after Export. Shows encode progress, then the video and the
-/// server-ordered share row. The photo album is updated only when a share
-/// target is chosen.
+/// Share destinations after encode.
+///
+/// When [preparedExportPath] is set (export already finished in the editor),
+/// skips the encode stage and opens the share UI immediately.
 class ExportShareScreen extends StatefulWidget {
-  const ExportShareScreen({super.key, required this.project});
+  const ExportShareScreen({
+    super.key,
+    required this.project,
+    this.preparedExportPath,
+  });
 
   final VideoProject project;
+
+  /// Absolute path of a finished export. Null → encode here (legacy).
+  final String? preparedExportPath;
 
   @override
   State<ExportShareScreen> createState() => _ExportShareScreenState();
@@ -56,12 +64,69 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
   List<ShareTarget> _targets = ShareCatalogService.fallback;
   VideoPlayerController? _player;
 
+  /// True while a pre-exported file is loading into the share UI (no encode stage).
+  late final bool _fromPrepared;
+  var _preparingShareUi = false;
+
   @override
   void initState() {
     super.initState();
     _share.onFacebookResult = _onFacebookResult;
     _share.onTikTokResult = _onTikTokResult;
-    _run();
+    final prepared = widget.preparedExportPath?.trim();
+    _fromPrepared = prepared != null && prepared.isNotEmpty;
+    _preparingShareUi = _fromPrepared;
+    // Defer past initState — context.l10n / InheritedWidgets are not ready yet.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_fromPrepared) {
+        unawaited(_openPrepared(prepared!));
+      } else {
+        unawaited(_run());
+      }
+    });
+  }
+
+  Future<void> _openPrepared(String path) async {
+    final catalogFuture = _catalog.load();
+    final thumbFuture = _loadThumb();
+    try {
+      unawaited(_projects.markExported(widget.project.id));
+      unawaited(RetentionNotificationService.instance.cancelDraftAbandon());
+      if (mounted) {
+        final l10n = context.l10n;
+        unawaited(
+          RetentionNotificationService.instance.scheduleShareNudge(
+            projectId: widget.project.id,
+            title: l10n.pushShareTitle,
+            body: l10n.pushShareBody,
+          ),
+        );
+      }
+      await thumbFuture;
+      final targets = await catalogFuture;
+      final player = VideoPlayerController.file(File(path));
+      await player.initialize();
+      await player.setLooping(true);
+      if (!mounted) {
+        await player.dispose();
+        return;
+      }
+      setState(() {
+        _exportedPath = path;
+        _targets = targets;
+        _player = player;
+        _progress = 1;
+        _preparingShareUi = false;
+      });
+    } catch (error, stack) {
+      debugPrint('[ExportShare] prepared open failed: $error\n$stack');
+      if (!mounted) return;
+      setState(() {
+        _error = error.toString();
+        _preparingShareUi = false;
+      });
+    }
   }
 
   void _onTikTokResult(String status, String? message) {
@@ -311,31 +376,25 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
     await _share.shareFile(path);
   }
 
-  void _continueEditing() {
-    AnalyticsService.instance.log('continue_after_export');
-    Navigator.of(context).pop();
-  }
-
-  void _startNewClip() {
-    AnalyticsService.instance.log('start_new_after_export');
-    Navigator.of(context).popUntil((route) => route.isFirst);
-  }
-
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final ready = _exportedPath != null && _error == null;
+    // Prepared exports already finished encode in the editor — never show the
+    // old conversion progress flash while the share player boots.
+    final showShareChrome = ready || _fromPrepared;
+    final title = showShareChrome ? l10n.shareContentTitle : l10n.exporting;
 
     return PopScope(
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop || ready) return;
+        if (!didPop || ready || _fromPrepared) return;
         _cancelExportWork();
       },
       child: Scaffold(
         backgroundColor: AppTheme.background,
         appBar: AppBar(
           backgroundColor: AppTheme.background,
-          title: Text(ready ? l10n.shareContentTitle : l10n.exporting),
+          title: Text(title),
           actions: [
             if (ready)
               IconButton(
@@ -349,6 +408,14 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
             ? _buildSaved(l10n)
             : _error != null
             ? _buildError(l10n)
+            : _preparingShareUi
+            ? const Center(
+                child: SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                ),
+              )
             : _buildProgress(),
       ),
     );
@@ -376,7 +443,7 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
         ? l10n.exportFailed
         : l10n.exportFailedWithMessage(message);
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -425,16 +492,6 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
                 ),
               ],
               const SizedBox(height: 16),
-              Text(
-                l10n.exportShareHint,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.dmSans(
-                  fontSize: 13,
-                  height: 1.35,
-                  color: AppTheme.muted,
-                ),
-              ),
-              const SizedBox(height: 12),
               // Equal-weight 2×2 share grid (no YouTube-primary CTA).
               for (var i = 0; i < buttons.length; i += 2) ...[
                 if (i > 0) const SizedBox(height: 10),
@@ -450,36 +507,6 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
                   ],
                 ),
               ],
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _continueEditing,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppTheme.ink,
-                        side: BorderSide(
-                          color: AppTheme.accentCyan.withValues(alpha: 0.45),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      child: Text(l10n.resumeEditing),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: _startNewClip,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppTheme.accent,
-                        foregroundColor: AppTheme.ink,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      child: Text(l10n.startNewClip),
-                    ),
-                  ),
-                ],
-              ),
             ],
           ),
         ),

@@ -291,6 +291,10 @@ class _PaywallScreenState extends State<PaywallScreen> {
     };
   }
 
+  String _activeStatusText(BuildContext context, AppLocalizations l10n) {
+    return l10n.planActive(_tierLabel(context, l10n, _pro.tier));
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
@@ -368,7 +372,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
               ),
               const SizedBox(height: 12),
               if (_pro.isPro && _plans.isEmpty)
-                _StatusCard(text: l10n.proActive)
+                _StatusCard(text: _activeStatusText(context, l10n))
               else if (_loading)
                 const Padding(
                   padding: EdgeInsets.all(24),
@@ -391,7 +395,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                 if (_pro.isPro)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
-                    child: _StatusCard(text: l10n.proActive),
+                    child: _StatusCard(text: _activeStatusText(context, l10n)),
                   ),
                 if (_hasBillingChoice) ...[
                   _BillingToggle(

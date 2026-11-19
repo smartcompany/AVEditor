@@ -1,4 +1,4 @@
-import 'package:aveditor/screens/editor_screen.dart';
+import 'package:aveditor/navigation/editor_route.dart';
 import 'package:aveditor/services/retention_notification_service.dart';
 import 'package:flutter/material.dart';
 
@@ -27,10 +27,6 @@ class AppNavigator {
     if (projectId == null || projectId.isEmpty) return;
 
     nav.popUntil((route) => route.isFirst);
-    await nav.push(
-      MaterialPageRoute<void>(
-        builder: (_) => EditorScreen(projectId: projectId),
-      ),
-    );
+    await nav.push(editorRoute(projectId)); // deep link — no home progress tile
   }
 }

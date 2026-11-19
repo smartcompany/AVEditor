@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:aveditor/l10n/l10n_extensions.dart';
-import 'package:aveditor/screens/editor_screen.dart';
+import 'package:aveditor/navigation/editor_route.dart';
 import 'package:aveditor/screens/settings_screen.dart';
 import 'package:aveditor/services/analytics_service.dart';
 import 'package:aveditor/services/project_storage_service.dart';
@@ -27,6 +27,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loading = false;
   double? _convertProgress;
   bool _projectsLoading = true;
+  String? _openingProjectId;
   List<ProjectSummary> _projects = const [];
 
   /// Cover thumbnail lookups, keyed by project id + first-frame time so a
@@ -58,13 +59,26 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openEditor(String projectId) async {
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => EditorScreen(projectId: projectId),
-      ),
-    );
-    await _loadProjects();
+    if (!mounted || _openingProjectId != null) return;
+    setState(() => _openingProjectId = projectId);
+    try {
+      await Navigator.of(context).push(
+        editorRoute(
+          projectId,
+          onReady: () {
+            if (!mounted) return;
+            if (_openingProjectId == projectId) {
+              setState(() => _openingProjectId = null);
+            }
+          },
+        ),
+      );
+    } finally {
+      if (mounted && _openingProjectId == projectId) {
+        setState(() => _openingProjectId = null);
+      }
+      await _loadProjects();
+    }
   }
 
   Future<void> _pickGallery() async {
@@ -159,14 +173,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return DateFormat.yMMMd().add_jm().format(summary.updatedAt.toLocal());
   }
 
-  /// Newest draft (never exported, or edited after export), if any.
-  ProjectSummary? get _resumeDraft {
-    for (final project in _projects) {
-      if (project.isDraft) return project;
-    }
-    return null;
-  }
-
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
@@ -252,183 +258,35 @@ class _HomeScreenState extends State<HomeScreen> {
                       ? const Center(child: CircularProgressIndicator())
                       : _projects.isEmpty
                       ? const SizedBox.shrink()
-                      : Builder(
-                          builder: (context) {
-                            final draft = _resumeDraft;
-                            return ListView(
-                              children: [
-                                if (draft != null) ...[
-                                  _ResumeDraftCard(
-                                    cover: _coverFor(draft),
-                                    title: _projectTitle(draft),
-                                    subtitle: l10n.resumeEditingSubtitle(
-                                      draft.overlayCount,
-                                      DateFormat.MMMd().add_jm().format(
-                                        draft.updatedAt.toLocal(),
-                                      ),
+                      : ListView(
+                          children: [
+                            for (var i = 0; i < _projects.length; i++) ...[
+                              if (i > 0) const SizedBox(height: 10),
+                              Builder(
+                                builder: (context) {
+                                  final project = _projects[i];
+                                  return _ProjectTile(
+                                    cover: _coverFor(project),
+                                    title: _projectTitle(project),
+                                    subtitle: l10n.projectListSubtitle(
+                                      project.overlayCount,
                                     ),
-                                    badge: l10n.draftBadge,
-                                    actionLabel: l10n.resumeEditing,
-                                    enabled: !_loading,
-                                    onOpen: () {
-                                      AnalyticsService.instance.log(
-                                        'resume_draft_tap',
-                                      );
-                                      _openEditor(draft.id);
-                                    },
-                                  ),
-                                  const SizedBox(height: 10),
-                                ],
-                                for (var i = 0; i < _projects.length; i++) ...[
-                                  if (i > 0) const SizedBox(height: 10),
-                                  Builder(
-                                    builder: (context) {
-                                      final project = _projects[i];
-                                      return _ProjectTile(
-                                        cover: _coverFor(project),
-                                        title: _projectTitle(project),
-                                        subtitle: l10n.projectListSubtitle(
-                                          project.overlayCount,
-                                        ),
-                                        draftBadge: project.isDraft
-                                            ? l10n.draftBadge
-                                            : null,
-                                        enabled: !_loading,
-                                        onOpen: () =>
-                                            _openEditor(project.id),
-                                        onDelete: () =>
-                                            _deleteProject(project),
-                                        deleteTooltip: l10n.deleteProject,
-                                      );
-                                    },
-                                  ),
-                                ],
-                              ],
-                            );
-                          },
-                        ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ResumeDraftCard extends StatelessWidget {
-  const _ResumeDraftCard({
-    required this.cover,
-    required this.title,
-    required this.subtitle,
-    required this.badge,
-    required this.actionLabel,
-    required this.enabled,
-    required this.onOpen,
-  });
-
-  final Future<String?> cover;
-  final String title;
-  final String subtitle;
-  final String badge;
-  final String actionLabel;
-  final bool enabled;
-  final VoidCallback onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: enabled ? onOpen : null,
-        borderRadius: BorderRadius.circular(16),
-        child: Ink(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                AppTheme.accent.withValues(alpha: 0.22),
-                AppTheme.accentCyan.withValues(alpha: 0.12),
-              ],
-            ),
-            border: Border.all(color: AppTheme.accent.withValues(alpha: 0.35)),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    _ProjectCover(cover: cover),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.accent.withValues(alpha: 0.2),
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
-                                child: Text(
-                                  badge,
-                                  style: GoogleFonts.dmSans(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppTheme.ink,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: GoogleFonts.dmSans(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppTheme.ink,
-                                  ),
-                                ),
+                                    draftBadge: project.isDraft
+                                        ? l10n.draftBadge
+                                        : null,
+                                    opening: _openingProjectId == project.id,
+                                    enabled: !_loading &&
+                                        _openingProjectId == null,
+                                    onOpen: () => _openEditor(project.id),
+                                    onDelete: () =>
+                                        _deleteProject(project),
+                                    deleteTooltip: l10n.deleteProject,
+                                  );
+                                },
                               ),
                             ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            subtitle,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.dmSans(
-                              fontSize: 12,
-                              height: 1.35,
-                              color: AppTheme.muted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  actionLabel,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.dmSans(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.ink,
-                  ),
+                          ],
+                        ),
                 ),
               ],
             ),
@@ -449,6 +307,7 @@ class _ProjectTile extends StatelessWidget {
     required this.onDelete,
     required this.deleteTooltip,
     this.draftBadge,
+    this.opening = false,
   });
 
   /// Path of the cover JPEG (first frame), or null when none could be made.
@@ -456,6 +315,7 @@ class _ProjectTile extends StatelessWidget {
   final String title;
   final String subtitle;
   final String? draftBadge;
+  final bool opening;
   final bool enabled;
   final VoidCallback onOpen;
   final VoidCallback onDelete;
@@ -472,75 +332,98 @@ class _ProjectTile extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppTheme.surface,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppTheme.accent.withValues(alpha: 0.18)),
+            border: Border.all(
+              color: opening
+                  ? AppTheme.accent.withValues(alpha: 0.45)
+                  : AppTheme.accent.withValues(alpha: 0.18),
+            ),
           ),
-          child: IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Container(
-                  width: 4,
-                  decoration: BoxDecoration(
-                    borderRadius: const BorderRadius.horizontal(
-                      left: Radius.circular(16),
-                    ),
-                    gradient: AppTheme.brandGradient,
-                  ),
-                ),
-                Expanded(
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    leading: _ProjectCover(cover: cover),
-                    title: Row(
-                      children: [
-                        if (draftBadge != null) ...[
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 7,
-                              vertical: 1,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppTheme.accent.withValues(alpha: 0.18),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              draftBadge!,
-                              style: GoogleFonts.dmSans(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                color: AppTheme.ink,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: IntrinsicHeight(
+              child: Stack(
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(
+                        width: 4,
+                        decoration: BoxDecoration(
+                          borderRadius: const BorderRadius.horizontal(
+                            left: Radius.circular(16),
+                          ),
+                          gradient: AppTheme.brandGradient,
+                        ),
+                      ),
+                      Expanded(
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          leading: _ProjectCover(cover: cover),
+                          title: Row(
+                            children: [
+                              if (draftBadge != null) ...[
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 7,
+                                    vertical: 1,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.accent
+                                        .withValues(alpha: 0.18),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Text(
+                                    draftBadge!,
+                                    style: GoogleFonts.dmSans(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppTheme.ink,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                              ],
+                              Expanded(
+                                child: Text(
+                                  title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                            ),
+                            ],
                           ),
-                          const SizedBox(width: 6),
-                        ],
-                        Expanded(
-                          child: Text(
-                            title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          subtitle: Text(subtitle),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                onPressed: enabled ? onDelete : null,
+                                icon: const Icon(Icons.delete_outline),
+                                tooltip: deleteTooltip,
+                              ),
+                              const Icon(Icons.chevron_right),
+                            ],
                           ),
                         ),
-                      ],
-                    ),
-                    subtitle: Text(subtitle),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          onPressed: enabled ? onDelete : null,
-                          icon: const Icon(Icons.delete_outline),
-                          tooltip: deleteTooltip,
-                        ),
-                        const Icon(Icons.chevron_right),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
+                  if (opening)
+                    const Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: LinearProgressIndicator(
+                        minHeight: 3,
+                        backgroundColor: Color(0x22FFFFFF),
+                        color: AppTheme.accent,
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),

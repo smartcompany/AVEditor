@@ -810,6 +810,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get proActive => 'Pro is active';
 
   @override
+  String planActive(String plan) {
+    return '$plan is active';
+  }
+
+  @override
   String get proInactive => 'Free plan';
 
   @override

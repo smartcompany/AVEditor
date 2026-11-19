@@ -21,7 +21,9 @@ enum EffectAccessTier {
           return EffectAccessTier.free;
       }
     }
-    if (legacyPremium == true) return EffectAccessTier.pro;
+    // Bundled catalogs used `premium: true` before accessTier existed.
+    // Paid effects are Plus-tier while only Plus is sold.
+    if (legacyPremium == true) return EffectAccessTier.plus;
     return EffectAccessTier.free;
   }
 

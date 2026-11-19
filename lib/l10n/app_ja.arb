@@ -250,6 +250,12 @@
   "proStoreUnavailable": "ストアがまだ接続されていません。",
   "proDebugToggle": "テスト用Pro（デバッグのみ）",
   "proActive": "Pro利用中",
+  "planActive": "{plan}利用中",
+  "@planActive": {
+    "placeholders": {
+      "plan": { "type": "String" }
+    }
+  },
   "proInactive": "無料プラン",
   "proPurchaseFailed": "購入を完了できませんでした。もう一度お試しください。",
   "proRestoreNone": "復元できる購入はありません。",

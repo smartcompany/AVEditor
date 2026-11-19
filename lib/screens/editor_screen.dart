@@ -22,8 +22,10 @@ import 'package:aveditor/services/pro_service.dart';
 import 'package:aveditor/widgets/premium_export_sheet.dart';
 import 'package:aveditor/screens/export_share_screen.dart';
 import 'package:aveditor/screens/music_picker_screen.dart';
+import 'package:aveditor/services/app_settings_service.dart';
 import 'package:aveditor/services/editor_history.dart';
 import 'package:aveditor/services/audio_waveform_service.dart';
+import 'package:aveditor/services/export_service.dart';
 import 'package:aveditor/services/media_concat_service.dart';
 import 'package:aveditor/services/music_storage_service.dart';
 import 'package:aveditor/services/project_storage_service.dart';
@@ -61,12 +63,20 @@ import 'package:aveditor/widgets/video_preview.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:video_player/video_player.dart';
 
 class EditorScreen extends StatefulWidget {
-  const EditorScreen({super.key, required this.projectId});
+  const EditorScreen({
+    super.key,
+    required this.projectId,
+    this.onReady,
+  });
 
   final String projectId;
+
+  /// Fired once when the editor UI is ready to show (home can clear open progress).
+  final VoidCallback? onReady;
 
   @override
   State<EditorScreen> createState() => _EditorScreenState();
@@ -196,7 +206,10 @@ class _EditorScreenState extends State<EditorScreen>
   bool _ready = false;
   double? _convertProgress;
   var _appendingMedia = false;
-  final bool _exporting = false;
+  var _exporting = false;
+  double? _exportProgress;
+  final _exportService = ExportService();
+  final _appSettings = const AppSettingsService();
   final _import = VideoImportService();
   final _musicStorage = MusicStorageService();
   final _voiceRecorder = VoiceRecordService();
@@ -797,6 +810,7 @@ class _EditorScreenState extends State<EditorScreen>
           _ready = true;
           _errorMessage = 'project_not_found';
         });
+        widget.onReady?.call();
         return;
       }
 
@@ -884,16 +898,25 @@ class _EditorScreenState extends State<EditorScreen>
         await controller?.dispose();
         return;
       }
+
+      // Wait for timeline frames before revealing — no opening spinner page.
+      await _loadFilmstrip(project);
+      if (!mounted || !_ownsEngine) {
+        await controller?.dispose();
+        return;
+      }
+
       setState(() {
         _ready = true;
         _errorMessage = null;
+        _convertProgress = null;
         // Clear until decode finishes — photo-only projects must not keep a
         // stale audio band from a previous video project.
         _hasSourceAudio = false;
         _sourceAudioWaveforms.clear();
         _sourceAudioDurations.clear();
       });
-      unawaited(_loadFilmstrip(project));
+      widget.onReady?.call();
       unawaited(_loadMusicWaveforms(project));
       unawaited(_loadSourceAudioWaveforms(project));
 
@@ -908,6 +931,7 @@ class _EditorScreenState extends State<EditorScreen>
         _ready = true;
         _errorMessage = e.toString();
       });
+      widget.onReady?.call();
     }
   }
 
@@ -4545,20 +4569,74 @@ class _EditorScreenState extends State<EditorScreen>
   Future<void> _presentExport() async {
     final project = _project;
     if (project == null || _exporting) return;
+    // Block share immediately so a slow premium sheet can't double-fire.
+    setState(() {
+      _exporting = true;
+      _exportProgress = null;
+    });
     AnalyticsService.instance.log('export_tap');
-    await _pausePlaybackForExport();
-    if (!mounted) return;
-    final exportProject = await _resolvePremiumForExport(project);
-    if (exportProject == null || !mounted) return;
-    // Premium sheet can take a while — ensure still paused before export UI.
-    await _pausePlaybackForExport();
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        fullscreenDialog: true,
-        builder: (_) => ExportShareScreen(project: exportProject),
-      ),
-    );
+    try {
+      if (_inTextStudio) {
+        _closeTextStudio('export');
+      }
+      await _pausePlaybackForExport();
+      if (!mounted) return;
+      final exportProject = await _resolvePremiumForExport(project);
+      if (exportProject == null || !mounted) return;
+      await _pausePlaybackForExport();
+      if (!mounted) return;
+
+      setState(() => _exportProgress = 0);
+      final quality = await _appSettings.getExportQualityProfile();
+      final started = DateTime.now();
+      AnalyticsService.instance.log('export_started', {
+        'quality': quality.name,
+      });
+      final path = await _exportService.exportToFile(
+        exportProject,
+        quality: quality,
+        onProgress: (value) {
+          if (!mounted) return;
+          final next = value.clamp(0.0, 1.0);
+          final current = _exportProgress ?? 0;
+          if ((next - current).abs() < 0.01 && next < 1) return;
+          setState(() => _exportProgress = next);
+        },
+      );
+      if (!mounted) return;
+      AnalyticsService.instance.log('export_completed', {
+        'seconds': DateTime.now().difference(started).inSeconds,
+      });
+      setState(() => _exportProgress = 1);
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          fullscreenDialog: true,
+          builder: (_) => ExportShareScreen(
+            project: exportProject,
+            preparedExportPath: path,
+          ),
+        ),
+      );
+    } catch (e, st) {
+      avEditorLog('inline export failed: $e');
+      debugPrint('$st');
+      AnalyticsService.instance.log('export_failed');
+      if (mounted) {
+        showLoggedSnackBar(
+          context,
+          context.l10n.exportFailedWithMessage(e.toString()),
+          error: e,
+          stackTrace: st,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _exporting = false;
+          _exportProgress = null;
+        });
+      }
+    }
   }
 
   /// Effects are gated by plan (Plus / Pro) or per-effect ad unlocks.
@@ -4566,6 +4644,12 @@ class _EditorScreenState extends State<EditorScreen>
   Future<VideoProject?> _resolvePremiumForExport(VideoProject project) async {
     final pro = ProService.instance;
     await pro.ensureInitialized();
+    // Bundled catalogs can lag behind Storage; refresh before gating share.
+    await Future.wait([
+      TransitionCatalogService.instance.refresh(awaitRemote: true),
+      TextTemplatePackService.instance.refresh(),
+      pro.refreshEntitlementFromServer(),
+    ]);
     final unlocks = EffectAdUnlockService.instance;
     // Each save needs its own ads — do not carry unlocks across exports.
     unlocks.clear();
@@ -4577,6 +4661,10 @@ class _EditorScreenState extends State<EditorScreen>
       catalog,
       pro.tier,
       isAdUnlocked: adUnlocked,
+    );
+    debugPrint(
+      '[export/premium] tier=${pro.tier.name} locked='
+      '${locked.map((u) => '${u.itemId}:${u.accessTier.name}').join(',')}',
     );
     if (locked.isEmpty || !mounted) return project;
 
@@ -4665,6 +4753,7 @@ class _EditorScreenState extends State<EditorScreen>
   /// Back out of the editor. An unnamed project asks for a name first;
   /// cancelling the dialog keeps the user in the editor.
   Future<void> _handleBack() async {
+    if (_exporting) return;
     if (_namingProject) return;
     final project = _project;
     if (project != null && (project.name?.trim().isEmpty ?? true)) {
@@ -4726,14 +4815,23 @@ class _EditorScreenState extends State<EditorScreen>
     final controller = _controller;
 
     if (!_ready) {
-      final converting = _convertProgress != null;
-      return Scaffold(
-        appBar: AppBar(title: Text(l10n.editorTitle)),
-        body: Center(
-          child: ConvertProgressView(
-            label: converting ? l10n.convertingVideo : l10n.openingVideo,
-            progress: _convertProgress,
+      // Opening: stay transparent so Home remains visible (opaque:false route).
+      // Converting (re-encode) still shows progress.
+      if (_convertProgress != null) {
+        return Scaffold(
+          appBar: AppBar(title: Text(l10n.editorTitle)),
+          body: Center(
+            child: ConvertProgressView(
+              label: l10n.convertingVideo,
+              progress: _convertProgress,
+            ),
           ),
+        );
+      }
+      return const AbsorbPointer(
+        child: ColoredBox(
+          color: Color(0x00000000),
+          child: SizedBox.expand(),
         ),
       );
     }
@@ -4780,17 +4878,19 @@ class _EditorScreenState extends State<EditorScreen>
           actions: [
             if (inTextStudio)
               TextButton(
-                onPressed: () => _closeTextStudio('save_button'),
+                onPressed: _exporting
+                    ? null
+                    : () => _closeTextStudio('save_button'),
                 child: Text(l10n.save),
               )
             else ...[
               IconButton(
-                onPressed: _history.canUndo ? _undo : null,
+                onPressed: !_exporting && _history.canUndo ? _undo : null,
                 icon: const Icon(Icons.undo),
                 tooltip: l10n.undo,
               ),
               IconButton(
-                onPressed: _history.canRedo ? _redo : null,
+                onPressed: !_exporting && _history.canRedo ? _redo : null,
                 icon: const Icon(Icons.redo),
                 tooltip: l10n.redo,
               ),
@@ -4810,7 +4910,7 @@ class _EditorScreenState extends State<EditorScreen>
                     ),
                   ),
                   child: Text(
-                    l10n.share,
+                    l10n.export,
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
@@ -4905,7 +5005,9 @@ class _EditorScreenState extends State<EditorScreen>
                                             child: OverflowSizedBox(
                                               width: targetWidth,
                                               height: targetHeight,
-                                              child: VideoPreviewWithOverlays(
+                                              child: AbsorbPointer(
+                                                absorbing: _exporting,
+                                                child: VideoPreviewWithOverlays(
                                                 key: _previewKey,
                                                 videoAspectRatio: sourceAspect,
                                                 canvasAspectRatio: canvasAspect,
@@ -4919,6 +5021,11 @@ class _EditorScreenState extends State<EditorScreen>
                                                     if (_playheadPastPicture)
                                                       const ColoredBox(
                                                         color: Colors.black,
+                                                      ),
+                                                    if (_exportProgress != null)
+                                                      _ExportPreviewPercent(
+                                                        progress:
+                                                            _exportProgress!,
                                                       ),
                                                   ],
                                                 ),
@@ -5037,6 +5144,7 @@ class _EditorScreenState extends State<EditorScreen>
                                                       );
                                                     },
                                               ),
+                                              ),
                                             ),
                                           ),
                                         ),
@@ -5045,7 +5153,7 @@ class _EditorScreenState extends State<EditorScreen>
                                   ),
                                   // Sit on the preview slot (not the video frame) so
                                   // letterboxing never covers the control.
-                                  if (!_canvasRatioOpen)
+                                  if (!_canvasRatioOpen && !_exporting)
                                     Positioned(
                                       top: 8,
                                       right: 8,
@@ -5282,7 +5390,8 @@ class _EditorScreenState extends State<EditorScreen>
                 maintainSize: false,
                 maintainInteractivity: false,
                 child: IgnorePointer(
-                  ignoring: showStudio || editingOverlay != null,
+                  ignoring:
+                      showStudio || editingOverlay != null || _exporting,
                   child: _buildCollapsibleChrome(
                     l10n: l10n,
                     project: project,
@@ -5294,6 +5403,13 @@ class _EditorScreenState extends State<EditorScreen>
                 ),
               ),
               if (studio != null) Positioned.fill(child: studio),
+              if (_exportProgress != null)
+                Positioned.fill(
+                  child: _ExportDockBusyOverlay(
+                    label: l10n.exporting,
+                    progress: _exportProgress!,
+                  ),
+                ),
             ],
           ),
         );
@@ -5789,5 +5905,186 @@ class _ProjectNameDialogState extends State<_ProjectNameDialog> {
         FilledButton(onPressed: _submit, child: Text(l10n.save)),
       ],
     );
+  }
+}
+
+/// Rising fill gauge + percent over the video preview while export runs.
+class _ExportPreviewPercent extends StatelessWidget {
+  const _ExportPreviewPercent({required this.progress});
+
+  final double progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = progress.clamp(0.0, 1.0);
+    final percent = (p * 100).round();
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ColoredBox(color: Colors.black.withValues(alpha: 0.35)),
+        Align(
+          alignment: Alignment.bottomCenter,
+          child: FractionallySizedBox(
+            widthFactor: 1,
+            heightFactor: p <= 0 ? 0.02 : p,
+            alignment: Alignment.bottomCenter,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    AppTheme.accent.withValues(alpha: 0.2),
+                    AppTheme.accent.withValues(alpha: 0.62),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        Center(
+          child: Text(
+            '$percent%',
+            style: GoogleFonts.spaceGrotesk(
+              fontSize: 48,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -1.2,
+              color: Colors.white,
+              shadows: const [
+                Shadow(blurRadius: 18, color: Colors.black54),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Dimmed timeline dock with scissors mascot + exporting label only.
+class _ExportDockBusyOverlay extends StatefulWidget {
+  const _ExportDockBusyOverlay({
+    required this.label,
+    required this.progress,
+  });
+
+  final String label;
+  final double progress;
+
+  @override
+  State<_ExportDockBusyOverlay> createState() => _ExportDockBusyOverlayState();
+}
+
+class _ExportDockBusyOverlayState extends State<_ExportDockBusyOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _motion = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _motion.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AbsorbPointer(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.72),
+        ),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedBuilder(
+                  animation: _motion,
+                  builder: (context, _) {
+                    final t = _motion.value;
+                    final bounce = math.sin(t * math.pi * 2) * 7;
+                    final wobble = math.sin(t * math.pi * 4) * 0.18;
+                    return Transform.translate(
+                      offset: Offset(0, bounce),
+                      child: Transform.rotate(
+                        angle: wobble,
+                        child: CustomPaint(
+                          size: const Size(78, 78),
+                          painter: _ScissorsMascotPainter(phase: t),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  widget.label,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.ink,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Little scissors character snipping while the export runs.
+class _ScissorsMascotPainter extends CustomPainter {
+  _ScissorsMascotPainter({required this.phase});
+
+  final double phase;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height / 2 + 4;
+    final open = 0.35 + math.sin(phase * math.pi * 2) * 0.22;
+
+    final blade = Paint()
+      ..shader = AppTheme.brandGradient.createShader(
+        Rect.fromLTWH(0, 0, size.width, size.height),
+      );
+    final grip = Paint()..color = const Color(0xFFFF8A3D);
+    final rivet = Paint()..color = Colors.white;
+    final spark = Paint()..color = Colors.white.withValues(alpha: 0.9);
+
+    void bladePath(double angle, {required bool mirror}) {
+      canvas.save();
+      canvas.translate(cx, cy);
+      canvas.rotate(angle);
+      final path = Path()
+        ..moveTo(0, 0)
+        ..quadraticBezierTo(18, mirror ? -10 : 10, 34, mirror ? -4 : 4)
+        ..quadraticBezierTo(22, mirror ? -2 : 2, 8, 0)
+        ..close();
+      canvas.drawPath(path, blade);
+      canvas.drawCircle(Offset(-10, mirror ? -8 : 8), 7, grip);
+      canvas.drawCircle(Offset(-10, mirror ? -8 : 8), 3.2, Paint()..color = const Color(0xFF0B0610));
+      canvas.restore();
+    }
+
+    bladePath(-open, mirror: false);
+    bladePath(open, mirror: true);
+    canvas.drawCircle(Offset(cx, cy), 4.5, rivet);
+
+    // Tiny sparkles near the tips.
+    final sparkY = cy - 22 - math.sin(phase * math.pi * 2) * 4;
+    canvas.drawCircle(Offset(cx + 26, sparkY), 2.2, spark);
+    canvas.drawCircle(Offset(cx - 22, sparkY + 8), 1.6, spark);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ScissorsMascotPainter oldDelegate) {
+    return oldDelegate.phase != phase;
   }
 }

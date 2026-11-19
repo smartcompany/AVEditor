@@ -250,6 +250,12 @@
   "proStoreUnavailable": "尚未连接应用商店。",
   "proDebugToggle": "测试 Pro（仅调试）",
   "proActive": "Pro 已开通",
+  "planActive": "{plan} 已开通",
+  "@planActive": {
+    "placeholders": {
+      "plan": { "type": "String" }
+    }
+  },
   "proInactive": "免费版",
   "proPurchaseFailed": "购买未完成，请重试。",
   "proRestoreNone": "没有可恢复的购买。",

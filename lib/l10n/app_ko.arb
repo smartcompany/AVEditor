@@ -250,6 +250,12 @@
   "proStoreUnavailable": "아직 스토어가 연결되지 않았어요.",
   "proDebugToggle": "테스트용 Pro (디버그 전용)",
   "proActive": "Pro 사용 중",
+  "planActive": "{plan} 사용 중",
+  "@planActive": {
+    "placeholders": {
+      "plan": { "type": "String" }
+    }
+  },
   "proInactive": "무료 플랜",
   "proPurchaseFailed": "결제가 완료되지 않았어요. 다시 시도해 주세요.",
   "proRestoreNone": "복원할 구매 내역이 없어요.",

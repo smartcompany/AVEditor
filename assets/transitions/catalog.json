@@ -1,5 +1,5 @@
 {
-  "version": 41,
+  "version": 44,
   "baseUrl": "",
   "categories": [
     {
@@ -32,6 +32,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#A78BFA",
+          "accessTier": "free",
           "premium": false,
           "thumbnailUrl": "transitions/thumbs/dissolve.webp",
           "layers": [
@@ -71,6 +72,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#818CF8",
+          "accessTier": "free",
           "premium": false,
           "thumbnailUrl": "transitions/thumbs/crossblur.webp",
           "layers": [
@@ -150,6 +152,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#1F2937",
+          "accessTier": "free",
           "premium": false,
           "thumbnailUrl": "transitions/thumbs/fadeblack.webp",
           "layers": [
@@ -207,6 +210,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#E5E7EB",
+          "accessTier": "free",
           "premium": false,
           "thumbnailUrl": "transitions/thumbs/fadewhite.webp",
           "layers": [
@@ -264,6 +268,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#65A30D",
+          "accessTier": "plus",
           "premium": true,
           "thumbnailUrl": "transitions/thumbs/spinin.webp",
           "layers": [
@@ -309,6 +314,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#4D7C0F",
+          "accessTier": "plus",
           "premium": true,
           "thumbnailUrl": "transitions/thumbs/spinout.webp",
           "layers": [
@@ -354,6 +360,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#F472B6",
+          "accessTier": "free",
           "premium": false,
           "thumbnailUrl": "transitions/thumbs/circleopen.webp"
         },
@@ -377,6 +384,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#EC4899",
+          "accessTier": "free",
           "premium": false,
           "thumbnailUrl": "transitions/thumbs/circleclose.webp"
         },
@@ -400,6 +408,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#84CC16",
+          "accessTier": "plus",
           "premium": true,
           "thumbnailUrl": "transitions/thumbs/doorway.webp",
           "layers": [],
@@ -430,6 +439,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#A3E635",
+          "accessTier": "plus",
           "premium": true,
           "thumbnailUrl": "transitions/thumbs/swap.webp",
           "layers": [
@@ -499,6 +509,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#38BDF8",
+          "accessTier": "plus",
           "premium": true,
           "thumbnailUrl": "transitions/thumbs/cube.webp",
           "layers": [
@@ -566,6 +577,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#F97316",
+          "accessTier": "plus",
           "premium": true,
           "thumbnailUrl": "transitions/thumbs/mosaic.webp",
           "layers": [
@@ -604,6 +616,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#34D399",
+          "accessTier": "free",
           "premium": false,
           "thumbnailUrl": "transitions/thumbs/wipeleft.webp",
           "layers": [
@@ -643,6 +656,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#2DD4BF",
+          "accessTier": "free",
           "premium": false,
           "thumbnailUrl": "transitions/thumbs/wiperight.webp",
           "layers": [
@@ -682,6 +696,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#5EEAD4",
+          "accessTier": "free",
           "premium": false,
           "thumbnailUrl": "transitions/thumbs/wipeup.webp",
           "layers": [
@@ -697,7 +712,7 @@
               "to": 1,
               "easing": "linear",
               "target": "A",
-              "mode": "top"
+              "mode": "bottom"
             }
           ]
         },
@@ -721,6 +736,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#14B8A6",
+          "accessTier": "free",
           "premium": false,
           "thumbnailUrl": "transitions/thumbs/wipedown.webp",
           "layers": [
@@ -736,7 +752,7 @@
               "to": 1,
               "easing": "linear",
               "target": "A",
-              "mode": "bottom"
+              "mode": "top"
             }
           ]
         },
@@ -760,6 +776,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#FBBF24",
+          "accessTier": "free",
           "premium": false,
           "thumbnailUrl": "transitions/thumbs/slideleft.webp",
           "layers": [
@@ -811,6 +828,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#F59E0B",
+          "accessTier": "free",
           "premium": false,
           "thumbnailUrl": "transitions/thumbs/slideright.webp",
           "layers": [
@@ -862,6 +880,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#FB923C",
+          "accessTier": "plus",
           "premium": true,
           "thumbnailUrl": "transitions/thumbs/puzzleleft.webp",
           "layers": [],
@@ -891,6 +910,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#F97316",
+          "accessTier": "plus",
           "premium": true,
           "thumbnailUrl": "transitions/thumbs/puzzleright.webp",
           "layers": [],
@@ -920,6 +940,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#22D3EE",
+          "accessTier": "plus",
           "premium": true,
           "thumbnailUrl": "transitions/thumbs/crosszoom.webp",
           "layers": [
@@ -1049,6 +1070,7 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#06B6D4",
+          "accessTier": "plus",
           "premium": true,
           "thumbnailUrl": "transitions/thumbs/ripple.webp",
           "layers": [
@@ -1103,6 +1125,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#A78BFA",
+      "accessTier": "free",
       "premium": false,
       "thumbnailUrl": "transitions/thumbs/dissolve.webp",
       "layers": [
@@ -1142,6 +1165,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#818CF8",
+      "accessTier": "free",
       "premium": false,
       "thumbnailUrl": "transitions/thumbs/crossblur.webp",
       "layers": [
@@ -1221,6 +1245,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#1F2937",
+      "accessTier": "free",
       "premium": false,
       "thumbnailUrl": "transitions/thumbs/fadeblack.webp",
       "layers": [
@@ -1278,6 +1303,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#E5E7EB",
+      "accessTier": "free",
       "premium": false,
       "thumbnailUrl": "transitions/thumbs/fadewhite.webp",
       "layers": [
@@ -1335,6 +1361,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#65A30D",
+      "accessTier": "plus",
       "premium": true,
       "thumbnailUrl": "transitions/thumbs/spinin.webp",
       "layers": [
@@ -1380,6 +1407,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#4D7C0F",
+      "accessTier": "plus",
       "premium": true,
       "thumbnailUrl": "transitions/thumbs/spinout.webp",
       "layers": [
@@ -1425,6 +1453,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#F472B6",
+      "accessTier": "free",
       "premium": false,
       "thumbnailUrl": "transitions/thumbs/circleopen.webp"
     },
@@ -1448,6 +1477,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#EC4899",
+      "accessTier": "free",
       "premium": false,
       "thumbnailUrl": "transitions/thumbs/circleclose.webp"
     },
@@ -1471,6 +1501,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#84CC16",
+      "accessTier": "plus",
       "premium": true,
       "thumbnailUrl": "transitions/thumbs/doorway.webp",
       "layers": [],
@@ -1501,6 +1532,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#A3E635",
+      "accessTier": "plus",
       "premium": true,
       "thumbnailUrl": "transitions/thumbs/swap.webp",
       "layers": [
@@ -1570,6 +1602,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#38BDF8",
+      "accessTier": "plus",
       "premium": true,
       "thumbnailUrl": "transitions/thumbs/cube.webp",
       "layers": [
@@ -1637,6 +1670,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#F97316",
+      "accessTier": "plus",
       "premium": true,
       "thumbnailUrl": "transitions/thumbs/mosaic.webp",
       "layers": [
@@ -1675,6 +1709,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#34D399",
+      "accessTier": "free",
       "premium": false,
       "thumbnailUrl": "transitions/thumbs/wipeleft.webp",
       "layers": [
@@ -1714,6 +1749,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#2DD4BF",
+      "accessTier": "free",
       "premium": false,
       "thumbnailUrl": "transitions/thumbs/wiperight.webp",
       "layers": [
@@ -1753,6 +1789,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#5EEAD4",
+      "accessTier": "free",
       "premium": false,
       "thumbnailUrl": "transitions/thumbs/wipeup.webp",
       "layers": [
@@ -1768,7 +1805,7 @@
           "to": 1,
           "easing": "linear",
           "target": "A",
-          "mode": "top"
+          "mode": "bottom"
         }
       ]
     },
@@ -1792,6 +1829,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#14B8A6",
+      "accessTier": "free",
       "premium": false,
       "thumbnailUrl": "transitions/thumbs/wipedown.webp",
       "layers": [
@@ -1807,7 +1845,7 @@
           "to": 1,
           "easing": "linear",
           "target": "A",
-          "mode": "bottom"
+          "mode": "top"
         }
       ]
     },
@@ -1831,6 +1869,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#FBBF24",
+      "accessTier": "free",
       "premium": false,
       "thumbnailUrl": "transitions/thumbs/slideleft.webp",
       "layers": [
@@ -1882,6 +1921,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#F59E0B",
+      "accessTier": "free",
       "premium": false,
       "thumbnailUrl": "transitions/thumbs/slideright.webp",
       "layers": [
@@ -1933,6 +1973,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#FB923C",
+      "accessTier": "plus",
       "premium": true,
       "thumbnailUrl": "transitions/thumbs/puzzleleft.webp",
       "layers": [],
@@ -1962,6 +2003,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#F97316",
+      "accessTier": "plus",
       "premium": true,
       "thumbnailUrl": "transitions/thumbs/puzzleright.webp",
       "layers": [],
@@ -1991,6 +2033,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#22D3EE",
+      "accessTier": "plus",
       "premium": true,
       "thumbnailUrl": "transitions/thumbs/crosszoom.webp",
       "layers": [
@@ -2120,6 +2163,7 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#06B6D4",
+      "accessTier": "plus",
       "premium": true,
       "thumbnailUrl": "transitions/thumbs/ripple.webp",
       "layers": [

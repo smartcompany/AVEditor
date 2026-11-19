@@ -786,6 +786,11 @@ class AppLocalizationsJa extends AppLocalizations {
   String get proActive => 'Pro利用中';
 
   @override
+  String planActive(String plan) {
+    return '$plan利用中';
+  }
+
+  @override
   String get proInactive => '無料プラン';
 
   @override
