@@ -1,5 +1,8 @@
-// Generated-style Firebase options for project aveditor-shorts.
-// Source: GoogleService-Info.plist / google-services.json
+// Copy to firebase_options.dart after running:
+//   python3 tool/generate_firebase_options.py
+// Or fill from ios/Runner/GoogleService-Info.plist + android/app/google-services.json.
+//
+// Do NOT commit firebase_options.dart — GitHub secret scanning flags Google API keys.
 
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
@@ -23,21 +26,20 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyDmHagy2wx7fMjvKQ4fwJF3svwSZX_-YsM',
-    appId: '1:800175376935:ios:a57760be8dfe57c5979c02',
-    messagingSenderId: '800175376935',
-    projectId: 'aveditor-shorts',
-    storageBucket: 'aveditor-shorts.firebasestorage.app',
+    apiKey: 'YOUR_IOS_API_KEY',
+    appId: 'YOUR_IOS_APP_ID',
+    messagingSenderId: 'YOUR_SENDER_ID',
+    projectId: 'YOUR_PROJECT_ID',
+    storageBucket: 'YOUR_PROJECT_ID.firebasestorage.app',
     iosBundleId: 'com.smartcompany.aveditor',
-    iosClientId:
-        '800175376935-qjqsbkpr85m7h3rnga534edqqkjg6b8u.apps.googleusercontent.com',
+    iosClientId: 'YOUR_IOS_CLIENT_ID.apps.googleusercontent.com',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyAhwXz-FTRkvwAanL0iHjwzcg9TE1IgxcM',
-    appId: '1:800175376935:android:0d3eafd2cd129c90979c02',
-    messagingSenderId: '800175376935',
-    projectId: 'aveditor-shorts',
-    storageBucket: 'aveditor-shorts.firebasestorage.app',
+    apiKey: 'YOUR_ANDROID_API_KEY',
+    appId: 'YOUR_ANDROID_APP_ID',
+    messagingSenderId: 'YOUR_SENDER_ID',
+    projectId: 'YOUR_PROJECT_ID',
+    storageBucket: 'YOUR_PROJECT_ID.firebasestorage.app',
   );
 }

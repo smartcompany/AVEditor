@@ -48,3 +48,8 @@ app.*.map.json
 android/key.properties
 ios/Runner.app.dSYM.zip
 ios/Runner.ipa
+
+# Firebase client API keys (generate locally — see tool/generate_firebase_options.py)
+lib/firebase_options.dart
+ios/Runner/GoogleService-Info.plist
+android/app/google-services.json
