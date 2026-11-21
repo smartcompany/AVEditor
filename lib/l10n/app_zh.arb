@@ -256,6 +256,16 @@
       "plan": { "type": "String" }
     }
   },
+  "planActiveWithPeriod": "{plan} · {period} 已开通",
+  "@planActiveWithPeriod": {
+    "placeholders": {
+      "plan": { "type": "String" },
+      "period": { "type": "String" }
+    }
+  },
+  "planCurrentSubscription": "当前方案",
+  "planSwitchToAnnual": "切换到年付",
+  "planSwitchToMonthly": "切换到月付",
   "proInactive": "免费版",
   "proPurchaseFailed": "购买未完成，请重试。",
   "proRestoreNone": "没有可恢复的购买。",

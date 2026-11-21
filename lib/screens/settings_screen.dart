@@ -76,12 +76,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   String _tierSubtitle(BuildContext context) {
     final l10n = context.l10n;
-    return switch (ProService.instance.tier) {
-      PlanTier.studio => l10n.planActive(l10n.planStudioLabel),
-      PlanTier.pro => l10n.planActive(l10n.planProLabel),
-      PlanTier.plus => l10n.planActive(l10n.planPlusLabel),
-      PlanTier.free => l10n.planSubscribeCta(l10n.planPlusLabel),
+    final pro = ProService.instance;
+    if (pro.tier == PlanTier.free) {
+      return l10n.planSubscribeCta(l10n.planPlusLabel);
+    }
+    final plan = switch (pro.tier) {
+      PlanTier.studio => l10n.planStudioLabel,
+      PlanTier.pro => l10n.planProLabel,
+      PlanTier.plus => l10n.planPlusLabel,
+      PlanTier.free => l10n.planPlusLabel,
     };
+    final annual = pro.activeIsAnnual;
+    if (annual == null) return l10n.planActive(plan);
+    final period =
+        annual ? l10n.planBillingAnnual : l10n.planBillingMonthly;
+    return l10n.planActiveWithPeriod(plan, period);
   }
 
   @override

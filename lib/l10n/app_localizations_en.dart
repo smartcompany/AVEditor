@@ -814,6 +814,20 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String planActiveWithPeriod(String plan, String period) {
+    return '$plan · $period active';
+  }
+
+  @override
+  String get planCurrentSubscription => 'Current plan';
+
+  @override
+  String get planSwitchToAnnual => 'Switch to yearly';
+
+  @override
+  String get planSwitchToMonthly => 'Switch to monthly';
+
+  @override
   String get proInactive => 'Free plan';
 
   @override

@@ -792,6 +792,20 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
+  String planActiveWithPeriod(String plan, String period) {
+    return '$plan · $period利用中';
+  }
+
+  @override
+  String get planCurrentSubscription => '現在のプラン';
+
+  @override
+  String get planSwitchToAnnual => '年額に変更';
+
+  @override
+  String get planSwitchToMonthly => '月額に変更';
+
+  @override
   String get proInactive => '無料プラン';
 
   @override

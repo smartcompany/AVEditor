@@ -84,6 +84,54 @@ export async function ascFetch(token, urlPath, { method = 'GET', body } = {}) {
   return json;
 }
 
+/** Follow ASC pagination (`links.next`) until exhausted. */
+export async function ascListAll(token, firstPath) {
+  const rows = [];
+  let next = firstPath;
+  while (next) {
+    const path = next.startsWith('http')
+      ? next.replace(`${API}`, '')
+      : next;
+    const json = await ascFetch(token, path);
+    rows.push(...(json.data ?? []));
+    const nextUrl = json.links?.next;
+    if (!nextUrl) break;
+    next = nextUrl;
+  }
+  return rows;
+}
+
+/**
+ * Upload binary parts from an ASC `uploadOperations` list, then return.
+ * Caller still commits the reservation with PATCH + checksum.
+ */
+export async function uploadAscAsset(fileBuffer, uploadOperations) {
+  for (const op of uploadOperations ?? []) {
+    const offset = Number(op.offset ?? 0);
+    const length = Number(op.length ?? fileBuffer.length);
+    const chunk = fileBuffer.subarray(offset, offset + length);
+    const headers = {};
+    for (const h of op.requestHeaders ?? []) {
+      headers[h.name] = h.value;
+    }
+    const res = await fetch(op.url, {
+      method: op.method || 'PUT',
+      headers,
+      body: chunk,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(
+        `Asset upload ${op.method} → ${res.status}\n${text.slice(0, 400)}`,
+      );
+    }
+  }
+}
+
+export async function sleep(ms) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function resolveAppId(token, { appId, bundleId }) {
   if (appId) return String(appId);
   if (!bundleId) {

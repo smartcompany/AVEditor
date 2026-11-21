@@ -346,6 +346,16 @@
       "plan": { "type": "String" }
     }
   },
+  "planActiveWithPeriod": "{plan} · {period} active",
+  "@planActiveWithPeriod": {
+    "placeholders": {
+      "plan": { "type": "String" },
+      "period": { "type": "String" }
+    }
+  },
+  "planCurrentSubscription": "Current plan",
+  "planSwitchToAnnual": "Switch to yearly",
+  "planSwitchToMonthly": "Switch to monthly",
   "proInactive": "Free plan",
   "proPurchaseFailed": "The purchase didn't go through. Please try again.",
   "proRestoreNone": "No purchases to restore.",

@@ -1566,6 +1566,30 @@ abstract class AppLocalizations {
   /// **'{plan} is active'**
   String planActive(String plan);
 
+  /// No description provided for @planActiveWithPeriod.
+  ///
+  /// In en, this message translates to:
+  /// **'{plan} · {period} active'**
+  String planActiveWithPeriod(String plan, String period);
+
+  /// No description provided for @planCurrentSubscription.
+  ///
+  /// In en, this message translates to:
+  /// **'Current plan'**
+  String get planCurrentSubscription;
+
+  /// No description provided for @planSwitchToAnnual.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch to yearly'**
+  String get planSwitchToAnnual;
+
+  /// No description provided for @planSwitchToMonthly.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch to monthly'**
+  String get planSwitchToMonthly;
+
   /// No description provided for @proInactive.
   ///
   /// In en, this message translates to:

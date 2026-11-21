@@ -785,6 +785,20 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String planActiveWithPeriod(String plan, String period) {
+    return '$plan · $period 已开通';
+  }
+
+  @override
+  String get planCurrentSubscription => '当前方案';
+
+  @override
+  String get planSwitchToAnnual => '切换到年付';
+
+  @override
+  String get planSwitchToMonthly => '切换到月付';
+
+  @override
   String get proInactive => '免费版';
 
   @override

@@ -794,6 +794,20 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
+  String planActiveWithPeriod(String plan, String period) {
+    return '$plan · $period 사용 중';
+  }
+
+  @override
+  String get planCurrentSubscription => '현재 구독 중';
+
+  @override
+  String get planSwitchToAnnual => '연간으로 전환';
+
+  @override
+  String get planSwitchToMonthly => '월간으로 전환';
+
+  @override
   String get proInactive => '무료 플랜';
 
   @override

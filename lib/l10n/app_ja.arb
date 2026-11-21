@@ -256,6 +256,16 @@
       "plan": { "type": "String" }
     }
   },
+  "planActiveWithPeriod": "{plan} · {period}利用中",
+  "@planActiveWithPeriod": {
+    "placeholders": {
+      "plan": { "type": "String" },
+      "period": { "type": "String" }
+    }
+  },
+  "planCurrentSubscription": "現在のプラン",
+  "planSwitchToAnnual": "年額に変更",
+  "planSwitchToMonthly": "月額に変更",
   "proInactive": "無料プラン",
   "proPurchaseFailed": "購入を完了できませんでした。もう一度お試しください。",
   "proRestoreNone": "復元できる購入はありません。",

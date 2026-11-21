@@ -251,6 +251,16 @@
   "proDebugToggle": "테스트용 Pro (디버그 전용)",
   "proActive": "Pro 사용 중",
   "planActive": "{plan} 사용 중",
+  "planActiveWithPeriod": "{plan} · {period} 사용 중",
+  "@planActiveWithPeriod": {
+    "placeholders": {
+      "plan": { "type": "String" },
+      "period": { "type": "String" }
+    }
+  },
+  "planCurrentSubscription": "현재 구독 중",
+  "planSwitchToAnnual": "연간으로 전환",
+  "planSwitchToMonthly": "월간으로 전환",
   "@planActive": {
     "placeholders": {
       "plan": { "type": "String" }

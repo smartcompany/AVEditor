@@ -16,6 +16,7 @@ class PaywallScreen extends StatefulWidget {
     this.pro,
     this.source = 'settings',
     this.preferAnnual = true,
+    this.initialPlans,
   });
 
   final ProService? pro;
@@ -23,26 +24,100 @@ class PaywallScreen extends StatefulWidget {
   /// Initial billing period tab. Falls back if that period has no plans.
   final bool preferAnnual;
 
+  /// Preloaded store plans from [open]. When set, the screen skips the
+  /// catalog fetch and never paints l10n placeholder copy.
+  final List<ProPlan>? initialPlans;
+
+  /// Shows a centered waiting overlay, loads store + dashboard copy, then
+  /// opens the paywall only when that data is ready (no dummy flash).
   static Future<bool> open(
     BuildContext context, {
     String source = 'settings',
-    bool preferAnnual = true,
+    bool? preferAnnual,
   }) async {
+    final annualTab =
+        preferAnnual ?? ProService.instance.activeIsAnnual ?? true;
+    final nav = Navigator.of(context, rootNavigator: true);
+    var waitingVisible = true;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      useRootNavigator: true,
+      barrierColor: Colors.black54,
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(28),
+              child: SizedBox(
+                width: 36,
+                height: 36,
+                child: CircularProgressIndicator(strokeWidth: 3),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    List<ProPlan> plans = const [];
+    final pro = ProService.instance;
+    try {
+      await pro.ensureInitialized();
+      await CreditService.instance.ensureInitialized();
+      await CreditService.instance.ensurePlansLoaded();
+      plans = _enabledStorePlans(await pro.loadPlans());
+      AnalyticsService.instance.log('paywall_catalog', {
+        'source': source,
+        'count': plans.length,
+        'store_available': pro.storeAvailable,
+        if (pro.lastCatalogError != null) 'catalog_error': pro.lastCatalogError,
+      });
+    } finally {
+      if (waitingVisible && context.mounted) {
+        nav.pop();
+        waitingVisible = false;
+      }
+    }
+
+    if (!context.mounted) return pro.isPro;
+
     final result = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (_) => PaywallScreen(
           source: source,
-          preferAnnual: preferAnnual,
+          preferAnnual: annualTab,
+          initialPlans: plans,
         ),
       ),
     );
-    return result ?? ProService.instance.isPro;
+    return result ?? pro.isPro;
   }
 
   @override
   State<PaywallScreen> createState() => _PaywallScreenState();
 }
+
+/// Hide paid tiers the dashboard marked as disabled.
+List<ProPlan> _enabledStorePlans(List<ProPlan> plans) {
+  final credits = CreditService.instance;
+  final remote = credits.plans;
+  if (remote.isEmpty) return plans;
+  return [
+    for (final plan in plans)
+      if (plan.tier == PlanTier.free ||
+          (credits.planById(_tierIdForPlan(plan.tier))?.enabled ?? false))
+        plan,
+  ];
+}
+
+String _tierIdForPlan(PlanTier tier) => switch (tier) {
+      PlanTier.plus => 'plus',
+      PlanTier.studio => 'studio',
+      PlanTier.pro || PlanTier.free => 'pro',
+    };
 
 class _PaywallScreenState extends State<PaywallScreen> {
   ProService get _pro => widget.pro ?? ProService.instance;
@@ -58,7 +133,12 @@ class _PaywallScreenState extends State<PaywallScreen> {
     super.initState();
     _pro.addListener(_onProChanged);
     AnalyticsService.instance.log('paywall_open', {'source': widget.source});
-    _load();
+    final preloaded = widget.initialPlans;
+    if (preloaded != null) {
+      _applyPlans(preloaded);
+    } else {
+      _load();
+    }
   }
 
   @override
@@ -71,24 +151,26 @@ class _PaywallScreenState extends State<PaywallScreen> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _load() async {
-    await _pro.ensureInitialized();
-    await CreditService.instance.ensureInitialized();
-    await CreditService.instance.ensurePlansLoaded();
-    final plans = _filterEnabledPlans(await _pro.loadPlans());
-    if (!mounted) return;
+  void _applyPlans(List<ProPlan> plans) {
     final hasAnnual = plans.any((p) => p.isAnnual);
     final hasMonthly = plans.any((p) => !p.isAnnual);
     final preferAnnual = widget.preferAnnual;
     final useAnnual = preferAnnual
         ? (hasAnnual || !hasMonthly)
         : (hasMonthly ? false : hasAnnual);
-    setState(() {
-      _plans = plans;
-      _annual = useAnnual;
-      _selected = _pickDefault(plans, annual: _annual);
-      _loading = false;
-    });
+    _plans = plans;
+    _annual = useAnnual;
+    _selected = _pickDefault(plans, annual: _annual);
+    _loading = false;
+  }
+
+  Future<void> _load() async {
+    await _pro.ensureInitialized();
+    await CreditService.instance.ensureInitialized();
+    await CreditService.instance.ensurePlansLoaded();
+    final plans = _enabledStorePlans(await _pro.loadPlans());
+    if (!mounted) return;
+    setState(() => _applyPlans(plans));
     AnalyticsService.instance.log('paywall_catalog', {
       'source': widget.source,
       'count': plans.length,
@@ -97,23 +179,13 @@ class _PaywallScreenState extends State<PaywallScreen> {
     });
   }
 
-  /// Hide paid tiers the dashboard marked as disabled.
-  List<ProPlan> _filterEnabledPlans(List<ProPlan> plans) {
-    final credits = CreditService.instance;
-    final remote = credits.plans;
-    // No remote catalog yet → show store/debug plans as-is.
-    if (remote.isEmpty) return plans;
-    return [
-      for (final plan in plans)
-        if (plan.tier == PlanTier.free ||
-            (credits.planById(_tierId(plan.tier))?.enabled ?? false))
-          plan,
-    ];
-  }
-
   ProPlan? _pickDefault(List<ProPlan> plans, {required bool annual}) {
     final filtered = plans.where((p) => p.isAnnual == annual).toList();
     if (filtered.isEmpty) return plans.isEmpty ? null : plans.first;
+    // Prefer the plan the user already owns on this billing tab.
+    for (final p in filtered) {
+      if (_pro.isCurrentPlan(p)) return p;
+    }
     // Prefer the highest enabled paid tier as the default highlight.
     for (final tier in [PlanTier.studio, PlanTier.pro, PlanTier.plus]) {
       for (final p in filtered) {
@@ -152,7 +224,8 @@ class _PaywallScreenState extends State<PaywallScreen> {
 
   Future<void> _subscribe() async {
     final plan = _selected;
-    if (plan == null || _busy) return;
+    if (plan == null || _busy || _pro.isPurchaseInFlight) return;
+    if (_pro.isCurrentPlan(plan)) return;
 
     // Store billing uses the phone's Apple / Google account — no app login.
     setState(() => _busy = true);
@@ -292,7 +365,31 @@ class _PaywallScreenState extends State<PaywallScreen> {
   }
 
   String _activeStatusText(BuildContext context, AppLocalizations l10n) {
-    return l10n.planActive(_tierLabel(context, l10n, _pro.tier));
+    final plan = _tierLabel(context, l10n, _pro.tier);
+    final annual = _pro.activeIsAnnual;
+    if (annual == null) return l10n.planActive(plan);
+    final period =
+        annual ? l10n.planBillingAnnual : l10n.planBillingMonthly;
+    return l10n.planActiveWithPeriod(plan, period);
+  }
+
+  bool get _selectedIsCurrent =>
+      _selected != null && _pro.isCurrentPlan(_selected!);
+
+  String _subscribeLabel(BuildContext context, AppLocalizations l10n) {
+    final plan = _selected;
+    if (plan == null) {
+      return l10n.planSubscribeCta(l10n.planPlusLabel);
+    }
+    if (_pro.isCurrentPlan(plan)) {
+      return l10n.planCurrentSubscription;
+    }
+    if (_pro.isPro && plan.tier == _pro.tier) {
+      return plan.isAnnual
+          ? l10n.planSwitchToAnnual
+          : l10n.planSwitchToMonthly;
+    }
+    return l10n.planSubscribeCta(_tierLabel(context, l10n, plan.tier));
   }
 
   @override
@@ -312,7 +409,17 @@ class _PaywallScreenState extends State<PaywallScreen> {
         appBar: AppBar(
           leading: IconButton(icon: const Icon(Icons.close), onPressed: _close),
         ),
-        body: SafeArea(
+        // Never paint title/benefits/prices until the catalog is ready —
+        // otherwise l10n fallbacks flash as "dummy" Plus/Pro copy.
+        body: _loading
+            ? const Center(
+                child: SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: CircularProgressIndicator(strokeWidth: 3),
+                ),
+              )
+            : SafeArea(
           top: false,
           child: ListView(
             padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
@@ -373,11 +480,6 @@ class _PaywallScreenState extends State<PaywallScreen> {
               const SizedBox(height: 12),
               if (_pro.isPro && _plans.isEmpty)
                 _StatusCard(text: _activeStatusText(context, l10n))
-              else if (_loading)
-                const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Center(child: CircularProgressIndicator()),
-                )
               else if (_plans.isEmpty) ...[
                 _StatusCard(text: l10n.proStoreUnavailable),
                 if (kDebugMode && (_pro.lastCatalogError?.isNotEmpty ?? false))
@@ -411,14 +513,21 @@ class _PaywallScreenState extends State<PaywallScreen> {
                   _PlanTile(
                     plan: plan,
                     selected: plan == _selected,
-                    badge: plan.isAnnual
-                        ? l10n.proAnnualBadge
-                        : _tierLabel(context, l10n, plan.tier),
+                    current: _pro.isCurrentPlan(plan),
+                    badge: _pro.isCurrentPlan(plan)
+                        ? l10n.planCurrentSubscription
+                        : plan.isAnnual
+                            ? l10n.proAnnualBadge
+                            : _tierLabel(context, l10n, plan.tier),
                     onTap: () => setState(() => _selected = plan),
                   ),
                 const SizedBox(height: 12),
                 FilledButton(
-                  onPressed: _busy || _selected == null ? null : _subscribe,
+                  onPressed: _busy ||
+                          _selected == null ||
+                          _selectedIsCurrent
+                      ? null
+                      : _subscribe,
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(52),
                   ),
@@ -428,15 +537,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                           height: 22,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : Text(
-                          l10n.planSubscribeCta(
-                            _tierLabel(
-                              context,
-                              l10n,
-                              _selected?.tier ?? PlanTier.pro,
-                            ),
-                          ),
-                        ),
+                      : Text(_subscribeLabel(context, l10n)),
                 ),
               ],
               const SizedBox(height: 8),
@@ -584,15 +685,18 @@ class _PlanTile extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.badge,
+    this.current = false,
   });
 
   final ProPlan plan;
   final bool selected;
+  final bool current;
   final VoidCallback onTap;
   final String? badge;
 
   @override
   Widget build(BuildContext context) {
+    final highlight = selected || current;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Material(
@@ -600,8 +704,8 @@ class _PlanTile extends StatelessWidget {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
           side: BorderSide(
-            color: selected ? AppTheme.accent : Colors.white12,
-            width: selected ? 2 : 1,
+            color: highlight ? AppTheme.accent : Colors.white12,
+            width: highlight ? 2 : 1,
           ),
         ),
         child: InkWell(
@@ -615,17 +719,33 @@ class _PlanTile extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
                   child: Icon(
-                    selected
+                    selected || current
                         ? Icons.radio_button_checked
                         : Icons.radio_button_unchecked,
-                    color: selected ? AppTheme.accent : AppTheme.muted,
+                    color: highlight ? AppTheme.accent : AppTheme.muted,
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    plan.title,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        plan.title,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        plan.isAnnual
+                            ? context.l10n.planBillingAnnual
+                            : context.l10n.planBillingMonthly,
+                        style: const TextStyle(
+                          color: AppTheme.muted,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 if (badge != null) ...[
@@ -636,7 +756,9 @@ class _PlanTile extends StatelessWidget {
                       vertical: 3,
                     ),
                     decoration: BoxDecoration(
-                      color: AppTheme.accent,
+                      color: current
+                          ? AppTheme.accent.withValues(alpha: 0.85)
+                          : AppTheme.accent,
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(

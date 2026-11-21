@@ -76,6 +76,7 @@ class ProService extends ChangeNotifier {
   static const _debugProKey = 'debug_pro_enabled';
   static const _debugTierKey = 'debug_plan_tier';
   static const _cachedTierKey = 'store_plan_tier';
+  static const _cachedProductKey = 'store_plan_product_id';
 
   final InAppPurchase _iap = InAppPurchase.instance;
 
@@ -83,6 +84,8 @@ class ProService extends ChangeNotifier {
   bool _storeConfigured = false;
   PlanTier _storeTier = PlanTier.free;
   PlanTier _debugTier = PlanTier.free;
+  /// Store product id for the active subscription (monthly vs annual).
+  String? _activeProductId;
   StreamSubscription<List<PurchaseDetails>>? _purchaseSub;
   Completer<PurchaseDetails?>? _purchaseCompleter;
   String? _pendingProductId;
@@ -90,6 +93,7 @@ class ProService extends ChangeNotifier {
   /// True while launch/restore is collecting StoreKit purchases.
   bool _iapSyncActive = false;
   PlanTier _iapSyncBest = PlanTier.free;
+  String? _iapSyncBestProductId;
 
   /// True when editing unlock is active (Plus / Pro / Studio / debug).
   bool get isPro =>
@@ -101,6 +105,34 @@ class ProService extends ChangeNotifier {
     if (kDebugMode) return _debugTier;
     return PlanTier.free;
   }
+
+  /// Active IAP product id when known (e.g. `….plus.monthly`).
+  String? get activeProductId =>
+      tier == PlanTier.free ? null : _activeProductId;
+
+  /// `true` annual, `false` monthly, `null` if free or period unknown.
+  bool? get activeIsAnnual {
+    final id = activeProductId;
+    if (id == null || id.isEmpty) return null;
+    return _isAnnualProduct(id);
+  }
+
+  /// Whether [plan] is the subscription the user already owns.
+  bool isCurrentPlan(ProPlan plan) {
+    if (tier == PlanTier.free || plan.tier == PlanTier.free) return false;
+    final id = activeProductId;
+    if (id != null && id.isNotEmpty) return plan.id == id;
+    final annual = activeIsAnnual;
+    if (annual != null) {
+      return plan.tier == tier && plan.isAnnual == annual;
+    }
+    // Period unknown — do not treat every Plus/Pro SKU as current (that
+    // allowed a second purchase while one was already in flight).
+    return false;
+  }
+
+  bool get isPurchaseInFlight =>
+      _purchaseCompleter != null && !_purchaseCompleter!.isCompleted;
 
   bool get aiEnabled =>
       tier == PlanTier.pro || tier == PlanTier.studio;
@@ -129,6 +161,10 @@ class ProService extends ChangeNotifier {
     }
     final cached = _parseTier(prefs.getString(_cachedTierKey));
     if (cached != null) _storeTier = cached;
+    final cachedProduct = prefs.getString(_cachedProductKey)?.trim();
+    if (cachedProduct != null && cachedProduct.isNotEmpty) {
+      _activeProductId = cachedProduct;
+    }
 
     String bundleId = 'unknown';
     String appVersion = 'unknown';
@@ -199,6 +235,7 @@ class ProService extends ChangeNotifier {
   Future<void> _applyTier(
     PlanTier tier, {
     required bool allowDowngrade,
+    String? productId,
   }) async {
     if (!allowDowngrade && _tierRank(tier) < _tierRank(_storeTier)) {
       _iapLog(
@@ -206,7 +243,7 @@ class ProService extends ChangeNotifier {
       );
       return;
     }
-    await _setStoreTier(tier);
+    await _setStoreTier(tier, productId: productId);
   }
 
   /// App start: ask StoreKit what is owned, then reconcile with server /me.
@@ -219,15 +256,23 @@ class ProService extends ChangeNotifier {
     _iapLog('launch IAP sync start');
     _iapSyncActive = true;
     _iapSyncBest = PlanTier.free;
+    _iapSyncBestProductId = null;
     try {
       await _iap.restorePurchases();
       // StoreKit delivers restored items asynchronously on purchaseStream.
       await Future<void>.delayed(const Duration(seconds: 2));
-      if (_tierRank(_iapSyncBest) > _tierRank(_storeTier)) {
-        await _setStoreTier(_iapSyncBest);
+      if (_tierRank(_iapSyncBest) > _tierRank(_storeTier) ||
+          (_iapSyncBest == _storeTier &&
+              _iapSyncBestProductId != null &&
+              _iapSyncBestProductId != _activeProductId)) {
+        await _setStoreTier(
+          _iapSyncBest,
+          productId: _iapSyncBestProductId,
+        );
       }
       _iapLog(
         'launch IAP sync done best=${_iapSyncBest.name} '
+        'product=${_iapSyncBestProductId ?? '-'} '
         'local=${_storeTier.name}',
       );
     } catch (e) {
@@ -237,12 +282,13 @@ class ProService extends ChangeNotifier {
     }
 
     final iapTier = _storeTier;
+    final iapProduct = _activeProductId;
     await refreshEntitlementFromServer();
     if (_tierRank(_storeTier) < _tierRank(iapTier)) {
       _iapLog(
         'keeping IAP tier ${iapTier.name} over server ${_storeTier.name}',
       );
-      await _setStoreTier(iapTier);
+      await _setStoreTier(iapTier, productId: iapProduct);
     }
   }
 
@@ -292,11 +338,24 @@ class ProService extends ChangeNotifier {
     return t * 2 + (p.isAnnual ? 1 : 0);
   }
 
-  Future<void> _setStoreTier(PlanTier next) async {
-    if (_storeTier == next) return;
+  Future<void> _setStoreTier(PlanTier next, {String? productId}) async {
+    final resolvedProduct = next == PlanTier.free
+        ? null
+        : (productId?.trim().isNotEmpty == true
+            ? productId!.trim()
+            : _activeProductId);
+    final tierChanged = _storeTier != next;
+    final productChanged = resolvedProduct != _activeProductId;
+    if (!tierChanged && !productChanged) return;
     _storeTier = next;
+    _activeProductId = next == PlanTier.free ? null : resolvedProduct;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_cachedTierKey, next.name);
+    if (_activeProductId == null || _activeProductId!.isEmpty) {
+      await prefs.remove(_cachedProductKey);
+    } else {
+      await prefs.setString(_cachedProductKey, _activeProductId!);
+    }
     notifyListeners();
   }
 
@@ -473,13 +532,36 @@ class ProService extends ChangeNotifier {
     }
   }
 
+  bool _matchesPendingPurchase(PurchaseDetails purchase) {
+    final pending = _pendingProductId;
+    if (pending == null || pending.isEmpty) return true;
+    if (purchase.productID == pending) return true;
+    // Sheet dismiss sometimes arrives under the sibling period SKU.
+    if (purchase.status == PurchaseStatus.canceled &&
+        tierFromProductId(purchase.productID) ==
+            tierFromProductId(pending) &&
+        tierFromProductId(pending) != PlanTier.free) {
+      return true;
+    }
+    return false;
+  }
+
   void _onPurchaseUpdates(List<PurchaseDetails> purchases) {
     for (final purchase in purchases) {
-      if (_purchaseCompleter != null &&
-          !_purchaseCompleter!.isCompleted &&
-          (_pendingProductId == null ||
-              purchase.productID == _pendingProductId)) {
-        if (purchase.status == PurchaseStatus.pending) continue;
+      final waiting = _purchaseCompleter != null &&
+          !_purchaseCompleter!.isCompleted;
+      if (waiting && _matchesPendingPurchase(purchase)) {
+        if (purchase.status == PurchaseStatus.pending) {
+          _iapLog(
+            'purchase pending sheet product=${purchase.productID} '
+            'waitingFor=$_pendingProductId',
+          );
+          continue;
+        }
+        _iapLog(
+          'purchase stream resolve status=${purchase.status.name} '
+          'product=${purchase.productID} waitingFor=$_pendingProductId',
+        );
         _purchaseCompleter!.complete(purchase);
         continue;
       }
@@ -489,17 +571,32 @@ class ProService extends ChangeNotifier {
         if (_iapSyncActive) {
           // Launch / restore: trust StoreKit product ownership locally.
           final fromStore = tierFromProductId(purchase.productID);
-          if (_tierRank(fromStore) > _tierRank(_iapSyncBest)) {
+          final candidateRank = _tierRank(fromStore) * 2 +
+              (_isAnnualProduct(purchase.productID) ? 1 : 0);
+          final bestRank = _tierRank(_iapSyncBest) * 2 +
+              ((_iapSyncBestProductId != null &&
+                      _isAnnualProduct(_iapSyncBestProductId!))
+                  ? 1
+                  : 0);
+          if (candidateRank >= bestRank) {
             _iapSyncBest = fromStore;
+            _iapSyncBestProductId = purchase.productID;
           }
-          unawaited(_applyTier(fromStore, allowDowngrade: false));
+          unawaited(
+            _applyTier(
+              fromStore,
+              allowDowngrade: false,
+              productId: purchase.productID,
+            ),
+          );
           // Keep server in sync, but never let an expired Sandbox JWS wipe Plus.
           unawaited(_verifyAndFinish(purchase, allowDowngrade: false));
         } else {
           // Unsolicited redelivery — finish only; entitlement already from launch.
           _iapLog(
             'complete-only unsolicited ${purchase.status.name} '
-            'product=${purchase.productID}',
+            'product=${purchase.productID} '
+            'waitingFor=${waiting ? _pendingProductId : '-'}',
           );
           if (purchase.pendingCompletePurchase) {
             unawaited(_iap.completePurchase(purchase));
@@ -525,18 +622,39 @@ class ProService extends ChangeNotifier {
       );
       return ProPurchaseResult.unavailable;
     }
+    if (isPurchaseInFlight) {
+      _iapLog(
+        'purchase blocked — already in flight '
+        'pending=$_pendingProductId requested=${product.id}',
+      );
+      return ProPurchaseResult.failed;
+    }
+    if (isCurrentPlan(plan)) {
+      _iapLog('purchase skipped — already on ${plan.id}');
+      return ProPurchaseResult.purchased;
+    }
 
-    _purchaseCompleter = Completer<PurchaseDetails?>();
+    final completer = Completer<PurchaseDetails?>();
+    _purchaseCompleter = completer;
     _pendingProductId = product.id;
     try {
       final param = PurchaseParam(productDetails: product);
       final started = await _iap.buyNonConsumable(purchaseParam: param);
+      _iapLog('buyNonConsumable started=$started product=${product.id}');
       if (!started) {
         return ProPurchaseResult.failed;
       }
-      final details = await _purchaseCompleter!.future.timeout(
-        const Duration(minutes: 5),
-        onTimeout: () => null,
+      // Upgrades can stall if StoreKit only redelivers the old SKU; fail fast
+      // instead of spinning on the paywall for minutes.
+      final details = await completer.future.timeout(
+        const Duration(seconds: 90),
+        onTimeout: () {
+          _iapLog(
+            'purchase timeout waitingFor=$_pendingProductId '
+            '(no matching stream event)',
+          );
+          return null;
+        },
       );
       if (details == null) return ProPurchaseResult.failed;
       if (details.status == PurchaseStatus.canceled) {
@@ -558,8 +676,10 @@ class ProService extends ChangeNotifier {
       debugPrint('[ProService] purchase failed: $e');
       return ProPurchaseResult.failed;
     } finally {
-      _pendingProductId = null;
-      _purchaseCompleter = null;
+      if (identical(_purchaseCompleter, completer)) {
+        _pendingProductId = null;
+        _purchaseCompleter = null;
+      }
     }
   }
 
@@ -571,16 +691,24 @@ class ProService extends ChangeNotifier {
     }
     _iapSyncActive = true;
     _iapSyncBest = PlanTier.free;
+    _iapSyncBestProductId = null;
     try {
       await _iap.restorePurchases();
       await Future<void>.delayed(const Duration(seconds: 2));
-      if (_tierRank(_iapSyncBest) > _tierRank(_storeTier)) {
-        await _setStoreTier(_iapSyncBest);
+      if (_tierRank(_iapSyncBest) > _tierRank(_storeTier) ||
+          (_iapSyncBest == _storeTier &&
+              _iapSyncBestProductId != null &&
+              _iapSyncBestProductId != _activeProductId)) {
+        await _setStoreTier(
+          _iapSyncBest,
+          productId: _iapSyncBestProductId,
+        );
       }
       final iapTier = _storeTier;
+      final iapProduct = _activeProductId;
       await refreshEntitlementFromServer();
       if (_tierRank(_storeTier) < _tierRank(iapTier)) {
-        await _setStoreTier(iapTier);
+        await _setStoreTier(iapTier, productId: iapProduct);
       }
     } catch (e) {
       debugPrint('[ProService] restore failed: $e');
@@ -679,7 +807,11 @@ class ProService extends ChangeNotifier {
       if (map is Map) {
         final tier = _parseTier(map['planTier'] as String?) ??
             tierFromProductId(purchase.productID);
-        await _applyTier(tier, allowDowngrade: allowDowngrade);
+        await _applyTier(
+          tier,
+          allowDowngrade: allowDowngrade,
+          productId: purchase.productID,
+        );
         return _tierRank(tier) > 0 || _tierRank(_storeTier) > 0;
       }
     } else {
