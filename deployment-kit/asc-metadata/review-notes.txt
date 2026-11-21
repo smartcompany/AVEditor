@@ -20,7 +20,7 @@ Bundle ID: com.smartcompany.aveditor
 4) DEVICES TESTED
 • Current iPhone / iOS SDK used for this binary.
 
-Privacy: https://smartcompany.github.io/privacy
+Privacy: https://easyclip.coinpang.org/privacy
 Support: https://smartcompany.github.io
 
 Thank you for reviewing EasyClip.

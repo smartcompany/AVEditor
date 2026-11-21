@@ -3,11 +3,11 @@
   "bundleId": "com.smartcompany.aveditor",
   "sku": "clipgo",
   "packageName": "com.smartcompany.aveditor",
-  "serverBaseUrl": "https://smartcompany.github.io",
+  "serverBaseUrl": "https://easyclip.coinpang.org",
   "privacyPath": "/privacy",
   "supportUrl": "https://smartcompany.github.io",
   "marketingUrl": "https://smartcompany.github.io",
-  "copyright": "2026 Yong Geon Kim. All rights reserved.",
+  "copyright": "© 2026 Yong Geon Kim. All rights reserved.",
   "supportEmail": "gunnylove@gmail.com",
   "reviewContactFirstName": "Yong Geon",
   "reviewContactLastName": "Kim",
@@ -23,6 +23,6 @@
   "notes": [
     "Display name: EasyClip",
     "Bundle / package: com.smartcompany.aveditor",
-    "Update serverBaseUrl / privacyPath when an EasyClip privacy page is hosted."
+    "Public site / OAuth / TikTok: https://easyclip.coinpang.org"
   ]
 }

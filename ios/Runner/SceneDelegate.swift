@@ -40,8 +40,8 @@ class SceneDelegate: FlutterSceneDelegate {
     return components.url
   }
 
-  /// TikTok Share Kit returns through the universal link
-  /// https://aveditorserver.vercel.app/tiktok/callback.
+  /// TikTok returns through the universal link
+  /// https://easyclip.coinpang.org/tiktok/callback.
   override func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
     if userActivity.activityType == NSUserActivityTypeBrowsingWeb,
        TikTokURLHandler.handleOpenURL(userActivity.webpageURL) {

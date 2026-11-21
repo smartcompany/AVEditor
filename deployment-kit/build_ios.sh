@@ -21,7 +21,12 @@ EOF
       exit 0
       ;;
     *)
-      PROJECT_DIR="$arg"
+      # Absolute or relative override for the Flutter client root.
+      if [[ "$arg" = /* ]]; then
+        PROJECT_DIR="$arg"
+      else
+        PROJECT_DIR="$(cd "$arg" && pwd)"
+      fi
       ;;
   esac
 done
@@ -29,11 +34,27 @@ done
 log()  { printf "\n\033[1;34m[ios-release]\033[0m %s\n" "$*"; }
 fail() { printf "\n\033[1;31m[error]\033[0m %s\n" "$*" >&2; exit 1; }
 
-command -v flutter >/dev/null || fail "Flutter가 PATH에 없음"
+# GUI / empty PATH shells often miss Flutter — pull common install locations.
+if ! command -v flutter >/dev/null 2>&1; then
+  for candidate in \
+    "$HOME/flutter/bin" \
+    "$HOME/development/flutter/bin" \
+    /opt/homebrew/bin \
+    /usr/local/bin
+  do
+    if [[ -x "$candidate/flutter" ]]; then
+      export PATH="$candidate:$PATH"
+      break
+    fi
+  done
+fi
+command -v flutter >/dev/null || fail "Flutter가 PATH에 없음 (which flutter)"
+command -v fastlane >/dev/null 2>&1 || true
 
 cd "$PROJECT_DIR" || fail "프로젝트 경로 진입 실패: $PROJECT_DIR"
-[ -f pubspec.yaml ] || fail "pubspec.yaml 없음"
-[ -d ios ] || fail "ios 폴더 없음"
+log "cwd=$(pwd)"
+[ -f pubspec.yaml ] || fail "pubspec.yaml 없음 ($PROJECT_DIR)"
+[ -d ios ] || fail "ios 폴더 없음 ($PROJECT_DIR)"
 
 CURRENT_VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
 [ -n "$CURRENT_VERSION" ] || fail "pubspec.yaml에서 version을 찾지 못함"

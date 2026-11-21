@@ -37,6 +37,7 @@ class VideoFrameGrab {
         maxWidth: maxWidth,
         timeMs: timeMs,
         quality: quality,
+        accurate: accurate,
       );
     }
 
@@ -63,6 +64,7 @@ class VideoFrameGrab {
       maxWidth: maxWidth,
       timeMs: timeMs,
       quality: quality,
+      accurate: accurate,
     );
   }
 
@@ -72,6 +74,8 @@ class VideoFrameGrab {
     int maxWidth = 0,
     int timeMs = 0,
     int quality = 75,
+    /// YouTube/export scrubber: force the hardened ffmpeg seek path.
+    bool accurate = false,
   }) async {
     // Still image on the timeline — no seek needed.
     final lower = video.toLowerCase();
@@ -91,7 +95,7 @@ class VideoFrameGrab {
       }
     }
 
-    if (!await _usesFfmpeg(video)) {
+    if (!accurate && !await _usesFfmpeg(video)) {
       try {
         final bytes = await VideoThumbnail.thumbnailData(
           video: video,
@@ -105,7 +109,8 @@ class VideoFrameGrab {
       } catch (error) {
         avEditorLog('thumbnail platform failed: $error');
       }
-      _ffmpegByPath[video] = true;
+      // Do not permanently pin this path to ffmpeg — a single scrubber miss
+      // must not force the timeline filmstrip off the platform thumbnailer.
     }
 
     final path = await _ffmpegJpeg(
@@ -114,6 +119,7 @@ class VideoFrameGrab {
       maxWidth: maxWidth,
       timeMs: timeMs,
       quality: quality,
+      accurate: accurate,
     );
     if (path == null) return null;
     final bytes = await File(path).readAsBytes();
@@ -137,6 +143,7 @@ class VideoFrameGrab {
     required int maxWidth,
     required int timeMs,
     required int quality,
+    bool accurate = false,
   }) async {
     final output = thumbnailPath ??
         p.join(
@@ -153,6 +160,7 @@ class VideoFrameGrab {
       maxWidth: maxWidth,
       maxHeight: maxHeight,
       quality: quality,
+      accurate: accurate,
     );
     if (written) return output;
     // A seek on the last millisecond lands past the final frame and ffmpeg
@@ -171,6 +179,7 @@ class VideoFrameGrab {
         maxWidth: maxWidth,
         maxHeight: maxHeight,
         quality: quality,
+        accurate: accurate,
       );
       if (retry) return output;
     }
@@ -184,12 +193,68 @@ class VideoFrameGrab {
     required int maxWidth,
     required int maxHeight,
     required int quality,
+    bool accurate = false,
+  }) async {
+    if (accurate) {
+      return _encodeJpegHardened(
+        video: video,
+        output: output,
+        timeMs: timeMs,
+        maxWidth: maxWidth,
+        maxHeight: maxHeight,
+        quality: quality,
+      );
+    }
+
+    // Timeline filmstrip path — keep the previous stable encode.
+    // Seek after -i for frame-accurate grabs (input -ss is faster but can
+    // land on the wrong keyframe, especially on concatenated sources).
+    final arguments = <String>[
+      '-y',
+      '-i',
+      video,
+      '-ss',
+      (timeMs / 1000).toStringAsFixed(3),
+      '-frames:v',
+      '1',
+      '-update',
+      '1',
+      '-q:v',
+      '${_qscale(quality)}',
+    ];
+    final scale = _scale(maxWidth, maxHeight);
+    if (scale != null) arguments.addAll(['-vf', scale]);
+    arguments.add(output);
+
+    final session = await FFmpegKit.executeWithArguments(arguments);
+    final code = await session.getReturnCode();
+    final file = File(output);
+    if (ReturnCode.isSuccess(code) &&
+        await file.exists() &&
+        await file.length() > 0) {
+      return true;
+    }
+    if (await file.exists()) await file.delete();
+    final text = await session.getOutput() ?? '';
+    final tail = text.length > 400 ? text.substring(text.length - 400) : text;
+    avEditorLog(
+      'thumbnail ffmpeg failed timeMs=$timeMs code=${code?.getValue()} $tail',
+    );
+    return false;
+  }
+
+  /// YouTube / HDR scrubber: try decode seek then input seek + yuv420p.
+  Future<bool> _encodeJpegHardened({
+    required String video,
+    required String output,
+    required int timeMs,
+    required int maxWidth,
+    required int maxHeight,
+    required int quality,
   }) async {
     final scale = _scale(maxWidth, maxHeight);
     final q = '${_qscale(quality)}';
     final seek = (timeMs / 1000).toStringAsFixed(3);
-    // 1) Accurate decode seek. 2) Input seek (helps short/HDR clips when
-    // post-decode -ss yields an empty jpeg with exit 0).
     for (final inputSeek in [false, true]) {
       final arguments = <String>['-y'];
       if (inputSeek) arguments.addAll(['-ss', seek]);
@@ -203,7 +268,6 @@ class VideoFrameGrab {
         '-q:v',
         q,
       ]);
-      // HDR / 10-bit HEVC → plain mjpeg often fails without a format nudge.
       final vf = [
         if (scale != null) scale,
         'format=yuv420p',

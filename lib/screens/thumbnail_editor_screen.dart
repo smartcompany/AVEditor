@@ -192,6 +192,7 @@ class _ThumbnailEditorScreenState extends State<ThumbnailEditorScreen> {
         maxHeight: 1280,
         maxWidth: 1280,
         quality: 86,
+        accurate: true,
       );
       if (!mounted || request != _heroRequest) return;
       if (bytes == null || bytes.isEmpty) return;
@@ -215,6 +216,7 @@ class _ThumbnailEditorScreenState extends State<ThumbnailEditorScreen> {
           maxHeight: 360,
           maxWidth: 360,
           quality: 68,
+          accurate: true,
         );
         if (!mounted) return;
         if (bytes == null || bytes.isEmpty) continue;
@@ -306,6 +308,7 @@ class _ThumbnailEditorScreenState extends State<ThumbnailEditorScreen> {
         maxHeight: 1920,
         maxWidth: 1920,
         quality: 92,
+        accurate: true,
       );
       if (bytes == null) throw StateError('thumbnail_empty');
       final codec = await ui.instantiateImageCodec(bytes);

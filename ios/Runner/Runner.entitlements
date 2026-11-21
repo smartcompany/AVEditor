@@ -2,9 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- TikTok Share Kit returns via https://aveditorserver.vercel.app/tiktok/callback -->
+	<!-- TikTok Login/Share return via https://easyclip.coinpang.org/tiktok/callback -->
 	<key>com.apple.developer.associated-domains</key>
 	<array>
+		<string>applinks:easyclip.coinpang.org</string>
 		<string>applinks:aveditorserver.vercel.app</string>
 	</array>
 </dict>

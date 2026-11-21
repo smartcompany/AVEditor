@@ -28,7 +28,7 @@ EasyClip는 짧은 영상을 빠르게 다듬는 모바일 편집기입니다. �
 • 카메라·마이크: 촬영 시 사용
 • 네트워크: Shorts 업로드·온라인 카탈로그(해당 기능 사용 시)
 
-개인정보 처리방침: https://smartcompany.github.io/privacy
+개인정보 처리방침: https://easyclip.coinpang.org/privacy
 `,
     keywords:
       '영상편집,숏폼,쇼츠,릴스,자막,텍스트,컷,타임라인,편집기,유튜브,클립',
@@ -61,7 +61,7 @@ EasyClip is a mobile editor for short videos. Import from gallery, files, or cam
 • Camera/Mic: recording
 • Network: Shorts upload and online catalogs when used
 
-Privacy Policy: https://smartcompany.github.io/privacy
+Privacy Policy: https://easyclip.coinpang.org/privacy
 `,
     keywords:
       'video,editor,shorts,reels,caption,timeline,trim,cut,youtube,clip,mobile',
@@ -89,7 +89,7 @@ EasyClipは短い動画向けのモバイル編集アプリです。ギャラリ
 • YouTube Shorts アップロード（連携時）
 • 한국어 · English · 日本語 · 中文 UI
 
-プライバシーポリシー: https://smartcompany.github.io/privacy
+プライバシーポリシー: https://easyclip.coinpang.org/privacy
 `,
     keywords:
       '動画編集,ショート,ショーツ,テロップ,カット,タイムライン,YouTube,クリップ',
@@ -117,7 +117,7 @@ EasyClip 是面向短视频的手机剪辑应用。可从相册、文件或相�
 • YouTube Shorts 上传（登录后）
 • 韩语 · 英语 · 日语 · 中文界面
 
-隐私政策: https://smartcompany.github.io/privacy
+隐私政策: https://easyclip.coinpang.org/privacy
 `,
     keywords: '视频编辑,短视频,字幕,时间轴,剪辑,YouTube,Shorts,裁剪',
   },
