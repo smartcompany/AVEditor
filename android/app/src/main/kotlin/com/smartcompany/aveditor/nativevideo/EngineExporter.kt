@@ -60,7 +60,8 @@ internal object EngineExporter {
         }
 
         override fun onEngineExportProgress(progress: Double) {
-          progressRef.get().invoke(progress.coerceIn(0.0, 1.0))
+          // Cap frame-loop progress so UI can still move during recorder.finish().
+          progressRef.get().invoke(progress.coerceIn(0.0, 1.0) * 0.92)
         }
       }
       activeNative = bridge
@@ -114,6 +115,9 @@ internal object EngineExporter {
         bootErr?.let { throw it }
 
         val rc = bridge.nativeExport(handle, outputPath, width, height)
+        // Mux/finalize can take as long as encode on hard-cut exports; keep
+        // progress moving so the UI is not stuck at ~95%.
+        onProgress(0.95)
         recorder?.finish()
         recorder = null
 

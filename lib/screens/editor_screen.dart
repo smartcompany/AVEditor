@@ -4661,7 +4661,9 @@ class _EditorScreenState extends State<EditorScreen>
           if (!mounted) return;
           final next = value.clamp(0.0, 1.0);
           final current = _exportProgress ?? 0;
-          if ((next - current).abs() < 0.01 && next < 1) return;
+          // Always paint the last stretch — strip/hard-cut exports spend a
+          // long time near the end while the muxer finishes.
+          if ((next - current).abs() < 0.01 && next < 0.98) return;
           setState(() => _exportProgress = next);
         },
       );

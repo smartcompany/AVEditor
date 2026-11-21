@@ -118,9 +118,15 @@ class ExportService {
     onProgress?.call(0.25);
 
     try {
+      // Native 1.0 used to map to UI 0.95, so hard-cut (strip-premium) exports
+      // raced to 95% then sat there through mux/finalize with no updates.
       final exportedPath = await NativeVideoEngine.instance.export(
         request: request,
-        onProgress: (p) => onProgress?.call(0.25 + p.clamp(0.0, 1.0) * 0.7),
+        onProgress: (p) {
+          final native = p.clamp(0.0, 1.0);
+          // Leave a thin tail for file checks → 1.0 after return.
+          onProgress?.call(0.25 + native * 0.74);
+        },
       );
 
       final exported = File(exportedPath);
