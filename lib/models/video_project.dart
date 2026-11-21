@@ -143,8 +143,16 @@ class VideoProject {
     return null;
   }
 
-  /// Primary video path for canvas / probe (first video asset, else sourcePath).
+  /// Primary video path for canvas / probe.
+  ///
+  /// Prefers the first *timeline* video clip so orphaned assets left after
+  /// deleting clips do not keep the old landscape/portrait size.
   String get primaryVideoPath {
+    for (final segment in segments) {
+      final asset = assetById(segment.mediaId);
+      if (asset == null || !asset.isVideo) continue;
+      return absoluteMediaPath(asset);
+    }
     for (final asset in mediaAssets) {
       if (asset.isVideo) return absoluteMediaPath(asset);
     }

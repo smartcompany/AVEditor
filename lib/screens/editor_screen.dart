@@ -827,10 +827,13 @@ class _EditorScreenState extends State<EditorScreen>
         },
       );
       final sourcePath = playable.sourcePath;
+      // Probe the first *timeline* video so orphaned wide assets do not
+      // lock Original canvas after the user wiped and re-imported clips.
+      final probePath = playable.primaryVideoPath;
       VideoPlayerController? controller;
       var duration = playable.duration;
       var sourceAspect = 9 / 16;
-      controller = await _openPlayableController(sourcePath);
+      controller = await _openPlayableController(probePath);
       if (controller == null) {
         throw StateError('video open failed');
       }
@@ -842,7 +845,7 @@ class _EditorScreenState extends State<EditorScreen>
       if (controller.value.aspectRatio != 0) {
         sourceAspect = controller.value.aspectRatio;
       }
-      avEditorLog('load: exoplayer path=$sourcePath');
+      avEditorLog('load: exoplayer path=$probePath');
 
       if (!mounted) {
         await controller?.dispose();
@@ -1052,6 +1055,8 @@ class _EditorScreenState extends State<EditorScreen>
         _convertProgress = null;
       });
       await _attachTimelineCompositor(resume: false, seekTo: joinAt);
+      if (!mounted) return;
+      await _syncSourceAspectFromProject(updated);
       if (!mounted) return;
       unawaited(_loadFilmstrip(updated));
       unawaited(_loadSourceAudioWaveforms(updated));
@@ -1468,7 +1473,11 @@ class _EditorScreenState extends State<EditorScreen>
     final land = updated.isEmpty
         ? Duration.zero
         : clampDuration(_playhead, Duration.zero, project.duration);
-    unawaited(_attachTimelineCompositor(resume: false, seekTo: land));
+    unawaited(() async {
+      await _attachTimelineCompositor(resume: false, seekTo: land);
+      if (!mounted) return;
+      await _syncSourceAspectFromProject(project);
+    }());
     if (updated.isEmpty) {
       unawaited(_loadFilmstrip(project));
       unawaited(_loadSourceAudioWaveforms(project));
@@ -1499,6 +1508,35 @@ class _EditorScreenState extends State<EditorScreen>
   String _timelineSig = '';
   StreamSubscription<Duration>? _timelinePositionSub;
   Future<void>? _timelineAttachTask;
+
+  void _applyNativePreviewAspect() {
+    final engine = NativeVideoEngine.instance;
+    if (engine.previewWidth <= 0 || engine.previewHeight <= 0) return;
+    final next = engine.previewWidth / engine.previewHeight;
+    if ((next - _sourceAspect).abs() < 0.0001) return;
+    _sourceAspect = next;
+    if (mounted) setState(() {});
+  }
+
+  /// Refresh Original-canvas aspect from the first timeline video (or native
+  /// preview size after prepare). Orphaned mediaAssets must not win.
+  Future<void> _syncSourceAspectFromProject(VideoProject project) async {
+    if (!mounted) return;
+    if (NativeVideoEngine.instance.isTimelineActive) {
+      _applyNativePreviewAspect();
+      if (_sourceAspect > 0) return;
+    }
+    if (project.segments.isEmpty) return;
+    try {
+      final size = await _probe.readFrameSize(project.primaryVideoPath);
+      if (!mounted || size.width <= 0 || size.height <= 0) return;
+      final next = size.width / size.height;
+      if ((next - _sourceAspect).abs() < 0.0001) return;
+      setState(() => _sourceAspect = next);
+    } catch (e) {
+      debugPrint('[editor] source aspect sync failed: $e');
+    }
+  }
 
   Future<void> _attachTimelineCompositor({
     bool resume = true,
@@ -1595,6 +1633,7 @@ class _EditorScreenState extends State<EditorScreen>
       if (mounted) setState(() {});
       return;
     }
+    _applyNativePreviewAspect();
     try {
       await _controller?.pause();
       await _controller?.setVolume(0);
@@ -4855,9 +4894,18 @@ class _EditorScreenState extends State<EditorScreen>
       );
     }
 
-    final sourceAspect = controller != null && controller.value.aspectRatio != 0
-        ? controller.value.aspectRatio
-        : _sourceAspect;
+    // Timeline preview owns canvas size; the hard-cut VideoPlayerController
+    // may still be the orphaned first import (wrong aspect after replace).
+    final sourceAspect = NativeVideoEngine.instance.isTimelineActive &&
+            NativeVideoEngine.instance.previewWidth > 0 &&
+            NativeVideoEngine.instance.previewHeight > 0
+        ? NativeVideoEngine.instance.previewWidth /
+            NativeVideoEngine.instance.previewHeight
+        : (_sourceAspect > 0
+            ? _sourceAspect
+            : (controller != null && controller.value.aspectRatio != 0
+                ? controller.value.aspectRatio
+                : 9 / 16));
     final canvasAspect = project.canvas.frameAspect(sourceAspect);
     final inTextStudio = _inTextStudio;
     final studioOverlay = _textStudioOverlay;

@@ -101,9 +101,19 @@ class NativeVideoEnginePlugin :
           return
         }
         val requestedDurationMs = (args["durationMs"] as? Number)?.toInt() ?: 0
-        val current = timeline
-        if (current != null) {
-          try {
+        try {
+          val enginePlan = EnginePlanBuilder.build(
+            sourcePath,
+            segments,
+            requestedDurationMs = requestedDurationMs,
+          )
+          val current = timeline
+          // Same canvas size → cheap plan swap. Aspect change (e.g. wide
+          // project wiped and refilled with 9:16) needs a new GLES surface.
+          if (current != null &&
+            current.width == enginePlan.width &&
+            current.height == enginePlan.height
+          ) {
             current.update(sourcePath, segments, requestedDurationMs)
             result.success(
               mapOf(
@@ -113,18 +123,10 @@ class NativeVideoEnginePlugin :
                 "height" to current.height,
               ),
             )
-          } catch (e: Exception) {
-            Log.e("NativeVideoEngine", "updateTimeline failed", e)
-            result.error("prepare_failed", e.message, null)
+            return
           }
-          return
-        }
-        try {
-          val enginePlan = EnginePlanBuilder.build(
-            sourcePath,
-            segments,
-            requestedDurationMs = requestedDurationMs,
-          )
+          current?.release()
+          timeline = null
           val created = registry.createSurfaceTexture()
           try {
             val playing = TimelineEngineSession(

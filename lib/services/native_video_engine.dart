@@ -95,6 +95,8 @@ class NativeVideoEngine {
   bool get isTimelineActive => _timelineActive && _active;
   bool get isPlaying => _playing;
   bool get hasFrame => _hasFrame;
+  int get previewWidth => _previewWidth;
+  int get previewHeight => _previewHeight;
   Duration get position => _position;
   Duration get duration => _duration;
   Stream<Duration> get positionStream => _positionController.stream;

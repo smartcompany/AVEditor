@@ -249,7 +249,8 @@ object NativeVideoEngineMedia {
     return fillDecoderGaps(packed)
   }
 
-  private fun firstVideoPath(segments: List<*>, fallback: String): String? {
+  /** First timeline video file for canvas size (skip stills / blank paths). */
+  internal fun firstVideoPath(segments: List<*>, fallback: String): String? {
     for (raw in segments) {
       val segment = raw as? Map<*, *> ?: continue
       val kind = (segment["kind"] as? String)?.lowercase(Locale.US) ?: "video"

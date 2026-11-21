@@ -38,7 +38,11 @@ internal object EnginePlanBuilder {
     /** Video ∪ music ∪ text end; past picture is black (no pieces). */
     requestedDurationMs: Int = 0,
   ): EngineTimeline {
-    val meta = NativeVideoEngineMedia.probeOriented(sourcePath)
+    // Canvas size follows the first timeline video, not a stale project
+    // sourcePath left behind after clips were deleted and replaced.
+    val probePath =
+      NativeVideoEngineMedia.firstVideoPath(segments, sourcePath) ?: sourcePath
+    val meta = NativeVideoEngineMedia.probeOriented(probePath)
     val packed = NativeVideoEngineMedia.packSegmentsForEngine(segments, sourcePath)
     val totalMs = maxOf(packed.totalMs, requestedDurationMs.toLong().coerceAtLeast(0L))
     val pieces = JSONArray()
