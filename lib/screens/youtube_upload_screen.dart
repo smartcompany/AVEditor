@@ -546,11 +546,12 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
     };
   }
 
-  /// Result after a successful upload: stays on screen with the Shorts link
+  /// Result after a successful upload: stays on screen with the watch link
   /// instead of silently going back.
   Widget _buildDone(AppLocalizations l10n, String videoId) {
     final theme = Theme.of(context);
-    final link = 'https://youtube.com/shorts/$videoId';
+    // Generic watch URL — YouTube routes Shorts itself when applicable.
+    final link = 'https://youtube.com/watch?v=$videoId';
     final partial = _partialSteps;
     final thumbnail = _thumbnailPath;
     final preview = _preview;

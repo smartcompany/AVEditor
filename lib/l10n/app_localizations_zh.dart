@@ -94,7 +94,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get export => '导出';
 
   @override
-  String get uploadShorts => '上传 Shorts';
+  String get uploadShorts => '上传到 YouTube';
 
   @override
   String get saveToGallery => '保存到相册';
@@ -141,10 +141,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get textOverlayHint => '点按输入文字';
 
   @override
-  String get uploadTitleHint => 'Shorts 标题';
+  String get uploadTitleHint => '视频标题';
 
   @override
-  String get uploadDescriptionHint => '描述（可选，建议含 #Shorts）';
+  String get uploadDescriptionHint => '描述（可选）';
 
   @override
   String get privacyPublic => '公开';
@@ -315,7 +315,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get pushShareTitle => '准备发布了吗？';
 
   @override
-  String get pushShareBody => '导出视频已保存。分享到 Shorts、Reels 或 TikTok。';
+  String get pushShareBody => '导出视频已保存。分享到 YouTube、Instagram 或 TikTok。';
 
   @override
   String get pushCatalogTitle => '新编辑素材';
@@ -637,7 +637,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get uploadFewerDetails => '收起';
 
   @override
-  String get uploadShortsCaption => '添加 Shorts 说明';
+  String get uploadShortsCaption => '添加视频说明';
 
   @override
   String get uploadLocation => '位置';

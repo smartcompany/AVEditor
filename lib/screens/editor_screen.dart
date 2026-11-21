@@ -207,6 +207,8 @@ class _EditorScreenState extends State<EditorScreen>
   double? _convertProgress;
   var _appendingMedia = false;
   var _exporting = false;
+  /// True while catalog/entitlement refresh runs before the premium sheet.
+  var _premiumGateBusy = false;
   double? _exportProgress;
   final _exportService = ExportService();
   final _appSettings = const AppSettingsService();
@@ -1571,6 +1573,23 @@ class _EditorScreenState extends State<EditorScreen>
     // native black pad (segment signature alone stays the same).
     final sig =
         '${timelineCompositionSignature(project.segments)}|${_sequenceDuration.inMilliseconds}';
+    if (project.segments.isEmpty) {
+      if (sig == _timelineSig && !NativeVideoEngine.instance.isTimelineActive) {
+        return;
+      }
+      _timelineSig = sig;
+      await _timelinePositionSub?.cancel();
+      _timelinePositionSub = null;
+      await NativeVideoEngine.instance.dispose();
+      try {
+        await _controller?.pause();
+        await _controller?.setVolume(0);
+        await _auxController?.pause();
+        await _auxController?.setVolume(0);
+      } catch (_) {}
+      if (mounted) setState(() {});
+      return;
+    }
     final desired =
         seekTo ??
         _pendingTimelineSeek ??
@@ -2482,6 +2501,10 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   Widget _buildPreviewVideoChild(VideoPlayerController? _) {
+    // All clips deleted — do not fall back to the orphaned hard-cut player.
+    if (_project?.segments.isEmpty ?? false) {
+      return const ColoredBox(color: Color(0xFF000000));
+    }
     if (NativeVideoEngine.instance.isTimelineActive) {
       return NativeVideoEngine.instance.buildPreview();
     }
@@ -4672,6 +4695,7 @@ class _EditorScreenState extends State<EditorScreen>
       if (mounted) {
         setState(() {
           _exporting = false;
+          _premiumGateBusy = false;
           _exportProgress = null;
         });
       }
@@ -4683,12 +4707,18 @@ class _EditorScreenState extends State<EditorScreen>
   Future<VideoProject?> _resolvePremiumForExport(VideoProject project) async {
     final pro = ProService.instance;
     await pro.ensureInitialized();
-    // Bundled catalogs can lag behind Storage; refresh before gating share.
-    await Future.wait([
-      TransitionCatalogService.instance.refresh(awaitRemote: true),
-      TextTemplatePackService.instance.refresh(),
-      pro.refreshEntitlementFromServer(),
-    ]);
+    if (mounted) setState(() => _premiumGateBusy = true);
+    try {
+      // Fresh catalogs + entitlement before gating (shows progress bar).
+      await Future.wait([
+        TransitionCatalogService.instance.refresh(awaitRemote: true),
+        TextTemplatePackService.instance.refresh(),
+        pro.refreshEntitlementFromServer(),
+      ]);
+    } finally {
+      if (mounted) setState(() => _premiumGateBusy = false);
+    }
+    if (!mounted) return null;
     final unlocks = EffectAdUnlockService.instance;
     // Each save needs its own ads — do not carry unlocks across exports.
     unlocks.clear();
@@ -5451,6 +5481,8 @@ class _EditorScreenState extends State<EditorScreen>
                 ),
               ),
               if (studio != null) Positioned.fill(child: studio),
+              if (_premiumGateBusy)
+                const Positioned.fill(child: _ExportGateBusyOverlay()),
               if (_exportProgress != null)
                 Positioned.fill(
                   child: _ExportDockBusyOverlay(
@@ -6005,6 +6037,30 @@ class _ExportPreviewPercent extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Full-screen wait spinner while premium gate refreshes (no label).
+class _ExportGateBusyOverlay extends StatelessWidget {
+  const _ExportGateBusyOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    return AbsorbPointer(
+      child: ColoredBox(
+        color: Colors.black.withValues(alpha: 0.35),
+        child: const Center(
+          child: SizedBox(
+            width: 36,
+            height: 36,
+            child: CircularProgressIndicator(
+              strokeWidth: 3,
+              color: AppTheme.accent,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

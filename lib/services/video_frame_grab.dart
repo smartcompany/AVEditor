@@ -73,6 +73,24 @@ class VideoFrameGrab {
     int timeMs = 0,
     int quality = 75,
   }) async {
+    // Still image on the timeline — no seek needed.
+    final lower = video.toLowerCase();
+    if (lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg') ||
+        lower.endsWith('.png') ||
+        lower.endsWith('.webp') ||
+        lower.endsWith('.heic') ||
+        lower.endsWith('.heif') ||
+        lower.endsWith('.bmp') ||
+        lower.endsWith('.gif')) {
+      try {
+        final bytes = await File(video).readAsBytes();
+        return bytes.isEmpty ? null : bytes;
+      } catch (_) {
+        return null;
+      }
+    }
+
     if (!await _usesFfmpeg(video)) {
       try {
         final bytes = await VideoThumbnail.thumbnailData(
@@ -167,39 +185,49 @@ class VideoFrameGrab {
     required int maxHeight,
     required int quality,
   }) async {
-    // Seek after -i for frame-accurate grabs (input -ss is faster but can
-    // land on the wrong keyframe, especially on concatenated sources).
-    final arguments = <String>[
-      '-y',
-      '-i',
-      video,
-      '-ss',
-      (timeMs / 1000).toStringAsFixed(3),
-      '-frames:v',
-      '1',
-      '-update',
-      '1',
-      '-q:v',
-      '${_qscale(quality)}',
-    ];
     final scale = _scale(maxWidth, maxHeight);
-    if (scale != null) arguments.addAll(['-vf', scale]);
-    arguments.add(output);
+    final q = '${_qscale(quality)}';
+    final seek = (timeMs / 1000).toStringAsFixed(3);
+    // 1) Accurate decode seek. 2) Input seek (helps short/HDR clips when
+    // post-decode -ss yields an empty jpeg with exit 0).
+    for (final inputSeek in [false, true]) {
+      final arguments = <String>['-y'];
+      if (inputSeek) arguments.addAll(['-ss', seek]);
+      arguments.addAll(['-i', video]);
+      if (!inputSeek) arguments.addAll(['-ss', seek]);
+      arguments.addAll([
+        '-frames:v',
+        '1',
+        '-update',
+        '1',
+        '-q:v',
+        q,
+      ]);
+      // HDR / 10-bit HEVC → plain mjpeg often fails without a format nudge.
+      final vf = [
+        if (scale != null) scale,
+        'format=yuv420p',
+      ].join(',');
+      arguments.addAll(['-vf', vf, output]);
 
-    final session = await FFmpegKit.executeWithArguments(arguments);
-    final code = await session.getReturnCode();
-    final file = File(output);
-    if (ReturnCode.isSuccess(code) &&
-        await file.exists() &&
-        await file.length() > 0) {
-      return true;
+      final session = await FFmpegKit.executeWithArguments(arguments);
+      final code = await session.getReturnCode();
+      final file = File(output);
+      if (ReturnCode.isSuccess(code) &&
+          await file.exists() &&
+          await file.length() > 0) {
+        return true;
+      }
+      if (await file.exists()) await file.delete();
+      if (!inputSeek) {
+        final text = await session.getOutput() ?? '';
+        final tail =
+            text.length > 400 ? text.substring(text.length - 400) : text;
+        avEditorLog(
+          'thumbnail ffmpeg failed timeMs=$timeMs code=${code?.getValue()} $tail',
+        );
+      }
     }
-    if (await file.exists()) await file.delete();
-    final text = await session.getOutput() ?? '';
-    final tail = text.length > 400 ? text.substring(text.length - 400) : text;
-    avEditorLog(
-      'thumbnail ffmpeg failed timeMs=$timeMs code=${code?.getValue()} $tail',
-    );
     return false;
   }
 

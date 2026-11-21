@@ -4,14 +4,17 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:aveditor/l10n/l10n_extensions.dart';
+import 'package:aveditor/models/clip_segment.dart';
+import 'package:aveditor/models/media_asset.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/video_project.dart';
-import 'package:aveditor/widgets/basic_text_edit_toolbar.dart';
-import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/services/video_frame_grab.dart';
 import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/utils/logged_snackbar.dart';
+import 'package:aveditor/widgets/basic_text_edit_toolbar.dart';
+import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/widgets/video_preview.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 /// Full-screen still picker. Returns the composed thumbnail file path.
@@ -181,11 +184,11 @@ class _ThumbnailEditorScreenState extends State<ThumbnailEditorScreen> {
 
   Future<void> _loadHero() async {
     final request = ++_heroRequest;
-    final timelineMs = _scrubMs;
+    final sample = _sampleAt(_scrubMs);
     try {
       final bytes = await const VideoFrameGrab().jpegBytes(
-        video: widget.project.sourcePath,
-        timeMs: _sourceMs(timelineMs),
+        video: sample.path,
+        timeMs: sample.timeMs,
         maxHeight: 1280,
         maxWidth: 1280,
         quality: 86,
@@ -205,9 +208,10 @@ class _ThumbnailEditorScreenState extends State<ThumbnailEditorScreen> {
     setState(() => _frameMs = times);
     try {
       for (var i = 0; i < times.length; i++) {
+        final sample = _sampleAt(times[i]);
         final bytes = await const VideoFrameGrab().jpegBytes(
-          video: widget.project.sourcePath,
-          timeMs: _sourceMs(times[i]),
+          video: sample.path,
+          timeMs: sample.timeMs,
           maxHeight: 360,
           maxWidth: 360,
           quality: 68,
@@ -245,19 +249,13 @@ class _ThumbnailEditorScreenState extends State<ThumbnailEditorScreen> {
     return 0;
   }
 
-  int _sourceMs(int timelineMs) {
-    final segments = widget.project.segments;
-    if (segments.isEmpty) return timelineMs;
-    var cursor = 0;
-    for (final segment in segments) {
-      final length = segment.duration.inMilliseconds;
-      if (length <= 0) continue;
-      if (timelineMs < cursor + length) {
-        return segment.start.inMilliseconds + (timelineMs - cursor);
-      }
-      cursor += length;
-    }
-    return segments.last.end.inMilliseconds - 1;
+  /// Map packed timeline time → the clip file and local seek time.
+  ///
+  /// Always using [VideoProject.sourcePath] made every strip cell grab the
+  /// first import (often ~1s), then ffmpeg fell back to frame 0 → identical
+  /// thumbnails and failed seeks at 10s+.
+  ({String path, int timeMs}) _sampleAt(int timelineMs) {
+    return thumbnailSampleAt(widget.project, timelineMs);
   }
 
   void _addText() {
@@ -301,10 +299,10 @@ class _ThumbnailEditorScreenState extends State<ThumbnailEditorScreen> {
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() => _saving = true);
     try {
-      final timelineMs = _scrubMs;
+      final sample = _sampleAt(_scrubMs);
       final bytes = await const VideoFrameGrab().jpegBytes(
-        video: widget.project.sourcePath,
-        timeMs: _sourceMs(timelineMs),
+        video: sample.path,
+        timeMs: sample.timeMs,
         maxHeight: 1920,
         maxWidth: 1920,
         quality: 92,
@@ -777,4 +775,41 @@ class _ThumbnailEditorScreenState extends State<ThumbnailEditorScreen> {
       ),
     );
   }
+}
+
+/// Packed timeline ms → source file + local seek for thumbnail grabs.
+@visibleForTesting
+({String path, int timeMs}) thumbnailSampleAt(
+  VideoProject project,
+  int timelineMs,
+) {
+  final segments = project.segments;
+  if (segments.isEmpty) {
+    return (path: project.primaryVideoPath, timeMs: timelineMs.clamp(0, 1 << 30));
+  }
+  var cursor = 0;
+  for (final segment in segments) {
+    final length = segment.duration.inMilliseconds;
+    if (length <= 0) continue;
+    if (timelineMs < cursor + length) {
+      final path =
+          project.pathForSegment(segment) ?? project.primaryVideoPath;
+      final local = segment.start.inMilliseconds + (timelineMs - cursor);
+      final asset = project.assetById(segment.mediaId);
+      final maxLocal = _maxSeekMs(segment, asset);
+      return (path: path, timeMs: local.clamp(0, maxLocal));
+    }
+    cursor += length;
+  }
+  final last = segments.last;
+  final path = project.pathForSegment(last) ?? project.primaryVideoPath;
+  final asset = project.assetById(last.mediaId);
+  return (path: path, timeMs: _maxSeekMs(last, asset));
+}
+
+int _maxSeekMs(ClipSegment segment, MediaAsset? asset) {
+  final endCap = (segment.end.inMilliseconds - 1).clamp(0, 1 << 30);
+  if (asset == null || asset.duration <= Duration.zero) return endCap;
+  final mediaCap = (asset.duration.inMilliseconds - 1).clamp(0, 1 << 30);
+  return endCap < mediaCap ? endCap : mediaCap;
 }

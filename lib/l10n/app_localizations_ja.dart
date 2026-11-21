@@ -94,7 +94,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get export => '書き出し';
 
   @override
-  String get uploadShorts => 'Shortsをアップロード';
+  String get uploadShorts => 'YouTubeにアップロード';
 
   @override
   String get saveToGallery => 'ギャラリーに保存';
@@ -143,10 +143,10 @@ class AppLocalizationsJa extends AppLocalizations {
   String get textOverlayHint => 'タップして入力';
 
   @override
-  String get uploadTitleHint => 'Shortsタイトル';
+  String get uploadTitleHint => '動画タイトル';
 
   @override
-  String get uploadDescriptionHint => '説明（任意、#Shorts推奨）';
+  String get uploadDescriptionHint => '説明（任意）';
 
   @override
   String get privacyPublic => '公開';
@@ -318,7 +318,8 @@ class AppLocalizationsJa extends AppLocalizations {
   String get pushShareTitle => '投稿の準備はできた？';
 
   @override
-  String get pushShareBody => '書き出した動画が保存されています。Shorts・Reels・TikTokへシェアしましょう。';
+  String get pushShareBody =>
+      '書き出した動画が保存されています。YouTube・Instagram・TikTokへシェアしましょう。';
 
   @override
   String get pushCatalogTitle => '新しい編集ツール';
@@ -642,7 +643,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get uploadFewerDetails => '概要を閉じる';
 
   @override
-  String get uploadShortsCaption => 'Shortsの説明を追加';
+  String get uploadShortsCaption => '動画の説明を追加';
 
   @override
   String get uploadLocation => '場所';
@@ -753,7 +754,7 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
-  String get proSubtitle => 'すべてのエフェクトを解放して、ショートを際立たせましょう。';
+  String get proSubtitle => 'すべてのエフェクトを解放して、クリップを際立たせましょう。';
 
   @override
   String get proBenefitEffects => 'すべてのProトランジションとテキスト効果';

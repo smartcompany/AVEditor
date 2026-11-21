@@ -94,7 +94,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get export => '내보내기';
 
   @override
-  String get uploadShorts => 'Shorts 업로드';
+  String get uploadShorts => 'YouTube에 업로드';
 
   @override
   String get saveToGallery => '갤러리에 저장';
@@ -143,10 +143,10 @@ class AppLocalizationsKo extends AppLocalizations {
   String get textOverlayHint => '탭 해서 텍스트 입력';
 
   @override
-  String get uploadTitleHint => 'Shorts 제목';
+  String get uploadTitleHint => '동영상 제목';
 
   @override
-  String get uploadDescriptionHint => '설명 (선택, #Shorts 권장)';
+  String get uploadDescriptionHint => '설명 (선택)';
 
   @override
   String get privacyPublic => '공개';
@@ -318,7 +318,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get pushShareTitle => '올릴 준비 됐나요?';
 
   @override
-  String get pushShareBody => '내보낸 영상이 저장돼 있어요. Shorts·릴스·TikTok으로 공유해 보세요.';
+  String get pushShareBody =>
+      '내보낸 영상이 저장돼 있어요. YouTube·Instagram·TikTok으로 공유해 보세요.';
 
   @override
   String get pushCatalogTitle => '새 편집 도구';
@@ -644,7 +645,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get uploadFewerDetails => '간략히 보기';
 
   @override
-  String get uploadShortsCaption => 'Shorts 동영상 설명 추가';
+  String get uploadShortsCaption => '동영상 설명 추가';
 
   @override
   String get uploadLocation => '위치';
@@ -755,7 +756,7 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
-  String get proSubtitle => '모든 효과를 풀고 더 돋보이는 쇼츠를 만드세요.';
+  String get proSubtitle => '모든 효과를 풀고 더 돋보이는 클립을 만드세요.';
 
   @override
   String get proBenefitEffects => '모든 Pro 전환·텍스트 효과';

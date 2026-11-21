@@ -267,7 +267,7 @@ abstract class AppLocalizations {
   /// No description provided for @uploadShorts.
   ///
   /// In en, this message translates to:
-  /// **'Upload Shorts'**
+  /// **'Upload to YouTube'**
   String get uploadShorts;
 
   /// No description provided for @saveToGallery.
@@ -357,13 +357,13 @@ abstract class AppLocalizations {
   /// No description provided for @uploadTitleHint.
   ///
   /// In en, this message translates to:
-  /// **'Short title'**
+  /// **'Video title'**
   String get uploadTitleHint;
 
   /// No description provided for @uploadDescriptionHint.
   ///
   /// In en, this message translates to:
-  /// **'Description (optional, #Shorts recommended)'**
+  /// **'Description (optional)'**
   String get uploadDescriptionHint;
 
   /// No description provided for @privacyPublic.
@@ -675,7 +675,7 @@ abstract class AppLocalizations {
   /// No description provided for @pushShareBody.
   ///
   /// In en, this message translates to:
-  /// **'Your export is saved. Share it to Shorts, Reels, or TikTok.'**
+  /// **'Your export is saved. Share it to YouTube, Instagram, or TikTok.'**
   String get pushShareBody;
 
   /// No description provided for @pushCatalogTitle.
@@ -1293,7 +1293,7 @@ abstract class AppLocalizations {
   /// No description provided for @uploadShortsCaption.
   ///
   /// In en, this message translates to:
-  /// **'Add a Shorts description'**
+  /// **'Add a video description'**
   String get uploadShortsCaption;
 
   /// No description provided for @uploadLocation.
@@ -1497,7 +1497,7 @@ abstract class AppLocalizations {
   /// No description provided for @proSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Unlock every effect and make your Shorts stand out.'**
+  /// **'Unlock every effect and make your clips stand out.'**
   String get proSubtitle;
 
   /// No description provided for @proBenefitEffects.

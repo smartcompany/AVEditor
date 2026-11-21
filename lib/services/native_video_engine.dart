@@ -147,11 +147,21 @@ class NativeVideoEngine {
     bool ffmpegPlayer = false,
   }) async {
     if (!isPlatformSupported) return null;
+    if (segments.isEmpty) {
+      // Empty picture track — drop any leftover texture instead of calling
+      // native with a missing timeline.
+      await _disposePlayer();
+      return null;
+    }
     final encoded = encodeCompositionSegments(
       segments,
       project: project,
       fallbackSourcePath: sourcePath,
     );
+    if (encoded.isEmpty) {
+      await _disposePlayer();
+      return null;
+    }
     if (kDebugMode) {
       final brief = encoded
           .map(

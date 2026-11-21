@@ -95,7 +95,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get export => 'Export';
 
   @override
-  String get uploadShorts => 'Upload Shorts';
+  String get uploadShorts => 'Upload to YouTube';
 
   @override
   String get saveToGallery => 'Save to gallery';
@@ -146,11 +146,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get textOverlayHint => 'Tap to enter text';
 
   @override
-  String get uploadTitleHint => 'Short title';
+  String get uploadTitleHint => 'Video title';
 
   @override
-  String get uploadDescriptionHint =>
-      'Description (optional, #Shorts recommended)';
+  String get uploadDescriptionHint => 'Description (optional)';
 
   @override
   String get privacyPublic => 'Public';
@@ -326,7 +325,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get pushShareBody =>
-      'Your export is saved. Share it to Shorts, Reels, or TikTok.';
+      'Your export is saved. Share it to YouTube, Instagram, or TikTok.';
 
   @override
   String get pushCatalogTitle => 'New editing tools';
@@ -662,7 +661,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get uploadFewerDetails => 'See less';
 
   @override
-  String get uploadShortsCaption => 'Add a Shorts description';
+  String get uploadShortsCaption => 'Add a video description';
 
   @override
   String get uploadLocation => 'Location';
@@ -776,7 +775,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get proSubtitle =>
-      'Unlock every effect and make your Shorts stand out.';
+      'Unlock every effect and make your clips stand out.';
 
   @override
   String get proBenefitEffects => 'All Pro transitions and text effects';
