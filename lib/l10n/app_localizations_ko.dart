@@ -697,6 +697,11 @@ class AppLocalizationsKo extends AppLocalizations {
   String get share => '공유';
 
   @override
+  String shareAppMessage(String url) {
+    return 'EasyClip으로 짧은 영상을 빠르게 편집해 보세요.\n$url';
+  }
+
+  @override
   String get exportDone => '완료';
 
   @override
@@ -808,6 +813,56 @@ class AppLocalizationsKo extends AppLocalizations {
   String get planSwitchToMonthly => '월간으로 전환';
 
   @override
+  String planUpgradeCta(String plan) {
+    return '$plan으로 업그레이드';
+  }
+
+  @override
+  String planDowngradeCta(String plan) {
+    return '$plan으로 변경';
+  }
+
+  @override
+  String planDowngradeHint(String current) {
+    return '현재 결제 기간이 끝난 뒤에 적용됩니다. 그전까지는 $current이(가) 유지됩니다.';
+  }
+
+  @override
+  String get planPeriodDowngradeBlocked => '연간에서 월간으로 바꾸려면 스토어에서 구독을 관리하세요.';
+
+  @override
+  String get planManageSubscription => '구독 관리';
+
+  @override
+  String get planUpgradeBadge => '업그레이드';
+
+  @override
+  String get planDowngradeBadge => '갱신 시 적용';
+
+  @override
+  String planUpgradeSheetTitle(String plan) {
+    return '$plan으로 업그레이드';
+  }
+
+  @override
+  String get planUpgradeToday => '오늘';
+
+  @override
+  String get planUpgradeAfter => '업그레이드 후';
+
+  @override
+  String get planUpgradeContinue => '계속';
+
+  @override
+  String get planUpgradeLegal =>
+      '계속하면 요금제가 바로 업그레이드되고 오늘 결제됩니다. 남은 기간은 스토어에서 차감·정산됩니다. 다음 갱신부터는 새 요금이 적용됩니다.';
+
+  @override
+  String planUpgradePriceDetail(String plan, String price, String period) {
+    return '$plan, $price · $period';
+  }
+
+  @override
   String get proInactive => '무료 플랜';
 
   @override
@@ -899,7 +954,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get planBillingAnnual => '연간';
 
   @override
-  String get planAnnualSaveBadge => '2개월 무료';
+  String get planAnnualSaveBadge => '연간 구독하면 2개월 무료';
 
   @override
   String planPlusTitle(String appName) {
@@ -977,6 +1032,27 @@ class AppLocalizationsKo extends AppLocalizations {
   String planSubscribeCta(String plan) {
     return '$plan 구독하기';
   }
+
+  @override
+  String get planChooseTitle => '요금제 선택';
+
+  @override
+  String get planCompareTitle => '요금제 비교';
+
+  @override
+  String get planComparePlusEffects => 'Plus 효과';
+
+  @override
+  String get planCompareProEffects => 'Pro 효과';
+
+  @override
+  String get planCompareAi => 'AI 도구';
+
+  @override
+  String get planCompareCredits => '월 AI 크레딧';
+
+  @override
+  String get planCompareStudioExtras => 'Studio 추가 기능';
 
   @override
   String get proBenefitAi => 'Pro·Studio에서 AI 도구 사용';

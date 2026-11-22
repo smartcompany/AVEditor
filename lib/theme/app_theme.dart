@@ -142,6 +142,20 @@ abstract final class AppTheme {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        elevation: 0,
+        backgroundColor: surfaceElevated,
+        contentTextStyle: GoogleFonts.dmSans(
+          color: ink,
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: muted.withValues(alpha: 0.28)),
+        ),
+      ),
     );
     return base;
   }

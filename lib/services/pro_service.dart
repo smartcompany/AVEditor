@@ -39,13 +39,29 @@ class ProPlan {
 
 enum ProPurchaseResult { purchased, cancelled, failed, unavailable }
 
+/// How selecting [ProPlan] relates to the user's current entitlement.
+///
+/// Store rules (same subscription group):
+/// - Higher tier → immediate upgrade (prorated)
+/// - Lower tier → deferred until current period ends
+/// - Monthly → yearly (same tier) → upgrade
+/// - Yearly → monthly (same tier) → blocked in-app (not offered)
+enum PlanChangeKind {
+  subscribe,
+  current,
+  upgrade,
+  downgrade,
+  periodDowngradeBlocked,
+}
+
 /// EasyClip subscription state (Plus / Pro / Studio) via native IAP.
 ///
 /// Store Product IDs come from the dashboard plan config
 /// (`storeProductIdMonthly` / `storeProductIdAnnual`).
 ///
 /// Server (`/api/subscriptions/*`) is the entitlement source of truth after
-/// purchase/restore. Empty store catalog → paywall shows an error (no fake prices).
+/// purchase/restore, keyed by Firebase uid (app login required to verify).
+/// Empty store catalog → paywall shows an error (no fake prices).
 class ProService extends ChangeNotifier {
   ProService._();
 
@@ -75,6 +91,7 @@ class ProService extends ChangeNotifier {
 
   static const _debugProKey = 'debug_pro_enabled';
   static const _debugTierKey = 'debug_plan_tier';
+  static const _debugAnnualKey = 'debug_plan_annual';
   static const _cachedTierKey = 'store_plan_tier';
   static const _cachedProductKey = 'store_plan_product_id';
 
@@ -84,6 +101,8 @@ class ProService extends ChangeNotifier {
   bool _storeConfigured = false;
   PlanTier _storeTier = PlanTier.free;
   PlanTier _debugTier = PlanTier.free;
+  /// Billing period for the debug entitlement (`null` when debug is off).
+  bool? _debugAnnual;
   /// Store product id for the active subscription (monthly vs annual).
   String? _activeProductId;
   StreamSubscription<List<PurchaseDetails>>? _purchaseSub;
@@ -96,39 +115,83 @@ class ProService extends ChangeNotifier {
   String? _iapSyncBestProductId;
 
   /// True when editing unlock is active (Plus / Pro / Studio / debug).
-  bool get isPro =>
-      _storeTier != PlanTier.free ||
-      (kDebugMode && _debugTier != PlanTier.free);
+  bool get isPro => tier != PlanTier.free;
+
+  /// Debug preset is active (overrides store entitlement for UI testing).
+  bool get debugEntitlementActive =>
+      kDebugMode && _debugTier != PlanTier.free;
 
   PlanTier get tier {
+    // Debug preset wins so paywall UI can be forced through the 4 test cases.
+    if (kDebugMode && _debugTier != PlanTier.free) return _debugTier;
     if (_storeTier != PlanTier.free) return _storeTier;
-    if (kDebugMode) return _debugTier;
     return PlanTier.free;
   }
 
   /// Active IAP product id when known (e.g. `….plus.monthly`).
-  String? get activeProductId =>
-      tier == PlanTier.free ? null : _activeProductId;
+  String? get activeProductId {
+    if (tier == PlanTier.free) return null;
+    if (kDebugMode && _debugTier != PlanTier.free) {
+      return _debugProductId(_debugTier, annual: _debugAnnual ?? false);
+    }
+    return _activeProductId;
+  }
 
   /// `true` annual, `false` monthly, `null` if free or period unknown.
   bool? get activeIsAnnual {
-    final id = activeProductId;
-    if (id == null || id.isEmpty) return null;
-    return _isAnnualProduct(id);
+    if (tier == PlanTier.free) return null;
+    if (kDebugMode && _debugTier != PlanTier.free) {
+      return _debugAnnual ?? false;
+    }
+    final id = _activeProductId;
+    if (id != null && id.isNotEmpty) return _isAnnualProduct(id);
+    return null;
+  }
+
+  /// Current debug UI preset, or `null` when off / release.
+  ({PlanTier tier, bool annual})? get debugPreset {
+    if (!kDebugMode || _debugTier == PlanTier.free) return null;
+    return (tier: _debugTier, annual: _debugAnnual ?? false);
   }
 
   /// Whether [plan] is the subscription the user already owns.
   bool isCurrentPlan(ProPlan plan) {
-    if (tier == PlanTier.free || plan.tier == PlanTier.free) return false;
+    return changeKindFor(plan) == PlanChangeKind.current;
+  }
+
+  /// Classifies [plan] vs the active entitlement (upgrade / downgrade / …).
+  PlanChangeKind changeKindFor(ProPlan plan) {
+    if (plan.tier == PlanTier.free) return PlanChangeKind.current;
+    if (tier == PlanTier.free) return PlanChangeKind.subscribe;
+
     final id = activeProductId;
-    if (id != null && id.isNotEmpty) return plan.id == id;
-    final annual = activeIsAnnual;
-    if (annual != null) {
-      return plan.tier == tier && plan.isAnnual == annual;
+    if (id != null && id.isNotEmpty && plan.id == id) {
+      return PlanChangeKind.current;
     }
-    // Period unknown — do not treat every Plus/Pro SKU as current (that
-    // allowed a second purchase while one was already in flight).
-    return false;
+
+    final rankDelta = _tierRank(plan.tier) - _tierRank(tier);
+    if (rankDelta > 0) return PlanChangeKind.upgrade;
+    if (rankDelta < 0) return PlanChangeKind.downgrade;
+
+    // Same tier — only the billing period can differ.
+    final annual = activeIsAnnual;
+    if (annual == null) {
+      // Unknown period: don't allow a duplicate purchase of this tier.
+      return PlanChangeKind.current;
+    }
+    if (!annual && plan.isAnnual) return PlanChangeKind.upgrade;
+    if (annual && !plan.isAnnual) {
+      return PlanChangeKind.periodDowngradeBlocked;
+    }
+    return PlanChangeKind.current;
+  }
+
+  /// Whether the paywall may start a store purchase for [plan].
+  bool canPurchase(ProPlan plan) {
+    final kind = changeKindFor(plan);
+    return kind == PlanChangeKind.subscribe ||
+        kind == PlanChangeKind.upgrade ||
+        kind == PlanChangeKind.downgrade;
   }
 
   bool get isPurchaseInFlight =>
@@ -140,6 +203,24 @@ class ProService extends ChangeNotifier {
   bool get storeAvailable => _storeConfigured;
 
   bool get debugProEnabled => _debugTier != PlanTier.free;
+
+  String _debugProductId(PlanTier tier, {required bool annual}) {
+    final remote = CreditService.instance.planById(switch (tier) {
+      PlanTier.plus => 'plus',
+      PlanTier.pro => 'pro',
+      PlanTier.studio => 'studio',
+      PlanTier.free => 'free',
+    });
+    if (remote != null) {
+      final id = (annual
+              ? remote.storeProductIdAnnual
+              : remote.storeProductIdMonthly)
+          .trim();
+      if (id.isNotEmpty) return id;
+    }
+    final period = annual ? 'annual' : 'monthly';
+    return 'com.smartcompany.aveditor.${tier.name}.$period';
+  }
 
   /// Last store catalog error (null after a successful product query).
   String? lastCatalogError;
@@ -158,6 +239,11 @@ class ProService extends ChangeNotifier {
       final stored = prefs.getString(_debugTierKey);
       _debugTier = _parseTier(stored) ??
           (legacyOn ? PlanTier.pro : PlanTier.free);
+      if (_debugTier == PlanTier.free) {
+        _debugAnnual = null;
+      } else {
+        _debugAnnual = prefs.getBool(_debugAnnualKey) ?? false;
+      }
     }
     final cached = _parseTier(prefs.getString(_cachedTierKey));
     if (cached != null) _storeTier = cached;
@@ -253,6 +339,15 @@ class ProService extends ChangeNotifier {
       return;
     }
 
+    await ApiService.shared.ensureAuthToken();
+    final loggedInAtStart = ApiService.shared.token?.isNotEmpty == true;
+    // Account-based: without login, never surface a StoreKit-only paid plan.
+    if (!loggedInAtStart) {
+      await _setStoreTier(PlanTier.free);
+      _iapLog('launch skip IAP sync — signed out → Free');
+      return;
+    }
+
     _iapLog('launch IAP sync start');
     _iapSyncActive = true;
     _iapSyncBest = PlanTier.free;
@@ -284,7 +379,9 @@ class ProService extends ChangeNotifier {
     final iapTier = _storeTier;
     final iapProduct = _activeProductId;
     await refreshEntitlementFromServer();
-    if (_tierRank(_storeTier) < _tierRank(iapTier)) {
+    // Only reconcile StoreKit → local when an account is signed in.
+    final loggedIn = ApiService.shared.token?.isNotEmpty == true;
+    if (loggedIn && _tierRank(_storeTier) < _tierRank(iapTier)) {
       _iapLog(
         'keeping IAP tier ${iapTier.name} over server ${_storeTier.name}',
       );
@@ -359,19 +456,31 @@ class ProService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Account-based entitlement: signed-out users are always Free locally.
+  Future<void> clearAccountEntitlement() async {
+    await ensureInitialized();
+    await _setStoreTier(PlanTier.free);
+  }
+
   Future<void> refreshEntitlementFromServer() async {
     try {
       await CreditService.instance.ensureInitialized();
       final deviceKey = await CreditService.instance.deviceKey();
       final api = ApiService.shared;
-      await api.ensureAuthToken(); // optional — ignore failure
+      await api.ensureAuthToken();
+      final token = api.token;
+      final loggedIn = token != null && token.isNotEmpty;
+      // Purchases are account-scoped; without login there is no paid plan.
+      if (!loggedIn) {
+        await _setStoreTier(PlanTier.free);
+        return;
+      }
       final headers = <String, String>{
         'Content-Type': 'application/json; charset=utf-8',
+        'Authorization': 'Bearer $token',
       };
-      final token = api.token;
-      if (token != null && token.isNotEmpty) {
-        headers['Authorization'] = 'Bearer $token';
-      }
+      // Prefer account entitlement when logged in; deviceKey still merges
+      // anonymous install credits/subs into the uid on the server.
       final uri = Uri.parse(
         '${CreditService.baseUrl}/api/subscriptions/me',
       ).replace(queryParameters: {'deviceKey': deviceKey});
@@ -380,8 +489,12 @@ class ProService extends ChangeNotifier {
         final map = jsonDecode(utf8.decode(res.bodyBytes));
         if (map is Map) {
           final tier = _parseTier(map['planTier'] as String?) ?? PlanTier.free;
-          // /me can lag Sandbox renewals as free — don't wipe a paid IAP tier.
-          await _applyTier(tier, allowDowngrade: false);
+          final productId = (map['productId'] as String?)?.trim();
+          await _applyTier(
+            tier,
+            allowDowngrade: true,
+            productId: productId,
+          );
         }
       }
     } catch (e) {
@@ -629,9 +742,13 @@ class ProService extends ChangeNotifier {
       );
       return ProPurchaseResult.failed;
     }
-    if (isCurrentPlan(plan)) {
-      _iapLog('purchase skipped — already on ${plan.id}');
-      return ProPurchaseResult.purchased;
+    if (!canPurchase(plan)) {
+      _iapLog(
+        'purchase blocked kind=${changeKindFor(plan).name} plan=${plan.id}',
+      );
+      return changeKindFor(plan) == PlanChangeKind.current
+          ? ProPurchaseResult.purchased
+          : ProPurchaseResult.unavailable;
     }
 
     final completer = Completer<PurchaseDetails?>();
@@ -707,7 +824,8 @@ class ProService extends ChangeNotifier {
       final iapTier = _storeTier;
       final iapProduct = _activeProductId;
       await refreshEntitlementFromServer();
-      if (_tierRank(_storeTier) < _tierRank(iapTier)) {
+      final loggedIn = ApiService.shared.token?.isNotEmpty == true;
+      if (loggedIn && _tierRank(_storeTier) < _tierRank(iapTier)) {
         await _setStoreTier(iapTier, productId: iapProduct);
       }
     } catch (e) {
@@ -747,7 +865,12 @@ class ProService extends ChangeNotifier {
     await CreditService.instance.ensureInitialized();
     final deviceKey = await CreditService.instance.deviceKey();
     final api = ApiService.shared;
-    await api.ensureAuthToken(); // optional
+    await api.ensureAuthToken();
+    final token = api.token;
+    if (token == null || token.isEmpty) {
+      _iapLog('verify aborted — app account (Firebase) token required');
+      return false;
+    }
 
     final platform = Platform.isIOS ? 'ios' : 'android';
     final body = <String, dynamic>{
@@ -773,16 +896,14 @@ class ProService extends ChangeNotifier {
 
     final headers = <String, String>{
       'Content-Type': 'application/json; charset=utf-8',
+      'Authorization': 'Bearer $token',
     };
-    final token = api.token;
-    if (token != null && token.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $token';
-    }
 
     _iapLog(
       'verify → server platform=$platform product=${purchase.productID} '
       'status=${purchase.status} purchaseID=${purchase.purchaseID} '
-      'deviceKey=${deviceKey.substring(0, deviceKey.length.clamp(0, 8))}…',
+      'deviceKey=${deviceKey.substring(0, deviceKey.length.clamp(0, 8))}… '
+      'auth=yes',
     );
     final res = await http.post(
       Uri.parse('${CreditService.baseUrl}/api/subscriptions/verify'),
@@ -807,10 +928,12 @@ class ProService extends ChangeNotifier {
       if (map is Map) {
         final tier = _parseTier(map['planTier'] as String?) ??
             tierFromProductId(purchase.productID);
+        final productId =
+            (map['productId'] as String?)?.trim() ?? purchase.productID;
         await _applyTier(
           tier,
           allowDowngrade: allowDowngrade,
-          productId: purchase.productID,
+          productId: productId,
         );
         return _tierRank(tier) > 0 || _tierRank(_storeTier) > 0;
       }
@@ -823,17 +946,50 @@ class ProService extends ChangeNotifier {
     return _tierRank(_storeTier) > 0;
   }
 
-  /// Debug-only switch on the paywall (maps to Pro tier when on).
+  /// Debug-only switch on the paywall (maps to Pro monthly when on).
   Future<void> setDebugPro(bool enabled) async {
-    await setDebugTier(enabled ? PlanTier.pro : PlanTier.free);
+    if (enabled) {
+      await setDebugSubscription(PlanTier.pro, annual: false);
+    } else {
+      await clearDebugSubscription();
+    }
   }
 
   Future<void> setDebugTier(PlanTier tier) async {
+    if (tier == PlanTier.free) {
+      await clearDebugSubscription();
+      return;
+    }
+    await setDebugSubscription(tier, annual: _debugAnnual ?? false);
+  }
+
+  /// Force a fake entitlement for paywall UI testing (debug builds only).
+  Future<void> setDebugSubscription(
+    PlanTier tier, {
+    required bool annual,
+  }) async {
     if (!kDebugMode) return;
+    if (tier == PlanTier.free) {
+      await clearDebugSubscription();
+      return;
+    }
     _debugTier = tier;
+    _debugAnnual = annual;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_debugProKey, tier != PlanTier.free);
+    await prefs.setBool(_debugProKey, true);
     await prefs.setString(_debugTierKey, tier.name);
+    await prefs.setBool(_debugAnnualKey, annual);
+    notifyListeners();
+  }
+
+  Future<void> clearDebugSubscription() async {
+    if (!kDebugMode) return;
+    _debugTier = PlanTier.free;
+    _debugAnnual = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_debugProKey, false);
+    await prefs.setString(_debugTierKey, PlanTier.free.name);
+    await prefs.remove(_debugAnnualKey);
     notifyListeners();
   }
 }

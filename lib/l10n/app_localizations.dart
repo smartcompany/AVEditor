@@ -1392,6 +1392,12 @@ abstract class AppLocalizations {
   /// **'Share'**
   String get share;
 
+  /// No description provided for @shareAppMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit short videos fast with EasyClip.\n{url}'**
+  String shareAppMessage(String url);
+
   /// No description provided for @exportDone.
   ///
   /// In en, this message translates to:
@@ -1590,6 +1596,84 @@ abstract class AppLocalizations {
   /// **'Switch to monthly'**
   String get planSwitchToMonthly;
 
+  /// No description provided for @planUpgradeCta.
+  ///
+  /// In en, this message translates to:
+  /// **'Upgrade to {plan}'**
+  String planUpgradeCta(String plan);
+
+  /// No description provided for @planDowngradeCta.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch to {plan}'**
+  String planDowngradeCta(String plan);
+
+  /// No description provided for @planDowngradeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Takes effect when your current period ends. You\'ll keep {current} until then.'**
+  String planDowngradeHint(String current);
+
+  /// No description provided for @planPeriodDowngradeBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'To switch from yearly to monthly, manage your subscription in the store.'**
+  String get planPeriodDowngradeBlocked;
+
+  /// No description provided for @planManageSubscription.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage subscription'**
+  String get planManageSubscription;
+
+  /// No description provided for @planUpgradeBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Upgrade'**
+  String get planUpgradeBadge;
+
+  /// No description provided for @planDowngradeBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'At renewal'**
+  String get planDowngradeBadge;
+
+  /// No description provided for @planUpgradeSheetTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Upgrade to {plan}'**
+  String planUpgradeSheetTitle(String plan);
+
+  /// No description provided for @planUpgradeToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get planUpgradeToday;
+
+  /// No description provided for @planUpgradeAfter.
+  ///
+  /// In en, this message translates to:
+  /// **'After upgrade'**
+  String get planUpgradeAfter;
+
+  /// No description provided for @planUpgradeContinue.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get planUpgradeContinue;
+
+  /// No description provided for @planUpgradeLegal.
+  ///
+  /// In en, this message translates to:
+  /// **'Continuing upgrades your plan and charges your payment method today. Any unused time on your current plan is credited by the store. Your next renewal reflects the new plan price.'**
+  String get planUpgradeLegal;
+
+  /// No description provided for @planUpgradePriceDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'{plan}, {price} · {period}'**
+  String planUpgradePriceDetail(String plan, String price, String period);
+
   /// No description provided for @proInactive.
   ///
   /// In en, this message translates to:
@@ -1755,7 +1839,7 @@ abstract class AppLocalizations {
   /// No description provided for @planAnnualSaveBadge.
   ///
   /// In en, this message translates to:
-  /// **'2 months free'**
+  /// **'Go yearly — get 2 months free'**
   String get planAnnualSaveBadge;
 
   /// No description provided for @planPlusTitle.
@@ -1871,6 +1955,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Subscribe to {plan}'**
   String planSubscribeCta(String plan);
+
+  /// No description provided for @planChooseTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose your plan'**
+  String get planChooseTitle;
+
+  /// No description provided for @planCompareTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Compare plans'**
+  String get planCompareTitle;
+
+  /// No description provided for @planComparePlusEffects.
+  ///
+  /// In en, this message translates to:
+  /// **'Plus effects'**
+  String get planComparePlusEffects;
+
+  /// No description provided for @planCompareProEffects.
+  ///
+  /// In en, this message translates to:
+  /// **'Pro effects'**
+  String get planCompareProEffects;
+
+  /// No description provided for @planCompareAi.
+  ///
+  /// In en, this message translates to:
+  /// **'AI tools'**
+  String get planCompareAi;
+
+  /// No description provided for @planCompareCredits.
+  ///
+  /// In en, this message translates to:
+  /// **'AI credits / month'**
+  String get planCompareCredits;
+
+  /// No description provided for @planCompareStudioExtras.
+  ///
+  /// In en, this message translates to:
+  /// **'Studio extras'**
+  String get planCompareStudioExtras;
 
   /// No description provided for @proBenefitAi.
   ///

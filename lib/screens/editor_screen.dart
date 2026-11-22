@@ -5708,7 +5708,7 @@ class _EditorScreenState extends State<EditorScreen>
                           !hasVideoCuts(_project!.segments)
                       ? null
                       : _openTransitionPicker,
-                  icon: const Icon(Icons.animation_outlined),
+                  icon: const Icon(Icons.auto_awesome_motion_outlined),
                   tooltip: l10n.transition,
                 ),
                 const SizedBox(width: 8),

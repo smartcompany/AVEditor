@@ -215,6 +215,7 @@
   "savedToDevice": "장치에 저장됨",
   "shareContentTitle": "컨텐츠 공유",
   "share": "공유",
+  "shareAppMessage": "EasyClip으로 짧은 영상을 빠르게 편집해 보세요.\n{url}",
   "exportDone": "완료",
   "shareToYouTube": "YouTube",
   "shareMore": "기타",
@@ -261,6 +262,38 @@
   "planCurrentSubscription": "현재 구독 중",
   "planSwitchToAnnual": "연간으로 전환",
   "planSwitchToMonthly": "월간으로 전환",
+  "planUpgradeCta": "{plan}으로 업그레이드",
+  "@planUpgradeCta": {
+    "placeholders": { "plan": { "type": "String" } }
+  },
+  "planDowngradeCta": "{plan}으로 변경",
+  "@planDowngradeCta": {
+    "placeholders": { "plan": { "type": "String" } }
+  },
+  "planDowngradeHint": "현재 결제 기간이 끝난 뒤에 적용됩니다. 그전까지는 {current}이(가) 유지됩니다.",
+  "@planDowngradeHint": {
+    "placeholders": { "current": { "type": "String" } }
+  },
+  "planPeriodDowngradeBlocked": "연간에서 월간으로 바꾸려면 스토어에서 구독을 관리하세요.",
+  "planManageSubscription": "구독 관리",
+  "planUpgradeBadge": "업그레이드",
+  "planDowngradeBadge": "갱신 시 적용",
+  "planUpgradeSheetTitle": "{plan}으로 업그레이드",
+  "@planUpgradeSheetTitle": {
+    "placeholders": { "plan": { "type": "String" } }
+  },
+  "planUpgradeToday": "오늘",
+  "planUpgradeAfter": "업그레이드 후",
+  "planUpgradeContinue": "계속",
+  "planUpgradeLegal": "계속하면 요금제가 바로 업그레이드되고 오늘 결제됩니다. 남은 기간은 스토어에서 차감·정산됩니다. 다음 갱신부터는 새 요금이 적용됩니다.",
+  "planUpgradePriceDetail": "{plan}, {price} · {period}",
+  "@planUpgradePriceDetail": {
+    "placeholders": {
+      "plan": { "type": "String" },
+      "price": { "type": "String" },
+      "period": { "type": "String" }
+    }
+  },
   "@planActive": {
     "placeholders": {
       "plan": { "type": "String" }
@@ -321,7 +354,7 @@
   "planStudioLabel": "Studio",
   "planBillingMonthly": "월간",
   "planBillingAnnual": "연간",
-  "planAnnualSaveBadge": "2개월 무료",
+  "planAnnualSaveBadge": "연간 구독하면 2개월 무료",
   "planPlusTitle": "{appName} Plus",
   "@planPlusTitle": {
     "placeholders": { "appName": { "type": "String" } }
@@ -371,6 +404,13 @@
   "@planSubscribeCta": {
     "placeholders": { "plan": { "type": "String" } }
   },
+  "planChooseTitle": "요금제 선택",
+  "planCompareTitle": "요금제 비교",
+  "planComparePlusEffects": "Plus 효과",
+  "planCompareProEffects": "Pro 효과",
+  "planCompareAi": "AI 도구",
+  "planCompareCredits": "월 AI 크레딧",
+  "planCompareStudioExtras": "Studio 추가 기능",
   "proBenefitAi": "Pro·Studio에서 AI 도구 사용",
   "uploadAccountTitle": "업로드할 YouTube 계정",
   "uploadAccountNone": "아직 연결된 계정이 없어요",

@@ -688,6 +688,11 @@ class AppLocalizationsZh extends AppLocalizations {
   String get share => '分享';
 
   @override
+  String shareAppMessage(String url) {
+    return '用 EasyClip 快速剪辑短视频。\n$url';
+  }
+
+  @override
   String get exportDone => '完成';
 
   @override
@@ -799,6 +804,55 @@ class AppLocalizationsZh extends AppLocalizations {
   String get planSwitchToMonthly => '切换到月付';
 
   @override
+  String planUpgradeCta(String plan) {
+    return '升级到 $plan';
+  }
+
+  @override
+  String planDowngradeCta(String plan) {
+    return '改为 $plan';
+  }
+
+  @override
+  String planDowngradeHint(String current) {
+    return '将在当前周期结束后生效。在此之前仍保留 $current。';
+  }
+
+  @override
+  String get planPeriodDowngradeBlocked => '要从年付改为月付，请在商店中管理订阅。';
+
+  @override
+  String get planManageSubscription => '管理订阅';
+
+  @override
+  String get planUpgradeBadge => '升级';
+
+  @override
+  String get planDowngradeBadge => '续订时生效';
+
+  @override
+  String planUpgradeSheetTitle(String plan) {
+    return '升级到 $plan';
+  }
+
+  @override
+  String get planUpgradeToday => '当前';
+
+  @override
+  String get planUpgradeAfter => '升级后';
+
+  @override
+  String get planUpgradeContinue => '继续';
+
+  @override
+  String get planUpgradeLegal => '继续将立即升级方案，并在今天扣款。当前方案剩余时长由商店折抵。下次续订起按新价格计费。';
+
+  @override
+  String planUpgradePriceDetail(String plan, String price, String period) {
+    return '$plan，$price · $period';
+  }
+
+  @override
   String get proInactive => '免费版';
 
   @override
@@ -890,7 +944,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get planBillingAnnual => '年付';
 
   @override
-  String get planAnnualSaveBadge => '相当于送 2 个月';
+  String get planAnnualSaveBadge => '选年付，相当于送 2 个月';
 
   @override
   String planPlusTitle(String appName) {
@@ -968,6 +1022,27 @@ class AppLocalizationsZh extends AppLocalizations {
   String planSubscribeCta(String plan) {
     return '订阅 $plan';
   }
+
+  @override
+  String get planChooseTitle => '选择方案';
+
+  @override
+  String get planCompareTitle => '方案对比';
+
+  @override
+  String get planComparePlusEffects => 'Plus 效果';
+
+  @override
+  String get planCompareProEffects => 'Pro 效果';
+
+  @override
+  String get planCompareAi => 'AI 工具';
+
+  @override
+  String get planCompareCredits => '每月 AI 积分';
+
+  @override
+  String get planCompareStudioExtras => 'Studio 附加功能';
 
   @override
   String get proBenefitAi => 'Pro 与 Studio 可使用 AI 工具';

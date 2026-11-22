@@ -4,6 +4,7 @@ import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/navigation/editor_route.dart';
 import 'package:aveditor/screens/settings_screen.dart';
 import 'package:aveditor/services/analytics_service.dart';
+import 'package:aveditor/services/export_share_service.dart';
 import 'package:aveditor/services/project_storage_service.dart';
 import 'package:aveditor/services/video_import_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
@@ -22,8 +23,11 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  static const _appShareUrl = 'https://easyclip.coinpang.org';
+
   final _import = VideoImportService();
   final _projectStorage = const ProjectStorageService();
+  final _share = ExportShareService();
   bool _loading = false;
   double? _convertProgress;
   bool _projectsLoading = true;
@@ -173,6 +177,12 @@ class _HomeScreenState extends State<HomeScreen> {
     return DateFormat.yMMMd().add_jm().format(summary.updatedAt.toLocal());
   }
 
+  Future<void> _shareApp() async {
+    final text = context.l10n.shareAppMessage(_appShareUrl);
+    AnalyticsService.instance.log('share_app');
+    await _share.shareText(text);
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
@@ -181,6 +191,11 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: Text(l10n.appTitle),
         actions: [
+          IconButton(
+            onPressed: _loading ? null : _shareApp,
+            icon: const Icon(Icons.ios_share_outlined),
+            tooltip: l10n.share,
+          ),
           IconButton(
             onPressed: _loading
                 ? null

@@ -1,6 +1,7 @@
 import 'package:aveditor/models/app_user.dart';
 import 'package:aveditor/services/api_service.dart';
 import 'package:aveditor/services/credit_service.dart';
+import 'package:aveditor/services/pro_service.dart';
 import 'package:firebase_auth/firebase_auth.dart' show FirebaseAuth;
 import 'package:flutter/scheduler.dart';
 import 'package:share_lib/share_lib_auth.dart';
@@ -36,5 +37,13 @@ class AppAuthProvider extends AuthProvider<AppUser> {
     SchedulerBinding.instance.addPostFrameCallback((_) {
       initialize();
     });
+  }
+
+  @override
+  Future<void> logout() async {
+    await super.logout();
+    // Entitlement is account-scoped — drop paid plan UI/state on sign-out.
+    CreditService.instance.clearAccountEntitlement();
+    await ProService.instance.clearAccountEntitlement();
   }
 }

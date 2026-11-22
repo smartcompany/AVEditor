@@ -288,6 +288,14 @@
   "savedToDevice": "Saved to device",
   "shareContentTitle": "Share content",
   "share": "Share",
+  "shareAppMessage": "Edit short videos fast with EasyClip.\n{url}",
+  "@shareAppMessage": {
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
   "exportDone": "Done",
   "shareToYouTube": "YouTube",
   "shareMore": "More",
@@ -356,6 +364,38 @@
   "planCurrentSubscription": "Current plan",
   "planSwitchToAnnual": "Switch to yearly",
   "planSwitchToMonthly": "Switch to monthly",
+  "planUpgradeCta": "Upgrade to {plan}",
+  "@planUpgradeCta": {
+    "placeholders": { "plan": { "type": "String" } }
+  },
+  "planDowngradeCta": "Switch to {plan}",
+  "@planDowngradeCta": {
+    "placeholders": { "plan": { "type": "String" } }
+  },
+  "planDowngradeHint": "Takes effect when your current period ends. You'll keep {current} until then.",
+  "@planDowngradeHint": {
+    "placeholders": { "current": { "type": "String" } }
+  },
+  "planPeriodDowngradeBlocked": "To switch from yearly to monthly, manage your subscription in the store.",
+  "planManageSubscription": "Manage subscription",
+  "planUpgradeBadge": "Upgrade",
+  "planDowngradeBadge": "At renewal",
+  "planUpgradeSheetTitle": "Upgrade to {plan}",
+  "@planUpgradeSheetTitle": {
+    "placeholders": { "plan": { "type": "String" } }
+  },
+  "planUpgradeToday": "Today",
+  "planUpgradeAfter": "After upgrade",
+  "planUpgradeContinue": "Continue",
+  "planUpgradeLegal": "Continuing upgrades your plan and charges your payment method today. Any unused time on your current plan is credited by the store. Your next renewal reflects the new plan price.",
+  "planUpgradePriceDetail": "{plan}, {price} · {period}",
+  "@planUpgradePriceDetail": {
+    "placeholders": {
+      "plan": { "type": "String" },
+      "price": { "type": "String" },
+      "period": { "type": "String" }
+    }
+  },
   "proInactive": "Free plan",
   "proPurchaseFailed": "The purchase didn't go through. Please try again.",
   "proRestoreNone": "No purchases to restore.",
@@ -411,7 +451,7 @@
   "planStudioLabel": "Studio",
   "planBillingMonthly": "Monthly",
   "planBillingAnnual": "Yearly",
-  "planAnnualSaveBadge": "2 months free",
+  "planAnnualSaveBadge": "Go yearly — get 2 months free",
   "planPlusTitle": "{appName} Plus",
   "@planPlusTitle": {
     "placeholders": { "appName": { "type": "String" } }
@@ -461,6 +501,13 @@
   "@planSubscribeCta": {
     "placeholders": { "plan": { "type": "String" } }
   },
+  "planChooseTitle": "Choose your plan",
+  "planCompareTitle": "Compare plans",
+  "planComparePlusEffects": "Plus effects",
+  "planCompareProEffects": "Pro effects",
+  "planCompareAi": "AI tools",
+  "planCompareCredits": "AI credits / month",
+  "planCompareStudioExtras": "Studio extras",
   "proBenefitAi": "Pro & Studio unlock AI tools",
   "@proTitle": {
     "placeholders": {

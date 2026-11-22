@@ -4,6 +4,7 @@ import 'package:aveditor/models/remote_plan.dart';
 import 'package:aveditor/services/analytics_service.dart';
 import 'package:aveditor/services/premium_usage.dart';
 import 'package:aveditor/services/pro_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -122,11 +123,24 @@ class CreditService extends ChangeNotifier {
     }
   }
 
+  /// Account-based plan: signed-out users show Free even if device was linked.
+  void clearAccountEntitlement() {
+    if (_planTier == 'free') return;
+    _planTier = 'free';
+    notifyListeners();
+  }
+
+  bool get _isLoggedIn => FirebaseAuth.instance.currentUser != null;
+
   void _applyPayload(dynamic raw) {
     if (raw is! Map) return;
     final map = Map<String, dynamic>.from(raw);
     _balance = (map['balance'] as num?)?.toInt() ?? _balance;
     _planTier = (map['planTier'] as String?) ?? _planTier;
+    // Device rows may still carry a linked account plan; ignore when signed out.
+    if (!_isLoggedIn) {
+      _planTier = 'free';
+    }
 
     final plansRaw = map['plans'];
     if (plansRaw is List) {

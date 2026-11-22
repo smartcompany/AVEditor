@@ -714,6 +714,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get share => 'Share';
 
   @override
+  String shareAppMessage(String url) {
+    return 'Edit short videos fast with EasyClip.\n$url';
+  }
+
+  @override
   String get exportDone => 'Done';
 
   @override
@@ -828,6 +833,57 @@ class AppLocalizationsEn extends AppLocalizations {
   String get planSwitchToMonthly => 'Switch to monthly';
 
   @override
+  String planUpgradeCta(String plan) {
+    return 'Upgrade to $plan';
+  }
+
+  @override
+  String planDowngradeCta(String plan) {
+    return 'Switch to $plan';
+  }
+
+  @override
+  String planDowngradeHint(String current) {
+    return 'Takes effect when your current period ends. You\'ll keep $current until then.';
+  }
+
+  @override
+  String get planPeriodDowngradeBlocked =>
+      'To switch from yearly to monthly, manage your subscription in the store.';
+
+  @override
+  String get planManageSubscription => 'Manage subscription';
+
+  @override
+  String get planUpgradeBadge => 'Upgrade';
+
+  @override
+  String get planDowngradeBadge => 'At renewal';
+
+  @override
+  String planUpgradeSheetTitle(String plan) {
+    return 'Upgrade to $plan';
+  }
+
+  @override
+  String get planUpgradeToday => 'Today';
+
+  @override
+  String get planUpgradeAfter => 'After upgrade';
+
+  @override
+  String get planUpgradeContinue => 'Continue';
+
+  @override
+  String get planUpgradeLegal =>
+      'Continuing upgrades your plan and charges your payment method today. Any unused time on your current plan is credited by the store. Your next renewal reflects the new plan price.';
+
+  @override
+  String planUpgradePriceDetail(String plan, String price, String period) {
+    return '$plan, $price · $period';
+  }
+
+  @override
   String get proInactive => 'Free plan';
 
   @override
@@ -923,7 +979,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get planBillingAnnual => 'Yearly';
 
   @override
-  String get planAnnualSaveBadge => '2 months free';
+  String get planAnnualSaveBadge => 'Go yearly — get 2 months free';
 
   @override
   String planPlusTitle(String appName) {
@@ -1005,6 +1061,27 @@ class AppLocalizationsEn extends AppLocalizations {
   String planSubscribeCta(String plan) {
     return 'Subscribe to $plan';
   }
+
+  @override
+  String get planChooseTitle => 'Choose your plan';
+
+  @override
+  String get planCompareTitle => 'Compare plans';
+
+  @override
+  String get planComparePlusEffects => 'Plus effects';
+
+  @override
+  String get planCompareProEffects => 'Pro effects';
+
+  @override
+  String get planCompareAi => 'AI tools';
+
+  @override
+  String get planCompareCredits => 'AI credits / month';
+
+  @override
+  String get planCompareStudioExtras => 'Studio extras';
 
   @override
   String get proBenefitAi => 'Pro & Studio unlock AI tools';

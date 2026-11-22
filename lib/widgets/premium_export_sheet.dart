@@ -4,6 +4,7 @@ import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/services/effect_ad_unlock_service.dart';
 import 'package:aveditor/services/premium_usage.dart';
 import 'package:aveditor/theme/app_theme.dart';
+import 'package:aveditor/utils/logged_snackbar.dart';
 import 'package:flutter/material.dart';
 import 'package:share_lib/share_lib.dart';
 
@@ -67,10 +68,7 @@ class _PremiumExportSheetState extends State<_PremiumExportSheet> {
     if (!mounted) return;
     if (!ok) {
       setState(() => _busyKey = null);
-      final messenger = ScaffoldMessenger.maybeOf(context);
-      messenger?.showSnackBar(
-        SnackBar(content: Text(context.l10n.premiumAdNotFinished)),
-      );
+      showLoggedSnackBar(context, context.l10n.premiumAdNotFinished);
       return;
     }
     await _unlocks.unlock(use);

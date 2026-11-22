@@ -243,6 +243,8 @@ class _MusicPickerScreenState extends State<MusicPickerScreen>
         XTypeGroup(
           label: 'audio',
           extensions: ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac'],
+          // iOS/macOS require UTIs; extensions alone throw ArgumentError.
+          uniformTypeIdentifiers: ['public.audio'],
         ),
       ],
     );
@@ -355,171 +357,267 @@ class _MusicPickerScreenState extends State<MusicPickerScreen>
     final isSfx = _kind == CatalogAudioKind.sfx;
 
     return Scaffold(
+      backgroundColor: AppTheme.background,
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        flexibleSpace: const DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFF1A0A18),
+                AppTheme.background,
+              ],
+            ),
+          ),
+        ),
         title: Text(l10n.addMusic),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: [
-            Tab(text: l10n.musicTabMusic),
-            Tab(text: l10n.musicTabSfx),
-          ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          child: TabBar(
+            controller: _tabController,
+            labelColor: AppTheme.ink,
+            unselectedLabelColor: AppTheme.muted,
+            indicatorSize: TabBarIndicatorSize.label,
+            indicator: const _GradientTabIndicator(),
+            tabs: [
+              Tab(text: l10n.musicTabMusic),
+              Tab(text: l10n.musicTabSfx),
+            ],
+          ),
         ),
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: Column(
-              children: [
-                TextField(
-                  controller: _searchController,
-                  focusNode: _searchFocus,
-                  enabled: _catalogConfigured || _loading,
-                  decoration: InputDecoration(
-                    hintText: isSfx
-                        ? l10n.searchSfxHint
-                        : l10n.searchMusicHint,
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (_searchController.text.isNotEmpty)
-                          IconButton(
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() {
-                                _suggestions = [];
-                                _showSuggestions = false;
-                              });
-                              unawaited(_runSearch());
-                            },
-                            icon: const Icon(Icons.clear),
-                          ),
-                        IconButton(
-                          onPressed: _loading
-                              ? null
-                              : () {
-                                  setState(() => _showSuggestions = false);
-                                  unawaited(_runSearch());
-                                },
-                          icon: const Icon(Icons.arrow_forward),
-                        ),
-                      ],
-                    ),
-                    filled: true,
-                    fillColor: AppTheme.surface,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                  textInputAction: TextInputAction.search,
-                  onTap: () {
-                    if (_suggestions.isNotEmpty) {
-                      setState(() => _showSuggestions = true);
-                    }
-                  },
-                  onChanged: (_) {
-                    setState(() {}); // refresh clear button
-                    _scheduleSearch();
-                  },
-                  onSubmitted: (_) {
-                    setState(() => _showSuggestions = false);
-                    unawaited(_runSearch());
-                  },
-                ),
-                if (_showSuggestions && _suggestions.isNotEmpty)
-                  Material(
-                    color: AppTheme.surface,
-                    elevation: 2,
-                    borderRadius: BorderRadius.circular(12),
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 220),
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        itemCount: _suggestions.length,
-                        itemBuilder: (context, index) {
-                          final s = _suggestions[index];
-                          final icon = s.kind == 'genre'
-                              ? Icons.category_outlined
-                              : s.kind == 'tag'
-                                  ? Icons.tag
-                                  : Icons.music_note_outlined;
-                          return ListTile(
-                            dense: true,
-                            leading: Icon(icon, size: 20),
-                            title: Text(s.text),
-                            onTap: () => unawaited(_applySuggestion(s.text)),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          SizedBox(
-            height: 44,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: FilterChip(
-                    label: Text(l10n.musicGenreAll),
-                    selected: _selectedGenreId == null,
-                    onSelected: (_) => unawaited(_selectGenre(null)),
-                  ),
-                ),
-                for (final genre in _genres)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: FilterChip(
-                      label: Text(_genreLabel(l10n, genre)),
-                      selected: _selectedGenreId == genre.id,
-                      onSelected: (_) => unawaited(
-                        _selectGenre(
-                          _selectedGenreId == genre.id ? null : genre,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 4),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _busyTrackId == null ? _pickLocalFile : null,
-                    icon: const Icon(Icons.folder_open_outlined),
-                    label: Text(l10n.importMusicFile),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (widget.current != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Chip(
-                  avatar: Icon(
-                    isSfx ? Icons.graphic_eq : Icons.music_note,
-                    size: 18,
-                  ),
-                  label: Text(widget.current!.title),
-                ),
+      body: DecoratedBox(
+        decoration: AppTheme.ambientBackgroundDecoration(),
+        child: Stack(
+          children: [
+            const Positioned(
+              top: -40,
+              left: -60,
+              child: _AmbientBlob(
+                diameter: 220,
+                color: Color(0x38E835C1),
               ),
             ),
-          Expanded(child: _buildBody(l10n)),
-        ],
+            const Positioned(
+              top: 80,
+              right: -50,
+              child: _AmbientBlob(
+                diameter: 200,
+                color: Color(0x2E5B9DFF),
+              ),
+            ),
+            const Positioned(
+              bottom: 40,
+              left: 40,
+              child: _AmbientBlob(
+                diameter: 180,
+                color: Color(0x22FF8A3D),
+              ),
+            ),
+            Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                  child: Column(
+                    children: [
+                      TextField(
+                        controller: _searchController,
+                        focusNode: _searchFocus,
+                        enabled: _catalogConfigured || _loading,
+                        style: const TextStyle(color: AppTheme.ink),
+                        cursorColor: AppTheme.accent,
+                        decoration: InputDecoration(
+                          hintText: isSfx
+                              ? l10n.searchSfxHint
+                              : l10n.searchMusicHint,
+                          hintStyle: const TextStyle(color: AppTheme.muted),
+                          prefixIcon: const Icon(
+                            Icons.search,
+                            color: AppTheme.muted,
+                          ),
+                          suffixIcon: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (_searchController.text.isNotEmpty)
+                                IconButton(
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    setState(() {
+                                      _suggestions = [];
+                                      _showSuggestions = false;
+                                    });
+                                    unawaited(_runSearch());
+                                  },
+                                  icon: const Icon(
+                                    Icons.clear,
+                                    color: AppTheme.muted,
+                                  ),
+                                ),
+                              Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(10),
+                                    onTap: _loading
+                                        ? null
+                                        : () {
+                                            setState(
+                                              () => _showSuggestions = false,
+                                            );
+                                            unawaited(_runSearch());
+                                          },
+                                    child: Ink(
+                                      width: 34,
+                                      height: 34,
+                                      decoration:
+                                          AppTheme.brandGradientDecoration(
+                                        borderRadius: 10,
+                                      ),
+                                      child: const Icon(
+                                        Icons.arrow_forward,
+                                        size: 18,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          filled: true,
+                          fillColor: AppTheme.surfaceElevated.withValues(
+                            alpha: 0.72,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide(
+                              color: AppTheme.muted.withValues(alpha: 0.22),
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide(
+                              color: AppTheme.accent.withValues(alpha: 0.55),
+                            ),
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                        textInputAction: TextInputAction.search,
+                        onTap: () {
+                          if (_suggestions.isNotEmpty) {
+                            setState(() => _showSuggestions = true);
+                          }
+                        },
+                        onChanged: (_) {
+                          setState(() {});
+                          _scheduleSearch();
+                        },
+                        onSubmitted: (_) {
+                          setState(() => _showSuggestions = false);
+                          unawaited(_runSearch());
+                        },
+                      ),
+                      if (_showSuggestions && _suggestions.isNotEmpty)
+                        Material(
+                          color: AppTheme.surfaceElevated,
+                          elevation: 2,
+                          borderRadius: BorderRadius.circular(12),
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxHeight: 220),
+                            child: ListView.builder(
+                              shrinkWrap: true,
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              itemCount: _suggestions.length,
+                              itemBuilder: (context, index) {
+                                final s = _suggestions[index];
+                                final icon = s.kind == 'genre'
+                                    ? Icons.category_outlined
+                                    : s.kind == 'tag'
+                                        ? Icons.tag
+                                        : Icons.music_note_outlined;
+                                return ListTile(
+                                  dense: true,
+                                  leading: Icon(icon, size: 20),
+                                  title: Text(s.text),
+                                  onTap: () =>
+                                      unawaited(_applySuggestion(s.text)),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  height: 44,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: _GenreChip(
+                          label: l10n.musicGenreAll,
+                          selected: _selectedGenreId == null,
+                          onTap: () => unawaited(_selectGenre(null)),
+                        ),
+                      ),
+                      for (final genre in _genres)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: _GenreChip(
+                            label: _genreLabel(l10n, genre),
+                            selected: _selectedGenreId == genre.id,
+                            onTap: () => unawaited(
+                              _selectGenre(
+                                _selectedGenreId == genre.id ? null : genre,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: _GradientOutlineButton(
+                    onPressed: _busyTrackId == null ? _pickLocalFile : null,
+                    icon: Icons.folder_open_outlined,
+                    label: l10n.importMusicFile,
+                  ),
+                ),
+                if (widget.current != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Chip(
+                        backgroundColor: AppTheme.surfaceElevated,
+                        side: BorderSide(
+                          color: AppTheme.accent.withValues(alpha: 0.35),
+                        ),
+                        avatar: Icon(
+                          isSfx ? Icons.graphic_eq : Icons.music_note,
+                          size: 18,
+                          color: AppTheme.accent,
+                        ),
+                        label: Text(widget.current!.title),
+                      ),
+                    ),
+                  ),
+                Expanded(child: _buildBody(l10n)),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -613,47 +711,83 @@ class _TrackTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: AppTheme.surface,
-      borderRadius: BorderRadius.circular(12),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF2A1B3D), Color(0xFF171022)],
+        ),
+        border: Border.all(
+          color: AppTheme.muted.withValues(alpha: 0.14),
+        ),
+      ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 10, 8, 10),
+        padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
         child: Row(
           children: [
-            _Cover(
-              imageUrl: track.imageUrl,
-              previewing: previewing,
-              isSfx: isSfx,
-            ),
-            const SizedBox(width: 12),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    track.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: track.previewUrl.isEmpty ? null : onPreview,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Row(
+                    children: [
+                      _Cover(
+                        seed: track.id,
+                        imageUrl: track.imageUrl,
+                        previewing: previewing,
+                        isSfx: isSfx,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              track.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.ink,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${track.artist} · ${formatDuration(track.duration)}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(color: AppTheme.muted),
+                            ),
+                            const SizedBox(height: 6),
+                            _MiniWaveform(
+                              seed: track.id,
+                              active: previewing,
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed:
+                            track.previewUrl.isEmpty ? null : onPreview,
+                        icon: Icon(
+                          previewing
+                              ? Icons.stop_circle_outlined
+                              : Icons.play_circle_outline,
+                          color: AppTheme.ink.withValues(alpha: 0.85),
+                        ),
+                        tooltip: previewing ? 'Stop' : 'Preview',
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${track.artist} · ${formatDuration(track.duration)}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
+                ),
               ),
-            ),
-            IconButton(
-              onPressed: track.previewUrl.isEmpty ? null : onPreview,
-              icon: Icon(
-                previewing
-                    ? Icons.stop_circle_outlined
-                    : Icons.play_circle_outline,
-              ),
-              tooltip: previewing ? 'Stop' : 'Preview',
             ),
             if (busy)
               const Padding(
@@ -665,10 +799,7 @@ class _TrackTile extends StatelessWidget {
                 ),
               )
             else
-              TextButton(
-                onPressed: onUse,
-                child: Text(useLabel),
-              ),
+              _UseCapsule(label: useLabel, onPressed: onUse),
           ],
         ),
       ),
@@ -678,22 +809,24 @@ class _TrackTile extends StatelessWidget {
 
 class _Cover extends StatelessWidget {
   const _Cover({
+    required this.seed,
     required this.imageUrl,
     required this.previewing,
     required this.isSfx,
   });
 
+  final String seed;
   final String imageUrl;
   final bool previewing;
   final bool isSfx;
 
   @override
   Widget build(BuildContext context) {
-    final placeholder = ColoredBox(
-      color: AppTheme.surfaceElevated,
+    final placeholder = DecoratedBox(
+      decoration: BoxDecoration(gradient: _coverGradientFor(seed)),
       child: Icon(
         isSfx ? Icons.graphic_eq : Icons.music_note,
-        color: Colors.white54,
+        color: Colors.white.withValues(alpha: 0.92),
       ),
     );
 
@@ -706,7 +839,7 @@ class _Cover extends StatelessWidget {
           );
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(12),
       child: SizedBox(
         width: 52,
         height: 52,
@@ -724,4 +857,307 @@ class _Cover extends StatelessWidget {
       ),
     );
   }
+}
+
+class _GenreChip extends StatelessWidget {
+  const _GenreChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final child = AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: selected
+            ? AppTheme.surfaceElevated
+            : Colors.white.withValues(alpha: 0.03),
+        border: selected
+            ? null
+            : Border.all(color: AppTheme.muted.withValues(alpha: 0.28)),
+        boxShadow: selected
+            ? [
+                BoxShadow(
+                  color: AppTheme.accent.withValues(alpha: 0.18),
+                  blurRadius: 16,
+                ),
+              ]
+            : null,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (selected) ...[
+            const Icon(Icons.check, size: 14, color: AppTheme.accent),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: selected ? AppTheme.ink : AppTheme.ink.withValues(alpha: 0.9),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (!selected) {
+      return GestureDetector(onTap: onTap, child: child);
+    }
+
+    return GestureDetector(
+      onTap: onTap,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          gradient: AppTheme.brandGradientHorizontal,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(1.4),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+class _GradientOutlineButton extends StatelessWidget {
+  const _GradientOutlineButton({
+    required this.onPressed,
+    required this.icon,
+    required this.label,
+  });
+
+  final VoidCallback? onPressed;
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    return Opacity(
+      opacity: enabled ? 1 : 0.45,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(14),
+          child: Ink(
+            height: 46,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              gradient: AppTheme.brandGradientHorizontal,
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.accent.withValues(alpha: 0.12),
+                  blurRadius: 20,
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(1.6),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12.5),
+                  color: AppTheme.background.withValues(alpha: 0.88),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(icon, size: 18, color: AppTheme.ink),
+                    const SizedBox(width: 8),
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.ink,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _UseCapsule extends StatelessWidget {
+  const _UseCapsule({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(999),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            gradient: const LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: [AppTheme.accentWarm, AppTheme.accent],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: AppTheme.accent.withValues(alpha: 0.28),
+                blurRadius: 14,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniWaveform extends StatelessWidget {
+  const _MiniWaveform({required this.seed, required this.active});
+
+  final String seed;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final heights = _waveformHeights(seed);
+    return SizedBox(
+      height: 12,
+      child: Row(
+        children: [
+          for (var i = 0; i < heights.length; i++) ...[
+            if (i > 0) const SizedBox(width: 2),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: 2,
+              height: active ? heights[i] + 2 : heights[i],
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(2),
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [
+                    AppTheme.accent.withValues(alpha: active ? 0.95 : 0.65),
+                    AppTheme.accentCyan.withValues(alpha: active ? 0.95 : 0.65),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AmbientBlob extends StatelessWidget {
+  const _AmbientBlob({required this.diameter, required this.color});
+
+  final double diameter;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Container(
+        width: diameter,
+        height: diameter,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color,
+        ),
+      ),
+    );
+  }
+}
+
+class _GradientTabIndicator extends Decoration {
+  const _GradientTabIndicator();
+
+  @override
+  BoxPainter createBoxPainter([VoidCallback? onChanged]) {
+    return _GradientTabPainter(onChanged);
+  }
+}
+
+class _GradientTabPainter extends BoxPainter {
+  _GradientTabPainter(super.onChanged);
+
+  @override
+  void paint(Canvas canvas, Offset offset, ImageConfiguration configuration) {
+    final size = configuration.size;
+    if (size == null) return;
+    final rect = Rect.fromLTWH(
+      offset.dx,
+      offset.dy + size.height - 3,
+      size.width,
+      3,
+    );
+    final paint = Paint()
+      ..shader = AppTheme.brandGradientHorizontal.createShader(rect);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, const Radius.circular(3)),
+      paint,
+    );
+  }
+}
+
+LinearGradient _coverGradientFor(String seed) {
+  const pairs = <List<Color>>[
+    [AppTheme.accentWarm, AppTheme.accent],
+    [AppTheme.accentCyan, AppTheme.gradientPurple],
+    [AppTheme.accent, AppTheme.gradientCyan],
+    [Color(0xFFFFB347), Color(0xFFFF6B6B)],
+    [AppTheme.gradientPurple, AppTheme.accentCyan],
+    [AppTheme.accentWarm, AppTheme.gradientPurple],
+  ];
+  final pair = pairs[_stableHash(seed) % pairs.length];
+  return LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: pair,
+  );
+}
+
+List<double> _waveformHeights(String seed) {
+  final base = _stableHash(seed);
+  return List<double>.generate(12, (i) {
+    final n = ((base >> (i % 8)) ^ (i * 17)) & 0xff;
+    return 4.0 + (n % 9);
+  });
+}
+
+int _stableHash(String input) {
+  var hash = 0x811c9dc5;
+  for (final code in input.codeUnits) {
+    hash ^= code;
+    hash = (hash * 0x01000193) & 0x7fffffff;
+  }
+  return hash;
 }

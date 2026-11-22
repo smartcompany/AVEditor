@@ -695,6 +695,11 @@ class AppLocalizationsJa extends AppLocalizations {
   String get share => '共有';
 
   @override
+  String shareAppMessage(String url) {
+    return 'EasyClipでショート動画をすばやく編集しよう。\n$url';
+  }
+
+  @override
   String get exportDone => '完了';
 
   @override
@@ -806,6 +811,57 @@ class AppLocalizationsJa extends AppLocalizations {
   String get planSwitchToMonthly => '月額に変更';
 
   @override
+  String planUpgradeCta(String plan) {
+    return '$planにアップグレード';
+  }
+
+  @override
+  String planDowngradeCta(String plan) {
+    return '$planに変更';
+  }
+
+  @override
+  String planDowngradeHint(String current) {
+    return '現在の課金期間が終わるときに適用されます。それまでは$currentのままです。';
+  }
+
+  @override
+  String get planPeriodDowngradeBlocked =>
+      '年額から月額へ切り替えるには、ストアでサブスクリプションを管理してください。';
+
+  @override
+  String get planManageSubscription => 'サブスクリプションを管理';
+
+  @override
+  String get planUpgradeBadge => 'アップグレード';
+
+  @override
+  String get planDowngradeBadge => '更新時に適用';
+
+  @override
+  String planUpgradeSheetTitle(String plan) {
+    return '$planにアップグレード';
+  }
+
+  @override
+  String get planUpgradeToday => 'いま';
+
+  @override
+  String get planUpgradeAfter => 'アップグレード後';
+
+  @override
+  String get planUpgradeContinue => '続ける';
+
+  @override
+  String get planUpgradeLegal =>
+      '続けるとプランがすぐにアップグレードされ、本日お支払いが発生します。残りの期間はストア側で精算されます。次回更新から新しい料金が適用されます。';
+
+  @override
+  String planUpgradePriceDetail(String plan, String price, String period) {
+    return '$plan、$price · $period';
+  }
+
+  @override
   String get proInactive => '無料プラン';
 
   @override
@@ -897,7 +953,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get planBillingAnnual => '年額';
 
   @override
-  String get planAnnualSaveBadge => '2ヶ月分お得';
+  String get planAnnualSaveBadge => '年額なら2ヶ月分無料';
 
   @override
   String planPlusTitle(String appName) {
@@ -975,6 +1031,27 @@ class AppLocalizationsJa extends AppLocalizations {
   String planSubscribeCta(String plan) {
     return '$planに登録';
   }
+
+  @override
+  String get planChooseTitle => 'プランを選ぶ';
+
+  @override
+  String get planCompareTitle => 'プラン比較';
+
+  @override
+  String get planComparePlusEffects => 'Plus効果';
+
+  @override
+  String get planCompareProEffects => 'Pro効果';
+
+  @override
+  String get planCompareAi => 'AIツール';
+
+  @override
+  String get planCompareCredits => '月間AIクレジット';
+
+  @override
+  String get planCompareStudioExtras => 'Studio追加機能';
 
   @override
   String get proBenefitAi => 'Pro・StudioでAIツールが使えます';

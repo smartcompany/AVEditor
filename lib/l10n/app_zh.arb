@@ -215,6 +215,7 @@
   "savedToDevice": "已保存到设备",
   "shareContentTitle": "分享内容",
   "share": "分享",
+  "shareAppMessage": "用 EasyClip 快速剪辑短视频。\n{url}",
   "exportDone": "完成",
   "shareToYouTube": "YouTube",
   "shareMore": "更多",
@@ -266,6 +267,38 @@
   "planCurrentSubscription": "当前方案",
   "planSwitchToAnnual": "切换到年付",
   "planSwitchToMonthly": "切换到月付",
+  "planUpgradeCta": "升级到 {plan}",
+  "@planUpgradeCta": {
+    "placeholders": { "plan": { "type": "String" } }
+  },
+  "planDowngradeCta": "改为 {plan}",
+  "@planDowngradeCta": {
+    "placeholders": { "plan": { "type": "String" } }
+  },
+  "planDowngradeHint": "将在当前周期结束后生效。在此之前仍保留 {current}。",
+  "@planDowngradeHint": {
+    "placeholders": { "current": { "type": "String" } }
+  },
+  "planPeriodDowngradeBlocked": "要从年付改为月付，请在商店中管理订阅。",
+  "planManageSubscription": "管理订阅",
+  "planUpgradeBadge": "升级",
+  "planDowngradeBadge": "续订时生效",
+  "planUpgradeSheetTitle": "升级到 {plan}",
+  "@planUpgradeSheetTitle": {
+    "placeholders": { "plan": { "type": "String" } }
+  },
+  "planUpgradeToday": "当前",
+  "planUpgradeAfter": "升级后",
+  "planUpgradeContinue": "继续",
+  "planUpgradeLegal": "继续将立即升级方案，并在今天扣款。当前方案剩余时长由商店折抵。下次续订起按新价格计费。",
+  "planUpgradePriceDetail": "{plan}，{price} · {period}",
+  "@planUpgradePriceDetail": {
+    "placeholders": {
+      "plan": { "type": "String" },
+      "price": { "type": "String" },
+      "period": { "type": "String" }
+    }
+  },
   "proInactive": "免费版",
   "proPurchaseFailed": "购买未完成，请重试。",
   "proRestoreNone": "没有可恢复的购买。",
@@ -321,7 +354,7 @@
   "planStudioLabel": "Studio",
   "planBillingMonthly": "月付",
   "planBillingAnnual": "年付",
-  "planAnnualSaveBadge": "相当于送 2 个月",
+  "planAnnualSaveBadge": "选年付，相当于送 2 个月",
   "planPlusTitle": "{appName} Plus",
   "@planPlusTitle": {
     "placeholders": { "appName": { "type": "String" } }
@@ -371,6 +404,13 @@
   "@planSubscribeCta": {
     "placeholders": { "plan": { "type": "String" } }
   },
+  "planChooseTitle": "选择方案",
+  "planCompareTitle": "方案对比",
+  "planComparePlusEffects": "Plus 效果",
+  "planCompareProEffects": "Pro 效果",
+  "planCompareAi": "AI 工具",
+  "planCompareCredits": "每月 AI 积分",
+  "planCompareStudioExtras": "Studio 附加功能",
   "proBenefitAi": "Pro 与 Studio 可使用 AI 工具",
   "uploadAccountTitle": "上传到的 YouTube 账号",
   "uploadAccountNone": "尚未连接账号",

@@ -215,6 +215,7 @@
   "savedToDevice": "デバイスに保存しました",
   "shareContentTitle": "コンテンツを共有",
   "share": "共有",
+  "shareAppMessage": "EasyClipでショート動画をすばやく編集しよう。\n{url}",
   "exportDone": "完了",
   "shareToYouTube": "YouTube",
   "shareMore": "その他",
@@ -266,6 +267,38 @@
   "planCurrentSubscription": "現在のプラン",
   "planSwitchToAnnual": "年額に変更",
   "planSwitchToMonthly": "月額に変更",
+  "planUpgradeCta": "{plan}にアップグレード",
+  "@planUpgradeCta": {
+    "placeholders": { "plan": { "type": "String" } }
+  },
+  "planDowngradeCta": "{plan}に変更",
+  "@planDowngradeCta": {
+    "placeholders": { "plan": { "type": "String" } }
+  },
+  "planDowngradeHint": "現在の課金期間が終わるときに適用されます。それまでは{current}のままです。",
+  "@planDowngradeHint": {
+    "placeholders": { "current": { "type": "String" } }
+  },
+  "planPeriodDowngradeBlocked": "年額から月額へ切り替えるには、ストアでサブスクリプションを管理してください。",
+  "planManageSubscription": "サブスクリプションを管理",
+  "planUpgradeBadge": "アップグレード",
+  "planDowngradeBadge": "更新時に適用",
+  "planUpgradeSheetTitle": "{plan}にアップグレード",
+  "@planUpgradeSheetTitle": {
+    "placeholders": { "plan": { "type": "String" } }
+  },
+  "planUpgradeToday": "いま",
+  "planUpgradeAfter": "アップグレード後",
+  "planUpgradeContinue": "続ける",
+  "planUpgradeLegal": "続けるとプランがすぐにアップグレードされ、本日お支払いが発生します。残りの期間はストア側で精算されます。次回更新から新しい料金が適用されます。",
+  "planUpgradePriceDetail": "{plan}、{price} · {period}",
+  "@planUpgradePriceDetail": {
+    "placeholders": {
+      "plan": { "type": "String" },
+      "price": { "type": "String" },
+      "period": { "type": "String" }
+    }
+  },
   "proInactive": "無料プラン",
   "proPurchaseFailed": "購入を完了できませんでした。もう一度お試しください。",
   "proRestoreNone": "復元できる購入はありません。",
@@ -321,7 +354,7 @@
   "planStudioLabel": "Studio",
   "planBillingMonthly": "月額",
   "planBillingAnnual": "年額",
-  "planAnnualSaveBadge": "2ヶ月分お得",
+  "planAnnualSaveBadge": "年額なら2ヶ月分無料",
   "planPlusTitle": "{appName} Plus",
   "@planPlusTitle": {
     "placeholders": { "appName": { "type": "String" } }
@@ -371,6 +404,13 @@
   "@planSubscribeCta": {
     "placeholders": { "plan": { "type": "String" } }
   },
+  "planChooseTitle": "プランを選ぶ",
+  "planCompareTitle": "プラン比較",
+  "planComparePlusEffects": "Plus効果",
+  "planCompareProEffects": "Pro効果",
+  "planCompareAi": "AIツール",
+  "planCompareCredits": "月間AIクレジット",
+  "planCompareStudioExtras": "Studio追加機能",
   "proBenefitAi": "Pro・StudioでAIツールが使えます",
   "uploadAccountTitle": "アップロード先のYouTubeアカウント",
   "uploadAccountNone": "まだアカウントが接続されていません",

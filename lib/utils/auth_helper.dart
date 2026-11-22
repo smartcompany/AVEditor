@@ -3,6 +3,7 @@ import 'package:aveditor/config/auth_config.dart';
 import 'package:aveditor/models/app_user.dart';
 import 'package:aveditor/services/api_service.dart';
 import 'package:aveditor/services/credit_service.dart';
+import 'package:aveditor/services/pro_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:share_lib/share_lib_auth.dart';
@@ -30,6 +31,7 @@ class AuthHelper {
     final token = await auth.getIdToken();
     if (token != null && token.isNotEmpty) {
       await CreditService.instance.linkFirebaseAccount(token);
+      await ProService.instance.refreshEntitlementFromServer();
     }
     return true;
   }
