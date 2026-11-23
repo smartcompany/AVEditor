@@ -1,4 +1,5 @@
 import 'package:aveditor/models/effect_access_tier.dart';
+import 'package:aveditor/models/text_composition.dart';
 import 'package:aveditor/models/text_entrance_animation.dart';
 import 'package:aveditor/models/text_style_template.dart';
 import 'package:flutter/foundation.dart';
@@ -18,6 +19,7 @@ class TextTemplatePackItem {
     this.downloadSizeBytes = 0,
     this.animation = TextEntranceAnimation.none,
     this.sampleText,
+    this.composition,
   });
 
   static const defaultEffectSampleText = 'Aa';
@@ -48,9 +50,15 @@ class TextTemplatePackItem {
   /// Dashboard-editable body shown on app tiles and applied for crawl packs.
   final String? sampleText;
 
+  /// CapCut-like multi-slot layout. When set, paint uses composition.
+  final TextComposition? composition;
+
   bool get hasLottie =>
       (lottieAsset != null && lottieAsset!.isNotEmpty) ||
       (lottieUrl != null && lottieUrl!.isNotEmpty);
+
+  bool get hasComposition =>
+      composition != null && composition!.slots.isNotEmpty;
 
   /// Text shown on the studio grid tile (server [sampleText]).
   String get tilePreviewText {
@@ -64,6 +72,7 @@ class TextTemplatePackItem {
           .toList();
       if (lines.isNotEmpty) return lines.join('\n');
     }
+    if (hasComposition) return composition!.sampleText;
     return kind == 'template'
         ? defaultTemplateSampleText
         : defaultEffectSampleText;
@@ -82,6 +91,7 @@ class TextTemplatePackItem {
     'downloadSizeBytes': downloadSizeBytes,
     if (!animation.isNone) 'animation': animation.toJson(),
     if (sampleText != null && sampleText!.isNotEmpty) 'sampleText': sampleText,
+    if (composition != null) 'composition': composition!.toJson(),
   };
 
   factory TextTemplatePackItem.fromJson(Map<String, dynamic> json) {
@@ -92,6 +102,10 @@ class TextTemplatePackItem {
     styleJson['label'] ??= json['title'] ?? json['id'];
     final kind = json['kind'] as String? ?? 'effect';
     final sample = (json['sampleText'] as String?)?.trim();
+    final compositionJson = json['composition'] as Map<String, dynamic>?;
+    final composition = compositionJson == null
+        ? null
+        : TextComposition.fromJson(compositionJson);
 
     return TextTemplatePackItem(
       id: json['id'] as String,
@@ -109,11 +123,14 @@ class TextTemplatePackItem {
       animation: TextEntranceAnimation.fromJson(
         json['animation'] as Map<String, dynamic>?,
       ),
+      composition: composition,
       sampleText: (sample != null && sample.isNotEmpty)
           ? sample
-          : (kind == 'template'
-              ? defaultTemplateSampleText
-              : defaultEffectSampleText),
+          : (composition != null
+              ? composition.sampleText
+              : (kind == 'template'
+                  ? defaultTemplateSampleText
+                  : defaultEffectSampleText)),
     );
   }
 }

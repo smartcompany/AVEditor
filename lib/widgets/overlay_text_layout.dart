@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:aveditor/models/text_composition.dart';
 import 'package:aveditor/models/text_entrance_animation.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/text_overlay_style.dart';
@@ -8,6 +9,7 @@ import 'package:aveditor/models/text_style_template.dart';
 import 'package:aveditor/services/text_template_pack_service.dart';
 import 'package:aveditor/widgets/overlay_fonts.dart';
 import 'package:aveditor/widgets/overlay_geometry.dart';
+import 'package:aveditor/widgets/text_composition_paint.dart';
 import 'package:aveditor/widgets/text_entrance.dart';
 import 'package:flutter/material.dart';
 
@@ -1185,6 +1187,24 @@ void paintOverlayTextLayer({
     );
   }
 
+  final pack = TextTemplatePackService.instance.itemById(overlay.packItemId);
+  final composition = pack?.composition;
+  if (composition != null && composition.slots.isNotEmpty) {
+    paintTextComposition(
+      canvas: canvas,
+      composition: composition,
+      text: overlay.text,
+      accent: overlay.color,
+      fontSize: box.fontSize,
+      maxWidth: box.width,
+      origin: origin,
+      fallbackStyle: template,
+      fontFamily: overlay.fontFamily,
+      entrance: resolvedEntrance,
+    );
+    return;
+  }
+
   paintTextStyleTemplate(
     canvas: canvas,
     text: overlay.text,
@@ -1212,6 +1232,7 @@ class OverlayTextDisplay extends StatelessWidget {
     this.textAlign = TextAlign.center,
     this.hintColor,
     this.entrance,
+    this.composition,
   });
 
   final String text;
@@ -1223,25 +1244,37 @@ class OverlayTextDisplay extends StatelessWidget {
   final TextAlign textAlign;
   final Color? hintColor;
   final TextEntranceState? entrance;
+  final TextComposition? composition;
 
   @override
   Widget build(BuildContext context) {
     final fill = hintColor ?? template.resolveFill(color);
-    final probe = createOverlayTextPainter(
-      text: text,
-      style: _baseTextStyle(
-        fontSize: fontSize,
-        fontFamily: fontFamily,
-        color: fill,
-      ),
-      maxWidth: maxWidth,
-      textAlign: textAlign,
-    );
-    // Size to glyphs only. Brush / glow pads paint outside; parents must not
-    // clip (OverflowBox + Clip.none). Avoiding paintOrigin inset prevents the
-    // content from shifting right when the CustomPaint is constrained.
-    final size = Size(probe.width, probe.height);
-    probe.dispose();
+    final hasComp = composition != null && composition!.slots.isNotEmpty;
+    // Composition size is estimated from stacked slot factors.
+    final size = hasComp
+        ? Size(
+            maxWidth,
+            fontSize *
+                composition!.slots.fold<double>(
+                  0,
+                  (sum, s) => sum + s.fontSizeFactor * 1.2,
+                ),
+          )
+        : () {
+            final probe = createOverlayTextPainter(
+              text: text,
+              style: _baseTextStyle(
+                fontSize: fontSize,
+                fontFamily: fontFamily,
+                color: fill,
+              ),
+              maxWidth: maxWidth,
+              textAlign: textAlign,
+            );
+            final s = Size(probe.width, probe.height);
+            probe.dispose();
+            return s;
+          }();
 
     return CustomPaint(
       size: size,
@@ -1255,6 +1288,7 @@ class OverlayTextDisplay extends StatelessWidget {
         textAlign: textAlign,
         hintColor: hintColor,
         entrance: entrance,
+        composition: composition,
       ),
     );
   }
@@ -1271,6 +1305,7 @@ class _OverlayTextDisplayPainter extends CustomPainter {
     this.textAlign = TextAlign.center,
     this.hintColor,
     this.entrance,
+    this.composition,
   });
 
   final String text;
@@ -1282,6 +1317,7 @@ class _OverlayTextDisplayPainter extends CustomPainter {
   final TextAlign textAlign;
   final Color? hintColor;
   final TextEntranceState? entrance;
+  final TextComposition? composition;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1295,6 +1331,22 @@ class _OverlayTextDisplayPainter extends CustomPainter {
         color: hintColor!,
         fontFamily: fontFamily,
         textAlign: textAlign,
+      );
+      return;
+    }
+
+    if (composition != null && composition!.slots.isNotEmpty) {
+      paintTextComposition(
+        canvas: canvas,
+        composition: composition!,
+        text: text,
+        accent: color,
+        fontSize: fontSize,
+        maxWidth: maxWidth,
+        origin: Offset.zero,
+        fallbackStyle: template,
+        fontFamily: fontFamily,
+        entrance: entrance,
       );
       return;
     }
@@ -1323,6 +1375,7 @@ class _OverlayTextDisplayPainter extends CustomPainter {
         oldDelegate.fontFamily != fontFamily ||
         oldDelegate.textAlign != textAlign ||
         oldDelegate.hintColor != hintColor ||
+        oldDelegate.composition != composition ||
         oldDelegate.entrance?.progress != entrance?.progress ||
         oldDelegate.entrance?.animationId != entrance?.animationId ||
         oldDelegate.entrance?.layerScroll != entrance?.layerScroll ||

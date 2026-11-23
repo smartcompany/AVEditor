@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:aveditor/l10n/app_localizations.dart';
 import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/models/effect_access_tier.dart';
+import 'package:aveditor/models/text_composition.dart';
 import 'package:aveditor/models/text_entrance_animation.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/text_overlay_style.dart';
@@ -159,6 +160,15 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
         nextEnd = current.start + const Duration(seconds: 18);
       }
     }
+    // Composition templates seed multi-slot sample text when the body is empty.
+    final seededText = () {
+      if (!item.hasComposition) return null;
+      final t = current.text.trim();
+      if (t.isEmpty || t == kEmptyOverlayLayoutSample) {
+        return item.composition!.sampleText;
+      }
+      return null;
+    }();
     _emitOverlay(
       current.copyWith(
         packItemId: item.id,
@@ -167,6 +177,7 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
         fontFamily: fontId ?? current.fontFamily,
         color: seededColor ?? current.color,
         end: nextEnd,
+        text: seededText ?? current.text,
         // Clear override so pack animation (templates) can apply;
         // static effects ship with no animation.
         animationId: null,
@@ -397,6 +408,7 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
                 color: _catalogPreviewAccent(pack.style),
                 fontFamily: pack.style.preferredFontId,
                 template: pack.style,
+                composition: pack.composition,
                 animation: pack.animation,
                 loopAnimation: loopSelectedAnimation && selected,
               ),
@@ -414,6 +426,7 @@ class _PackAaPreview extends StatefulWidget {
     required this.color,
     required this.template,
     this.fontFamily,
+    this.composition,
     this.animation = TextEntranceAnimation.none,
     this.loopAnimation = false,
   });
@@ -422,6 +435,7 @@ class _PackAaPreview extends StatefulWidget {
   final Color color;
   final TextStyleTemplate template;
   final String? fontFamily;
+  final TextComposition? composition;
   final TextEntranceAnimation animation;
   final bool loopAnimation;
 
@@ -526,6 +540,7 @@ class _PackAaPreviewState extends State<_PackAaPreview>
         maxWidth: maxWidth,
         fontFamily: _fontReady ? widget.fontFamily : null,
         template: widget.template,
+        composition: widget.composition,
         entrance: entrance,
       );
     }
