@@ -782,6 +782,47 @@ ClipSegment? segmentAtExportTime(
   return segments.last;
 }
 
+/// Source-clip audio gain at [playhead].
+///
+/// [playhead] is packed export time when any segment has a [ClipSegment.mediaId]
+/// (multi-source timeline); otherwise the legacy single-file source clock.
+/// Crossfade windows blend outgoing/incoming envelopes via [previewFadeAt].
+double sourceVolumeAtPlayhead(
+  List<ClipSegment> segments,
+  Duration playhead,
+) {
+  if (segments.isEmpty) return 0;
+
+  final fade = previewFadeAt(segments, playhead);
+  if (fade != null) {
+    final outLocal = fade.outgoingSourceTime - fade.outgoing.start;
+    final inLocal = fade.auxSourceTime - fade.incoming.start;
+    final outVol = fade.outgoing.volumeAt(
+      outLocal < Duration.zero ? Duration.zero : outLocal,
+    );
+    final inVol = fade.incoming.volumeAt(
+      inLocal < Duration.zero ? Duration.zero : inLocal,
+    );
+    return outVol * (1.0 - fade.t) + inVol * fade.t;
+  }
+
+  final packedClock = segments.any((s) => s.mediaId != null);
+  if (packedClock) {
+    final segment = segmentAtExportTime(segments, playhead);
+    if (segment == null) return 0;
+    final source = exportTimeToSourceTime(segments, playhead);
+    final local = source - segment.start;
+    return segment.volumeAt(local < Duration.zero ? Duration.zero : local);
+  }
+
+  for (final candidate in segments) {
+    if (playhead >= candidate.start && playhead < candidate.end) {
+      return candidate.volumeAt(playhead - candidate.start);
+    }
+  }
+  return 0;
+}
+
 /// Playhead position on the packed edited timeline.
 Duration timelinePlayheadFromSource(
   List<ClipSegment> segments,

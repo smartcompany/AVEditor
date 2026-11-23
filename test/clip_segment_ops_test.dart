@@ -631,4 +631,38 @@ void main() {
     expect(split[2].mediaId, 'm2');
     expect(split[2].start, const Duration(seconds: 1));
   });
+
+  test('sourceVolumeAtPlayhead keeps gain on later packed clips', () {
+    // + append: each clip's start/end are local asset times, playhead is packed.
+    final segments = [
+      ClipSegment(
+        id: 'a',
+        mediaId: 'm1',
+        start: Duration.zero,
+        end: const Duration(seconds: 10),
+        volume: 1.0,
+      ),
+      ClipSegment(
+        id: 'b',
+        mediaId: 'm2',
+        start: Duration.zero,
+        end: const Duration(seconds: 5),
+        volume: 0.8,
+      ),
+    ];
+
+    expect(
+      sourceVolumeAtPlayhead(segments, const Duration(seconds: 2)),
+      closeTo(1.0, 0.001),
+    );
+    // 12s packed = 2s into second clip — must not resolve to 0.
+    expect(
+      sourceVolumeAtPlayhead(segments, const Duration(seconds: 12)),
+      closeTo(0.8, 0.001),
+    );
+    expect(
+      sourceVolumeAtPlayhead(segments, const Duration(seconds: 14)),
+      closeTo(0.8, 0.001),
+    );
+  });
 }

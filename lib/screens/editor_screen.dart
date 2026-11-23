@@ -2662,30 +2662,17 @@ class _EditorScreenState extends State<EditorScreen>
     final project = _project;
     if (project == null) return;
 
-    double volumeForPlayhead() {
-      if (_spatialPreviewActive) return 0;
-      final playhead = _playhead;
-      final fade = previewFadeAt(project.segments, playhead);
-      if (fade != null) {
-        final outLocal = playhead - fade.outgoing.start;
-        final inLocal = fade.auxSourceTime - fade.incoming.start;
-        final outVol = fade.outgoing.volumeAt(
-          outLocal < Duration.zero ? Duration.zero : outLocal,
-        );
-        final inVol = fade.incoming.volumeAt(
-          inLocal < Duration.zero ? Duration.zero : inLocal,
-        );
-        return outVol * (1.0 - fade.t) + inVol * fade.t;
+    if (_spatialPreviewActive) {
+      controller?.setVolume(0);
+      _auxController?.setVolume(0);
+      if (NativeVideoEngine.instance.isTimelineActive) {
+        unawaited(NativeVideoEngine.instance.setVolume(0));
       }
-      for (final candidate in project.segments) {
-        if (playhead >= candidate.start && playhead < candidate.end) {
-          return candidate.volumeAt(playhead - candidate.start);
-        }
-      }
-      return 0;
+      return;
     }
 
-    final volume = volumeForPlayhead();
+    final playhead = _playhead;
+    final volume = sourceVolumeAtPlayhead(project.segments, playhead);
 
     // Native timeline owns audible source audio (Flutter players stay muted).
     if (NativeVideoEngine.instance.isTimelineActive) {
@@ -2696,16 +2683,10 @@ class _EditorScreenState extends State<EditorScreen>
     }
 
     if (controller == null) return;
-    if (_spatialPreviewActive) {
-      controller.setVolume(0);
-      _auxController?.setVolume(0);
-      return;
-    }
 
-    final playhead = _playhead;
     final fade = previewFadeAt(project.segments, playhead);
     if (fade != null) {
-      final outLocal = playhead - fade.outgoing.start;
+      final outLocal = fade.outgoingSourceTime - fade.outgoing.start;
       final inLocal = fade.auxSourceTime - fade.incoming.start;
       final outVol = fade.outgoing.volumeAt(
         outLocal < Duration.zero ? Duration.zero : outLocal,
