@@ -356,6 +356,7 @@ class OverlayGeometry {
     required OverlayBox box,
     required bool editing,
     Rect? clampRect,
+    bool allowEdit = true,
   }) {
     final local = toBoxFrame(
       previewPoint,
@@ -380,6 +381,7 @@ class OverlayGeometry {
       box.height,
       editing: editing,
       corners: corners,
+      allowEdit: allowEdit,
     );
   }
 
@@ -421,13 +423,14 @@ class OverlayGeometry {
     double boxH, {
     required bool editing,
     required OverlayChromeCorners corners,
+    bool allowEdit = true,
   }) {
     const hit = handleHit / 2;
     const pad = handlePad;
 
     final anchors = <(Offset, OverlayDrag)>[
       (corners.delete, OverlayDrag.delete),
-      (corners.edit, OverlayDrag.edit),
+      if (allowEdit) (corners.edit, OverlayDrag.edit),
       (corners.duplicate, OverlayDrag.duplicate),
       (corners.resizeRotate, OverlayDrag.resizeRotate),
     ];

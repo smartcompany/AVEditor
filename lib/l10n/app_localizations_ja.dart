@@ -85,6 +85,27 @@ class AppLocalizationsJa extends AppLocalizations {
   String get addText => 'テキストを追加';
 
   @override
+  String get addSticker => 'ステッカーを追加';
+
+  @override
+  String get stickerSearchHint => 'Giphyステッカーを検索';
+
+  @override
+  String get stickerPoweredByGiphy => 'Powered by GIPHY';
+
+  @override
+  String get stickerApiKeyMissing => 'Giphy APIキーが設定されていません。';
+
+  @override
+  String get stickerLoadFailed => 'ステッカーを読み込めませんでした。';
+
+  @override
+  String get stickerDownloadFailed => 'ステッカーをダウンロードできませんでした。';
+
+  @override
+  String get stickerEmpty => 'ステッカーがありません。';
+
+  @override
   String get addTemplateText => 'テンプレートテキストを追加';
 
   @override

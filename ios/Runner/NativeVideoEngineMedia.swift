@@ -655,34 +655,16 @@ private func packTransitionPlacements(
     }()
     let segAudio = isImage ? nil : segAsset.tracks(withMediaType: .audio).first
 
-    let outTdMs: Int
-    let effect: String
-    let motion: [ExportMotion]
-    let kind: String
-    let reverse: Bool
-    let scaleFrom: CGFloat
-    let scaleTo: CGFloat
-    let wipeEdge: String
-    if index < segments.count - 1 {
-      outTdMs = max(0, segment["transitionDurationMs"] as? Int ?? 0)
-      effect = (segment["transitionEffect"] as? String)?.lowercased() ?? "fade"
-      motion = exportMotionLayers(segment["transitionLayers"])
-      kind = (segment["transitionKind"] as? String)?.lowercased() ?? ""
-      reverse = segment["transitionReverse"] as? Bool ?? false
-      let params = segment["transitionParams"] as? [String: Any]
-      scaleFrom = exportOptionalNumber(params?["incomingScaleFrom"]) ?? 0.84
-      scaleTo = exportOptionalNumber(params?["incomingScaleTo"]) ?? 1
-      wipeEdge = (params?["edge"] as? String)?.lowercased() ?? ""
-    } else {
-      outTdMs = 0
-      effect = "fade"
-      motion = []
-      kind = ""
-      reverse = false
-      scaleFrom = 0.84
-      scaleTo = 1
-      wipeEdge = ""
-    }
+    // Last segment may carry an outro into the black pad past picture EOF.
+    let outTdMs = max(0, segment["transitionDurationMs"] as? Int ?? 0)
+    let effect = (segment["transitionEffect"] as? String)?.lowercased() ?? "fade"
+    let motion = exportMotionLayers(segment["transitionLayers"])
+    let kind = (segment["transitionKind"] as? String)?.lowercased() ?? ""
+    let reverse = segment["transitionReverse"] as? Bool ?? false
+    let params = segment["transitionParams"] as? [String: Any]
+    let scaleFrom = exportOptionalNumber(params?["incomingScaleFrom"]) ?? 0.84
+    let scaleTo = exportOptionalNumber(params?["incomingScaleTo"]) ?? 1
+    let wipeEdge = (params?["edge"] as? String)?.lowercased() ?? ""
 
     let inHalf = transitionHalfMs(prevOutTdMs)
     let outHalf = transitionHalfMs(outTdMs)
@@ -1084,7 +1066,9 @@ private func buildExportInstructions(
   for (index, placement) in placements.enumerated() {
     let tdMs = max(0, placement.transitionMs)
     let td = cmTimeMs(tdMs)
-    let hasTransition = tdMs > 0 && index < placements.count - 1
+    // Last segment may outro into black pad (no next placement).
+    let hasTransition = tdMs > 0
+    let endCut = hasTransition && index >= placements.count - 1
     // Duration-preserving: placement includes ±td/2 handles.
     // Solo is the body outside the centered blend [end−td, end) relative to placement.
     let incomingMs = index > 0 ? placements[index - 1].transitionMs : 0
@@ -1121,8 +1105,26 @@ private func buildExportInstructions(
     }
 
     if hasTransition {
-      let next = placements[index + 1]
       let overlap = CMTimeRange(start: soloEnd, duration: td)
+      if endCut {
+        // Layer compositor cannot paint a synthetic black incoming — fade the
+        // outgoing track out over the blend window (outro into pad).
+        let instr = AVMutableVideoCompositionInstruction()
+        instr.timeRange = overlap
+        let layer = AVMutableVideoCompositionLayerInstruction(
+          assetTrack: videoTracks[placement.trackIndex]
+        )
+        layer.setTransform(baseTransform, at: overlap.start)
+        layer.setOpacityRamp(
+          fromStartOpacity: 1,
+          toEndOpacity: 0,
+          timeRange: overlap
+        )
+        instr.layerInstructions = [layer]
+        instructions.append(instr)
+        continue
+      }
+      let next = placements[index + 1]
       if exportMotionSteps(
         motion: placement.motion,
         fromTrack: videoTracks[placement.trackIndex],
@@ -1436,7 +1438,9 @@ private func buildCustomExportInstructions(
   for (index, placement) in placements.enumerated() {
     let tdMs = max(0, placement.transitionMs)
     let td = cmTimeMs(tdMs)
-    let hasTransition = tdMs > 0 && index < placements.count - 1
+    // Last segment may outro into black pad (no next placement).
+    let hasTransition = tdMs > 0
+    let endCut = hasTransition && index >= placements.count - 1
     // Placement includes ±td/2 handles; solo excludes the full centered blend.
     let incomingMs = index > 0 ? placements[index - 1].transitionMs : 0
     let soloStart = CMTimeAdd(placement.start, cmTimeMs(incomingMs))
@@ -1465,30 +1469,51 @@ private func buildCustomExportInstructions(
       )
     }
     if hasTransition {
-      let next = placements[index + 1]
       NSLog(
-        "NativeVideoEngine export transition effect=%@ kind=%@ layers=%d reverse=%@",
+        "NativeVideoEngine export transition effect=%@ kind=%@ layers=%d reverse=%@ endCut=%@",
         placement.effect,
         placement.kind,
         placement.motion.count,
-        placement.reverse ? "yes" : "no"
+        placement.reverse ? "yes" : "no",
+        endCut ? "yes" : "no"
       )
-      instructions.append(
-        ExportCompositionInstruction(
-          timeRange: CMTimeRange(start: soloEnd, duration: td),
-          outgoingTrackID: videoTracks[placement.trackIndex].trackID,
-          incomingTrackID: videoTracks[next.trackIndex].trackID,
-          effect: placement.effect,
-          kind: placement.kind,
-          reverse: placement.reverse,
-          layers: placement.motion,
-          preferredTransform: outTx,
-          incomingPreferredTransform: oriented(next),
-          incomingScaleFrom: placement.incomingScaleFrom,
-          incomingScaleTo: placement.incomingScaleTo,
-          wipeEdge: placement.wipeEdge
+      if endCut {
+        // Incoming = black pad (no track). Renderer composes against CI black.
+        instructions.append(
+          ExportCompositionInstruction(
+            timeRange: CMTimeRange(start: soloEnd, duration: td),
+            outgoingTrackID: videoTracks[placement.trackIndex].trackID,
+            incomingTrackID: kCMPersistentTrackID_Invalid,
+            effect: placement.effect,
+            kind: placement.kind,
+            reverse: placement.reverse,
+            layers: placement.motion,
+            preferredTransform: outTx,
+            incomingPreferredTransform: .identity,
+            incomingScaleFrom: placement.incomingScaleFrom,
+            incomingScaleTo: placement.incomingScaleTo,
+            wipeEdge: placement.wipeEdge
+          )
         )
-      )
+      } else {
+        let next = placements[index + 1]
+        instructions.append(
+          ExportCompositionInstruction(
+            timeRange: CMTimeRange(start: soloEnd, duration: td),
+            outgoingTrackID: videoTracks[placement.trackIndex].trackID,
+            incomingTrackID: videoTracks[next.trackIndex].trackID,
+            effect: placement.effect,
+            kind: placement.kind,
+            reverse: placement.reverse,
+            layers: placement.motion,
+            preferredTransform: outTx,
+            incomingPreferredTransform: oriented(next),
+            incomingScaleFrom: placement.incomingScaleFrom,
+            incomingScaleTo: placement.incomingScaleTo,
+            wipeEdge: placement.wipeEdge
+          )
+        )
+      }
     }
   }
   return instructions
@@ -1650,7 +1675,9 @@ private func buildSourceTimePreviewInstructions(
     }
     let tdMs = max(0, placement.transitionMs)
     let td = cmTimeMs(tdMs)
-    let hasTransition = tdMs > 0 && index < placements.count - 1
+    // Last segment may outro into black pad (no next placement).
+    let hasTransition = tdMs > 0
+    let endCut = hasTransition && index >= placements.count - 1
     // Placement includes ±td/2 handles; solo excludes the full centered blend.
     let incomingMs = index > 0 ? placements[index - 1].transitionMs : 0
     let soloStart = CMTimeAdd(placement.start, cmTimeMs(incomingMs))
@@ -1676,23 +1703,42 @@ private func buildSourceTimePreviewInstructions(
       )
     }
     if hasTransition {
-      let next = placements[index + 1]
-      instructions.append(
-        ExportCompositionInstruction(
-          timeRange: CMTimeRange(start: soloEnd, duration: td),
-          outgoingTrackID: videoTracks[placement.trackIndex].trackID,
-          incomingTrackID: videoTracks[next.trackIndex].trackID,
-          effect: placement.effect,
-          kind: placement.kind,
-          reverse: placement.reverse,
-          layers: placement.motion,
-          preferredTransform: outTx,
-          incomingPreferredTransform: next.preferredTransform,
-          incomingScaleFrom: placement.incomingScaleFrom,
-          incomingScaleTo: placement.incomingScaleTo,
-          wipeEdge: placement.wipeEdge
+      if endCut {
+        instructions.append(
+          ExportCompositionInstruction(
+            timeRange: CMTimeRange(start: soloEnd, duration: td),
+            outgoingTrackID: videoTracks[placement.trackIndex].trackID,
+            incomingTrackID: kCMPersistentTrackID_Invalid,
+            effect: placement.effect,
+            kind: placement.kind,
+            reverse: placement.reverse,
+            layers: placement.motion,
+            preferredTransform: outTx,
+            incomingPreferredTransform: .identity,
+            incomingScaleFrom: placement.incomingScaleFrom,
+            incomingScaleTo: placement.incomingScaleTo,
+            wipeEdge: placement.wipeEdge
+          )
         )
-      )
+      } else {
+        let next = placements[index + 1]
+        instructions.append(
+          ExportCompositionInstruction(
+            timeRange: CMTimeRange(start: soloEnd, duration: td),
+            outgoingTrackID: videoTracks[placement.trackIndex].trackID,
+            incomingTrackID: videoTracks[next.trackIndex].trackID,
+            effect: placement.effect,
+            kind: placement.kind,
+            reverse: placement.reverse,
+            layers: placement.motion,
+            preferredTransform: outTx,
+            incomingPreferredTransform: next.preferredTransform,
+            incomingScaleFrom: placement.incomingScaleFrom,
+            incomingScaleTo: placement.incomingScaleTo,
+            wipeEdge: placement.wipeEdge
+          )
+        )
+      }
     }
     covered = placement.end
   }
@@ -1868,9 +1914,22 @@ private final class ExportFrameRenderer {
     let inImage = incoming.map {
       placed($0, instruction.incomingPreferredTransform, canvas)
     }
+    let hasFx = !instruction.effect.isEmpty
+      || !instruction.kind.isEmpty
+      || !instruction.layers.isEmpty
     var composed: CIImage
     if let outImage, let inImage {
       composed = compose(outImage: outImage, inImage: inImage, t: t, instruction: instruction, canvas: canvas)
+    } else if let outImage, inImage == nil, hasFx {
+      // End-cut outro: no next clip — blend outgoing into solid black.
+      let black = CIImage(color: .black).cropped(to: canvas)
+      composed = compose(
+        outImage: outImage,
+        inImage: black,
+        t: t,
+        instruction: instruction,
+        canvas: canvas
+      )
     } else {
       composed = outImage ?? inImage ?? CIImage(color: .black).cropped(to: canvas)
     }
@@ -2550,13 +2609,25 @@ private final class ExportFrameRenderer {
     let exportStart = (span?["startMs"] as? NSNumber)?.intValue ?? 0
     let sourceStart = (span?["sourceStartMs"] as? NSNumber)?.intValue ?? exportStart
     let elapsed = max(0, sourceStart - overlayStart + ms - exportStart)
-    let index = entranceFrameIndex(elapsedMs: elapsed, durationMs: duration, frameCount: count)
+    let loop = (overlay["loop"] as? Bool) ?? ((overlay["loop"] as? NSNumber)?.boolValue ?? false)
+    let index = entranceFrameIndex(
+      elapsedMs: elapsed,
+      durationMs: duration,
+      frameCount: count,
+      loop: loop
+    )
     return String(format: "%@/frame_%04d.png", dir, index + 1)
   }
 }
 
-private func entranceFrameIndex(elapsedMs: Int, durationMs: Int, frameCount: Int) -> Int {
+private func entranceFrameIndex(elapsedMs: Int, durationMs: Int, frameCount: Int, loop: Bool = false) -> Int {
   if frameCount <= 1 { return 0 }
+  if loop {
+    if durationMs <= 0 { return 0 }
+    let t = elapsedMs < 0 ? 0 : elapsedMs % durationMs
+    let index = Int(Double(t) / Double(durationMs) * Double(frameCount))
+    return min(frameCount - 1, max(0, index))
+  }
   if durationMs <= 0 || elapsedMs >= durationMs { return frameCount - 1 }
   if elapsedMs <= 0 { return 0 }
   let progress = Double(elapsedMs) / Double(durationMs)

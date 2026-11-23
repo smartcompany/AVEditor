@@ -116,19 +116,23 @@ internal class EngineCompositor {
     GLES20.glUseProgram(program)
 
     val dual = mask and 1 != 0 && mask and 2 != 0
+    val toBlack = blend?.toBlack == true
     // Solo incoming track: swap units so mode 0 (copy side 0) shows track B.
     // Side 0 of the shader is always the outgoing clip. Solo track 1, and a
     // blend whose outgoing clip sits on track 1 (2nd, 4th… transition), swap units.
     val soloB = !dual && mask and 2 != 0
-    val swap = soloB || (dual && blend?.outgoingTrack == 1)
-    val d = if (dual) blend ?: BlendDraw(mode = 1, alphaA = 1f, alphaB = 1f) else BlendDraw()
+    val swap = soloB || ((dual || toBlack) && blend?.outgoingTrack == 1)
+    val d = when {
+      dual || toBlack -> blend ?: BlendDraw(mode = 1, alphaA = 1f, alphaB = 1f)
+      else -> BlendDraw()
+    }
     GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
     GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, if (swap) texB else texA)
     GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
     GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, if (swap) texA else texB)
     u1i("uTex", 0)
     u1i("uIncoming", 1)
-    u1i("uMode", if (dual) d.mode else 0)
+    u1i("uMode", if (dual || toBlack) d.mode else 0)
     u1f("uAspect", w[0].coerceAtLeast(1).toFloat() / h[0].coerceAtLeast(1).toFloat())
     u1f("uT", d.t.coerceIn(0f, 1f))
     u1i("uEdge", d.edge)
@@ -150,6 +154,7 @@ internal class EngineCompositor {
     u1i("uWipeEdgeB", d.wipeEdgeB)
     u1f("uBright", d.bright)
     u1f("uWhite", if (d.white) 1f else 0f)
+    u1f("uIncomingBlack", if (d.toBlack) 1f else 0f)
     u1f("uRipple", d.ripple)
     u1f("uRippleAmount", d.rippleAmount)
     u1f("uAOnTop", if (d.aOnTop) 1f else 0f)

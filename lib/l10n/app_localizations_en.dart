@@ -86,6 +86,27 @@ class AppLocalizationsEn extends AppLocalizations {
   String get addText => 'Add text';
 
   @override
+  String get addSticker => 'Add sticker';
+
+  @override
+  String get stickerSearchHint => 'Search Giphy stickers';
+
+  @override
+  String get stickerPoweredByGiphy => 'Powered by GIPHY';
+
+  @override
+  String get stickerApiKeyMissing => 'Giphy API key is not configured.';
+
+  @override
+  String get stickerLoadFailed => 'Could not load stickers.';
+
+  @override
+  String get stickerDownloadFailed => 'Could not download this sticker.';
+
+  @override
+  String get stickerEmpty => 'No stickers found.';
+
+  @override
   String get addTemplateText => 'Add template text';
 
   @override

@@ -580,19 +580,34 @@ Duration cutExportTimeAfter(List<ClipSegment> segments, int afterIndex) {
 /// `[C − ⌊td/2⌋, C + ⌈td/2⌉)`.
 ({Duration start, Duration end})? transitionSequenceSpan(
   List<ClipSegment> segments,
-  int afterIndex,
-) {
-  if (afterIndex < 0 || afterIndex >= segments.length - 1) return null;
-  final segment = segments[afterIndex];
-  final next = segments[afterIndex + 1];
-  final td = clampedTransitionDuration(segment, next: next);
+  int afterIndex, {
+  Duration sequenceDuration = Duration.zero,
+}) {
+  if (afterIndex < 0 || afterIndex >= segments.length) return null;
+  final endCut = isEndCutIndex(segments, afterIndex);
+  if (!endCut && afterIndex >= segments.length - 1) return null;
+  final pad = blackPadDuration(
+    segments: segments,
+    sequenceDuration: sequenceDuration <= Duration.zero
+        ? exportTimelineDuration(segments)
+        : sequenceDuration,
+  );
+  if (endCut && pad <= Duration.zero) return null;
+  final td = clampedTransitionDurationAtCut(
+    segments,
+    afterIndex,
+    blackPad: pad,
+  );
   if (td <= Duration.zero) return null;
 
   final cut = cutExportTimeAfter(segments, afterIndex);
   final half = transitionHalfMs(td);
   var startMs = cut.inMilliseconds - half.before;
   var endMs = cut.inMilliseconds + half.after;
-  final totalMs = exportTimelineDuration(segments).inMilliseconds;
+  final totalMs = (sequenceDuration > Duration.zero
+          ? sequenceDuration
+          : exportTimelineDuration(segments))
+      .inMilliseconds;
   if (startMs < 0) {
     endMs -= startMs;
     startMs = 0;
@@ -610,11 +625,21 @@ Duration cutExportTimeAfter(List<ClipSegment> segments, int afterIndex) {
 }
 
 /// Index of the cut (after segment i) nearest to [sequenceTime], or -1.
-int nearestCutIndex(List<ClipSegment> segments, Duration sequenceTime) {
-  if (segments.length < 2) return -1;
+int nearestCutIndex(
+  List<ClipSegment> segments,
+  Duration sequenceTime, {
+  Duration sequenceDuration = Duration.zero,
+}) {
+  final includeEnd = hasPictureBlackPad(
+    segments: segments,
+    sequenceDuration: sequenceDuration,
+  );
+  final lastExclusive =
+      includeEnd ? segments.length : segments.length - 1;
+  if (lastExclusive <= 0) return -1;
   var bestIndex = 0;
   var bestDist = 1 << 62;
-  for (var i = 0; i < segments.length - 1; i++) {
+  for (var i = 0; i < lastExclusive; i++) {
     final cutAt = cutExportTimeAfter(segments, i);
     final dist = (cutAt - sequenceTime).inMilliseconds.abs();
     if (dist < bestDist) {
@@ -626,6 +651,67 @@ int nearestCutIndex(List<ClipSegment> segments, Duration sequenceTime) {
 }
 
 bool hasVideoCuts(List<ClipSegment> segments) => segments.length > 1;
+
+/// Mid-clip cuts or a picture→black end seam.
+bool hasTransitionTargets(
+  List<ClipSegment> segments, {
+  required Duration sequenceDuration,
+}) {
+  if (hasVideoCuts(segments)) return true;
+  return hasPictureBlackPad(
+    segments: segments,
+    sequenceDuration: sequenceDuration,
+  );
+}
+
+/// True when [cutIndex] is the seam after the last picture clip (into black pad).
+bool isEndCutIndex(List<ClipSegment> segments, int cutIndex) =>
+    segments.isNotEmpty && cutIndex == segments.length - 1;
+
+/// Picture ends before [sequenceDuration] (music / text / sticker tail).
+bool hasPictureBlackPad({
+  required List<ClipSegment> segments,
+  required Duration sequenceDuration,
+}) {
+  final picture = exportTimelineDuration(segments);
+  return sequenceDuration > picture && picture > Duration.zero;
+}
+
+Duration blackPadDuration({
+  required List<ClipSegment> segments,
+  required Duration sequenceDuration,
+}) {
+  final picture = exportTimelineDuration(segments);
+  if (sequenceDuration <= picture) return Duration.zero;
+  return sequenceDuration - picture;
+}
+
+/// Synthetic "next" clip for clamping an end-cut transition into black.
+ClipSegment syntheticBlackPadSegment(Duration pad) {
+  final dur = pad <= Duration.zero
+      ? const Duration(milliseconds: 500)
+      : pad;
+  return ClipSegment(start: Duration.zero, end: dur);
+}
+
+/// Transition length at [cutIndex], including end-cut → black.
+Duration clampedTransitionDurationAtCut(
+  List<ClipSegment> segments,
+  int cutIndex, {
+  Duration blackPad = Duration.zero,
+}) {
+  if (cutIndex < 0 || cutIndex >= segments.length) return Duration.zero;
+  final segment = segments[cutIndex];
+  if (!segment.hasTransition) return Duration.zero;
+  if (isEndCutIndex(segments, cutIndex)) {
+    return clampedTransitionDuration(
+      segment,
+      next: syntheticBlackPadSegment(blackPad),
+    );
+  }
+  if (cutIndex >= segments.length - 1) return Duration.zero;
+  return clampedTransitionDuration(segment, next: segments[cutIndex + 1]);
+}
 
 Duration? sourceTimeToExportTime(
   List<ClipSegment> segments,

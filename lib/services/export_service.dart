@@ -83,13 +83,17 @@ class ExportService {
     await workDir.create(recursive: true);
 
     final visibleOverlays = project.overlays
-        .where((overlay) => overlay.text.trim().isNotEmpty)
+        .where(
+          (overlay) =>
+              overlay.isSticker || overlay.text.trim().isNotEmpty,
+        )
         .toList(growable: false);
     final rasters = await rasterService.renderAll(
       visibleOverlays,
       width: frame.width,
       height: frame.height,
       outputDir: workDir,
+      projectDir: project.projectDir,
     );
     onProgress?.call(0.15);
 
@@ -177,16 +181,19 @@ class ExportService {
       // Same rules as timeline playback: show the title on frames where
       // isOverlayVisibleAt is true, and run entrance from the title's own start.
       final animation = resolveOverlayAnimation(raster.overlay);
+      final entranceMs = raster.sequenceDurationMs ??
+          resolvedEntranceDuration(
+            overlay: raster.overlay,
+            animation: animation,
+          ).inMilliseconds;
       overlays.add({
         'overlayStartMs': raster.overlay.start.inMilliseconds,
         if (raster.isAnimated) ...{
           'sequenceDir': raster.sequenceDir!.path,
           'frameCount': raster.frameCount,
           'frameRate': raster.frameRate,
-          'entranceDurationMs': resolvedEntranceDuration(
-            overlay: raster.overlay,
-            animation: animation,
-          ).inMilliseconds,
+          'entranceDurationMs': entranceMs,
+          if (raster.loop) 'loop': true,
         } else
           'path': raster.file!.path,
         'spans': [

@@ -1,24 +1,49 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:aveditor/l10n/l10n_extensions.dart';
+import 'package:aveditor/models/background_template.dart';
+import 'package:aveditor/models/media_asset.dart';
+import 'package:aveditor/services/background_catalog_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/utils/duration_format.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:video_player/video_player.dart';
 
+/// Result of [GalleryPickerScreen.open] — library assets and/or backgrounds.
+@immutable
+class GalleryPickerResult {
+  const GalleryPickerResult({
+    this.assets = const [],
+    this.backgroundPaths = const [],
+    this.imageHoldDuration,
+  });
+
+  final List<AssetEntity> assets;
+
+  /// Local file paths for selected background templates (ready to import).
+  final List<String> backgroundPaths;
+
+  /// Hold length for stills in [backgroundPaths] (typically 5s).
+  final Duration? imageHoldDuration;
+
+  bool get isEmpty => assets.isEmpty && backgroundPaths.isEmpty;
+}
+
 /// Custom multi-select gallery: tap media to preview/play; select via a
 /// separate control so preview is never confused with picking.
+/// Also hosts a server-driven **배경** tab for prologue / epilogue stills.
 class GalleryPickerScreen extends StatefulWidget {
   const GalleryPickerScreen({super.key});
 
-  /// Opens the picker and returns selected library assets, or null if cancelled.
-  static Future<List<AssetEntity>?> open(BuildContext context) {
-    return Navigator.of(context).push<List<AssetEntity>>(
-      MaterialPageRoute<List<AssetEntity>>(
+  /// Opens the picker and returns a [GalleryPickerResult], or null if cancelled.
+  static Future<GalleryPickerResult?> open(BuildContext context) {
+    return Navigator.of(context).push<GalleryPickerResult>(
+      MaterialPageRoute<GalleryPickerResult>(
         fullscreenDialog: true,
         builder: (_) => const GalleryPickerScreen(),
       ),
@@ -29,6 +54,8 @@ class GalleryPickerScreen extends StatefulWidget {
   State<GalleryPickerScreen> createState() => _GalleryPickerScreenState();
 }
 
+enum _PickerTab { gallery, backgrounds }
+
 class _GalleryPickerScreenState extends State<GalleryPickerScreen> {
   static const _pageSize = 80;
   static const _thumbSize = ThumbnailSize.square(300);
@@ -36,6 +63,7 @@ class _GalleryPickerScreenState extends State<GalleryPickerScreen> {
   final List<AssetEntity> _assets = [];
   final List<AssetEntity> _selected = [];
   final Map<String, Uint8List?> _thumbCache = {};
+  final List<BackgroundTemplate> _selectedBackgrounds = [];
 
   AssetPathEntity? _album;
   List<AssetPathEntity> _albums = const [];
@@ -45,11 +73,27 @@ class _GalleryPickerScreenState extends State<GalleryPickerScreen> {
   bool _hasMore = true;
   int _page = 0;
   String? _error;
+  _PickerTab _tab = _PickerTab.gallery;
+  bool _confirmingBackgrounds = false;
+
+  final _bgService = BackgroundCatalogService.instance;
 
   @override
   void initState() {
     super.initState();
     unawaited(_bootstrap());
+    unawaited(_bgService.ensureInitialized());
+    _bgService.addListener(_onBgCatalog);
+  }
+
+  @override
+  void dispose() {
+    _bgService.removeListener(_onBgCatalog);
+    super.dispose();
+  }
+
+  void _onBgCatalog() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _bootstrap() async {
@@ -159,7 +203,16 @@ class _GalleryPickerScreenState extends State<GalleryPickerScreen> {
     var dirty = false;
     for (final asset in assets) {
       if (_thumbCache.containsKey(asset.id)) continue;
-      final bytes = await asset.thumbnailDataWithSize(_thumbSize);
+      // iCloud / CloudPhotoLibrary can throw (e.g. domain error 1006).
+      // Cache null so the cell falls back without crashing the picker.
+      Uint8List? bytes;
+      try {
+        bytes = await asset.thumbnailDataWithSize(_thumbSize);
+      } on PlatformException {
+        bytes = null;
+      } catch (_) {
+        bytes = null;
+      }
       if (!mounted) return;
       _thumbCache[asset.id] = bytes;
       dirty = true;
@@ -170,7 +223,14 @@ class _GalleryPickerScreenState extends State<GalleryPickerScreen> {
   Future<Uint8List?> _thumbFor(AssetEntity asset) async {
     final cached = _thumbCache[asset.id];
     if (cached != null || _thumbCache.containsKey(asset.id)) return cached;
-    final bytes = await asset.thumbnailDataWithSize(_thumbSize);
+    Uint8List? bytes;
+    try {
+      bytes = await asset.thumbnailDataWithSize(_thumbSize);
+    } on PlatformException {
+      bytes = null;
+    } catch (_) {
+      bytes = null;
+    }
     _thumbCache[asset.id] = bytes;
     return bytes;
   }
@@ -207,9 +267,48 @@ class _GalleryPickerScreenState extends State<GalleryPickerScreen> {
     }
   }
 
-  void _confirm() {
+  void _confirmGallery() {
     if (_selected.isEmpty) return;
-    Navigator.of(context).pop(List<AssetEntity>.from(_selected));
+    Navigator.of(context).pop(
+      GalleryPickerResult(assets: List<AssetEntity>.from(_selected)),
+    );
+  }
+
+  Future<void> _confirmBackgrounds() async {
+    if (_selectedBackgrounds.isEmpty || _confirmingBackgrounds) return;
+    setState(() => _confirmingBackgrounds = true);
+    try {
+      final paths = <String>[];
+      var hold = kDefaultBackgroundHoldDuration;
+      for (final item in _selectedBackgrounds) {
+        paths.add(await _bgService.materializeFile(item));
+        hold = item.defaultDuration;
+      }
+      if (!mounted) return;
+      Navigator.of(context).pop(
+        GalleryPickerResult(
+          backgroundPaths: paths,
+          imageHoldDuration: hold,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _confirmingBackgrounds = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('배경을 불러오지 못했습니다: $e')),
+      );
+    }
+  }
+
+  void _toggleBackground(BackgroundTemplate item) {
+    setState(() {
+      final i = _selectedBackgrounds.indexWhere((e) => e.id == item.id);
+      if (i >= 0) {
+        _selectedBackgrounds.removeAt(i);
+      } else {
+        _selectedBackgrounds.add(item);
+      }
+    });
   }
 
   Future<void> _pickAlbum() async {
@@ -254,34 +353,40 @@ class _GalleryPickerScreenState extends State<GalleryPickerScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final onBackgrounds = _tab == _PickerTab.backgrounds;
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         backgroundColor: AppTheme.background,
-        title: InkWell(
-          onTap: _albums.length > 1 ? _pickAlbum : null,
-          borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Flexible(
-                  child: Text(
-                    _album?.name ?? l10n.galleryPickerTitle,
-                    overflow: TextOverflow.ellipsis,
+        title: onBackgrounds
+            ? Text(
+                '배경',
+                style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
+              )
+            : InkWell(
+                onTap: _albums.length > 1 ? _pickAlbum : null,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          _album?.name ?? l10n.galleryPickerTitle,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (_albums.length > 1) ...[
+                        const SizedBox(width: 4),
+                        const Icon(Icons.expand_more, size: 20),
+                      ],
+                    ],
                   ),
                 ),
-                if (_albums.length > 1) ...[
-                  const SizedBox(width: 4),
-                  const Icon(Icons.expand_more, size: 20),
-                ],
-              ],
-            ),
-          ),
-        ),
+              ),
         actions: [
-          if (_permission.isLimited)
+          if (!onBackgrounds && _permission.isLimited)
             TextButton(
               onPressed: () async {
                 await PhotoManager.presentLimited(type: RequestType.common);
@@ -297,13 +402,171 @@ class _GalleryPickerScreenState extends State<GalleryPickerScreen> {
       ),
       body: Column(
         children: [
-          Expanded(child: _buildBody()),
-          _SelectionBar(
-            count: _selected.length,
-            onConfirm: _selected.isEmpty ? null : _confirm,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Row(
+              children: [
+                _tabChip(
+                  label: '갤러리',
+                  selected: _tab == _PickerTab.gallery,
+                  onTap: () => setState(() => _tab = _PickerTab.gallery),
+                ),
+                const SizedBox(width: 8),
+                _tabChip(
+                  label: '배경',
+                  selected: onBackgrounds,
+                  onTap: () => setState(() => _tab = _PickerTab.backgrounds),
+                ),
+              ],
+            ),
           ),
+          Expanded(
+            child: onBackgrounds ? _buildBackgroundsBody() : _buildBody(),
+          ),
+          if (onBackgrounds)
+            _SelectionBar(
+              count: _selectedBackgrounds.length,
+              onConfirm: _selectedBackgrounds.isEmpty || _confirmingBackgrounds
+                  ? null
+                  : () => unawaited(_confirmBackgrounds()),
+              busy: _confirmingBackgrounds,
+            )
+          else
+            _SelectionBar(
+              count: _selected.length,
+              onConfirm: _selected.isEmpty ? null : _confirmGallery,
+            ),
         ],
       ),
+    );
+  }
+
+  Widget _tabChip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: selected ? AppTheme.accentCyan.withValues(alpha: 0.2) : AppTheme.surface,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          child: Text(
+            label,
+            style: GoogleFonts.dmSans(
+              color: selected ? AppTheme.accentCyan : AppTheme.muted,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBackgroundsBody() {
+    if (!_bgService.isReady) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    final items = _bgService.catalog.items;
+    if (items.isEmpty) {
+      return Center(
+        child: Text(
+          '배경 템플릿이 없습니다',
+          style: GoogleFonts.dmSans(color: AppTheme.muted, fontSize: 15),
+        ),
+      );
+    }
+    return GridView.builder(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 10,
+        crossAxisSpacing: 10,
+        childAspectRatio: 0.62,
+      ),
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final item = items[index];
+        final selectedIndex =
+            _selectedBackgrounds.indexWhere((e) => e.id == item.id);
+        final selected = selectedIndex >= 0;
+        final src = _bgService.catalog.resolveUrl(item.previewOrImage);
+        final isAsset = src.isEmpty
+            ? false
+            : !(src.startsWith('http://') || src.startsWith('https://'));
+        final assetPath = isAsset
+            ? 'assets/${item.previewOrImage.replaceFirst(RegExp(r'^/+'), '')}'
+            : null;
+        return GestureDetector(
+          onTap: () => _toggleBackground(item),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: assetPath != null
+                          ? Image.asset(
+                              assetPath,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) =>
+                                  Container(color: Colors.black),
+                            )
+                          : Image.network(
+                              src,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) =>
+                                  Container(color: Colors.black),
+                            ),
+                    ),
+                    if (selected)
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          width: 24,
+                          height: 24,
+                          alignment: Alignment.center,
+                          decoration: const BoxDecoration(
+                            color: AppTheme.accentCyan,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Text(
+                            '${selectedIndex + 1}',
+                            style: GoogleFonts.dmSans(
+                              color: Colors.black,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                item.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.dmSans(
+                  color: AppTheme.ink,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -398,7 +661,14 @@ class _GalleryTile extends StatelessWidget {
               future: thumbFuture,
               builder: (context, snapshot) {
                 final bytes = snapshot.data;
-                if (bytes == null) {
+                if (bytes != null) {
+                  return Image.memory(
+                    bytes,
+                    fit: BoxFit.cover,
+                    gaplessPlayback: true,
+                  );
+                }
+                if (snapshot.connectionState != ConnectionState.done) {
                   return const ColoredBox(
                     color: AppTheme.surfaceElevated,
                     child: Center(
@@ -410,10 +680,18 @@ class _GalleryTile extends StatelessWidget {
                     ),
                   );
                 }
-                return Image.memory(
-                  bytes,
-                  fit: BoxFit.cover,
-                  gaplessPlayback: true,
+                // iCloud / missing thumb — keep the cell tappable.
+                return ColoredBox(
+                  color: AppTheme.surfaceElevated,
+                  child: Center(
+                    child: Icon(
+                      isVideo
+                          ? Icons.videocam_outlined
+                          : Icons.image_outlined,
+                      color: AppTheme.muted,
+                      size: 28,
+                    ),
+                  ),
                 );
               },
             ),
@@ -523,10 +801,15 @@ class _SelectBadge extends StatelessWidget {
 }
 
 class _SelectionBar extends StatelessWidget {
-  const _SelectionBar({required this.count, required this.onConfirm});
+  const _SelectionBar({
+    required this.count,
+    required this.onConfirm,
+    this.busy = false,
+  });
 
   final int count;
   final VoidCallback? onConfirm;
+  final bool busy;
 
   @override
   Widget build(BuildContext context) {
@@ -556,7 +839,7 @@ class _SelectionBar extends StatelessWidget {
                 ),
               ),
               FilledButton(
-                onPressed: onConfirm,
+                onPressed: busy ? null : onConfirm,
                 style: FilledButton.styleFrom(
                   backgroundColor: AppTheme.accent,
                   foregroundColor: Colors.white,
@@ -570,12 +853,18 @@ class _SelectionBar extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: Text(
-                  count == 0
-                      ? l10n.galleryAddSelected
-                      : l10n.galleryAddSelectedCount(count),
-                  style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
-                ),
+                child: busy
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(
+                        count == 0
+                            ? l10n.galleryAddSelected
+                            : l10n.galleryAddSelectedCount(count),
+                        style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
+                      ),
               ),
             ],
           ),

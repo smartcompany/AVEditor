@@ -23,6 +23,28 @@ void main() {
     expect(overlayLaneCount([a, placed]), 2);
   });
 
+  test('overlapping sticker and text share the overlay lane pool', () {
+    final text = TextOverlay(
+      id: 't',
+      text: 'Hi',
+      start: Duration.zero,
+      end: const Duration(seconds: 5),
+      lane: 0,
+    );
+    final sticker = TextOverlay(
+      id: 's',
+      text: 'Sticker',
+      start: Duration.zero,
+      end: const Duration(seconds: 5),
+      kind: OverlayKind.sticker,
+      lane: 0,
+    );
+
+    final placed = assignOverlayLane([text], sticker);
+    expect(placed.lane, 1);
+    expect(overlayLaneCount([text, placed]), 2);
+  });
+
   test('non-overlapping text packs up onto the free upper lane', () {
     final a = TextOverlay(
       id: 'a',

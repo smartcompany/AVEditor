@@ -85,6 +85,27 @@ class AppLocalizationsZh extends AppLocalizations {
   String get addText => '添加文字';
 
   @override
+  String get addSticker => '添加贴纸';
+
+  @override
+  String get stickerSearchHint => '搜索 Giphy 贴纸';
+
+  @override
+  String get stickerPoweredByGiphy => 'Powered by GIPHY';
+
+  @override
+  String get stickerApiKeyMissing => '未配置 Giphy API 密钥。';
+
+  @override
+  String get stickerLoadFailed => '无法加载贴纸。';
+
+  @override
+  String get stickerDownloadFailed => '无法下载该贴纸。';
+
+  @override
+  String get stickerEmpty => '未找到贴纸。';
+
+  @override
   String get addTemplateText => '添加模板文字';
 
   @override

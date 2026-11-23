@@ -51,6 +51,7 @@ import 'package:aveditor/widgets/convert_progress_view.dart';
 import 'package:aveditor/widgets/basic_text_edit_toolbar.dart';
 import 'package:aveditor/widgets/text_studio_panel.dart';
 import 'package:aveditor/widgets/timeline_widget.dart';
+import 'package:aveditor/widgets/giphy_sticker_picker_sheet.dart';
 import 'package:aveditor/widgets/transition_picker_sheet.dart';
 import 'package:aveditor/widgets/transition_preview_compositor.dart';
 import 'package:aveditor/widgets/overflow_hit_stack.dart';
@@ -203,6 +204,13 @@ class _EditorScreenState extends State<EditorScreen>
 
   /// CapCut-style text studio is open for this overlay id.
   String? _textStudioOverlayId;
+
+  /// Docked Giphy sticker picker (same shell as transition / text studio).
+  var _stickerStudioOpen = false;
+
+  /// When set, picking a sticker replaces this overlay instead of adding one.
+  String? _stickerReplaceOverlayId;
+
   bool _ready = false;
   double? _convertProgress;
   var _appendingMedia = false;
@@ -1007,9 +1015,12 @@ class _EditorScreenState extends State<EditorScreen>
     if (project == null || _appendingMedia || _exporting) return;
 
     List<String> paths;
+    Duration? imageHoldDuration;
     try {
       if (PlatformHelper.supportsGallery) {
-        paths = await _import.pickFromGallery(context);
+        final batch = await _import.pickFromGallery(context);
+        paths = batch.paths;
+        imageHoldDuration = batch.imageHoldDuration;
       } else if (PlatformHelper.supportsFilePicker) {
         paths = await _import.pickFromFiles();
       } else {
@@ -1039,6 +1050,7 @@ class _EditorScreenState extends State<EditorScreen>
       final updated = await _projectStorage.appendImports(
         project,
         paths,
+        imageHoldDuration: imageHoldDuration,
         onProgress: (p) {
           if (!mounted) return;
           setState(() => _convertProgress = p.clamp(0.0, 1.0));
@@ -2840,6 +2852,8 @@ class _EditorScreenState extends State<EditorScreen>
 
   bool get _inTextStudio => _textStudioOverlayId != null;
 
+  bool get _inStickerStudio => _stickerStudioOpen;
+
   void _seek(Duration position, {bool seekVideo = true}) {
     final controller = _controller;
     final project = _project;
@@ -3551,7 +3565,11 @@ class _EditorScreenState extends State<EditorScreen>
     final l10n = AppLocalizations.of(context);
     if (project == null || _exporting) return;
 
-    if (!hasVideoCuts(project.segments)) {
+    final seq = _sequenceDuration;
+    if (!hasTransitionTargets(
+      project.segments,
+      sequenceDuration: seq,
+    )) {
       showLoggedSnackBar(context, l10n.transitionNeedsCuts);
       return;
     }
@@ -3561,8 +3579,20 @@ class _EditorScreenState extends State<EditorScreen>
     // targets the cut nearest the playhead: the cut edited last stays
     // selected after the studio closes, and reusing it sent the second
     // transition onto the first cut (replacing it) instead of the new one.
-    final index = cutIndex ?? nearestCutIndex(project.segments, sequenceTime);
-    if (index < 0 || index >= project.segments.length - 1) {
+    final index = cutIndex ??
+        nearestCutIndex(
+          project.segments,
+          sequenceTime,
+          sequenceDuration: seq,
+        );
+    final includeEnd = hasPictureBlackPad(
+      segments: project.segments,
+      sequenceDuration: seq,
+    );
+    final maxIndex = includeEnd
+        ? project.segments.length - 1
+        : project.segments.length - 2;
+    if (index < 0 || index > maxIndex) {
       return;
     }
 
@@ -3578,6 +3608,7 @@ class _EditorScreenState extends State<EditorScreen>
         _selectedMusicId = null;
         _editingOverlayId = null;
         _textStudioOverlayId = null;
+        _stickerStudioOpen = false;
         _transitionStudioCutIndex = index;
         _panelPreviewSourcePos = null;
         _panelPreviewFurthestPos = null;
@@ -3666,14 +3697,35 @@ class _EditorScreenState extends State<EditorScreen>
       });
     }
     _mutate((p) {
-      if (index >= p.segments.length - 1) return;
+      final seq = projectSequenceDuration(
+        segments: p.segments,
+        sourceDuration: p.duration,
+        musicTracks: p.musicTracks,
+        overlays: p.overlays,
+      );
+      final includeEnd = hasPictureBlackPad(
+        segments: p.segments,
+        sequenceDuration: seq,
+      );
+      final maxIndex = includeEnd
+          ? p.segments.length - 1
+          : p.segments.length - 2;
+      if (index < 0 || index > maxIndex) return;
       final segment = p.segments[index];
       if (applied.isNone) {
         p.segments[index] = segment.copyWith(clearTransition: true);
       } else {
+        final next = isEndCutIndex(p.segments, index)
+            ? syntheticBlackPadSegment(
+                blackPadDuration(
+                  segments: p.segments,
+                  sequenceDuration: seq,
+                ),
+              )
+            : p.segments[index + 1];
         final clamped = clampedTransitionDuration(
           segment.copyWith(transition: applied),
-          next: p.segments[index + 1],
+          next: next,
         );
         p.segments[index] = segment.copyWith(
           transition: applied.copyWith(
@@ -3720,10 +3772,26 @@ class _EditorScreenState extends State<EditorScreen>
   void _onTransitionDurationChanged(int index, Duration duration) {
     if (!mounted) return;
     final project = _project;
-    if (project == null || index >= project.segments.length - 1) return;
+    if (project == null) return;
+    final seq = _sequenceDuration;
+    final includeEnd = hasPictureBlackPad(
+      segments: project.segments,
+      sequenceDuration: seq,
+    );
+    final maxIndex = includeEnd
+        ? project.segments.length - 1
+        : project.segments.length - 2;
+    if (index < 0 || index > maxIndex) return;
     final segment = project.segments[index];
     if (!segment.hasTransition) return;
-    final nextSeg = project.segments[index + 1];
+    final nextSeg = isEndCutIndex(project.segments, index)
+        ? syntheticBlackPadSegment(
+            blackPadDuration(
+              segments: project.segments,
+              sequenceDuration: seq,
+            ),
+          )
+        : project.segments[index + 1];
     final tentative = segment.copyWith(
       transition: segment.transition!.copyWith(duration: duration),
     );
@@ -3752,7 +3820,15 @@ class _EditorScreenState extends State<EditorScreen>
   ) {
     if (!mounted) return;
     final project = _project;
-    if (project == null || index >= project.segments.length - 1) return;
+    if (project == null) return;
+    final includeEnd = hasPictureBlackPad(
+      segments: project.segments,
+      sequenceDuration: _sequenceDuration,
+    );
+    final maxIndex = includeEnd
+        ? project.segments.length - 1
+        : project.segments.length - 2;
+    if (index < 0 || index > maxIndex) return;
     final segment = project.segments[index];
     if (!segment.hasTransition) return;
     project.segments[index] = segment.copyWith(
@@ -3861,11 +3937,27 @@ class _EditorScreenState extends State<EditorScreen>
     final controller = _controller;
     final project = _project;
     if (project == null || (controller == null && !_ffmpegPlayback)) return;
-    if (cutIndex < 0 || cutIndex >= project.segments.length - 1) return;
+    final seq = _sequenceDuration;
+    final includeEnd = hasPictureBlackPad(
+      segments: project.segments,
+      sequenceDuration: seq,
+    );
+    final maxIndex = includeEnd
+        ? project.segments.length - 1
+        : project.segments.length - 2;
+    if (cutIndex < 0 || cutIndex > maxIndex) return;
 
     final gen = ++_transitionPreviewGen;
     final outgoing = project.segments[cutIndex];
-    final incoming = project.segments[cutIndex + 1];
+    final endCut = isEndCutIndex(project.segments, cutIndex);
+    final incoming = endCut
+        ? syntheticBlackPadSegment(
+            blackPadDuration(
+              segments: project.segments,
+              sequenceDuration: seq,
+            ),
+          )
+        : project.segments[cutIndex + 1];
     final td = clampedTransitionDuration(outgoing, next: incoming);
     final hardCut = !outgoing.hasTransition || td <= Duration.zero;
     const hardCutPad = Duration(milliseconds: 500);
@@ -3886,7 +3978,7 @@ class _EditorScreenState extends State<EditorScreen>
     }
     if (clampedStart < Duration.zero) clampedStart = Duration.zero;
     final incomingPackedEnd = cutAt + incoming.duration;
-    final totalPacked = exportTimelineDuration(project.segments);
+    final totalPacked = endCut ? seq : exportTimelineDuration(project.segments);
     var previewUntil = cutAt + windowAfter;
     if (previewUntil > incomingPackedEnd) previewUntil = incomingPackedEnd;
     if (previewUntil > totalPacked) previewUntil = totalPacked;
@@ -4189,6 +4281,183 @@ class _EditorScreenState extends State<EditorScreen>
     _placeNewTextOverlay();
   }
 
+  /// Opens the docked sticker panel. Pass [replace] to swap an existing sticker.
+  void _openStickerStudio({TextOverlay? replace}) {
+    final project = _project;
+    if (project == null || _exporting) return;
+    if (replace != null && !replace.isSticker) return;
+    if (_transportPlaying) {
+      if (NativeVideoEngine.instance.isTimelineActive) {
+        unawaited(NativeVideoEngine.instance.pause());
+      } else {
+        unawaited(_controller?.pause());
+      }
+    }
+    _presentStudioDock(() {
+      setState(() {
+        _stickerStudioOpen = true;
+        _stickerReplaceOverlayId = replace?.id;
+        if (replace != null) {
+          _selectedOverlayId = replace.id;
+        }
+        _textStudioOverlayId = null;
+        _transitionStudioCutIndex = null;
+        _editingOverlayId = null;
+        _selectedSegmentId = null;
+        _selectedMusicId = null;
+        _selectedTransitionAfterIndex = null;
+      });
+    });
+  }
+
+  void _closeStickerStudio(String source) {
+    OverlayEventLog.log('Editor', 'closeStickerStudio', {'source': source});
+    if (!_stickerStudioOpen) return;
+    unawaited(
+      _dismissStudioDock(() {
+        if (!mounted) return;
+        setState(() {
+          _stickerStudioOpen = false;
+          _stickerReplaceOverlayId = null;
+        });
+      }),
+    );
+  }
+
+  void _onStickerPicked(GiphyStickerPick pick) {
+    // Replace mode only (edit opened the panel). Prefer the sticker currently
+    // selected on canvas so retargeting while the panel stays open works.
+    final selected = _selectedOverlay;
+    final replaceId = _stickerReplaceOverlayId == null
+        ? null
+        : (selected != null && selected.isSticker
+              ? selected.id
+              : _stickerReplaceOverlayId);
+    if (replaceId != null) {
+      AnalyticsService.instance.log('sticker_replaced', {
+        'giphyId': pick.sticker.id,
+      });
+      _replaceStickerOverlay(replaceId, pick);
+      return;
+    }
+    AnalyticsService.instance.log('sticker_added', {
+      'giphyId': pick.sticker.id,
+    });
+    _placeNewStickerOverlay(pick);
+  }
+
+  /// Keep replace-target in sync when the user retargets while the panel is open.
+  void _retargetStickerStudioIfNeeded(TextOverlay overlay) {
+    if (!_stickerStudioOpen || !overlay.isSticker) return;
+    _stickerReplaceOverlayId = overlay.id;
+  }
+
+  void _replaceStickerOverlay(String id, GiphyStickerPick pick) {
+    final project = _project;
+    if (project == null) return;
+    TextOverlay? existing;
+    for (final overlay in project.overlays) {
+      if (overlay.id == id) {
+        existing = overlay;
+        break;
+      }
+    }
+    if (existing == null || !existing.isSticker) {
+      _placeNewStickerOverlay(pick);
+      return;
+    }
+
+    final aspect = pick.sticker.width > 0 && pick.sticker.height > 0
+        ? pick.sticker.width / pick.sticker.height
+        : 1.0;
+    final size = math.max(existing.boxWidth, existing.boxHeight);
+    var boxW = size;
+    var boxH = size;
+    if (aspect >= 1) {
+      boxH = (boxW / aspect).clamp(120.0, size);
+    } else {
+      boxW = (boxH * aspect).clamp(120.0, size);
+    }
+
+    _updateOverlay(
+      existing.copyWith(
+        text: pick.sticker.title,
+        boxWidth: boxW,
+        boxHeight: boxH,
+        stickerLocalPath: pick.relativePath,
+        stickerGiphyId: pick.sticker.id,
+        stickerPreviewUrl: pick.sticker.previewUrl,
+      ),
+    );
+    if (mounted) setState(() => _selectedOverlayId = id);
+  }
+
+  void _placeNewStickerOverlay(GiphyStickerPick pick) {
+    final project = _project;
+    final controller = _controller;
+    if (project == null || (controller == null && !_ffmpegPlayback)) return;
+
+    if (_transportPlaying) {
+      if (NativeVideoEngine.instance.isTimelineActive) {
+        unawaited(NativeVideoEngine.instance.pause());
+      } else {
+        unawaited(controller?.pause());
+      }
+    }
+
+    final start = _textPlacementSourceTime(project);
+    var end = start + const Duration(seconds: 3);
+    if (end - start < minOverlayDuration) {
+      end = start + minOverlayDuration;
+    }
+
+    final aspect = pick.sticker.width > 0 && pick.sticker.height > 0
+        ? pick.sticker.width / pick.sticker.height
+        : 1.0;
+    var boxW = kDefaultStickerBox;
+    var boxH = kDefaultStickerBox;
+    if (aspect >= 1) {
+      boxH = (boxW / aspect).clamp(120.0, kDefaultStickerBox);
+    } else {
+      boxW = (boxH * aspect).clamp(120.0, kDefaultStickerBox);
+    }
+
+    final overlay = TextOverlay(
+      text: pick.sticker.title,
+      start: start,
+      end: end,
+      kind: OverlayKind.sticker,
+      boxWidth: boxW,
+      boxHeight: boxH,
+      stickerLocalPath: pick.relativePath,
+      stickerGiphyId: pick.sticker.id,
+      stickerPreviewUrl: pick.sticker.previewUrl,
+    );
+
+    late TextOverlay placed;
+    _mutate((p) {
+      placed = assignOverlayLane(p.overlays, overlay, preferLowestLane: true);
+      p.overlays.add(placed);
+      final compacted = compactOverlayLanes(p.overlays);
+      p.overlays
+        ..clear()
+        ..addAll(compacted);
+      _selectedOverlayId = placed.id;
+      _selectedSegmentId = null;
+      _selectedMusicId = null;
+      _selectedTransitionAfterIndex = null;
+      _inlineEditSelectAll = false;
+      _editingOverlayId = null;
+      _textStudioOverlayId = null;
+      _transitionStudioCutIndex = null;
+      // Keep sticker studio open so the user can add more.
+    });
+    if (start != _playhead) {
+      _seek(start);
+    }
+    if (mounted) setState(() {});
+  }
+
   void _placeNewTextOverlay() {
     final project = _project;
     final controller = _controller;
@@ -4237,6 +4506,7 @@ class _EditorScreenState extends State<EditorScreen>
       setState(() {
         _textStudioOverlayId = placed.id;
         _selectedOverlayId = placed.id;
+        _stickerStudioOpen = false;
       });
     });
   }
@@ -4284,6 +4554,7 @@ class _EditorScreenState extends State<EditorScreen>
         _selectedTransitionAfterIndex = null;
         _editingOverlayId = null;
         _transitionStudioCutIndex = null;
+        _stickerStudioOpen = false;
         _textStudioOverlayId = fitted.id;
       });
     });
@@ -4413,11 +4684,13 @@ class _EditorScreenState extends State<EditorScreen>
       });
     }
 
-    final fitted = fitOverlayBoxToText(updated);
+    // Stickers keep their own box aspect; text-fit would squash them to the
+    // Giphy title string (e.g. timeline trim → 1:1 becomes ~2:1).
+    final next = updated.isSticker ? updated : fitOverlayBoxToText(updated);
     setState(() {
       final placed = assignOverlayLane(
         project.overlays,
-        fitted,
+        next,
         preferLowestLane: false,
       );
       project.overlays[index] = placed;
@@ -4537,6 +4810,7 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   void _startInlineEditing(TextOverlay overlay) {
+    if (overlay.isSticker) return;
     final controller = _controller;
     if (controller != null && controller.value.isPlaying) {
       controller.pause();
@@ -4611,6 +4885,10 @@ class _EditorScreenState extends State<EditorScreen>
   void _editSelectedOverlay() {
     final overlay = _selectedOverlay;
     if (overlay == null) return;
+    if (overlay.isSticker) {
+      _openStickerStudio(replace: overlay);
+      return;
+    }
     _openTextStudio(overlay);
   }
 
@@ -4640,6 +4918,12 @@ class _EditorScreenState extends State<EditorScreen>
     try {
       if (_inTextStudio) {
         _closeTextStudio('export');
+      }
+      if (_inStickerStudio) {
+        _closeStickerStudio('export');
+      }
+      if (_transitionStudioCutIndex != null) {
+        unawaited(_closeTransitionStudio('export'));
       }
       await _pausePlaybackForExport();
       if (!mounted) return;
@@ -5118,6 +5402,7 @@ class _EditorScreenState extends State<EditorScreen>
                                                   constraints.maxWidth,
                                                   constraints.maxHeight,
                                                 ),
+                                                projectDir: project.projectDir,
                                                 selectedOverlayId:
                                                     _selectedOverlayId,
                                                 editingOverlayId:
@@ -5143,6 +5428,9 @@ class _EditorScreenState extends State<EditorScreen>
                                                       _textStudioOverlayId =
                                                           overlay.id;
                                                     }
+                                                    _retargetStickerStudioIfNeeded(
+                                                      overlay,
+                                                    );
                                                   });
                                                 },
                                                 onRequestEdit:
@@ -5168,10 +5456,19 @@ class _EditorScreenState extends State<EditorScreen>
                                                 onOverlayDuplicated:
                                                     _duplicateOverlay,
                                                 onOverlayEdit: (overlay) {
-                                                  setState(
-                                                    () => _selectedOverlayId =
-                                                        overlay.id,
-                                                  );
+                                                  setState(() {
+                                                    _selectedOverlayId =
+                                                        overlay.id;
+                                                    _retargetStickerStudioIfNeeded(
+                                                      overlay,
+                                                    );
+                                                  });
+                                                  if (overlay.isSticker) {
+                                                    _openStickerStudio(
+                                                      replace: overlay,
+                                                    );
+                                                    return;
+                                                  }
                                                   _editSelectedOverlay();
                                                 },
                                                 onOverlayBoxChanged:
@@ -5400,15 +5697,31 @@ class _EditorScreenState extends State<EditorScreen>
         }
 
         final cutIndex = _transitionStudioCutIndex;
+        final seq = _sequenceDuration;
+        final includeEndCut = hasPictureBlackPad(
+          segments: project.segments,
+          sequenceDuration: seq,
+        );
         final showTransition =
             cutIndex != null &&
             cutIndex >= 0 &&
-            cutIndex < project.segments.length - 1;
+            (cutIndex < project.segments.length - 1 ||
+                (includeEndCut && cutIndex == project.segments.length - 1));
         final showText = inTextStudio && studioOverlay != null;
-        final showStudio = showText || showTransition;
+        final showSticker = _inStickerStudio;
+        final showStudio = showText || showTransition || showSticker;
 
         Widget? studio;
-        if (showText) {
+        if (showSticker) {
+          studio = slideInStudio(
+            const ValueKey('sticker-studio'),
+            GiphyStickerPickerPanel(
+              projectDir: project.projectDir,
+              onPicked: _onStickerPicked,
+              onConfirm: () => _closeStickerStudio('studio_confirm'),
+            ),
+          );
+        } else if (showText) {
           studio = slideInStudio(
             ValueKey('text-studio-${studioOverlay.id}'),
             TapRegion(
@@ -5426,7 +5739,14 @@ class _EditorScreenState extends State<EditorScreen>
           );
         } else if (showTransition) {
           final current = project.segments[cutIndex];
-          final next = project.segments[cutIndex + 1];
+          final next = isEndCutIndex(project.segments, cutIndex)
+              ? syntheticBlackPadSegment(
+                  blackPadDuration(
+                    segments: project.segments,
+                    sequenceDuration: seq,
+                  ),
+                )
+              : project.segments[cutIndex + 1];
           final maxTd = () {
             final maxMs = [
               current.duration.inMilliseconds,
@@ -5602,6 +5922,7 @@ class _EditorScreenState extends State<EditorScreen>
           _selectedSegmentId = null;
           _selectedMusicId = null;
           _selectedTransitionAfterIndex = null;
+          _retargetStickerStudioIfNeeded(overlay);
         });
       },
       onMusicChanged: _replaceMusicClip,
@@ -5688,9 +6009,16 @@ class _EditorScreenState extends State<EditorScreen>
                 ),
                 const SizedBox(width: 8),
                 IconButton.outlined(
-                  onPressed: _exporting || _selectedOverlay == null
-                      ? null
-                      : _editSelectedOverlay,
+                  onPressed: _exporting ? null : _openStickerStudio,
+                  icon: const Icon(Icons.sticky_note_2_outlined),
+                  tooltip: l10n.addSticker,
+                ),
+                const SizedBox(width: 8),
+                IconButton.outlined(
+                  onPressed:
+                      _exporting || _selectedOverlay == null
+                          ? null
+                          : _editSelectedOverlay,
                   icon: const Icon(Icons.edit_outlined),
                   tooltip: l10n.editText,
                 ),

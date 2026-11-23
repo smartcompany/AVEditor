@@ -861,7 +861,8 @@ object NativeVideoEngineMedia {
       val mediaDur = (seg.endMs - seg.startMs).coerceAtLeast(0L)
       val segDur = if (seg.durationMs > 0L) seg.durationMs else mediaDur
       val track = index % 2
-      val td = if (index < segments.lastIndex) seg.transitionMs.coerceAtLeast(0L) else 0L
+      // Last segment may carry an outro into the black pad past picture EOF.
+      val td = seg.transitionMs.coerceAtLeast(0L)
       val inHalf = transitionHalf(prevTd)
       val outHalf = transitionHalf(td)
       if (prevTd > 0L && inHalf.second > 0L) {
@@ -898,19 +899,22 @@ object NativeVideoEngineMedia {
             srcDurMs = outHalf.first,
           ),
         )
+        // Last segment outro → black pad: no next clip on the other track.
+        val endCut = index == segments.lastIndex
         blends.add(
           BlendWindow(
             startMs = blendStart,
             durationMs = td,
             effect = seg.effect,
             outgoingTrack = track,
-            incomingTrack = (track + 1) % 2,
+            incomingTrack = if (endCut) -1 else (track + 1) % 2,
             layers = seg.layers,
             kind = seg.kind,
             reverse = seg.reverse,
             edge = seg.edge,
             scaleFrom = seg.scaleFrom,
             scaleTo = seg.scaleTo,
+            toBlack = endCut,
           ),
         )
       }
@@ -1090,6 +1094,8 @@ internal data class BlendWindow(
   val edge: String = "",
   val scaleFrom: Float = 0.84f,
   val scaleTo: Float = 1f,
+  /** Last-segment outro into the black pad (no incoming clip). */
+  val toBlack: Boolean = false,
 )
 
 internal data class MotionLayer(
@@ -1518,8 +1524,20 @@ private data class OverlaySpan(
   val sourceStartMs: Long,
 )
 
-private fun entranceFrameIndex(elapsedMs: Long, durationMs: Int, frameCount: Int): Int {
+private fun entranceFrameIndex(
+  elapsedMs: Long,
+  durationMs: Int,
+  frameCount: Int,
+  loop: Boolean = false,
+): Int {
   if (frameCount <= 1) return 0
+  if (loop) {
+    if (durationMs <= 0) return 0
+    val t = if (elapsedMs < 0L) 0L else elapsedMs % durationMs
+    return ((t.toDouble() / durationMs.toDouble()) * frameCount)
+      .toInt()
+      .coerceIn(0, frameCount - 1)
+  }
   if (durationMs <= 0 || elapsedMs >= durationMs) return frameCount - 1
   if (elapsedMs <= 0L) return 0
   val progress = elapsedMs.toDouble() / durationMs.toDouble()
@@ -1558,9 +1576,14 @@ private class TimedBitmapOverlay(
     if (spans.isEmpty()) return null
     val overlayStart = (overlay["overlayStartMs"] as? Number)?.toInt() ?: 0
     val duration = (overlay["entranceDurationMs"] as? Number)?.toInt() ?: 0
+    val loop = when (val raw = overlay["loop"]) {
+      is Boolean -> raw
+      is Number -> raw.toInt() != 0
+      else -> false
+    }
     val span = spans.firstOrNull { timeMs in it.startMs until it.endMs } ?: spans.first()
     val elapsed = (span.sourceStartMs - overlayStart + (timeMs - span.startMs)).coerceAtLeast(0L)
-    val index = entranceFrameIndex(elapsed, duration, count)
+    val index = entranceFrameIndex(elapsed, duration, count, loop)
     return String.format(Locale.US, "%s/frame_%04d.png", dir, index + 1)
   }
 

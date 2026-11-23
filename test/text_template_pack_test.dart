@@ -21,12 +21,12 @@ void main() {
       jsonDecode(raw) as Map<String, dynamic>,
     );
 
-    expect(catalog.version, 8);
+    expect(catalog.version, 0);
     final effects = catalog.allItems.where((e) => e.kind == 'effect').toList();
     final templates =
         catalog.allItems.where((e) => e.kind == 'template').toList();
     expect(effects, hasLength(20));
-    expect(templates, hasLength(20));
+    expect(templates, hasLength(22));
     // Original items stay first so existing projects keep their look.
     expect(effects.take(3).map((e) => e.id), [
       'effect_pop_green',

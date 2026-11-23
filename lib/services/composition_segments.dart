@@ -6,6 +6,7 @@ import 'package:aveditor/models/media_asset.dart';
 import 'package:aveditor/models/video_project.dart';
 import 'package:aveditor/services/transition_engine.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
+import 'package:aveditor/utils/music_timeline_ops.dart';
 import 'package:aveditor/widgets/transition_layer_runtime.dart';
 
 /// Native compositor / GPU effect id (slideleft, dissolve, …).
@@ -100,12 +101,30 @@ List<Map<String, dynamic>> encodeCompositionSegments(
   VideoProject? project,
   String? fallbackSourcePath,
 }) {
+  final seq = project == null
+      ? exportTimelineDuration(segments)
+      : projectSequenceDuration(
+          segments: segments,
+          sourceDuration: project.duration,
+          musicTracks: project.musicTracks,
+          overlays: project.overlays,
+        );
+  final pad = blackPadDuration(
+    segments: segments,
+    sequenceDuration: seq,
+  );
   final encoded = <Map<String, dynamic>>[];
   for (var i = 0; i < segments.length; i++) {
     final segment = segments[i];
     final next = i < segments.length - 1 ? segments[i + 1] : null;
+    // Last segment may still carry an outro into the black pad past picture EOF.
     final td = next == null
-        ? Duration.zero
+        ? (segment.hasTransition && pad > Duration.zero
+              ? clampedTransitionDuration(
+                  segment,
+                  next: syntheticBlackPadSegment(pad),
+                )
+              : Duration.zero)
         : clampedTransitionDuration(segment, next: next);
     final effect = segment.hasTransition && td > Duration.zero
         ? compositionEffectName(segment.transition)

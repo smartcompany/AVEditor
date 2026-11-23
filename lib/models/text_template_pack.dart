@@ -17,6 +17,7 @@ class TextTemplatePackItem {
     this.previewUrl,
     this.downloadSizeBytes = 0,
     this.animation = TextEntranceAnimation.none,
+    this.sampleText,
   });
 
   final String id;
@@ -41,6 +42,9 @@ class TextTemplatePackItem {
   /// Default entrance animation when this pack is applied.
   final TextEntranceAnimation animation;
 
+  /// Optional body text applied when the user picks this pack (e.g. crawl).
+  final String? sampleText;
+
   bool get hasLottie =>
       (lottieAsset != null && lottieAsset!.isNotEmpty) ||
       (lottieUrl != null && lottieUrl!.isNotEmpty);
@@ -57,6 +61,7 @@ class TextTemplatePackItem {
     if (previewUrl != null) 'previewUrl': previewUrl,
     'downloadSizeBytes': downloadSizeBytes,
     if (!animation.isNone) 'animation': animation.toJson(),
+    if (sampleText != null && sampleText!.isNotEmpty) 'sampleText': sampleText,
   };
 
   factory TextTemplatePackItem.fromJson(Map<String, dynamic> json) {
@@ -82,6 +87,7 @@ class TextTemplatePackItem {
       animation: TextEntranceAnimation.fromJson(
         json['animation'] as Map<String, dynamic>?,
       ),
+      sampleText: json['sampleText'] as String?,
     );
   }
 }

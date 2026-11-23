@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:aveditor/screens/gallery_picker_screen.dart';
 import 'package:aveditor/services/media_concat_service.dart';
+import 'package:aveditor/services/media_pick_batch.dart';
 import 'package:aveditor/utils/av_editor_log.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
@@ -21,13 +22,23 @@ class VideoImportService {
     ...MediaConcatService.imageExtensions,
   ];
 
-  /// Custom gallery multi-select for videos and photos. Empty when cancelled.
-  Future<List<String>> pickFromGallery(BuildContext context) async {
-    final assets = await GalleryPickerScreen.open(context);
-    if (assets == null || assets.isEmpty) return const [];
+  /// Custom gallery multi-select (library + background templates).
+  /// Empty [MediaPickBatch.paths] when cancelled.
+  Future<MediaPickBatch> pickFromGallery(BuildContext context) async {
+    final result = await GalleryPickerScreen.open(context);
+    if (result == null || result.isEmpty) {
+      return const MediaPickBatch(paths: []);
+    }
+
+    if (result.backgroundPaths.isNotEmpty) {
+      return MediaPickBatch(
+        paths: List<String>.from(result.backgroundPaths),
+        imageHoldDuration: result.imageHoldDuration,
+      );
+    }
 
     final files = <XFile>[];
-    for (final asset in assets) {
+    for (final asset in result.assets) {
       var file = await asset.originFile;
       file ??= await asset.file;
       if (file == null || !await file.exists() || await file.length() == 0) {
@@ -42,7 +53,8 @@ class VideoImportService {
         ),
       );
     }
-    return _materializeAll(files);
+    final paths = await _materializeAll(files);
+    return MediaPickBatch(paths: paths);
   }
 
   /// Camera still returns a single video path list.

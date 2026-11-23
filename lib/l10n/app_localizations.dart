@@ -246,6 +246,48 @@ abstract class AppLocalizations {
   /// **'Add text'**
   String get addText;
 
+  /// No description provided for @addSticker.
+  ///
+  /// In en, this message translates to:
+  /// **'Add sticker'**
+  String get addSticker;
+
+  /// No description provided for @stickerSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search Giphy stickers'**
+  String get stickerSearchHint;
+
+  /// No description provided for @stickerPoweredByGiphy.
+  ///
+  /// In en, this message translates to:
+  /// **'Powered by GIPHY'**
+  String get stickerPoweredByGiphy;
+
+  /// No description provided for @stickerApiKeyMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'Giphy API key is not configured.'**
+  String get stickerApiKeyMissing;
+
+  /// No description provided for @stickerLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load stickers.'**
+  String get stickerLoadFailed;
+
+  /// No description provided for @stickerDownloadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not download this sticker.'**
+  String get stickerDownloadFailed;
+
+  /// No description provided for @stickerEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No stickers found.'**
+  String get stickerEmpty;
+
   /// No description provided for @addTemplateText.
   ///
   /// In en, this message translates to:

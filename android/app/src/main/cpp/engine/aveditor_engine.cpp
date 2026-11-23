@@ -45,6 +45,7 @@ struct Blend {
   int64_t duration_ms = 0;
   int outgoing = 0;
   int incoming = 1;
+  bool to_black = false;
   std::string effect = "fade";
 };
 
@@ -109,6 +110,7 @@ Plan parse_plan(const char *json) {
     b.duration_ms = jsonmini::read_i64(obj.c_str(), "durationMs");
     b.outgoing = jsonmini::read_int(obj.c_str(), "outgoingTrack");
     b.incoming = jsonmini::read_int(obj.c_str(), "incomingTrack", 1);
+    b.to_black = b.incoming < 0 || jsonmini::read_int(obj.c_str(), "toBlack", 0) != 0;
     b.effect = jsonmini::read_string(obj.c_str(), "effect");
     if (b.effect.empty()) b.effect = "fade";
     if (b.duration_ms > 0) plan.blends.push_back(b);
@@ -615,8 +617,17 @@ void aveditor_engine_active_slots(
   const int64_t pos = engine->position_ms;
   for (const auto &b : engine->plan.blends) {
     if (pos >= b.start_ms && pos < b.start_ms + b.duration_ms) {
-      if (out_a) *out_a = 1;
-      if (out_b) *out_b = 1;
+      if (b.to_black) {
+        // Outro into black pad — only the outgoing decoder is needed.
+        if (b.outgoing == 0) {
+          if (out_a) *out_a = 1;
+        } else {
+          if (out_b) *out_b = 1;
+        }
+      } else {
+        if (out_a) *out_a = 1;
+        if (out_b) *out_b = 1;
+      }
       if (blend_t) {
         *blend_t = b.duration_ms > 0
                        ? static_cast<float>(pos - b.start_ms) / static_cast<float>(b.duration_ms)

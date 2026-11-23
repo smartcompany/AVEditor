@@ -18,17 +18,24 @@ internal object EnginePlanBuilder {
     val blends: List<BlendWindow> = emptyList(),
   ) {
     /**
-     * Transition pose at composition time [positionMs] when both tracks are on
-     * screen ([mask] == 3). Same window rule as libaveditor_engine.
+     * Transition pose at composition time [positionMs].
+     * Mid-cuts need both tracks ([mask] == 3); end-cut → black only needs the
+     * outgoing slot.
      */
     fun blendDrawAt(positionMs: Long, mask: Int): BlendDraw? {
-      if (mask != 3) return null
       val blend = blends.firstOrNull {
         positionMs >= it.startMs && positionMs < it.startMs + it.durationMs
       } ?: return null
+      val outgoingBit = if (blend.outgoingTrack == 0) 1 else 2
+      val dual = mask == 3
+      val soloOutro = blend.toBlack && (mask and outgoingBit) != 0
+      if (!dual && !soloOutro) return null
       val t = if (blend.durationMs <= 0L) 1f
       else ((positionMs - blend.startMs).toFloat() / blend.durationMs.toFloat()).coerceIn(0f, 1f)
-      return resolveBlend(blend, t).also { it.outgoingTrack = blend.outgoingTrack }
+      return resolveBlend(blend, t).also {
+        it.outgoingTrack = blend.outgoingTrack
+        it.toBlack = blend.toBlack
+      }
     }
   }
 
@@ -70,6 +77,7 @@ internal object EnginePlanBuilder {
           .put("durationMs", blend.durationMs)
           .put("outgoingTrack", blend.outgoingTrack)
           .put("incomingTrack", blend.incomingTrack)
+          .put("toBlack", blend.toBlack)
           .put("effect", blend.effect)
           .put("kind", blend.kind)
           .put("reverse", blend.reverse)

@@ -79,6 +79,7 @@ class ProjectStorageService {
   /// Images hold [kDefaultImageHoldDuration] on the timeline (no bake/concat).
   Future<String> createFromImports(
     List<String> pickedPaths, {
+    Duration? imageHoldDuration,
     void Function(double progress)? onProgress,
     MediaConcatService? concat,
   }) async {
@@ -136,7 +137,8 @@ class ProjectStorageService {
       mediaAssets.add(asset);
       primaryPath ??= destPath;
 
-      final clipEnd = isImage ? kDefaultImageHoldDuration : assetDuration;
+      final imageHold = imageHoldDuration ?? kDefaultImageHoldDuration;
+      final clipEnd = isImage ? imageHold : assetDuration;
       segments.add(
         ClipSegment(
           mediaId: assetId,
@@ -165,11 +167,15 @@ class ProjectStorageService {
   }
 
   /// Copies [pickedPaths] into [project] and appends clips after the last segment.
+  ///
+  /// [imageHoldDuration] overrides [kDefaultImageHoldDuration] for stills in
+  /// this batch (used by background templates — typically 5s).
   Future<VideoProject> appendImports(
     VideoProject project,
     List<String> pickedPaths, {
     void Function(double progress)? onProgress,
     MediaConcatService? concat,
+    Duration? imageHoldDuration,
   }) async {
     final paths = [
       for (final path in pickedPaths)
@@ -224,11 +230,12 @@ class ProjectStorageService {
         duration: assetDuration,
       );
       added.add(asset);
+      final imageHold = imageHoldDuration ?? kDefaultImageHoldDuration;
       newSegments.add(
         ClipSegment(
           mediaId: assetId,
           start: Duration.zero,
-          end: isImage ? kDefaultImageHoldDuration : assetDuration,
+          end: isImage ? imageHold : assetDuration,
         ),
       );
     }

@@ -28,6 +28,7 @@ dependencies:
   gal: ^2.3.3
   shared_preferences: ^2.5.3
   http: ^1.4.0
+  image: ^4.5.4
   share_plus: ^7.2.2
   url_launcher: ^6.2.2
   audioplayers: ^6.4.0
@@ -78,6 +79,7 @@ flutter:
     - assets/text_packs/catalog.json
     - assets/text_packs/lottie/
     - assets/transitions/catalog.json
+    - assets/backgrounds/
   fonts:
     # Pinned so overlay text lays out identically in the preview and the export.
     # Do not ship Apple system faces (e.g. Arial) — ITMS-91198.

@@ -6,6 +6,9 @@ const Duration kMaxImageHoldDuration = Duration(minutes: 5);
 /// Default on-timeline length for a newly imported still.
 const Duration kDefaultImageHoldDuration = Duration(seconds: 3);
 
+/// Default hold for server-driven background templates (prologue / epilogue).
+const Duration kDefaultBackgroundHoldDuration = Duration(seconds: 5);
+
 enum MediaAssetKind { video, image }
 
 /// One imported video or photo file inside a project folder.

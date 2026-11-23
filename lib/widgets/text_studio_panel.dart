@@ -148,13 +148,28 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
         seededColor = Color(colors[colors.length ~/ 2]);
       }
     }
+    final current = widget.overlay;
+    final sample = item.sampleText?.trim();
+    final replaceText = sample != null &&
+        sample.isNotEmpty &&
+        (current.text.trim().isEmpty || item.animation.isContinuous);
+    var nextEnd = current.end;
+    if (item.animation.isContinuous) {
+      final spanMs = item.animation.durationMs.clamp(1000, 30000);
+      nextEnd = current.start + Duration(milliseconds: spanMs);
+      if (nextEnd <= current.start) {
+        nextEnd = current.start + const Duration(seconds: 18);
+      }
+    }
     _emitOverlay(
-      widget.overlay.copyWith(
+      current.copyWith(
         packItemId: item.id,
         templateId: null,
         style: TextOverlayStyle.plain,
-        fontFamily: fontId ?? widget.overlay.fontFamily,
-        color: seededColor ?? widget.overlay.color,
+        fontFamily: fontId ?? current.fontFamily,
+        color: seededColor ?? current.color,
+        text: replaceText ? sample : current.text,
+        end: nextEnd,
         // Clear override so pack animation (templates) can apply;
         // static effects ship with no animation.
         animationId: null,
@@ -281,21 +296,40 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
     );
   }
 
+  /// Compact tile copy: multi-line so templates read as body text, not a glyph.
+  static const _effectPreview = 'Aa';
+  static const _templatePreview = 'Hello\nWorld';
+
+  /// First few lines of [sample], capped for the small grid cell.
+  static String _tilePreviewText(TextTemplatePackItem pack, String fallback) {
+    final sample = pack.sampleText?.trim();
+    if (sample == null || sample.isEmpty) return fallback;
+    final lines = sample
+        .split(RegExp(r'\n+'))
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .take(3)
+        .toList();
+    if (lines.isEmpty) return fallback;
+    return lines.join('\n');
+  }
+
   Widget _buildTabBody(AppLocalizations l10n) {
     switch (_tab) {
       case TextStudioTab.templates:
         return _buildPackGrid(
           l10n,
           kind: 'effect',
-          previewText: 'Aa',
+          previewText: _effectPreview,
           includeDefault: true,
         );
       case TextStudioTab.textTemplates:
         return _buildPackGrid(
           l10n,
           kind: 'template',
-          previewText: 'Hello',
+          previewText: _templatePreview,
           loopSelectedAnimation: true,
+          useSamplePreview: true,
         );
     }
   }
@@ -306,6 +340,7 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
     required String previewText,
     bool loopSelectedAnimation = false,
     bool includeDefault = false,
+    bool useSamplePreview = false,
   }) {
     final packItems = <TextTemplatePackItem>[
       for (final category in _packService.catalog.categories)
@@ -345,6 +380,9 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
         final selected = widget.overlay.packItemId == pack.id;
         final downloading = _packService.isDownloading(pack.id);
         final installed = _packService.isInstalled(pack);
+        final tileText = useSamplePreview
+            ? _tilePreviewText(pack, previewText)
+            : previewText;
         return _TemplateTile(
           selected: selected,
           label: pack.title,
@@ -380,7 +418,7 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
                   height: 44,
                 ),
               _PackAaPreview(
-                text: previewText,
+                text: tileText,
                 color: _catalogPreviewAccent(pack.style),
                 fontFamily: pack.style.preferredFontId,
                 template: pack.style,
@@ -486,6 +524,7 @@ class _PackAaPreviewState extends State<_PackAaPreview>
     final progress = (elapsed / entranceMs).clamp(0.0, 1.0);
     return evaluateTextEntrance(
       animationId: anim.id,
+      animation: anim,
       text: widget.text,
       progress: progress,
       fontSize: 14,
@@ -494,8 +533,13 @@ class _PackAaPreviewState extends State<_PackAaPreview>
 
   @override
   Widget build(BuildContext context) {
-    final fontSize = widget.text.length > 2 ? 14.0 : 18.0;
-    final maxWidth = widget.text.length > 2 ? 72.0 : 64.0;
+    final multiline = widget.text.contains('\n');
+    final fontSize = multiline
+        ? 11.0
+        : (widget.text.length > 2 ? 14.0 : 18.0);
+    final maxWidth = multiline
+        ? 78.0
+        : (widget.text.length > 2 ? 72.0 : 64.0);
 
     // Until Google Fonts finish loading, paint with the bundled overlay font
     // so tiles like Pastel are never blank.

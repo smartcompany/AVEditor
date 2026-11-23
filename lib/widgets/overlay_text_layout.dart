@@ -379,13 +379,23 @@ TextPainter layoutOverlayText({
 
 /// Resolves [overlay] into a frame of [frameWidth] x [frameHeight] pixels.
 ///
-/// Box size hugs the glyphs (including pack brush / stroke pads) so selection
-/// chrome and export layout match the on-canvas look.
+/// Text: box hugs the glyphs (including pack brush / stroke pads).
+/// Stickers: use stored [TextOverlay.boxWidth]/[TextOverlay.boxHeight] so
+/// selection chrome matches the GIF bounds (not the Giphy title string).
 OverlayBox overlayBoxForFrame(
   TextOverlay overlay, {
   required double frameWidth,
 }) {
   final scale = frameWidth / kOverlayFrameWidth;
+  if (overlay.isSticker) {
+    return OverlayBox(
+      width: overlay.boxWidth * scale,
+      height: overlay.boxHeight * scale,
+      fontSize: overlay.fontSize * scale,
+      offset: overlay.offset,
+      rotation: overlay.rotation,
+    );
+  }
   final fitted = measureFittedOverlayBox(
     text: overlay.text,
     fontSize: overlay.fontSize,
@@ -483,6 +493,7 @@ TextOverlay fitOverlayBoxToText(
   TextOverlay overlay, {
   String? emptyPlaceholder,
 }) {
+  if (overlay.isSticker) return overlay;
   final size = measureFittedOverlayBox(
     text: overlay.text,
     fontSize: overlay.fontSize,
@@ -599,6 +610,22 @@ void paintTextStyleTemplate({
 }) {
   final state = entrance ?? TextEntranceState.fullyVisible;
   if (state.isInvisible) return;
+
+  final crawl = state.hasCrawlTransform;
+  if (crawl) {
+    canvas.save();
+    // Keep perspective on an identity matrix (setEntry after translate skews
+    // the vanishing point sideways — crawl looked yawed left). Pivot at the
+    // top-center so scroll goes bottom → top into the distance.
+    final pivotX = origin.dx + maxWidth / 2;
+    final pivotY = origin.dy;
+    canvas.translate(pivotX, pivotY);
+    final matrix = Matrix4.identity()
+      ..setEntry(3, 2, state.layerPerspective)
+      ..rotateX(state.layerTilt);
+    canvas.transform(matrix.storage);
+    canvas.translate(-pivotX, -pivotY + state.layerScroll);
+  }
 
   void paintStatic({required double opacity, required Offset paintOrigin}) {
     if (opacity <= 0.01) return;
@@ -735,6 +762,7 @@ void paintTextStyleTemplate({
       opacity: state.layerOpacity,
       paintOrigin: origin + Offset(0, state.layerDy),
     );
+    if (crawl) canvas.restore();
     return;
   }
 
@@ -835,6 +863,7 @@ void paintTextStyleTemplate({
   }
 
   metricsPainter.dispose();
+  if (crawl) canvas.restore();
 }
 
 int _lineIndexForY(List<ui.LineMetrics> lines, double y) {
@@ -1093,6 +1122,7 @@ void paintOverlayTextLayer({
     // Export static path without an explicit progress → fully revealed.
     resolvedEntrance = evaluateTextEntrance(
       animationId: anim.id,
+      animation: anim,
       text: overlay.text,
       progress: 1,
       fontSize: box.fontSize,
@@ -1238,6 +1268,9 @@ class _OverlayTextDisplayPainter extends CustomPainter {
         oldDelegate.textAlign != textAlign ||
         oldDelegate.hintColor != hintColor ||
         oldDelegate.entrance?.progress != entrance?.progress ||
-        oldDelegate.entrance?.animationId != entrance?.animationId;
+        oldDelegate.entrance?.animationId != entrance?.animationId ||
+        oldDelegate.entrance?.layerScroll != entrance?.layerScroll ||
+        oldDelegate.entrance?.layerTilt != entrance?.layerTilt ||
+        oldDelegate.entrance?.layerPerspective != entrance?.layerPerspective;
   }
 }

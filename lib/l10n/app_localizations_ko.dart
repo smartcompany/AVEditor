@@ -85,6 +85,27 @@ class AppLocalizationsKo extends AppLocalizations {
   String get addText => '텍스트 추가';
 
   @override
+  String get addSticker => '스티커 추가';
+
+  @override
+  String get stickerSearchHint => 'Giphy 스티커 검색';
+
+  @override
+  String get stickerPoweredByGiphy => 'Powered by GIPHY';
+
+  @override
+  String get stickerApiKeyMissing => 'Giphy API 키가 설정되지 않았습니다.';
+
+  @override
+  String get stickerLoadFailed => '스티커를 불러오지 못했습니다.';
+
+  @override
+  String get stickerDownloadFailed => '스티커를 받지 못했습니다.';
+
+  @override
+  String get stickerEmpty => '스티커가 없습니다.';
+
+  @override
   String get addTemplateText => '템플릿 텍스트 추가';
 
   @override

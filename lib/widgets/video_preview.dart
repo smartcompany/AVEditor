@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:aveditor/models/clip_segment.dart';
@@ -16,6 +17,7 @@ import 'package:aveditor/widgets/text_entrance.dart';
 import 'package:aveditor/widgets/text_template_pack_browser.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
 
 export 'overlay_geometry.dart' show OverlayGeometry, OverlayBox;
 
@@ -75,6 +77,7 @@ class VideoPreviewWithOverlays extends StatefulWidget {
     this.onOverlayDuplicated,
     this.onOverlayEdit,
     this.hostViewportSize,
+    this.projectDir,
   });
 
   final Widget videoChild;
@@ -123,6 +126,9 @@ class VideoPreviewWithOverlays extends StatefulWidget {
   ///
   /// Knob chrome clamps to this viewport (video + gutters), not just the frame.
   final Size? hostViewportSize;
+
+  /// Project root for resolving sticker relative paths (`media/stickers/…`).
+  final String? projectDir;
 
   @override
   State<VideoPreviewWithOverlays> createState() =>
@@ -692,7 +698,12 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
       if (!alreadySelected) {
         widget.onOverlaySelected?.call(tapped);
       }
-      _grabBody(tapped, event.pointer, local, editOnRelease: alreadySelected);
+      _grabBody(
+        tapped,
+        event.pointer,
+        local,
+        editOnRelease: alreadySelected && !tapped.isSticker,
+      );
       return;
     }
 
@@ -825,7 +836,8 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
     }
 
     // Text body tap → inline edit (selection was applied on pointer-down).
-    if (!suppressEdit) {
+    // Stickers have no text editor — keep selection only.
+    if (!suppressEdit && !target.isSticker) {
       OverlayEventLog.log('PreviewCanvas', 'tapRequestEdit', {'id': target.id});
       widget.onRequestEdit?.call(target);
     } else {
@@ -970,11 +982,13 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
                     previewHeight: _previewH,
                     knobClampRect: _knobClampRect,
                     selected: overlay.id == widget.selectedOverlayId,
-                    editing: overlay.id == widget.editingOverlayId,
+                    editing: overlay.id == widget.editingOverlayId &&
+                        !overlay.isSticker,
                     selectAllOnEdit:
                         widget.selectAllOnEdit &&
                         overlay.id == widget.editingOverlayId,
                     textHint: widget.textHint,
+                    projectDir: widget.projectDir,
                     onTextChanged: (text) =>
                         widget.onOverlayTextChanged?.call(overlay, text),
                     onEditingComplete: widget.onEditingComplete,
@@ -1017,6 +1031,7 @@ class _DraggableOverlayLabel extends StatefulWidget {
     this.selectAllOnEdit = false,
     this.onEditingComplete,
     this.textHint,
+    this.projectDir,
   });
 
   final TextOverlay overlay;
@@ -1032,6 +1047,7 @@ class _DraggableOverlayLabel extends StatefulWidget {
   final bool editing;
   final bool selectAllOnEdit;
   final String? textHint;
+  final String? projectDir;
   final ValueChanged<String> onTextChanged;
   final void Function(String source)? onEditingComplete;
 
@@ -1233,15 +1249,48 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
     );
   }
 
+  Widget _buildStickerBody() {
+    final relative = widget.overlay.stickerLocalPath;
+    final root = widget.projectDir;
+    if (relative == null || relative.isEmpty || root == null || root.isEmpty) {
+      return const ColoredBox(
+        color: Color(0x33FFFFFF),
+        child: Center(child: Icon(Icons.sticky_note_2_outlined)),
+      );
+    }
+    final file = File(p.join(root, relative));
+    if (!file.existsSync()) {
+      return const ColoredBox(
+        color: Color(0x33FFFFFF),
+        child: Center(child: Icon(Icons.broken_image_outlined)),
+      );
+    }
+    // Fill the chrome box — box size is the sticker bound (not text-fitted).
+    return Image.file(
+      file,
+      fit: BoxFit.fill,
+      gaplessPlayback: true,
+      filterQuality: FilterQuality.medium,
+      errorBuilder: (_, _, _) => const Center(
+        child: Icon(Icons.broken_image_outlined),
+      ),
+    );
+  }
+
   Widget _buildBody() {
+    if (widget.overlay.isSticker) {
+      return _buildStickerBody();
+    }
     final template = resolveOverlayTemplate(widget.overlay);
     final anim = resolveOverlayAnimation(widget.overlay);
-    // Paused / scrubbing / editing: show the finished look so Journal paper etc.
-    // stay visible while picking templates. Entrance only runs during playback.
-    final entrance = widget.editing || !widget.isPlaying || anim.isNone
-        ? TextEntranceState.fullyVisible
-        : evaluateTextEntrance(
+    // Short entrances: paused / scrubbing / editing show the finished look.
+    // Continuous crawl always follows the playhead so scrubbing stays useful.
+    final liveEntrance = !anim.isNone &&
+        (anim.isContinuous || (widget.isPlaying && !widget.editing));
+    final entrance = liveEntrance
+        ? evaluateTextEntrance(
             animationId: anim.id,
+            animation: anim,
             text: widget.overlay.text.isEmpty
                 ? (widget.textHint ?? '')
                 : widget.overlay.text,
@@ -1251,7 +1300,8 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
               animation: anim,
             ),
             fontSize: widget.box.fontSize,
-          );
+          )
+        : TextEntranceState.fullyVisible;
 
     // Layout width = box minus pads so wrap matches fitOverlayBoxToText.
     final padH = overlayTextPadH(

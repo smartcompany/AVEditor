@@ -5,6 +5,7 @@ import 'package:aveditor/navigation/editor_route.dart';
 import 'package:aveditor/screens/settings_screen.dart';
 import 'package:aveditor/services/analytics_service.dart';
 import 'package:aveditor/services/export_share_service.dart';
+import 'package:aveditor/services/media_pick_batch.dart';
 import 'package:aveditor/services/project_storage_service.dart';
 import 'package:aveditor/services/video_import_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
@@ -86,7 +87,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _pickGallery() async {
-    await _runPick(() => _import.pickFromGallery(context));
+    await _runPickBatch(() => _import.pickFromGallery(context));
   }
 
   Future<void> _pickFiles() async {
@@ -105,12 +106,44 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _convertProgress = next);
   }
 
+  Future<void> _runPickBatch(Future<MediaPickBatch> Function() pick) async {
+    try {
+      final batch = await pick();
+      if (batch.isEmpty) return;
+      await _createProjectFromPaths(
+        batch.paths,
+        imageHoldDuration: batch.imageHoldDuration,
+      );
+    } catch (e, st) {
+      if (!mounted) return;
+      final detail = e.toString();
+      final message = detail.contains('empty_video')
+          ? context.l10n.videoPickEmpty
+          : context.l10n.videoPickError(detail);
+      showLoggedSnackBar(context, message, error: e, stackTrace: st);
+    }
+  }
+
   Future<void> _runPick(Future<List<String>> Function() pick) async {
     try {
       final paths = await pick();
-      if (paths.isEmpty) {
-        return;
-      }
+      if (paths.isEmpty) return;
+      await _createProjectFromPaths(paths);
+    } catch (e, st) {
+      if (!mounted) return;
+      final detail = e.toString();
+      final message = detail.contains('empty_video')
+          ? context.l10n.videoPickEmpty
+          : context.l10n.videoPickError(detail);
+      showLoggedSnackBar(context, message, error: e, stackTrace: st);
+    }
+  }
+
+  Future<void> _createProjectFromPaths(
+    List<String> paths, {
+    Duration? imageHoldDuration,
+  }) async {
+    try {
       for (final path in paths) {
         if (!File(path).existsSync()) {
           throw StateError('file not found');
@@ -124,6 +157,7 @@ class _HomeScreenState extends State<HomeScreen> {
       });
       final projectId = await _projectStorage.createFromImports(
         paths,
+        imageHoldDuration: imageHoldDuration,
         onProgress: _onConvertProgress,
       );
       AnalyticsService.instance.log('project_created');

@@ -5,57 +5,57 @@
     
     
       
-      <testcase classname="fastlane.lanes" name="00: app_store_connect_api_key" time="0.003094">
+      <testcase classname="fastlane.lanes" name="00: app_store_connect_api_key" time="0.00299">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="01: default_platform" time="9.1e-05">
+      <testcase classname="fastlane.lanes" name="01: default_platform" time="0.000118">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="02: flutter pub get" time="0.865352">
+      <testcase classname="fastlane.lanes" name="02: flutter pub get" time="0.849209">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="03: cocoapods" time="2.709796">
+      <testcase classname="fastlane.lanes" name="03: cocoapods" time="2.339647">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="04: increment_build_number" time="0.231209">
+      <testcase classname="fastlane.lanes" name="04: increment_build_number" time="0.244426">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="05: get_provisioning_profile" time="4.31061">
+      <testcase classname="fastlane.lanes" name="05: get_provisioning_profile" time="4.390849">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="06: update_code_signing_settings" time="0.038396">
+      <testcase classname="fastlane.lanes" name="06: update_code_signing_settings" time="0.028516">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="07: clean_build_artifacts" time="0.000179">
+      <testcase classname="fastlane.lanes" name="07: clean_build_artifacts" time="0.000616">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="08: build_app" time="101.736366">
+      <testcase classname="fastlane.lanes" name="08: build_app" time="84.536332">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="09: update_code_signing_settings" time="0.013214">
+      <testcase classname="fastlane.lanes" name="09: update_code_signing_settings" time="0.015983">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="10: upload_to_app_store" time="78.26833">
+      <testcase classname="fastlane.lanes" name="10: upload_to_app_store" time="62.759384">
         
       </testcase>
     

@@ -62,7 +62,11 @@ private class TransitionBlendProgram(
     } else {
       ((ms - blend.startMs).toFloat() / blend.durationMs.toFloat()).coerceIn(0f, 1f)
     }
-    val draw = if (blend == null) BlendDraw() else resolveBlend(blend, t)
+    val draw = if (blend == null) {
+      BlendDraw()
+    } else {
+      resolveBlend(blend, t).also { it.toBlack = blend.toBlack }
+    }
     // Preview and export share the packed compositor frame (left=out, right=in).
     val packed = blend != null && mix.sourcePath.isEmpty()
     val mode = if (packed) draw.mode else MODE_COPY
@@ -126,6 +130,7 @@ private class TransitionBlendProgram(
     uniform1i("uWipeEdgeB", draw.wipeEdgeB)
     uniform1f("uBright", draw.bright)
     uniform1f("uWhite", if (draw.white) 1f else 0f)
+    uniform1f("uIncomingBlack", if (draw.toBlack) 1f else 0f)
     uniform1f("uRipple", draw.ripple)
     uniform1f("uRippleAmount", draw.rippleAmount)
     if (blend == null) {
@@ -293,6 +298,7 @@ internal object TransitionBlendGlsl {
       uniform int uWipeEdgeB;
       uniform float uBright;
       uniform float uWhite;
+      uniform float uIncomingBlack;
       uniform float uRipple;
       uniform float uRippleAmount;
       uniform float uAOnTop;
@@ -320,12 +326,14 @@ internal object TransitionBlendGlsl {
       }
 
       vec4 sampleIncoming(vec2 uv) {
+        if (uIncomingBlack > 0.5) return vec4(0.0, 0.0, 0.0, 1.0);
         if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return vec4(0.0);
         float y = uIncomingFlip > 0.5 ? 1.0 - uv.y : uv.y;
         return texture2D(uIncoming, vec2(uv.x, y));
       }
 
       vec4 take(vec2 uv, float side) {
+        if (side > 0.5 && uIncomingBlack > 0.5) return vec4(0.0, 0.0, 0.0, 1.0);
         if (uPacked >= 0.5) return sampleRaw(vec2(uv.x * 0.5 + side * 0.5, uv.y));
         if (uSplit >= 0.5 && side > 0.5) return sampleIncoming(uv);
         return sampleRaw(uv);
@@ -337,6 +345,7 @@ internal object TransitionBlendGlsl {
   const val SAMPLE_OES = """
       vec4 take(vec2 uv, float side) {
         if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return vec4(0.0);
+        if (side > 0.5 && uIncomingBlack > 0.5) return vec4(0.0, 0.0, 0.0, 1.0);
         vec2 tc = vec2(uv.x, 1.0 - uv.y);
         return side > 0.5 ? texture2D(uIncoming, tc) : texture2D(uTex, tc);
       }
@@ -590,6 +599,8 @@ internal class BlendDraw(
   /** Decoder track (0/1) of the outgoing clip. Clips alternate tracks, so every
    *  second transition runs track 1 → track 0. */
   var outgoingTrack: Int = 0,
+  /** End-cut outro: sample solid black instead of the incoming decoder. */
+  var toBlack: Boolean = false,
 )
 
 internal fun resolveBlend(blend: BlendWindow, t: Float): BlendDraw {

@@ -96,6 +96,112 @@ void main() {
       expect(mid.layerOpacity, lessThan(1));
       expect(mid.layerDy, greaterThan(0));
     });
+
+    test('crawl scrolls and keeps tilt through progress 1', () {
+      const fontSize = 40.0;
+      const anim = TextEntranceAnimation(
+        id: TextEntranceIds.crawl,
+        durationMs: 18000,
+        tiltDeg: 54,
+        scrollStartFactor: 14,
+        scrollEndFactor: -32,
+      );
+      final start = evaluateTextEntrance(
+        animationId: TextEntranceIds.crawl,
+        animation: anim,
+        text: 'EPISODE\nZERO',
+        progress: 0,
+        fontSize: fontSize,
+      );
+      final mid = evaluateTextEntrance(
+        animationId: TextEntranceIds.crawl,
+        animation: anim,
+        text: 'EPISODE\nZERO',
+        progress: 0.5,
+        fontSize: fontSize,
+      );
+      final end = evaluateTextEntrance(
+        animationId: TextEntranceIds.crawl,
+        animation: anim,
+        text: 'EPISODE\nZERO',
+        progress: 1,
+        fontSize: fontSize,
+      );
+      expect(start.hasCrawlTransform, isTrue);
+      // Negative Flutter tilt: bottom nearer, top into the distance.
+      expect(start.layerTilt, lessThan(-0.5));
+      expect(start.layerScroll, closeTo(fontSize * 14, 0.01));
+      expect(end.layerScroll, closeTo(fontSize * -32, 0.01));
+      expect(start.layerScroll, greaterThan(mid.layerScroll));
+      expect(mid.layerScroll, greaterThan(end.layerScroll));
+      expect(end.layerTilt, equals(start.layerTilt));
+      expect(end.hasCrawlTransform, isTrue);
+      expect(end.isFullyVisible, isFalse);
+    });
+
+    test('crawl geometry follows server-driven animation fields', () {
+      const anim = TextEntranceAnimation(
+        id: TextEntranceIds.crawl,
+        durationMs: 12000,
+        tiltDeg: 40,
+        perspective: 0.002,
+        scrollStartFactor: 8,
+        scrollEndFactor: -20,
+      );
+      final state = evaluateTextEntrance(
+        animationId: TextEntranceIds.crawl,
+        animation: anim,
+        text: 'HELLO',
+        progress: 0,
+        fontSize: 10,
+      );
+      expect(state.layerTilt, closeTo(anim.flutterCrawlTiltRadians, 1e-9));
+      expect(state.layerPerspective, closeTo(0.002, 1e-9));
+      expect(state.layerScroll, closeTo(80, 0.01));
+    });
+
+    test('flat credits crawl uses zero tilt', () {
+      const anim = TextEntranceAnimation(
+        id: TextEntranceIds.crawl,
+        durationMs: 16000,
+        tiltDeg: 0,
+        scrollStartFactor: 12,
+        scrollEndFactor: -28,
+      );
+      final state = evaluateTextEntrance(
+        animationId: TextEntranceIds.crawl,
+        animation: anim,
+        text: '타이틀\n이름  설명',
+        progress: 0.25,
+        fontSize: 20,
+      );
+      expect(state.layerTilt, 0);
+      expect(state.hasCrawlTransform, isTrue);
+      expect(state.layerScroll, lessThan(20 * 12));
+    });
+
+    test('crawl progress follows overlay span', () {
+      final overlay = TextOverlay(
+        text: 'Long ago…',
+        start: Duration.zero,
+        end: const Duration(seconds: 20),
+        animationId: TextEntranceIds.crawl,
+      );
+      final anim = resolveOverlayAnimation(overlay);
+      expect(anim.isContinuous, isTrue);
+      expect(
+        resolvedEntranceDuration(overlay: overlay, animation: anim),
+        const Duration(seconds: 20),
+      );
+      expect(
+        entranceProgressAt(
+          overlay: overlay,
+          position: const Duration(seconds: 10),
+          animation: anim,
+        ),
+        closeTo(0.5, 0.001),
+      );
+    });
   });
 
   group('catalog animation', () {
@@ -158,6 +264,45 @@ void main() {
       expect(
         entranceFrameIndex(elapsedMs: 5000, durationMs: 800, frameCount: 21),
         20,
+      );
+    });
+
+    test('looping sticker frames cycle past one loop duration', () {
+      expect(
+        entranceFrameIndex(
+          elapsedMs: 0,
+          durationMs: 1000,
+          frameCount: 10,
+          loop: true,
+        ),
+        0,
+      );
+      expect(
+        entranceFrameIndex(
+          elapsedMs: 500,
+          durationMs: 1000,
+          frameCount: 10,
+          loop: true,
+        ),
+        5,
+      );
+      expect(
+        entranceFrameIndex(
+          elapsedMs: 1000,
+          durationMs: 1000,
+          frameCount: 10,
+          loop: true,
+        ),
+        0,
+      );
+      expect(
+        entranceFrameIndex(
+          elapsedMs: 2500,
+          durationMs: 1000,
+          frameCount: 10,
+          loop: true,
+        ),
+        5,
       );
     });
 

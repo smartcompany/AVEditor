@@ -43,8 +43,9 @@ class ClipSegment {
   final Duration fadeIn;
   final Duration fadeOut;
 
-  /// Transition applied **after** this segment into the next one.
-  /// Null / none = hard cut. Ignored on the last segment.
+  /// Transition applied **after** this segment into the next one (or black pad
+  /// when this is the last segment and the project has a picture/black seam).
+  /// Null / none = hard cut.
   final AppliedTransition? transition;
 
   /// Legacy accessor — prefer [transition].

@@ -1,5 +1,5 @@
 {
-  "version": 10,
+  "version": 0,
   "baseUrl": "",
   "categories": [
     {
@@ -1243,6 +1243,77 @@
               "shape": "capsule"
             }
           },
+          "accessTier": "free"
+        },
+        {
+          "id": "tpl_star_wars_crawl",
+          "title": "Star Crawl",
+          "kind": "template",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "animation": {
+            "id": "crawl",
+            "durationMs": 18000,
+            "tiltDeg": 54,
+            "perspective": 0.0012,
+            "scrollStartFactor": 14,
+            "scrollEndFactor": -32
+          },
+          "style": {
+            "id": "tpl_star_wars_crawl",
+            "label": "Star Crawl",
+            "fillUseAccent": false,
+            "fillColor": 4294961183,
+            "preferredFontId": "blackHanSans",
+            "strokes": [
+              {
+                "widthFactor": 0.06,
+                "useAccent": false,
+                "color": 4284104704
+              }
+            ],
+            "shadow": {
+              "dxFactor": 0,
+              "dyFactor": 0.05,
+              "blurFactor": 0.15,
+              "useAccent": false,
+              "color": 4278190080,
+              "opacity": 0.45
+            }
+          },
+          "sampleText": "EPISODE ZERO\n\nA NEW TIMELINE\n\nIt is a period of creative chaos.\nRebel editors, striking from a\nhidden studio, have won their\nfirst victory against the Empire\nof blank timelines.\n\nDuring the battle, spies managed\nto steal secret plans to the\nultimate editing station, the\nAV EDITOR, an app with enough\npower to finish an entire short\nin a single afternoon.\n\nPursued by endless export queues,\nthe Rebel editors race home aboard\ntheir timeline, custodians of the\nstolen plans that can save their\npeople and restore free cuts to\nthe galaxy…",
+          "accessTier": "free"
+        },
+        {
+          "id": "tpl_credits_scroll",
+          "title": "Credits Scroll",
+          "kind": "template",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "animation": {
+            "id": "crawl",
+            "durationMs": 16000,
+            "tiltDeg": 0,
+            "perspective": 0.0012,
+            "scrollStartFactor": 12,
+            "scrollEndFactor": -28
+          },
+          "style": {
+            "id": "tpl_credits_scroll",
+            "label": "Credits Scroll",
+            "fillUseAccent": false,
+            "fillColor": 4294967295,
+            "preferredFontId": "notoSansKr",
+            "shadow": {
+              "dxFactor": 0,
+              "dyFactor": 0.05,
+              "blurFactor": 0.2,
+              "useAccent": false,
+              "color": 4278190080,
+              "opacity": 0.55
+            }
+          },
+          "sampleText": "타이틀\n\n이름              설명\n이름              설명\n이름              설명\n이름              설명\n이름              설명\n이름              설명\n이름              설명",
           "accessTier": "free"
         }
       ]

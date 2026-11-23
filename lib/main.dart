@@ -8,6 +8,7 @@ import 'package:aveditor/models/app_user.dart';
 import 'package:aveditor/navigation/app_navigator.dart';
 import 'package:aveditor/screens/home_screen.dart';
 import 'package:aveditor/services/analytics_service.dart';
+import 'package:aveditor/services/background_catalog_service.dart';
 import 'package:aveditor/services/credit_service.dart';
 import 'package:aveditor/services/pro_service.dart';
 import 'package:aveditor/services/retention_notification_service.dart';
@@ -82,6 +83,7 @@ Future<void> main() async {
   WidgetsBinding.instance.addPostFrameCallback((_) {
     unawaited(TextTemplatePackService.instance.ensureInitialized());
     unawaited(TransitionCatalogService.instance.ensureInitialized());
+    unawaited(BackgroundCatalogService.instance.ensureInitialized());
     unawaited(_initRetentionPush());
     unawaited(_initMonetization());
   });

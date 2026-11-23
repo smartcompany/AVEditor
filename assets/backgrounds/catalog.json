@@ -1,0 +1,146 @@
+{
+  "version": 0,
+  "baseUrl": "",
+  "items": [
+    {
+      "id": "bg_curtain",
+      "title": "커튼",
+      "imageUrl": "backgrounds/curtain.png",
+      "previewUrl": "backgrounds/curtain.png",
+      "defaultDurationMs": 5000
+    },
+    {
+      "id": "bg_organic",
+      "title": "오가닉",
+      "imageUrl": "backgrounds/organic.png",
+      "previewUrl": "backgrounds/organic.png",
+      "defaultDurationMs": 5000
+    },
+    {
+      "id": "bg_blob",
+      "title": "얼룩",
+      "imageUrl": "backgrounds/blob.png",
+      "previewUrl": "backgrounds/blob.png",
+      "defaultDurationMs": 5000
+    },
+    {
+      "id": "bg_underwater",
+      "title": "수중",
+      "imageUrl": "backgrounds/underwater.png",
+      "previewUrl": "backgrounds/underwater.png",
+      "defaultDurationMs": 5000
+    },
+    {
+      "id": "bg_gradient",
+      "title": "그라디언트",
+      "imageUrl": "backgrounds/gradient.png",
+      "previewUrl": "backgrounds/gradient.png",
+      "defaultDurationMs": 5000
+    },
+    {
+      "id": "bg_industrial",
+      "title": "공업용",
+      "imageUrl": "backgrounds/industrial.png",
+      "previewUrl": "backgrounds/industrial.png",
+      "defaultDurationMs": 5000
+    },
+    {
+      "id": "bg_pinstripe",
+      "title": "핀스트라이프",
+      "imageUrl": "backgrounds/pinstripe.png",
+      "previewUrl": "backgrounds/pinstripe.png",
+      "defaultDurationMs": 5000
+    },
+    {
+      "id": "bg_stars",
+      "title": "별",
+      "imageUrl": "backgrounds/stars.png",
+      "previewUrl": "backgrounds/stars.png",
+      "defaultDurationMs": 5000
+    },
+    {
+      "id": "bg_retro",
+      "title": "복고풍",
+      "imageUrl": "backgrounds/retro.png",
+      "previewUrl": "backgrounds/retro.png",
+      "defaultDurationMs": 5000
+    },
+    {
+      "id": "bg_paper",
+      "title": "종이",
+      "imageUrl": "backgrounds/paper.png",
+      "previewUrl": "backgrounds/paper.png",
+      "defaultDurationMs": 5000
+    },
+    {
+      "id": "bg_silk_orange",
+      "title": "실크-오렌지",
+      "imageUrl": "backgrounds/silk_orange.png",
+      "previewUrl": "backgrounds/silk_orange.png",
+      "defaultDurationMs": 5000
+    },
+    {
+      "id": "bg_silk_beige",
+      "title": "실크-베이지",
+      "imageUrl": "backgrounds/silk_beige.png",
+      "previewUrl": "backgrounds/silk_beige.png",
+      "defaultDurationMs": 5000
+    },
+    {
+      "id": "bg_abstract",
+      "title": "추상",
+      "imageUrl": "backgrounds/abstract.png",
+      "previewUrl": "backgrounds/abstract.png",
+      "defaultDurationMs": 5000
+    },
+    {
+      "id": "bg_checker",
+      "title": "체커",
+      "imageUrl": "backgrounds/checker.png",
+      "previewUrl": "backgrounds/checker.png",
+      "defaultDurationMs": 5000
+    },
+    {
+      "id": "bg_circles",
+      "title": "원형",
+      "imageUrl": "backgrounds/circles.png",
+      "previewUrl": "backgrounds/circles.png",
+      "defaultDurationMs": 5000
+    },
+    {
+      "id": "bg_cubes",
+      "title": "큐브",
+      "imageUrl": "backgrounds/cubes.png",
+      "previewUrl": "backgrounds/cubes.png",
+      "defaultDurationMs": 5000
+    },
+    {
+      "id": "bg_diagonal",
+      "title": "대각선",
+      "imageUrl": "backgrounds/diagonal.png",
+      "previewUrl": "backgrounds/diagonal.png",
+      "defaultDurationMs": 5000
+    },
+    {
+      "id": "bg_dots",
+      "title": "점",
+      "imageUrl": "backgrounds/dots.png",
+      "previewUrl": "backgrounds/dots.png",
+      "defaultDurationMs": 5000
+    },
+    {
+      "id": "bg_mosaic",
+      "title": "모자이크",
+      "imageUrl": "backgrounds/mosaic.png",
+      "previewUrl": "backgrounds/mosaic.png",
+      "defaultDurationMs": 5000
+    },
+    {
+      "id": "bg_triangles",
+      "title": "삼각형",
+      "imageUrl": "backgrounds/triangles.png",
+      "previewUrl": "backgrounds/triangles.png",
+      "defaultDurationMs": 5000
+    }
+  ]
+}
