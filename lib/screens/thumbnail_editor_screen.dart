@@ -587,6 +587,10 @@ class _ThumbnailEditorScreenState extends State<ThumbnailEditorScreen> {
                   child: BasicTextEditKeyboardTray(
                     overlay: editingOverlay,
                     onChanged: _applyToolbar,
+                    onDismissKeyboard: () {
+                      FocusManager.instance.primaryFocus?.unfocus();
+                      setState(() => _editingOverlayId = null);
+                    },
                   ),
                 ),
             ],

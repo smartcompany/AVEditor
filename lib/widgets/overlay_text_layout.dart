@@ -122,19 +122,26 @@ void paintOverlayLineBackgrounds({
 
   final padH = fontSize * padHFactor;
   final padV = fontSize * padVFactor;
+  final lines = painter.computeLineMetrics();
   var lineIndex = 0;
 
-  for (final line in painter.computeLineMetrics()) {
+  for (final line in lines) {
     final include =
         visibleLineIndexes == null || visibleLineIndexes.contains(lineIndex);
+    final index = lineIndex;
     lineIndex++;
     if (!include) continue;
 
+    final ink = overlayLineInkY(
+      painter: painter,
+      lines: lines,
+      lineIndex: index,
+    );
     final rect = Rect.fromLTWH(
       origin.dx + line.left - padH,
-      origin.dy + line.baseline - line.ascent - padV,
+      origin.dy + ink.top - padV,
       line.width + padH * 2,
-      line.ascent + line.descent + padV * 2,
+      (ink.bottom - ink.top) + padV * 2,
     );
     if (shape == TextStyleLineShape.brush) {
       _paintBrushLineBackground(
@@ -278,7 +285,9 @@ TextStyle _baseTextStyle({
     color: foreground == null ? color : null,
     fontSize: fontSize,
     fontWeight: FontWeight.w700,
-    height: 1.15,
+    // 1.0 keeps ascent/descent tight. 1.15 added leading mostly under the
+    // baseline, so line backgrounds looked bottom-heavy around the glyphs.
+    height: 1.0,
     foreground: foreground,
     shadows: shadows,
   );
@@ -351,7 +360,45 @@ TextPainter createOverlayTextPainter({
     textAlign: textAlign,
     textDirection: TextDirection.ltr,
     textScaler: TextScaler.noScaling,
+    textHeightBehavior: const TextHeightBehavior(
+      applyHeightToFirstAscent: false,
+      applyHeightToLastDescent: false,
+    ),
   )..layout(maxWidth: maxWidth);
+}
+
+/// Prefer tight glyph ink over font ascent/descent so equal [padV] reads as
+/// equal margin above/below the letters (many faces leave empty descent).
+({double top, double bottom}) overlayLineInkY({
+  required TextPainter painter,
+  required List<ui.LineMetrics> lines,
+  required int lineIndex,
+}) {
+  final line = lines[lineIndex];
+  final metricsTop = line.baseline - line.ascent;
+  final metricsBottom = line.baseline + line.descent;
+  final plain = painter.text?.toPlainText() ?? '';
+  if (plain.isEmpty) {
+    return (top: metricsTop, bottom: metricsBottom);
+  }
+  final boxes = painter.getBoxesForSelection(
+    TextSelection(baseOffset: 0, extentOffset: plain.length),
+    boxHeightStyle: ui.BoxHeightStyle.tight,
+    boxWidthStyle: ui.BoxWidthStyle.tight,
+  );
+  double? inkTop;
+  double? inkBottom;
+  for (final box in boxes) {
+    final mid = (box.top + box.bottom) / 2;
+    if (_lineIndexForY(lines, mid) != lineIndex) continue;
+    inkTop = inkTop == null ? box.top : math.min(inkTop, box.top);
+    inkBottom =
+        inkBottom == null ? box.bottom : math.max(inkBottom, box.bottom);
+  }
+  if (inkTop == null || inkBottom == null || inkBottom <= inkTop) {
+    return (top: metricsTop, bottom: metricsBottom);
+  }
+  return (top: inkTop, bottom: inkBottom);
 }
 
 /// Lays text out exactly the way the preview's centred [Text] does.
@@ -820,6 +867,7 @@ void paintTextStyleTemplate({
   if (lineBg != null && lineRight.isNotEmpty) {
     _paintGrowingLineBackgrounds(
       canvas: canvas,
+      painter: metricsPainter,
       lines: lines,
       origin: origin,
       lineLeft: lineLeft,
@@ -890,6 +938,7 @@ int _lineIndexForY(List<ui.LineMetrics> lines, double y) {
 /// Brush/capsule strips that grow with revealed glyph extents (typewriter).
 void _paintGrowingLineBackgrounds({
   required Canvas canvas,
+  required TextPainter painter,
   required List<ui.LineMetrics> lines,
   required Offset origin,
   required Map<int, double> lineLeft,
@@ -914,11 +963,18 @@ void _paintGrowingLineBackgrounds({
     final left = lineLeft[i] ?? line.left;
     final right = entry.value;
     final width = (right - left).clamp(fontSize * 0.2, double.infinity);
+    final ink = overlayLineInkY(
+      painter: painter,
+      lines: lines,
+      lineIndex: i,
+    );
+    final top = origin.dy + ink.top - padV;
+    final height = (ink.bottom - ink.top) + padV * 2;
     final rect = Rect.fromLTWH(
       origin.dx + left - padH,
-      origin.dy + line.baseline - line.ascent - padV,
+      top,
       width + padH * 2,
-      line.ascent + line.descent + padV * 2,
+      height,
     );
     if (shape == TextStyleLineShape.brush) {
       // Torn paper is one fixed piece: lay it out for the whole line (same
@@ -926,9 +982,9 @@ void _paintGrowingLineBackgrounds({
       // Regrowing the rect re-spread the torn edge, so the paper stretched.
       final fullRect = Rect.fromLTWH(
         origin.dx + line.left - padH,
-        rect.top,
+        top,
         line.width + padH * 2,
-        rect.height,
+        height,
       );
       final revealRight = origin.dx + right + padH;
       final clipped = revealRight < fullRect.right - 0.5;

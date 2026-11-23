@@ -778,6 +778,54 @@ class AppLocalizationsJa extends AppLocalizations {
   String get textColorDone => '完了';
 
   @override
+  String get overlayFontBasic => 'ベーシック';
+
+  @override
+  String get overlayFontNotoSans => 'Noto Sans';
+
+  @override
+  String get overlayFontGaegu => 'ガエグ';
+
+  @override
+  String get overlayFontBlackHan => 'ブラックハン';
+
+  @override
+  String get overlayFontDoHyeon => 'ドヒョン';
+
+  @override
+  String get overlayFontGothicA1 => 'ゴシック A1';
+
+  @override
+  String get overlayFontRoboto => 'Roboto';
+
+  @override
+  String get overlayFontJua => 'ジュア';
+
+  @override
+  String get overlayFontBagelFat => 'ベーグル';
+
+  @override
+  String get overlayFontSongMyung => 'ソンミョン';
+
+  @override
+  String get overlayFontHiMelody => 'ハイメロディ';
+
+  @override
+  String get overlayFontStylish => 'スタイリッシュ';
+
+  @override
+  String get overlayFontNanumPen => 'ナヌムペン';
+
+  @override
+  String get overlayFontGasoek => 'ガソク';
+
+  @override
+  String get overlayFontCycleHint => 'フォントを変更';
+
+  @override
+  String get textFont => 'Font';
+
+  @override
   String projectDefaultName(int n) {
     return 'プロジェクト $n';
   }

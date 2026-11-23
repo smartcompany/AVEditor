@@ -33,7 +33,7 @@ class OverlayGuideSnap {
 const double overlayGuideMarginFraction = 0.05;
 
 /// How close (in canvas px) before a guide engages and snaps.
-const double overlayGuideSnapPx = 7.0;
+const double overlayGuideSnapPx = 4.0;
 
 /// Degrees within which rotation snaps to an axis.
 const double overlayRotateSnapDegrees = 4.0;

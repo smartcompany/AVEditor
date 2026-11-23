@@ -1,8 +1,12 @@
+import 'dart:async';
+
+import 'package:aveditor/l10n/app_localizations.dart';
 import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/text_overlay_style.dart';
 import 'package:aveditor/widgets/overlay_fonts.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// Shared with the on-canvas [TextField] TapRegion so toolbar taps do not
 /// count as "outside" and dismiss the keyboard.
@@ -39,10 +43,14 @@ class BasicTextEditKeyboardTray extends StatelessWidget {
     super.key,
     required this.overlay,
     required this.onChanged,
+    this.onDismissKeyboard,
   });
 
   final TextOverlay overlay;
   final ValueChanged<TextOverlay> onChanged;
+
+  /// Ends inline edit and drops the soft keyboard.
+  final VoidCallback? onDismissKeyboard;
 
   @override
   Widget build(BuildContext context) {
@@ -52,7 +60,11 @@ class BasicTextEditKeyboardTray extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        BasicTextEditToolbar(overlay: overlay, onChanged: onChanged),
+        BasicTextEditToolbar(
+          overlay: overlay,
+          onChanged: onChanged,
+          onDismissKeyboard: onDismissKeyboard,
+        ),
         ColoredBox(
           color: BasicTextEditToolbar.barBackground,
           child: SizedBox(height: keyboard, width: double.infinity),
@@ -61,8 +73,6 @@ class BasicTextEditKeyboardTray extends StatelessWidget {
     );
   }
 }
-
-enum _TrayMode { size, fonts, colors }
 
 /// Matches [minOverlayFontSize] / [maxOverlayFontSize] in video_preview.
 const _toolbarMinFontSize = 24.0;
@@ -74,10 +84,12 @@ class BasicTextEditToolbar extends StatefulWidget {
     super.key,
     required this.overlay,
     required this.onChanged,
+    this.onDismissKeyboard,
   });
 
   final TextOverlay overlay;
   final ValueChanged<TextOverlay> onChanged;
+  final VoidCallback? onDismissKeyboard;
 
   static const colors = <Color>[
     Colors.white,
@@ -103,19 +115,54 @@ class BasicTextEditToolbar extends StatefulWidget {
 }
 
 class _BasicTextEditToolbarState extends State<BasicTextEditToolbar> {
-  /// Size / Font / Color are tabs: exactly one is selected and it decides
-  /// what the right side shows. Style and align are one-tap actions that
-  /// leave the selected tab alone.
-  _TrayMode _tray = _TrayMode.size;
+  /// Font / Color expand the whole bar with sub-items and collapse on pick.
+  /// Style and align are one-tap actions. Size stays on the main bar.
   bool _customColorOpen = false;
+  bool _fontsOpen = false;
+  bool _colorsOpen = false;
 
-  void _selectTray(_TrayMode mode) {
+  void _closeSubmenus() {
+    _fontsOpen = false;
+    _colorsOpen = false;
+    _customColorOpen = false;
+  }
+
+  void _toggleFonts() {
     BasicTextEditDismissGuard.arm();
-    if (_tray == mode) return;
     setState(() {
-      _tray = mode;
-      _customColorOpen = false;
+      final open = !_fontsOpen;
+      _closeSubmenus();
+      _fontsOpen = open;
     });
+  }
+
+  void _toggleColors() {
+    BasicTextEditDismissGuard.arm();
+    setState(() {
+      final open = !_colorsOpen;
+      _closeSubmenus();
+      _colorsOpen = open;
+    });
+  }
+
+  void _pickFont(String id) {
+    BasicTextEditDismissGuard.arm();
+    _emit(_overlay.copyWith(fontFamily: id));
+    unawaited(OverlayFonts.ensureLoaded(id));
+    setState(_closeSubmenus);
+  }
+
+  void _pickColor(Color color) {
+    BasicTextEditDismissGuard.arm();
+    _emit(_overlay.copyWith(color: color));
+    setState(_closeSubmenus);
+  }
+
+  void _dismissKeyboard() {
+    BasicTextEditDismissGuard.arm();
+    FocusManager.instance.primaryFocus?.unfocus();
+    SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+    widget.onDismissKeyboard?.call();
   }
 
   bool get _isPaletteColor => BasicTextEditToolbar.colors.any(
@@ -146,13 +193,6 @@ class _BasicTextEditToolbarState extends State<BasicTextEditToolbar> {
         packItemId: null,
       ),
     );
-  }
-
-  Future<void> _pickFont(String id) async {
-    await OverlayFonts.ensureLoaded(id);
-    if (!mounted) return;
-    // Stay on the font tray so the user can preview other faces.
-    _emit(_overlay.copyWith(fontFamily: id));
   }
 
   IconData get _alignIcon {
@@ -230,41 +270,6 @@ class _BasicTextEditToolbarState extends State<BasicTextEditToolbar> {
     );
   }
 
-  /// Big T + small T: the universal "text size" mark.
-  Widget _buildSizeGlyph(Color color) {
-    return Text.rich(
-      TextSpan(
-        children: [
-          TextSpan(
-            text: 'T',
-            style: TextStyle(fontSize: 19, color: color),
-          ),
-          TextSpan(
-            text: 'T',
-            style: TextStyle(fontSize: 12, color: color),
-          ),
-        ],
-      ),
-      style: const TextStyle(fontWeight: FontWeight.w800, height: 1),
-    );
-  }
-
-  /// Fixed serif "Aa" (the common typeface mark). It does not follow the
-  /// picked font, so the tab keeps the same narrow width on small phones.
-  Widget _buildFontLabel({required Color color}) {
-    return Text(
-      'Aa',
-      maxLines: 1,
-      style: TextStyle(
-        fontFamily: 'serif',
-        color: color,
-        fontSize: 18,
-        fontWeight: FontWeight.w700,
-        height: 1,
-      ),
-    );
-  }
-
   Widget _buildColorSwatch({
     required Color color,
     required bool selected,
@@ -295,9 +300,6 @@ class _BasicTextEditToolbarState extends State<BasicTextEditToolbar> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final sizeOpen = _tray == _TrayMode.size;
-    final fontsOpen = _tray == _TrayMode.fonts;
-    final colorsOpen = _tray == _TrayMode.colors;
 
     // Space above the bar is reserved for the custom color panel. Empty
     // Stack space is transparent — the preview shows through.
@@ -319,117 +321,39 @@ class _BasicTextEditToolbarState extends State<BasicTextEditToolbar> {
                   onPointerDown: (_) => BasicTextEditDismissGuard.arm(),
                   child: Material(
                     color: BasicTextEditToolbar._barBg,
-                    child: Row(
-                      children: [
-                        ColoredBox(
-                          color: BasicTextEditToolbar._controlsBg,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const SizedBox(width: 2),
-                              _ToolbarChip(
-                                onTap: _cycleStyle,
-                                child: _buildStyleGlyph(),
-                              ),
-                              Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  onTap: _cycleAlign,
-                                  customBorder: const CircleBorder(),
-                                  child: SizedBox(
-                                    width: 38,
-                                    height: 44,
-                                    child: Icon(
-                                      _alignIcon,
-                                      color: Colors.white,
-                                      size: 22,
+                    // Font/Color replace the whole strip (size slider included).
+                    // On the main bar the size slider is always present — no Tt tab.
+                    child: _fontsOpen
+                        ? _buildFontPickerRow(l10n)
+                        : _colorsOpen
+                            ? _buildColorPickerRow()
+                            : Row(
+                                children: [
+                                  ColoredBox(
+                                    color: BasicTextEditToolbar._controlsBg,
+                                    child: _buildMainControls(l10n),
+                                  ),
+                                  Container(width: 1, color: Colors.white12),
+                                  Expanded(
+                                    child: ColoredBox(
+                                      color: BasicTextEditToolbar._trayBg,
+                                      child: _FontSizeSlider(
+                                        value: _overlay.fontSize,
+                                        onChanged: (size) => _emit(
+                                          _overlay.copyWith(fontSize: size),
+                                        ),
+                                        onDismissKeyboard: _dismissKeyboard,
+                                      ),
                                     ),
                                   ),
-                                ),
+                                ],
                               ),
-                              // Actions | tabs: the divider and the pill
-                              // show that only the three tabs pick what
-                              // the right side shows.
-                              Container(
-                                width: 1,
-                                height: 26,
-                                margin: const EdgeInsets.symmetric(
-                                  horizontal: 4,
-                                ),
-                                color: Colors.white24,
-                              ),
-                              Container(
-                                padding: const EdgeInsets.all(2),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF0E1015),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: Colors.white12),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    _TabSegment(
-                                      key: const ValueKey(
-                                        'basic-text-size-tab',
-                                      ),
-                                      selected: sizeOpen,
-                                      onTap: () => _selectTray(_TrayMode.size),
-                                      child: _buildSizeGlyph(
-                                        sizeOpen ? _accent : Colors.white,
-                                      ),
-                                    ),
-                                    _TabSegment(
-                                      selected: fontsOpen,
-                                      onTap: () => _selectTray(_TrayMode.fonts),
-                                      child: _buildFontLabel(
-                                        color: fontsOpen
-                                            ? _accent
-                                            : Colors.white,
-                                      ),
-                                    ),
-                                    _TabSegment(
-                                      selected: colorsOpen,
-                                      onTap: () =>
-                                          _selectTray(_TrayMode.colors),
-                                      child: IgnorePointer(
-                                        child: _buildColorSwatch(
-                                          color: _overlay.color,
-                                          selected: colorsOpen,
-                                          size: 22,
-                                          onTap: () {},
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                            ],
-                          ),
-                        ),
-                        Container(width: 1, color: Colors.white12),
-                        Expanded(
-                          child: ColoredBox(
-                            color: BasicTextEditToolbar._trayBg,
-                            child: switch (_tray) {
-                              _TrayMode.size => _FontSizeSlider(
-                                value: _overlay.fontSize,
-                                onChanged: (size) =>
-                                    _emit(_overlay.copyWith(fontSize: size)),
-                              ),
-                              _TrayMode.fonts => _buildFontScroller(),
-                              _TrayMode.colors => _buildColorScroller(),
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
                   ),
                 ),
               ),
             ),
           ),
-          if (colorsOpen && _customColorOpen)
+          if (_colorsOpen && _customColorOpen)
             Positioned(
               left: 8,
               right: 8,
@@ -445,7 +369,7 @@ class _BasicTextEditToolbarState extends State<BasicTextEditToolbar> {
                       doneLabel: l10n.textColorDone,
                       onChanged: (color) =>
                           _emit(_overlay.copyWith(color: color)),
-                      onDone: () => setState(() => _customColorOpen = false),
+                      onDone: () => setState(_closeSubmenus),
                     ),
                   ),
                 ),
@@ -459,77 +383,208 @@ class _BasicTextEditToolbarState extends State<BasicTextEditToolbar> {
   static const _accent = Color(0xFF4CC9F0);
   static const _customPanelSpace = 148.0;
 
-  Widget _buildColorScroller() {
-    final palette = BasicTextEditToolbar.colors;
-    // A custom pick that is not in the palette stays visible (and selected)
-    // just before the picker button, so the user can see what is applied.
-    final showCurrentCustom = !_isPaletteColor;
-    final count = palette.length + (showCurrentCustom ? 1 : 0) + 1;
-    return ListView.separated(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      itemCount: count,
-      separatorBuilder: (_, _) => const SizedBox(width: 10),
-      itemBuilder: (context, index) {
-        if (index == count - 1) {
-          return Center(
-            child: _CustomColorButton(
-              tooltip: context.l10n.textColorCustom,
-              selected: _customColorOpen,
-              onTap: () {
-                BasicTextEditDismissGuard.arm();
-                setState(() => _customColorOpen = !_customColorOpen);
-              },
+  Widget _buildMainControls(AppLocalizations l10n) {
+    return Row(
+      children: [
+        const SizedBox(width: 2),
+        _ToolbarChip(
+          key: const ValueKey('basic-text-font-button'),
+          onTap: _toggleFonts,
+          child: Text(
+            l10n.textFont,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              height: 1,
             ),
-          );
-        }
-        final color = index < palette.length ? palette[index] : _overlay.color;
-        final selected = color.toARGB32() == _overlay.color.toARGB32();
-        return Center(
-          child: _buildColorSwatch(
-            color: color,
-            selected: selected,
-            onTap: () => _emit(_overlay.copyWith(color: color)),
           ),
-        );
-      },
+        ),
+        _ToolbarChip(
+          key: const ValueKey('basic-text-color-button'),
+          onTap: _toggleColors,
+          child: IgnorePointer(
+            child: _buildColorSwatch(
+              color: _overlay.color,
+              selected: false,
+              size: 22,
+              onTap: () {},
+            ),
+          ),
+        ),
+        Container(
+          width: 1,
+          height: 26,
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          color: Colors.white24,
+        ),
+        _ToolbarChip(
+          onTap: _cycleStyle,
+          child: _buildStyleGlyph(),
+        ),
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: _cycleAlign,
+            customBorder: const CircleBorder(),
+            child: SizedBox(
+              width: 38,
+              height: 44,
+              child: Icon(
+                _alignIcon,
+                color: Colors.white,
+                size: 22,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 4),
+      ],
     );
   }
 
-  Widget _buildFontScroller() {
-    return ListView.separated(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      itemCount: OverlayFonts.all.length,
-      separatorBuilder: (_, _) => const SizedBox(width: 6),
-      itemBuilder: (context, index) {
-        final option = OverlayFonts.all[index];
-        final selected = option.id == OverlayFonts.byId(_overlay.fontFamily).id;
-        return Center(
-          child: _ToolbarChip(
-            selected: selected,
-            onTap: () => _pickFont(option.id),
+  /// Font label + face chips across the whole bar. Pick collapses to main.
+  Widget _buildFontPickerRow(AppLocalizations l10n) {
+    final selectedId = OverlayFonts.byId(_overlay.fontFamily).id;
+    return ColoredBox(
+      color: BasicTextEditToolbar._controlsBg,
+      child: Row(
+        children: [
+          _ToolbarChip(
+            key: const ValueKey('basic-text-font-button'),
+            selected: true,
+            onTap: _toggleFonts,
             child: Text(
-              option.label,
-              style: option
-                  .apply(
-                    TextStyle(
-                      color: selected ? const Color(0xFF4CC9F0) : Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  )
-                  .copyWith(fontSize: 13),
+              l10n.textFont,
+              style: const TextStyle(
+                color: _accent,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                height: 1,
+              ),
             ),
           ),
-        );
-      },
+          Container(
+            width: 1,
+            height: 26,
+            margin: const EdgeInsets.symmetric(horizontal: 2),
+            color: Colors.white24,
+          ),
+          Expanded(
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              cacheExtent: 800,
+              itemCount: OverlayFonts.all.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 4),
+              itemBuilder: (context, index) {
+                final option = OverlayFonts.all[index];
+                final selected = option.id == selectedId;
+                return Center(
+                  child: _ToolbarChip(
+                    selected: selected,
+                    onTap: () => _pickFont(option.id),
+                    child: Text(
+                      option.localizedLabel(l10n),
+                      style: option
+                          .apply(
+                            TextStyle(
+                              color: selected ? _accent : Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              height: 1,
+                            ),
+                          )
+                          .copyWith(
+                            fontSize: 13,
+                            color: selected ? _accent : Colors.white,
+                          ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
+
+  /// Color chips across the whole bar. Pick collapses to main.
+  Widget _buildColorPickerRow() {
+    final palette = BasicTextEditToolbar.colors;
+    final showCurrentCustom = !_isPaletteColor;
+    final count = palette.length + (showCurrentCustom ? 1 : 0) + 1;
+    return ColoredBox(
+      color: BasicTextEditToolbar._controlsBg,
+      child: Row(
+        children: [
+          _ToolbarChip(
+            key: const ValueKey('basic-text-color-button'),
+            selected: true,
+            onTap: _toggleColors,
+            child: IgnorePointer(
+              child: _buildColorSwatch(
+                color: _overlay.color,
+                selected: true,
+                size: 22,
+                onTap: () {},
+              ),
+            ),
+          ),
+          Container(
+            width: 1,
+            height: 26,
+            margin: const EdgeInsets.symmetric(horizontal: 2),
+            color: Colors.white24,
+          ),
+          Expanded(
+            child: ListView.separated(
+              key: const ValueKey('basic-text-color-list'),
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              cacheExtent: 800,
+              itemCount: count,
+              separatorBuilder: (_, _) => const SizedBox(width: 10),
+              itemBuilder: (context, index) {
+                if (index == count - 1) {
+                  return Center(
+                    child: _CustomColorButton(
+                      tooltip: context.l10n.textColorCustom,
+                      selected: _customColorOpen,
+                      onTap: () {
+                        BasicTextEditDismissGuard.arm();
+                        setState(
+                          () => _customColorOpen = !_customColorOpen,
+                        );
+                      },
+                    ),
+                  );
+                }
+                final color =
+                    index < palette.length ? palette[index] : _overlay.color;
+                final selected =
+                    color.toARGB32() == _overlay.color.toARGB32();
+                return Center(
+                  child: _buildColorSwatch(
+                    color: color,
+                    selected: selected,
+                    onTap: () => _pickColor(color),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
 }
 
 class _ToolbarChip extends StatelessWidget {
   const _ToolbarChip({
+    super.key,
     required this.child,
     required this.onTap,
     this.selected = false,
@@ -550,40 +605,6 @@ class _ToolbarChip extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 8),
           child: child,
-        ),
-      ),
-    );
-  }
-}
-
-/// One option inside the size / font / color pill. The selected option gets
-/// a raised fill, like a segmented control.
-class _TabSegment extends StatelessWidget {
-  const _TabSegment({
-    super.key,
-    required this.child,
-    required this.onTap,
-    required this.selected,
-  });
-
-  final Widget child;
-  final VoidCallback onTap;
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: selected ? const Color(0xFF2C313D) : Colors.transparent,
-      borderRadius: BorderRadius.circular(9),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(9),
-        child: SizedBox(
-          height: 36,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: Center(widthFactor: 1, child: child),
-          ),
         ),
       ),
     );
@@ -921,10 +942,15 @@ class _HuePainter extends CustomPainter {
 /// The number only appears in a bubble above the thumb while dragging, so
 /// the track can use the full width.
 class _FontSizeSlider extends StatefulWidget {
-  const _FontSizeSlider({required this.value, required this.onChanged});
+  const _FontSizeSlider({
+    required this.value,
+    required this.onChanged,
+    this.onDismissKeyboard,
+  });
 
   final double value;
   final ValueChanged<double> onChanged;
+  final VoidCallback? onDismissKeyboard;
 
   @override
   State<_FontSizeSlider> createState() => _FontSizeSliderState();
@@ -956,7 +982,7 @@ class _FontSizeSliderState extends State<_FontSizeSlider> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.only(left: 12),
       child: Row(
         children: [
           Expanded(
@@ -1001,7 +1027,36 @@ class _FontSizeSliderState extends State<_FontSizeSlider> {
               },
             ),
           ),
+          if (widget.onDismissKeyboard != null)
+            _KeyboardDismissButton(onPressed: widget.onDismissKeyboard!),
         ],
+      ),
+    );
+  }
+}
+
+/// Collapses the soft keyboard from the text-edit tray.
+class _KeyboardDismissButton extends StatelessWidget {
+  const _KeyboardDismissButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        customBorder: const CircleBorder(),
+        child: const SizedBox(
+          width: 44,
+          height: BasicTextEditToolbar.barHeight,
+          child: Icon(
+            Icons.keyboard_hide_rounded,
+            color: Colors.white,
+            size: 22,
+          ),
+        ),
       ),
     );
   }

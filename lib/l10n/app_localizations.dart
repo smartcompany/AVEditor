@@ -1542,6 +1542,102 @@ abstract class AppLocalizations {
   /// **'Done'**
   String get textColorDone;
 
+  /// No description provided for @overlayFontBasic.
+  ///
+  /// In en, this message translates to:
+  /// **'Basic'**
+  String get overlayFontBasic;
+
+  /// No description provided for @overlayFontNotoSans.
+  ///
+  /// In en, this message translates to:
+  /// **'Noto Sans'**
+  String get overlayFontNotoSans;
+
+  /// No description provided for @overlayFontGaegu.
+  ///
+  /// In en, this message translates to:
+  /// **'Gaegu'**
+  String get overlayFontGaegu;
+
+  /// No description provided for @overlayFontBlackHan.
+  ///
+  /// In en, this message translates to:
+  /// **'Black Han'**
+  String get overlayFontBlackHan;
+
+  /// No description provided for @overlayFontDoHyeon.
+  ///
+  /// In en, this message translates to:
+  /// **'Do Hyeon'**
+  String get overlayFontDoHyeon;
+
+  /// No description provided for @overlayFontGothicA1.
+  ///
+  /// In en, this message translates to:
+  /// **'Gothic A1'**
+  String get overlayFontGothicA1;
+
+  /// No description provided for @overlayFontRoboto.
+  ///
+  /// In en, this message translates to:
+  /// **'Roboto'**
+  String get overlayFontRoboto;
+
+  /// No description provided for @overlayFontJua.
+  ///
+  /// In en, this message translates to:
+  /// **'Jua'**
+  String get overlayFontJua;
+
+  /// No description provided for @overlayFontBagelFat.
+  ///
+  /// In en, this message translates to:
+  /// **'Bagel Fat'**
+  String get overlayFontBagelFat;
+
+  /// No description provided for @overlayFontSongMyung.
+  ///
+  /// In en, this message translates to:
+  /// **'Song Myung'**
+  String get overlayFontSongMyung;
+
+  /// No description provided for @overlayFontHiMelody.
+  ///
+  /// In en, this message translates to:
+  /// **'Hi Melody'**
+  String get overlayFontHiMelody;
+
+  /// No description provided for @overlayFontStylish.
+  ///
+  /// In en, this message translates to:
+  /// **'Stylish'**
+  String get overlayFontStylish;
+
+  /// No description provided for @overlayFontNanumPen.
+  ///
+  /// In en, this message translates to:
+  /// **'Nanum Pen'**
+  String get overlayFontNanumPen;
+
+  /// No description provided for @overlayFontGasoek.
+  ///
+  /// In en, this message translates to:
+  /// **'Gasoek'**
+  String get overlayFontGasoek;
+
+  /// No description provided for @overlayFontCycleHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Change font'**
+  String get overlayFontCycleHint;
+
+  /// No description provided for @textFont.
+  ///
+  /// In en, this message translates to:
+  /// **'Font'**
+  String get textFont;
+
   /// No description provided for @projectDefaultName.
   ///
   /// In en, this message translates to:

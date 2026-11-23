@@ -4932,8 +4932,9 @@ class _TimelinePainter extends CustomPainter {
         within: segment,
       );
       if (frame == null) continue;
-      // Skip tiles whose ui.Image was already disposed (reload race).
-      if (frame.image.debugDisposed) continue;
+      // debugDisposed throws in release/profile (asserts off) and aborted the
+      // whole CustomPaint — filmstrip + centre playhead both vanished.
+      if (kDebugMode && frame.image.debugDisposed) continue;
 
       paintImage(
         canvas: canvas,

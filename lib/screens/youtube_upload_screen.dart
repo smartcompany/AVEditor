@@ -14,8 +14,10 @@ import 'package:aveditor/services/youtube_errors.dart';
 import 'package:aveditor/services/youtube_upload_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/utils/logged_snackbar.dart';
+import 'package:aveditor/widgets/upload_form_chrome.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
@@ -387,152 +389,126 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
     if (uploadedId != null) return _buildDone(l10n, uploadedId);
 
     final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
-    return Scaffold(
-      appBar: AppBar(title: Text(l10n.uploadShorts)),
-      resizeToAvoidBottomInset: true,
-      body: Column(
+    return UploadAmbientScaffold(
+      title: l10n.uploadShorts,
+      bottom: keyboardOpen ? _buildKeyboardDismissBar(l10n) : null,
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         children: [
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          _buildAccountCard(l10n),
+          const SizedBox(height: 14),
+          UploadSurfaceCard(
+            child: _buildPreview(l10n, preview),
+          ),
+          const SizedBox(height: 14),
+          UploadSurfaceCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildAccountCard(l10n),
-                const SizedBox(height: 16),
-                _buildPreview(l10n, preview),
-                const SizedBox(height: 20),
-                DropdownButtonFormField<String>(
-                  initialValue: _privacy,
-                  decoration: InputDecoration(labelText: l10n.uploadVisibility),
-                  items: [
-                    DropdownMenuItem(
-                      value: 'public',
-                      child: Text(l10n.privacyPublic),
-                    ),
-                    DropdownMenuItem(
-                      value: 'unlisted',
-                      child: Text(l10n.privacyUnlisted),
-                    ),
-                    DropdownMenuItem(
-                      value: 'private',
-                      child: Text(l10n.privacyPrivate),
-                    ),
+                UploadSectionLabel(l10n.uploadVisibility),
+                const SizedBox(height: 10),
+                UploadChoiceChips<String>(
+                  value: _privacy,
+                  enabled: !_busy,
+                  options: [
+                    ('public', l10n.privacyPublic),
+                    ('unlisted', l10n.privacyUnlisted),
+                    ('private', l10n.privacyPrivate),
                   ],
-                  onChanged: _busy
-                      ? null
-                      : (value) {
-                          if (value != null) setState(() => _privacy = value);
-                        },
+                  onChanged: (value) => setState(() => _privacy = value),
                 ),
-                const SizedBox(height: 8),
-                Text(
+                const SizedBox(height: 18),
+                UploadSectionLabel(
                   l10n.uploadAudience,
-                  style: Theme.of(context).textTheme.titleMedium,
+                  help: l10n.uploadAudienceHelp,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  l10n.uploadAudienceHelp,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: 8),
-                SegmentedButton<bool>(
-                  showSelectedIcon: false,
-                  segments: [
-                    ButtonSegment(
-                      value: false,
-                      label: Text(
-                        l10n.uploadAudienceNotForKids,
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                    ButtonSegment(
-                      value: true,
-                      label: Text(
-                        l10n.uploadAudienceForKids,
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
+                const SizedBox(height: 10),
+                UploadChoiceChips<bool>(
+                  value: _madeForKids,
+                  enabled: !_busy,
+                  options: [
+                    (false, l10n.uploadAudienceNotForKids),
+                    (true, l10n.uploadAudienceForKids),
                   ],
-                  selected: {_madeForKids},
-                  onSelectionChanged: _busy
-                      ? null
-                      : (selection) {
-                          setState(() => _madeForKids = selection.first);
-                        },
+                  onChanged: (value) => setState(() => _madeForKids = value),
                 ),
-                const SizedBox(height: 8),
-                if (_moreOpen) ...[
+              ],
+            ),
+          ),
+          if (_moreOpen) ...[
+            const SizedBox(height: 14),
+            UploadSurfaceCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   TextField(
                     controller: _relatedController,
                     enabled: !_busy,
                     textInputAction: TextInputAction.done,
                     onEditingComplete: _dismissKeyboard,
-                    decoration: InputDecoration(
-                      labelText: l10n.uploadRelatedVideo,
-                      hintText: l10n.uploadRelatedVideoHint,
+                    style: GoogleFonts.dmSans(color: AppTheme.ink),
+                    decoration: UploadFormChrome.fieldDecoration(
+                      label: l10n.uploadRelatedVideo,
+                      hint: l10n.uploadRelatedVideoHint,
                     ),
                   ),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(l10n.uploadPaidPromotion),
-                    subtitle: Text(l10n.uploadPaidPromotionHelp),
+                  const SizedBox(height: 8),
+                  UploadToggleTile(
+                    title: l10n.uploadPaidPromotion,
+                    subtitle: l10n.uploadPaidPromotionHelp,
                     value: _paidPromotion,
-                    onChanged: _busy
-                        ? null
-                        : (value) => setState(() => _paidPromotion = value),
+                    enabled: !_busy,
+                    onChanged: (value) =>
+                        setState(() => _paidPromotion = value),
                   ),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(l10n.uploadAlteredContent),
-                    subtitle: Text(l10n.uploadAlteredContentHelp),
+                  UploadToggleTile(
+                    title: l10n.uploadAlteredContent,
+                    subtitle: l10n.uploadAlteredContentHelp,
                     value: _syntheticMedia,
-                    onChanged: _busy
-                        ? null
-                        : (value) => setState(() => _syntheticMedia = value),
+                    enabled: !_busy,
+                    onChanged: (value) =>
+                        setState(() => _syntheticMedia = value),
                   ),
+                  const SizedBox(height: 8),
                   TextField(
                     controller: _tagsController,
                     enabled: !_busy,
                     textInputAction: TextInputAction.done,
                     onEditingComplete: _dismissKeyboard,
-                    decoration: InputDecoration(
-                      labelText: l10n.uploadTags,
-                      hintText: l10n.uploadTagsHint,
+                    style: GoogleFonts.dmSans(color: AppTheme.ink),
+                    decoration: UploadFormChrome.fieldDecoration(
+                      label: l10n.uploadTags,
+                      hint: l10n.uploadTagsHint,
                     ),
                   ),
-                  const SizedBox(height: 8),
                 ],
-                SizedBox(
-                  width: double.infinity,
-                  child: TextButton.icon(
-                    onPressed: _busy
-                        ? null
-                        : () => setState(() => _moreOpen = !_moreOpen),
-                    icon: Icon(
-                      _moreOpen ? Icons.expand_less : Icons.expand_more,
-                    ),
-                    label: Text(
-                      _moreOpen
-                          ? l10n.uploadFewerDetails
-                          : l10n.uploadMoreDetails,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: _busy ? null : _submit,
-                  child: _busy
-                      ? const SizedBox(
-                          height: 22,
-                          width: 22,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(l10n.uploadShorts),
-                ),
-              ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: _busy
+                ? null
+                : () => setState(() => _moreOpen = !_moreOpen),
+            icon: Icon(
+              _moreOpen ? Icons.expand_less : Icons.expand_more,
+              color: AppTheme.muted,
+            ),
+            label: Text(
+              _moreOpen ? l10n.uploadFewerDetails : l10n.uploadMoreDetails,
+              style: GoogleFonts.dmSans(
+                color: AppTheme.muted,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
-          if (keyboardOpen) _buildKeyboardDismissBar(l10n),
+          const SizedBox(height: 8),
+          UploadGradientButton(
+            label: l10n.uploadShorts,
+            onPressed: _busy ? null : _submit,
+            busy: _busy,
+          ),
         ],
       ),
     );
@@ -557,109 +533,114 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
     final preview = _preview;
     void close() => Navigator.of(context).pop();
 
-    return Scaffold(
+    return UploadAmbientScaffold(
       key: const Key('youtube-upload-done'),
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: Text(l10n.uploadShorts),
-        actions: [
-          TextButton(onPressed: close, child: Text(l10n.uploadDoneClose)),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
-        children: [
-          Center(
-            child: Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primary.withValues(alpha: 0.15),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.check_rounded,
-                size: 44,
-                color: theme.colorScheme.primary,
-              ),
+      automaticallyImplyLeading: false,
+      title: l10n.uploadShorts,
+      actions: [
+        TextButton(
+          onPressed: close,
+          child: Text(
+            l10n.uploadDoneClose,
+            style: GoogleFonts.dmSans(
+              color: AppTheme.ink,
+              fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 16),
+        ),
+      ],
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        children: [
+          const Center(child: UploadCheckBadge()),
+          const SizedBox(height: 18),
           Text(
             l10n.uploadDoneTitle,
             textAlign: TextAlign.center,
-            style: theme.textTheme.headlineSmall?.copyWith(
+            style: GoogleFonts.spaceGrotesk(
+              fontSize: 22,
               fontWeight: FontWeight.w700,
+              color: AppTheme.ink,
             ),
           ),
           const SizedBox(height: 6),
           Text(
             l10n.uploadDoneVisibility(_privacyLabel(l10n)),
             textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor),
+            style: GoogleFonts.dmSans(color: AppTheme.muted, fontSize: 14),
           ),
-          const SizedBox(height: 24),
-          Material(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(12),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: () => _copyLink(l10n, link),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: SizedBox(
-                        width: 45,
-                        height: 80,
-                        child: thumbnail != null
-                            ? Image.file(File(thumbnail), fit: BoxFit.cover)
-                            : preview != null && preview.value.isInitialized
-                            ? FittedBox(
-                                fit: BoxFit.cover,
-                                child: SizedBox(
-                                  width: preview.value.size.width,
-                                  height: preview.value.size.height,
-                                  child: VideoPlayer(preview),
+          const SizedBox(height: 22),
+          UploadSurfaceCard(
+            padding: EdgeInsets.zero,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => _copyLink(l10n, link),
+                borderRadius: BorderRadius.circular(16),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: SizedBox(
+                          width: 45,
+                          height: 80,
+                          child: thumbnail != null
+                              ? Image.file(File(thumbnail), fit: BoxFit.cover)
+                              : preview != null && preview.value.isInitialized
+                              ? FittedBox(
+                                  fit: BoxFit.cover,
+                                  child: SizedBox(
+                                    width: preview.value.size.width,
+                                    height: preview.value.size.height,
+                                    child: VideoPlayer(preview),
+                                  ),
+                                )
+                              : ColoredBox(
+                                  color: Colors.black26,
+                                  child: Icon(
+                                    Icons.smart_display_outlined,
+                                    color: theme.hintColor,
+                                  ),
                                 ),
-                              )
-                            : ColoredBox(
-                                color: Colors.black26,
-                                child: Icon(
-                                  Icons.smart_display_outlined,
-                                  color: theme.hintColor,
-                                ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _titleFromCaption(_descriptionController.text),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.dmSans(
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.ink,
                               ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _titleFromCaption(_descriptionController.text),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.titleSmall,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            link,
-                            key: const Key('youtube-upload-link'),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.primary,
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 4),
+                            Text(
+                              link,
+                              key: const Key('youtube-upload-link'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.dmSans(
+                                fontSize: 12,
+                                color: AppTheme.accentCyan,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    Icon(Icons.copy_rounded, size: 18, color: theme.hintColor),
-                  ],
+                      const Icon(
+                        Icons.copy_rounded,
+                        size: 18,
+                        color: AppTheme.muted,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -667,14 +648,17 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
           const SizedBox(height: 12),
           Text(
             l10n.uploadDoneProcessing,
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+            style: GoogleFonts.dmSans(color: AppTheme.muted, fontSize: 12),
           ),
           if (partial != null) ...[
             const SizedBox(height: 12),
             DecoratedBox(
               decoration: BoxDecoration(
-                color: Colors.amber.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
+                color: AppTheme.accentWarm.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: AppTheme.accentWarm.withValues(alpha: 0.35),
+                ),
               ),
               child: Padding(
                 padding: const EdgeInsets.all(12),
@@ -684,13 +668,16 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
                     const Icon(
                       Icons.info_outline,
                       size: 18,
-                      color: Colors.amber,
+                      color: AppTheme.accentWarm,
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         l10n.uploadPartialDone(partial),
-                        style: theme.textTheme.bodySmall,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 13,
+                          color: AppTheme.ink,
+                        ),
                       ),
                     ),
                   ],
@@ -699,13 +686,12 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
             ),
           ],
           const SizedBox(height: 28),
-          FilledButton.icon(
+          UploadGradientButton(
+            label: l10n.uploadDoneOpen,
             onPressed: () => launchUrl(
               Uri.parse(link),
               mode: LaunchMode.externalApplication,
             ),
-            icon: const Icon(Icons.play_arrow_rounded),
-            label: Text(l10n.uploadDoneOpen),
           ),
           const SizedBox(height: 10),
           Row(
@@ -756,76 +742,81 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
         color: theme.hintColor,
       ),
     );
-    return Material(
+    return UploadSurfaceCard(
       key: const Key('youtube-account-card'),
-      color: AppTheme.surface,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
-        child: Row(
-          children: [
-            avatar,
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
+      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+      child: Row(
+        children: [
+          avatar,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  l10n.uploadAccountTitle,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.muted,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                if (account == null)
                   Text(
-                    l10n.uploadAccountTitle,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.hintColor,
+                    _accountLoading ? '' : l10n.uploadAccountNone,
+                    style: GoogleFonts.dmSans(color: AppTheme.ink),
+                  )
+                else ...[
+                  Text(
+                    name == null || name.isEmpty ? account.email : name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.dmSans(
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.ink,
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  if (account == null)
+                  if (name != null && name.isNotEmpty)
                     Text(
-                      _accountLoading ? '' : l10n.uploadAccountNone,
-                      style: theme.textTheme.bodyMedium,
-                    )
-                  else ...[
-                    Text(
-                      name == null || name.isEmpty ? account.email : name,
+                      account.email,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
+                      style: GoogleFonts.dmSans(
+                        fontSize: 12,
+                        color: AppTheme.muted,
                       ),
                     ),
-                    if (name != null && name.isNotEmpty)
-                      Text(
-                        account.email,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.hintColor,
-                        ),
-                      ),
-                  ],
                 ],
+              ],
+            ),
+          ),
+          if (_accountLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else
+            TextButton(
+              key: const Key('youtube-account-change'),
+              onPressed: _busy ? null : _changeAccount,
+              child: Text(
+                account == null
+                    ? l10n.uploadAccountConnect
+                    : l10n.uploadAccountSwitch,
+                style: GoogleFonts.dmSans(
+                  color: AppTheme.accentCyan,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
-            if (_accountLoading)
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              )
-            else
-              TextButton(
-                key: const Key('youtube-account-change'),
-                onPressed: _busy ? null : _changeAccount,
-                child: Text(
-                  account == null
-                      ? l10n.uploadAccountConnect
-                      : l10n.uploadAccountSwitch,
-                ),
-              ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -846,13 +837,18 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
             minLines: 1,
             maxLines: 4,
             textInputAction: TextInputAction.newline,
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
+            style: GoogleFonts.spaceGrotesk(
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.ink,
+              height: 1.25,
+            ),
             decoration: InputDecoration(
               hintText: l10n.uploadShortsCaption,
-              hintStyle: TextStyle(
+              hintStyle: GoogleFonts.spaceGrotesk(
                 fontSize: 20,
                 fontWeight: FontWeight.w500,
-                color: Theme.of(context).hintColor,
+                color: AppTheme.muted.withValues(alpha: 0.7),
               ),
               border: InputBorder.none,
               isCollapsed: true,
@@ -882,7 +878,13 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
               const Spacer(),
               TextButton(
                 onPressed: _dismissKeyboard,
-                child: Text(l10n.uploadDoneClose),
+                child: Text(
+                  l10n.uploadDoneClose,
+                  style: GoogleFonts.dmSans(
+                    color: AppTheme.accentCyan,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
               const SizedBox(width: 8),
             ],

@@ -196,13 +196,25 @@ void main() {
     expect(find.text('Gunny'), findsOneWidget);
     expect(find.text('Turned off in your TikTok settings'), findsOneWidget);
     final post = find.byKey(const Key('tiktok-post'));
-    expect(tester.widget<FilledButton>(post).onPressed, isNull);
+    expect(
+      tester
+          .widget<Opacity>(
+            find.descendant(of: post, matching: find.byType(Opacity)),
+          )
+          .opacity,
+      0.4,
+    );
 
-    await tester.tap(find.byKey(const Key('tiktok-privacy')));
-    await _settle(tester);
-    await tester.tap(find.text('Only me').last);
+    await tester.tap(find.text('Only me'));
     await _settle(tester);
 
-    expect(tester.widget<FilledButton>(post).onPressed, isNotNull);
+    expect(
+      tester
+          .widget<Opacity>(
+            find.descendant(of: post, matching: find.byType(Opacity)),
+          )
+          .opacity,
+      1.0,
+    );
   });
 }

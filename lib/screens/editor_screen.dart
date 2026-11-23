@@ -277,9 +277,9 @@ class _EditorScreenState extends State<EditorScreen>
 
   /// Bottom-dock height.
   ///
-  /// - `null` → **entry / mid**: dock = 1/3 screen
+  /// - `null` → **entry / mid**: default dock (~0.45 screen)
   /// - `0` → full video (dock hidden)
-  /// - `> 0` → explicit height while dragging or expanded to ~2/3 screen
+  /// - `> 0` → explicit snap (compact / entry / max ~2/3) or live drag
   final ValueNotifier<double?> _dockHeight = ValueNotifier(null);
   AnimationController? _dockSnapAnim;
   Completer<void>? _dockAnimCompleter;
@@ -483,7 +483,7 @@ class _EditorScreenState extends State<EditorScreen>
     return metrics.maxHeight.clamp(0.0, _availableDockHeight());
   }
 
-  /// Mid / initial dock = 1/3 of the screen.
+  /// Mid / initial dock (~0.45 of the screen).
   double _entryDockHeight() {
     final maxH = _maxDockHeight();
     if (!mounted) {
@@ -491,6 +491,16 @@ class _EditorScreenState extends State<EditorScreen>
     }
     final metrics = EditorSheetMetrics.of(context);
     return metrics.entryHeight.clamp(0.0, maxH);
+  }
+
+  /// Compact dock between full-video and entry — video stays large.
+  double _compactDockHeight() {
+    final entry = _entryDockHeight();
+    if (!mounted) {
+      return (800 * EditorSheetMetrics.compactFractionValue).clamp(0.0, entry);
+    }
+    final metrics = EditorSheetMetrics.of(context);
+    return metrics.compactHeight.clamp(0.0, entry);
   }
 
   /// Pixel height used while dragging / snapping (resolves `null` entry).
@@ -612,15 +622,20 @@ class _EditorScreenState extends State<EditorScreen>
     _settleDockHeight(velocity: details.primaryVelocity ?? 0);
   }
 
-  /// Snap dock: hidden ↔ entry (1/3) ↔ max (2/3).
+  /// Snap dock: hidden ↔ compact ↔ entry ↔ max (2/3).
   void _settleDockHeight({required double velocity}) {
     final current = _dockHeightPx();
     final entry = _entryDockHeight();
     final maxH = _maxDockHeight();
+    final compact = _compactDockHeight();
     final target = snapDockHeight(
       current: current,
       velocity: velocity,
-      stops: dockHeightStops(entryHeight: entry, maxHeight: maxH),
+      stops: dockHeightStops(
+        entryHeight: entry,
+        maxHeight: maxH,
+        compactHeight: compact,
+      ),
       flingVelocity: _dockFlingVelocity,
     );
     if ((target - entry).abs() <= 8) {
@@ -5636,6 +5651,8 @@ class _EditorScreenState extends State<EditorScreen>
                     child: BasicTextEditKeyboardTray(
                       overlay: editingOverlay,
                       onChanged: _updateOverlay,
+                      onDismissKeyboard: () =>
+                          _finishInlineEditing('keyboard_dismiss'),
                     ),
                   ),
                 if (_appendingMedia)
@@ -5660,8 +5677,8 @@ class _EditorScreenState extends State<EditorScreen>
 
   /// Bottom dock: timeline chrome, text studio, or transition studio.
   ///
-  /// Entry (`_dockHeight == null`) locks to 1/3 screen. Expanded uses an
-  /// explicit height up to ~2/3 screen. `0` hides the dock (full video).
+  /// Entry (`_dockHeight == null`) locks to the mid stage. Expanded uses an
+  /// explicit height (compact / max ~2/3). `0` hides the dock (full video).
   Widget _buildBottomDock({
     required AppLocalizations l10n,
     required VideoProject project,

@@ -780,6 +780,54 @@ class AppLocalizationsKo extends AppLocalizations {
   String get textColorDone => '완료';
 
   @override
+  String get overlayFontBasic => '기본';
+
+  @override
+  String get overlayFontNotoSans => '노토 산스';
+
+  @override
+  String get overlayFontGaegu => '개구';
+
+  @override
+  String get overlayFontBlackHan => '블랙한';
+
+  @override
+  String get overlayFontDoHyeon => '도현';
+
+  @override
+  String get overlayFontGothicA1 => '고딕 A1';
+
+  @override
+  String get overlayFontRoboto => '로보토';
+
+  @override
+  String get overlayFontJua => '주아';
+
+  @override
+  String get overlayFontBagelFat => '베이글';
+
+  @override
+  String get overlayFontSongMyung => '송명';
+
+  @override
+  String get overlayFontHiMelody => '하이멜로디';
+
+  @override
+  String get overlayFontStylish => '스타일리시';
+
+  @override
+  String get overlayFontNanumPen => '나눔손글씨';
+
+  @override
+  String get overlayFontGasoek => '가석';
+
+  @override
+  String get overlayFontCycleHint => '글꼴 변경';
+
+  @override
+  String get textFont => 'Font';
+
+  @override
   String projectDefaultName(int n) {
     return '프로젝트 $n';
   }

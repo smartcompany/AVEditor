@@ -143,13 +143,13 @@ class OverlayChromeCorners {
 class OverlayGeometry {
   OverlayGeometry._();
 
-  static const handleHit = 64.0;
-  static const knobSize = 50.0;
+  static const handleHit = 45.0;
+  static const knobSize = 35.0;
 
   /// Outward offset so each knob circle is tangent to its box corner
   /// (center lies on the corner diagonal at distance [knobSize]/2).
   /// = (knobSize/2) * (1 + 1/√2)
-  static const knobOutset = 42.67766953;
+  static const knobOutset = 29.87436867;
 
   static const handlePad = knobOutset + knobSize / 2 + handleHit / 2 + 4;
 
@@ -157,7 +157,48 @@ class OverlayGeometry {
   static const gripOutset = 18.0;
 
   /// Keep icon knobs this far inside the clamp rect so they stay tappable.
-  static const chromeKnobMargin = 28.0;
+  static const chromeKnobMargin = 20.0;
+
+  /// On-screen pixels per canvas pixel for a [BoxFit.contain] host.
+  ///
+  /// Dock resize shrinks the FittedBox; divide fixed screen sizes by this so
+  /// chrome knobs stay the same finger size.
+  static double canvasScreenScale({
+    required double previewW,
+    required double previewH,
+    Size? hostViewport,
+  }) {
+    if (hostViewport == null || previewW <= 0 || previewH <= 0) return 1.0;
+    final sx = hostViewport.width / previewW;
+    final sy = hostViewport.height / previewH;
+    final scale = math.min(sx, sy);
+    if (!scale.isFinite || scale <= 0) return 1.0;
+    return scale;
+  }
+
+  /// Canvas-space knob diameter that paints as [knobSize] on screen.
+  static double knobSizeForScale(double screenScale) {
+    final s = screenScale <= 0 ? 1.0 : screenScale;
+    return knobSize / s;
+  }
+
+  /// Canvas-space hit diameter matching [knobSizeForScale].
+  static double handleHitForScale(double screenScale) {
+    final s = screenScale <= 0 ? 1.0 : screenScale;
+    return handleHit / s;
+  }
+
+  static double chromeKnobMarginForScale(double screenScale) {
+    final s = screenScale <= 0 ? 1.0 : screenScale;
+    return chromeKnobMargin / s;
+  }
+
+  static double handlePadForScale(double screenScale) {
+    final knob = knobSizeForScale(screenScale);
+    final hit = handleHitForScale(screenScale);
+    final outset = (knob / 2) * (1 + 1 / math.sqrt2);
+    return outset + knob / 2 + hit / 2 + 4;
+  }
 
   /// Default clamp: the 9:16 video canvas (no letterbox gutters).
   static Rect previewClampRect(double previewW, double previewH) {
@@ -184,11 +225,13 @@ class OverlayGeometry {
     required double previewW,
     required double previewH,
     required OverlayBox box,
+    double screenScale = 1,
   }) {
     final centre = boxCenter(previewW: previewW, previewH: previewH, box: box);
+    final pad = handlePadForScale(screenScale);
     return Offset(
-      centre.dx - box.width / 2 - handlePad,
-      centre.dy - box.height / 2 - handlePad,
+      centre.dx - box.width / 2 - pad,
+      centre.dy - box.height / 2 - pad,
     );
   }
 
@@ -196,17 +239,20 @@ class OverlayGeometry {
     required double previewW,
     required double previewH,
     required OverlayBox box,
+    double screenScale = 1,
   }) {
+    final pad = handlePadForScale(screenScale);
     final topLeft = chromeTopLeft(
       previewW: previewW,
       previewH: previewH,
       box: box,
+      screenScale: screenScale,
     );
     return Rect.fromLTWH(
       topLeft.dx,
       topLeft.dy,
-      box.width + handlePad * 2,
-      box.height + handlePad * 2,
+      box.width + pad * 2,
+      box.height + pad * 2,
     );
   }
 
@@ -215,15 +261,18 @@ class OverlayGeometry {
     required double previewW,
     required double previewH,
     required OverlayBox box,
+    double screenScale = 1,
   }) {
+    final pad = handlePadForScale(screenScale);
     final topLeft = chromeTopLeft(
       previewW: previewW,
       previewH: previewH,
       box: box,
+      screenScale: screenScale,
     );
     return Rect.fromLTWH(
-      topLeft.dx + handlePad,
-      topLeft.dy + handlePad,
+      topLeft.dx + pad,
+      topLeft.dy + pad,
       box.width,
       box.height,
     );
@@ -237,8 +286,9 @@ class OverlayGeometry {
     required Rect body,
     required bool left,
     required bool top,
+    double screenScale = 1,
   }) {
-    final r = knobSize / 2;
+    final r = knobSizeForScale(screenScale) / 2;
     final along = r / math.sqrt2;
     return Offset(
       left ? body.left - along : body.right + along,
@@ -254,26 +304,37 @@ class OverlayGeometry {
   /// [clampRect] is in preview-canvas coordinates. Pass the editor viewport
   /// (video + letterbox gutters) so knobs may sit in the black bars instead of
   /// being forced onto the 9:16 frame.
+  ///
+  /// [screenScale] is canvas→screen from [canvasScreenScale]; knobs keep a
+  /// fixed finger size when the preview FittedBox shrinks.
   static OverlayChromeCorners resolveChromeCorners({
     required double previewW,
     required double previewH,
     required OverlayBox box,
     Rect? clampRect,
+    double screenScale = 1,
   }) {
     final body = bodyRect(previewW: previewW, previewH: previewH, box: box);
     final chromeOrigin = chromeTopLeft(
       previewW: previewW,
       previewH: previewH,
       box: box,
+      screenScale: screenScale,
     );
     final bounds = clampRect ?? previewClampRect(previewW, previewH);
-    final minX = bounds.left + chromeKnobMargin;
-    final maxX = bounds.right - chromeKnobMargin;
-    final minY = bounds.top + chromeKnobMargin;
-    final maxY = bounds.bottom - chromeKnobMargin;
+    final margin = chromeKnobMarginForScale(screenScale);
+    final minX = bounds.left + margin;
+    final maxX = bounds.right - margin;
+    final minY = bounds.top + margin;
+    final maxY = bounds.bottom - margin;
 
     Offset place({required bool left, required bool top}) {
-      final ideal = _idealKnobPreviewCenter(body: body, left: left, top: top);
+      final ideal = _idealKnobPreviewCenter(
+        body: body,
+        left: left,
+        top: top,
+        screenScale: screenScale,
+      );
       final clamped = Offset(
         minX <= maxX ? ideal.dx.clamp(minX, maxX) : ideal.dx,
         minY <= maxY ? ideal.dy.clamp(minY, maxY) : ideal.dy,
@@ -334,6 +395,7 @@ class OverlayGeometry {
     required double previewW,
     required double previewH,
     required OverlayBox box,
+    double screenScale = 1,
   }) {
     final local = toBoxFrame(
       previewPoint,
@@ -345,6 +407,7 @@ class OverlayGeometry {
       previewW: previewW,
       previewH: previewH,
       box: box,
+      screenScale: screenScale,
     ).contains(local);
   }
 
@@ -357,6 +420,7 @@ class OverlayGeometry {
     required bool editing,
     Rect? clampRect,
     bool allowEdit = true,
+    double screenScale = 1,
   }) {
     final local = toBoxFrame(
       previewPoint,
@@ -368,12 +432,14 @@ class OverlayGeometry {
       previewW: previewW,
       previewH: previewH,
       box: box,
+      screenScale: screenScale,
     );
     final corners = resolveChromeCorners(
       previewW: previewW,
       previewH: previewH,
       box: box,
       clampRect: clampRect,
+      screenScale: screenScale,
     );
     return _hitTestLocal(
       local - topLeft,
@@ -382,6 +448,7 @@ class OverlayGeometry {
       editing: editing,
       corners: corners,
       allowEdit: allowEdit,
+      screenScale: screenScale,
     );
   }
 
@@ -424,9 +491,10 @@ class OverlayGeometry {
     required bool editing,
     required OverlayChromeCorners corners,
     bool allowEdit = true,
+    double screenScale = 1,
   }) {
-    const hit = handleHit / 2;
-    const pad = handlePad;
+    final hit = handleHitForScale(screenScale) / 2;
+    final pad = handlePadForScale(screenScale);
 
     final anchors = <(Offset, OverlayDrag)>[
       (corners.delete, OverlayDrag.delete),

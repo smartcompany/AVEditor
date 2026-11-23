@@ -204,6 +204,13 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
   /// Preview-canvas pixels per frame pixel.
   double get _frameScale => _previewW / kOverlayFrameWidth;
 
+  /// FittedBox scale: on-screen px per canvas px (dock height changes this).
+  double get _canvasScreenScale => OverlayGeometry.canvasScreenScale(
+    previewW: _previewW,
+    previewH: _previewH,
+    hostViewport: widget.hostViewportSize,
+  );
+
   /// Knob clamp in preview coords — video frame plus letterbox gutters.
   Rect get _knobClampRect {
     final host = widget.hostViewportSize;
@@ -587,6 +594,7 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
         previewW: _previewW,
         previewH: _previewH,
         box: _boxOf(editing),
+        screenScale: _canvasScreenScale,
       );
     }
 
@@ -599,6 +607,7 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
         box: _boxOf(selected),
         editing: false,
         clampRect: _knobClampRect,
+        screenScale: _canvasScreenScale,
       );
       if (drag != null) return true;
     }
@@ -638,6 +647,7 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
         previewW: _previewW,
         previewH: _previewH,
         box: _boxOf(editing),
+        screenScale: _canvasScreenScale,
       );
       if (insideChrome) return;
       // Another text under the finger: finish editing, then select that text
@@ -672,6 +682,7 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
         box: _boxOf(selected),
         editing: false,
         clampRect: _knobClampRect,
+        screenScale: _canvasScreenScale,
       );
       if (drag != null) {
         OverlayEventLog.log('PreviewCanvas', 'dragStart', {
@@ -990,6 +1001,7 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
                     previewWidth: _previewW,
                     previewHeight: _previewH,
                     knobClampRect: _knobClampRect,
+                    canvasScreenScale: _canvasScreenScale,
                     selected: overlay.id == widget.selectedOverlayId,
                     editing: overlay.id == widget.editingOverlayId &&
                         !overlay.isSticker,
@@ -1034,6 +1046,7 @@ class _DraggableOverlayLabel extends StatefulWidget {
     required this.previewWidth,
     required this.previewHeight,
     required this.knobClampRect,
+    required this.canvasScreenScale,
     required this.selected,
     required this.editing,
     required this.onTextChanged,
@@ -1052,6 +1065,9 @@ class _DraggableOverlayLabel extends StatefulWidget {
   final double previewWidth;
   final double previewHeight;
   final Rect knobClampRect;
+
+  /// FittedBox scale so corner knobs keep a fixed on-screen size.
+  final double canvasScreenScale;
   final bool selected;
   final bool editing;
   final bool selectAllOnEdit;
@@ -1254,7 +1270,7 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
     ).copyWith(
       color: template.resolveFill(widget.overlay.color),
       fontWeight: FontWeight.w700,
-      height: 1.15,
+      height: 1.0,
     );
   }
 
@@ -1397,6 +1413,9 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
           ),
           cursorColor: AppTheme.accent,
           cursorWidth: _cursorWidth,
+          // Match the chrome rect so the caret spans the full edit box, not
+          // just the font strut (pads made it look half-height and top-stuck).
+          cursorHeight: widget.box.height,
           cursorRadius: Radius.circular((1.5 / _screenScale).clamp(1.0, 8.0)),
           cursorOpacityAnimates: false,
           strutStyle: StrutStyle(
@@ -1421,6 +1440,8 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
       );
       // Same OverflowBox centering as the idle preview — do not force the
       // paint into SizedBox(box) or content shifts right under pad constraints.
+      // Field height follows the glyphs (not the chrome) so the caret, which
+      // is centered on the line metrics, lines up with the painted text.
       final stack = Stack(
         alignment: Alignment.center,
         clipBehavior: Clip.none,
@@ -1436,7 +1457,6 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
             offset: Offset((_cursorWidth + 1) / 2, 0),
             child: SizedBox(
               width: maxW + _cursorWidth + 1,
-              height: widget.box.height,
               child: Listener(
                 onPointerDown: _onCaretPointerDown,
                 onPointerMove: _onCaretPointerMove,
@@ -1515,21 +1535,31 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
     );
   }
 
-  static const _iconKnobSize = 50.0;
-  static const _iconGlyphSize = 28.0;
+  static const _iconGlyphFactor = 28.0 / 50.0;
+
+  double get _knobCanvasSize =>
+      OverlayGeometry.knobSizeForScale(widget.canvasScreenScale);
+
+  double get _iconGlyphSize => _knobCanvasSize * _iconGlyphFactor;
+
+  double get _knobBorderWidth {
+    final s = widget.canvasScreenScale <= 0 ? 1.0 : widget.canvasScreenScale;
+    return (2.0 / s).clamp(1.0, 8.0);
+  }
 
   Widget _buildIconKnob(
     IconData icon, {
     Color iconColor = AppTheme.accent,
     Color background = Colors.white,
   }) {
+    final size = _knobCanvasSize;
     return Container(
-      width: _iconKnobSize,
-      height: _iconKnobSize,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         color: background,
         shape: BoxShape.circle,
-        border: Border.all(color: iconColor, width: 2),
+        border: Border.all(color: iconColor, width: _knobBorderWidth),
         boxShadow: const [
           BoxShadow(blurRadius: 6, offset: Offset(0, 1), color: Colors.black54),
         ],
@@ -1543,11 +1573,12 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
   /// Centres [child] on a chrome-local knob anchor from
   /// [OverlayGeometry.resolveChromeCorners].
   Widget _knobAt(Offset chromeLocal, Widget child) {
+    final size = _knobCanvasSize;
     return Positioned(
-      left: chromeLocal.dx - _iconKnobSize / 2,
-      top: chromeLocal.dy - _iconKnobSize / 2,
-      width: _iconKnobSize,
-      height: _iconKnobSize,
+      left: chromeLocal.dx - size / 2,
+      top: chromeLocal.dy - size / 2,
+      width: size,
+      height: size,
       child: child,
     );
   }
@@ -1555,11 +1586,13 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
   @override
   Widget build(BuildContext context) {
     final showChrome = widget.selected || widget.editing;
+    final screenScale = widget.canvasScreenScale;
 
     final topLeft = OverlayGeometry.chromeTopLeft(
       previewW: widget.previewWidth,
       previewH: widget.previewHeight,
       box: widget.box,
+      screenScale: screenScale,
     );
 
     final boxW = widget.box.width;
@@ -1569,8 +1602,9 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
       previewH: widget.previewHeight,
       box: widget.box,
       clampRect: widget.knobClampRect,
+      screenScale: screenScale,
     );
-    const pad = OverlayGeometry.handlePad;
+    final pad = OverlayGeometry.handlePadForScale(screenScale);
 
     Widget chrome = SizedBox(
       width: boxW + pad * 2,

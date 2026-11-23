@@ -798,6 +798,54 @@ class AppLocalizationsEn extends AppLocalizations {
   String get textColorDone => 'Done';
 
   @override
+  String get overlayFontBasic => 'Basic';
+
+  @override
+  String get overlayFontNotoSans => 'Noto Sans';
+
+  @override
+  String get overlayFontGaegu => 'Gaegu';
+
+  @override
+  String get overlayFontBlackHan => 'Black Han';
+
+  @override
+  String get overlayFontDoHyeon => 'Do Hyeon';
+
+  @override
+  String get overlayFontGothicA1 => 'Gothic A1';
+
+  @override
+  String get overlayFontRoboto => 'Roboto';
+
+  @override
+  String get overlayFontJua => 'Jua';
+
+  @override
+  String get overlayFontBagelFat => 'Bagel Fat';
+
+  @override
+  String get overlayFontSongMyung => 'Song Myung';
+
+  @override
+  String get overlayFontHiMelody => 'Hi Melody';
+
+  @override
+  String get overlayFontStylish => 'Stylish';
+
+  @override
+  String get overlayFontNanumPen => 'Nanum Pen';
+
+  @override
+  String get overlayFontGasoek => 'Gasoek';
+
+  @override
+  String get overlayFontCycleHint => 'Change font';
+
+  @override
+  String get textFont => 'Font';
+
+  @override
   String projectDefaultName(int n) {
     return 'Project $n';
   }

@@ -6,8 +6,10 @@ import 'package:aveditor/services/analytics_service.dart';
 import 'package:aveditor/services/tiktok_auth_service.dart';
 import 'package:aveditor/services/tiktok_post_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
+import 'package:aveditor/widgets/upload_form_chrome.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
@@ -384,137 +386,202 @@ class _TikTokUploadScreenState extends State<TikTokUploadScreen> {
     if (done != null) return _buildDone(l10n, done);
     final creator = _creator;
 
+    final privacyOptions = creator?.privacyOptions ?? const <String>[];
     return PopScope(
       canPop: !_busy,
-      child: Scaffold(
-        appBar: AppBar(title: Text(l10n.tiktokUploadTitle)),
+      child: UploadAmbientScaffold(
+        title: l10n.tiktokUploadTitle,
         body: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
           children: [
             _buildAccountCard(l10n),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             if (creator == null && !_accountLoading)
               Padding(
-                padding: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.only(bottom: 12),
                 child: Text(
                   l10n.tiktokConnectHelp,
-                  style: Theme.of(context).textTheme.bodySmall,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 13,
+                    color: AppTheme.muted,
+                    height: 1.35,
+                  ),
                 ),
               ),
-            _buildPreview(l10n),
-            const SizedBox(height: 20),
-            DropdownButtonFormField<String>(
-              key: const Key('tiktok-privacy'),
-              initialValue: _privacy,
-              hint: Text(l10n.tiktokPrivacyChoose),
-              decoration: InputDecoration(labelText: l10n.uploadVisibility),
-              items: [
-                for (final option in creator?.privacyOptions ?? const [])
-                  DropdownMenuItem(
-                    value: option,
-                    enabled: !(_disclose && _branded && option == _selfOnly),
-                    child: Text(_privacyLabel(l10n, option)),
+            UploadSurfaceCard(child: _buildPreview(l10n)),
+            const SizedBox(height: 14),
+            UploadSurfaceCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  UploadSectionLabel(
+                    l10n.uploadVisibility,
+                    help: _privacy == null ? l10n.tiktokPrivacyChoose : null,
                   ),
-              ],
-              onChanged: _busy || creator == null
-                  ? null
-                  : (value) => setState(() => _privacy = value),
+                  const SizedBox(height: 10),
+                  KeyedSubtree(
+                    key: const Key('tiktok-privacy'),
+                    child: UploadChoiceChips<String>(
+                      value: _privacy,
+                      enabled: !_busy && creator != null,
+                      options: [
+                        for (final option in privacyOptions)
+                          (option, _privacyLabel(l10n, option)),
+                      ],
+                      onChanged: (value) {
+                        if (_disclose && _branded && value == _selfOnly) {
+                          return;
+                        }
+                        setState(() => _privacy = value);
+                      },
+                    ),
+                  ),
+                  if (_disclose && _branded && _privacy == _selfOnly)
+                    _warning(l10n.tiktokBrandedNotPrivate),
+                  if (_tooLong)
+                    _warning(l10n.tiktokTooLong(creator!.maxDurationSeconds!)),
+                ],
+              ),
             ),
-            if (_disclose && _branded && _privacy == _selfOnly)
-              _warning(l10n.tiktokBrandedNotPrivate),
-            if (_tooLong)
-              _warning(l10n.tiktokTooLong(creator!.maxDurationSeconds!)),
-            const SizedBox(height: 16),
-            Text(
-              l10n.tiktokInteractionTitle,
-              style: Theme.of(context).textTheme.titleMedium,
+            const SizedBox(height: 14),
+            UploadSurfaceCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  UploadSectionLabel(l10n.tiktokInteractionTitle),
+                  const SizedBox(height: 4),
+                  _interactionTile(
+                    l10n.tiktokAllowComment,
+                    _allowComment,
+                    creator?.commentDisabled ?? false,
+                    (v) => setState(() => _allowComment = v),
+                    l10n,
+                  ),
+                  _interactionTile(
+                    l10n.tiktokAllowDuet,
+                    _allowDuet,
+                    creator?.duetDisabled ?? false,
+                    (v) => setState(() => _allowDuet = v),
+                    l10n,
+                  ),
+                  _interactionTile(
+                    l10n.tiktokAllowStitch,
+                    _allowStitch,
+                    creator?.stitchDisabled ?? false,
+                    (v) => setState(() => _allowStitch = v),
+                    l10n,
+                  ),
+                ],
+              ),
             ),
-            _interactionTile(
-              l10n.tiktokAllowComment,
-              _allowComment,
-              creator?.commentDisabled ?? false,
-              (v) => setState(() => _allowComment = v),
-              l10n,
-            ),
-            _interactionTile(
-              l10n.tiktokAllowDuet,
-              _allowDuet,
-              creator?.duetDisabled ?? false,
-              (v) => setState(() => _allowDuet = v),
-              l10n,
-            ),
-            _interactionTile(
-              l10n.tiktokAllowStitch,
-              _allowStitch,
-              creator?.stitchDisabled ?? false,
-              (v) => setState(() => _allowStitch = v),
-              l10n,
-            ),
-            const Divider(height: 24),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(l10n.tiktokDisclose),
-              subtitle: Text(l10n.tiktokDiscloseHelp),
-              value: _disclose,
-              onChanged: _busy
-                  ? null
-                  : (value) => setState(() {
+            const SizedBox(height: 14),
+            UploadSurfaceCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  UploadToggleTile(
+                    title: l10n.tiktokDisclose,
+                    subtitle: l10n.tiktokDiscloseHelp,
+                    value: _disclose,
+                    enabled: !_busy,
+                    onChanged: (value) => setState(() {
                       _disclose = value;
                       if (!value) {
                         _yourBrand = false;
                         _branded = false;
                       }
                     }),
+                  ),
+                  if (_disclose) ...[
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      activeColor: AppTheme.accent,
+                      title: Text(
+                        l10n.tiktokYourBrand,
+                        style: GoogleFonts.dmSans(
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.ink,
+                        ),
+                      ),
+                      subtitle: Text(
+                        l10n.tiktokYourBrandHelp,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 12,
+                          color: AppTheme.muted,
+                        ),
+                      ),
+                      value: _yourBrand,
+                      onChanged: _busy
+                          ? null
+                          : (value) =>
+                                setState(() => _yourBrand = value ?? false),
+                    ),
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      activeColor: AppTheme.accent,
+                      title: Text(
+                        l10n.tiktokBrandedContent,
+                        style: GoogleFonts.dmSans(
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.ink,
+                        ),
+                      ),
+                      subtitle: Text(
+                        l10n.tiktokBrandedContentHelp,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 12,
+                          color: AppTheme.muted,
+                        ),
+                      ),
+                      value: _branded,
+                      onChanged: _busy
+                          ? null
+                          : (value) =>
+                                setState(() => _branded = value ?? false),
+                    ),
+                    if (_disclosureIncomplete)
+                      _warning(l10n.tiktokDiscloseNeedOne),
+                  ],
+                ],
+              ),
             ),
-            if (_disclose) ...[
-              CheckboxListTile(
-                contentPadding: EdgeInsets.zero,
-                controlAffinity: ListTileControlAffinity.leading,
-                title: Text(l10n.tiktokYourBrand),
-                subtitle: Text(l10n.tiktokYourBrandHelp),
-                value: _yourBrand,
-                onChanged: _busy
-                    ? null
-                    : (value) => setState(() => _yourBrand = value ?? false),
-              ),
-              CheckboxListTile(
-                contentPadding: EdgeInsets.zero,
-                controlAffinity: ListTileControlAffinity.leading,
-                title: Text(l10n.tiktokBrandedContent),
-                subtitle: Text(l10n.tiktokBrandedContentHelp),
-                value: _branded,
-                onChanged: _busy
-                    ? null
-                    : (value) => setState(() => _branded = value ?? false),
-              ),
-              if (_disclosureIncomplete) _warning(l10n.tiktokDiscloseNeedOne),
-            ],
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             _buildConsent(l10n),
             const SizedBox(height: 16),
-            FilledButton(
+            KeyedSubtree(
               key: const Key('tiktok-post'),
-              onPressed: _canPost ? _submit : null,
-              child: _busy
-                  ? Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          _processing
-                              ? l10n.tiktokProcessing
-                              : l10n.tiktokUploading(
-                                  ((_uploadProgress ?? 0) * 100).round(),
-                                ),
-                        ),
-                      ],
-                    )
-                  : Text(l10n.tiktokPost),
+              child: UploadGradientButton(
+                label: l10n.tiktokPost,
+                onPressed: _canPost ? _submit : null,
+                busy: _busy,
+                busyLabel: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppTheme.ink,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      _processing
+                          ? l10n.tiktokProcessing
+                          : l10n.tiktokUploading(
+                              ((_uploadProgress ?? 0) * 100).round(),
+                            ),
+                      style: GoogleFonts.spaceGrotesk(
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.ink,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
             if (widget.onFinishInApp != null) ...[
               const SizedBox(height: 4),
@@ -525,7 +592,13 @@ class _TikTokUploadScreenState extends State<TikTokUploadScreen> {
                         Navigator.of(context).pop();
                         await widget.onFinishInApp!();
                       },
-                child: Text(l10n.tiktokFinishInApp),
+                child: Text(
+                  l10n.tiktokFinishInApp,
+                  style: GoogleFonts.dmSans(
+                    color: AppTheme.muted,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ],
           ],
@@ -536,12 +609,13 @@ class _TikTokUploadScreenState extends State<TikTokUploadScreen> {
 
   Widget _warning(String text) {
     return Padding(
-      padding: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.only(top: 8),
       child: Text(
         text,
-        style: TextStyle(
-          color: Theme.of(context).colorScheme.error,
+        style: GoogleFonts.dmSans(
+          color: const Color(0xFFFF6B8A),
           fontSize: 12,
+          height: 1.35,
         ),
       ),
     );
@@ -554,23 +628,20 @@ class _TikTokUploadScreenState extends State<TikTokUploadScreen> {
     ValueChanged<bool> onChanged,
     AppLocalizations l10n,
   ) {
-    return SwitchListTile(
-      contentPadding: EdgeInsets.zero,
-      dense: true,
-      title: Text(title),
-      subtitle: disabledByCreator ? Text(l10n.tiktokInteractionOff) : null,
+    return UploadToggleTile(
+      title: title,
+      subtitle: disabledByCreator ? l10n.tiktokInteractionOff : null,
       value: value && !disabledByCreator,
-      onChanged: _busy || disabledByCreator || _creator == null
-          ? null
-          : onChanged,
+      enabled: !_busy && !disabledByCreator && _creator != null,
+      onChanged: onChanged,
     );
   }
 
   Widget _buildConsent(AppLocalizations l10n) {
-    final theme = Theme.of(context);
-    final linkStyle = TextStyle(
-      color: theme.colorScheme.primary,
+    final linkStyle = GoogleFonts.dmSans(
+      color: AppTheme.accentCyan,
       decoration: TextDecoration.underline,
+      fontSize: 12,
     );
     TextSpan link(String label, String url) => TextSpan(
       text: label,
@@ -590,7 +661,11 @@ class _TikTokUploadScreenState extends State<TikTokUploadScreen> {
     ];
     return Text.rich(
       TextSpan(
-        style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+        style: GoogleFonts.dmSans(
+          color: AppTheme.muted,
+          fontSize: 12,
+          height: 1.4,
+        ),
         children: [
           TextSpan(text: parts.first),
           ...policies,
@@ -601,93 +676,97 @@ class _TikTokUploadScreenState extends State<TikTokUploadScreen> {
   }
 
   Widget _buildAccountCard(AppLocalizations l10n) {
-    final theme = Theme.of(context);
     final creator = _creator;
-    return Material(
+    return UploadSurfaceCard(
       key: const Key('tiktok-account-card'),
-      color: AppTheme.surface,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: theme.colorScheme.surfaceContainerHighest,
-              foregroundImage: creator == null || creator.avatarUrl.isEmpty
-                  ? null
-                  : NetworkImage(creator.avatarUrl),
-              child: Icon(
-                Icons.person_outline,
-                size: 20,
-                color: theme.hintColor,
-              ),
+      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: AppTheme.surfaceElevated,
+            foregroundImage: creator == null || creator.avatarUrl.isEmpty
+                ? null
+                : NetworkImage(creator.avatarUrl),
+            child: const Icon(
+              Icons.person_outline,
+              size: 20,
+              color: AppTheme.muted,
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  l10n.tiktokAccountTitle,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.muted,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                if (creator == null)
                   Text(
-                    l10n.tiktokAccountTitle,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.hintColor,
+                    _accountLoading ? '' : l10n.uploadAccountNone,
+                    style: GoogleFonts.dmSans(color: AppTheme.ink),
+                  )
+                else ...[
+                  Text(
+                    creator.nickname.isEmpty
+                        ? '@${creator.username}'
+                        : creator.nickname,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.dmSans(
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.ink,
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  if (creator == null)
+                  if (creator.username.isNotEmpty)
                     Text(
-                      _accountLoading ? '' : l10n.uploadAccountNone,
-                      style: theme.textTheme.bodyMedium,
-                    )
-                  else ...[
-                    Text(
-                      creator.nickname.isEmpty
-                          ? '@${creator.username}'
-                          : creator.nickname,
+                      '@${creator.username}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
+                      style: GoogleFonts.dmSans(
+                        fontSize: 12,
+                        color: AppTheme.muted,
                       ),
                     ),
-                    if (creator.username.isNotEmpty)
-                      Text(
-                        '@${creator.username}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.hintColor,
-                        ),
-                      ),
-                  ],
                 ],
+              ],
+            ),
+          ),
+          if (_accountLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else
+            TextButton(
+              key: const Key('tiktok-account-change'),
+              onPressed: _busy
+                  ? null
+                  : () => _connect(fresh: creator != null),
+              child: Text(
+                creator == null
+                    ? l10n.uploadAccountConnect
+                    : l10n.uploadAccountSwitch,
+                style: GoogleFonts.dmSans(
+                  color: AppTheme.accentCyan,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
-            if (_accountLoading)
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              )
-            else
-              TextButton(
-                key: const Key('tiktok-account-change'),
-                onPressed: _busy
-                    ? null
-                    : () => _connect(fresh: creator != null),
-                child: Text(
-                  creator == null
-                      ? l10n.uploadAccountConnect
-                      : l10n.uploadAccountSwitch,
-                ),
-              ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -704,7 +783,7 @@ class _TikTokUploadScreenState extends State<TikTokUploadScreen> {
             width: 78,
             height: 138,
             child: ColoredBox(
-              color: AppTheme.surface,
+              color: AppTheme.surfaceElevated,
               child: ready
                   ? FittedBox(
                       fit: BoxFit.cover,
@@ -733,10 +812,25 @@ class _TikTokUploadScreenState extends State<TikTokUploadScreen> {
             minLines: 3,
             maxLines: 6,
             maxLength: 2200,
+            style: GoogleFonts.spaceGrotesk(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.ink,
+              height: 1.25,
+            ),
             decoration: InputDecoration(
               hintText: l10n.tiktokCaptionHint,
+              hintStyle: GoogleFonts.spaceGrotesk(
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
+                color: AppTheme.muted.withValues(alpha: 0.7),
+              ),
               border: InputBorder.none,
               isCollapsed: true,
+              counterStyle: GoogleFonts.dmSans(
+                fontSize: 11,
+                color: AppTheme.muted,
+              ),
             ),
           ),
         ),
@@ -745,7 +839,6 @@ class _TikTokUploadScreenState extends State<TikTokUploadScreen> {
   }
 
   Widget _buildDone(AppLocalizations l10n, TikTokPublishStatus status) {
-    final theme = Theme.of(context);
     final username = _creator?.username ?? '';
     final postId = status.postIds?.firstOrNull;
     final url = username.isEmpty
@@ -753,42 +846,34 @@ class _TikTokUploadScreenState extends State<TikTokUploadScreen> {
         : postId == null
         ? 'https://www.tiktok.com/@$username'
         : 'https://www.tiktok.com/@$username/video/$postId';
-    return Scaffold(
+    return UploadAmbientScaffold(
       key: const Key('tiktok-upload-done'),
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: Text(l10n.tiktokUploadTitle),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(l10n.uploadDoneClose),
-          ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
-        children: [
-          Center(
-            child: Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primary.withValues(alpha: 0.15),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.check_rounded,
-                size: 44,
-                color: theme.colorScheme.primary,
-              ),
+      automaticallyImplyLeading: false,
+      title: l10n.tiktokUploadTitle,
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(
+            l10n.uploadDoneClose,
+            style: GoogleFonts.dmSans(
+              color: AppTheme.ink,
+              fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 16),
+        ),
+      ],
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+        children: [
+          const Center(child: UploadCheckBadge()),
+          const SizedBox(height: 18),
           Text(
             l10n.tiktokDoneTitle,
             textAlign: TextAlign.center,
-            style: theme.textTheme.headlineSmall?.copyWith(
+            style: GoogleFonts.spaceGrotesk(
+              fontSize: 22,
               fontWeight: FontWeight.w700,
+              color: AppTheme.ink,
             ),
           ),
           const SizedBox(height: 6),
@@ -796,22 +881,21 @@ class _TikTokUploadScreenState extends State<TikTokUploadScreen> {
             Text(
               l10n.uploadDoneVisibility(_privacyLabel(l10n, _privacy!)),
               textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.hintColor,
-              ),
+              style: GoogleFonts.dmSans(color: AppTheme.muted, fontSize: 14),
             ),
           const SizedBox(height: 12),
           Text(
             l10n.tiktokDoneProcessing,
             textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+            style: GoogleFonts.dmSans(color: AppTheme.muted, fontSize: 12),
           ),
           const SizedBox(height: 28),
-          FilledButton.icon(
-            onPressed: () =>
-                launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
-            icon: const Icon(Icons.open_in_new_rounded),
-            label: Text(l10n.tiktokOpen),
+          UploadGradientButton(
+            label: l10n.tiktokOpen,
+            onPressed: () => launchUrl(
+              Uri.parse(url),
+              mode: LaunchMode.externalApplication,
+            ),
           ),
         ],
       ),

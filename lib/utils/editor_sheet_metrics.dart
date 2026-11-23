@@ -2,27 +2,33 @@ import 'package:flutter/material.dart';
 
 /// Shared bottom-dock / sheet heights for the editor.
 ///
-/// Three stages (absolute heights):
-/// 1. [maxHeight] — panel = 2/3 screen → video area ≈ 1/3
-/// 2. [entryHeight] — mid / initial panel = 1/3 screen
-/// 3. `0` — full video (panel hidden)
+/// Four stages (absolute heights), largest video → largest panel:
+/// 1. `0` — full video (panel hidden)
+/// 2. [compactHeight] — short panel, video still dominant
+/// 3. [entryHeight] — mid / initial panel (~0.45 screen)
+/// 4. [maxHeight] — panel = 2/3 screen → video area ≈ 1/3
 class EditorSheetMetrics {
   const EditorSheetMetrics({
+    required this.compactFraction,
     required this.entryFraction,
     required this.maxFraction,
     required this.minFraction,
     required this.screenHeight,
   });
 
+  final double compactFraction;
   final double entryFraction;
   final double maxFraction;
   final double minFraction;
   final double screenHeight;
 
+  double get compactHeight => screenHeight * compactFraction;
   double get entryHeight => screenHeight * entryFraction;
   double get maxHeight => screenHeight * maxFraction;
   double get minHeight => screenHeight * minFraction;
 
+  /// Peek dock between full-video and the default mid stage.
+  static const compactFractionValue = 0.22;
   static const entryFractionValue = 0.45;
   static const maxFractionValue = 2 / 3;
   static const minFractionValue = 0.12;
@@ -30,6 +36,7 @@ class EditorSheetMetrics {
   static EditorSheetMetrics of(BuildContext context) {
     final screenH = MediaQuery.sizeOf(context).height;
     return EditorSheetMetrics(
+      compactFraction: compactFractionValue,
       entryFraction: entryFractionValue,
       maxFraction: maxFractionValue,
       minFraction: minFractionValue,
@@ -69,24 +76,38 @@ class EditorSheetMetrics {
   }
 }
 
-/// Dock stops in pixels: hidden → panel (entry = 1/3) → panel at 2/3 screen.
+/// Dock stops in pixels: hidden → compact → entry → max (2/3 screen).
 List<double> dockHeightStops({
   required double entryHeight,
   required double maxHeight,
+  double? compactHeight,
 }) {
   final entry = entryHeight.clamp(0.0, maxHeight);
   final maxH = maxHeight < entry ? entry : maxHeight;
-  if ((maxH - entry).abs() < 24) {
-    return [0.0, maxH];
+  final compact = (compactHeight ?? entry * 0.5).clamp(0.0, entry);
+
+  final stops = <double>[0.0];
+  void addIfDistinct(double value) {
+    if (stops.isEmpty || (value - stops.last).abs() >= 24) {
+      stops.add(value);
+    }
   }
-  return [0.0, entry, maxH];
+
+  if (compact > 24) addIfDistinct(compact);
+  if ((maxH - entry).abs() < 24) {
+    addIfDistinct(maxH);
+    return stops;
+  }
+  addIfDistinct(entry);
+  addIfDistinct(maxH);
+  return stops;
 }
 
 /// Snap dock height to the nearest (or fling-adjacent) stop.
 ///
 /// [velocity] uses Flutter's vertical convention: positive = finger down
 /// (collapse / grow video), negative = finger up (expand panel). Flings move
-/// one stop at a time: max(2/3) → entry(1/3) → hidden (and the reverse).
+/// one stop at a time along [stops].
 double snapDockHeight({
   required double current,
   required double velocity,

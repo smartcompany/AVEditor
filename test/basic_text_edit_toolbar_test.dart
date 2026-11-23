@@ -2,6 +2,7 @@ import 'package:aveditor/l10n/app_localizations.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/text_overlay_style.dart';
 import 'package:aveditor/widgets/basic_text_edit_toolbar.dart';
+import 'package:aveditor/widgets/overlay_fonts.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -36,26 +37,20 @@ void main() {
     return overlay;
   }
 
-  testWidgets('font tab reads "Aa" and has no captions', (tester) async {
+  testWidgets('toolbar shows Font and keeps size control without Tt', (
+    tester,
+  ) async {
     await pumpToolbar(tester);
-    expect(find.text('Aa'), findsOneWidget);
-    for (final caption in ['Font', 'Style', 'Align', 'Color']) {
+    expect(find.text('Font'), findsOneWidget);
+    expect(find.text('Aa'), findsNothing);
+    expect(find.text('TT'), findsNothing);
+    expect(find.text('Tt'), findsNothing);
+    for (final caption in ['Style', 'Align', 'Color']) {
       expect(find.text(caption), findsNothing, reason: caption);
     }
   });
 
-  Finder colorSwatch() => find
-      .byWidgetPredicate(
-        (w) =>
-            w is Container &&
-            w.decoration is BoxDecoration &&
-            (w.decoration! as BoxDecoration).shape == BoxShape.circle &&
-            (w.decoration! as BoxDecoration).color == Colors.white,
-      )
-      .first;
-
-  Finder colorTab() =>
-      find.ancestor(of: colorSwatch(), matching: find.byType(InkWell)).first;
+  Finder colorTab() => find.byKey(const ValueKey('basic-text-color-button'));
 
   final sizeTrack = find.byWidgetPredicate(
     (w) =>
@@ -63,10 +58,9 @@ void main() {
         w.painter.runtimeType.toString() == '_FontSizeTrackPainter',
   );
 
-  testWidgets('size tab is selected first and drives the size bar', (
-    tester,
-  ) async {
+  testWidgets('size slider is always on the bar', (tester) async {
     final overlay = await pumpToolbar(tester);
+    expect(sizeTrack, findsOneWidget);
     // The number is hidden at rest and floats above the thumb mid-drag.
     expect(find.text('84'), findsNothing);
     final gesture = await tester.startGesture(tester.getCenter(sizeTrack));
@@ -80,29 +74,28 @@ void main() {
     expect(find.text('${overlay.value.fontSize.round()}'), findsNothing);
   });
 
-  testWidgets('size, font and color tabs swap the right side', (tester) async {
-    await pumpToolbar(tester);
-    final customColor = find.bySemanticsLabel('Custom color');
-    final fontList = find.text('Basic');
-
-    await tester.tap(find.text('Aa'));
-    await tester.pumpAndSettle();
-    expect(fontList, findsOneWidget);
-    expect(sizeTrack, findsNothing);
+  testWidgets('color opens a submenu that closes after a pick', (tester) async {
+    final overlay = await pumpToolbar(tester);
+    expect(sizeTrack, findsOneWidget);
 
     await tester.tap(colorTab());
-    await tester.pumpAndSettle();
-    expect(customColor, findsOneWidget);
-    expect(fontList, findsNothing);
+    await tester.pump();
+    // Submenu replaces the size slider for the duration of the pick.
+    expect(sizeTrack, findsNothing);
+    expect(find.bySemanticsLabel('Custom color'), findsOneWidget);
 
-    // Style and align act without changing the selected tab.
-    await tester.tap(find.byIcon(Icons.format_align_center));
-    await tester.tap(find.byIcon(Icons.sync));
-    await tester.pumpAndSettle();
-    expect(customColor, findsOneWidget);
-
-    await tester.tap(find.byKey(const ValueKey('basic-text-size-tab')));
-    await tester.pumpAndSettle();
+    // Pick black from the palette — submenu collapses, size returns.
+    final black = find.byWidgetPredicate(
+      (w) =>
+          w is Container &&
+          w.decoration is BoxDecoration &&
+          (w.decoration! as BoxDecoration).shape == BoxShape.circle &&
+          (w.decoration! as BoxDecoration).color == Colors.black,
+    );
+    await tester.tap(black.first);
+    await tester.pump();
+    expect(overlay.value.color.toARGB32(), Colors.black.toARGB32());
+    expect(find.bySemanticsLabel('Custom color'), findsNothing);
     expect(sizeTrack, findsOneWidget);
   });
 
@@ -111,11 +104,8 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await pumpToolbar(tester);
-    // The test font (Ahem) is far wider than real fonts, so only check that
-    // nothing overflows and the size bar keeps real width. On a device the
-    // track measured ~148pt at 375pt wide.
     expect(tester.takeException(), isNull);
-    expect(tester.getSize(sizeTrack).width, greaterThan(100));
+    expect(tester.getSize(sizeTrack).width, greaterThan(60));
   });
 
   testWidgets('style button cycles and shows a cycle badge', (tester) async {
@@ -156,5 +146,24 @@ void main() {
     await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
     expect(find.text('Done'), findsNothing);
+    expect(sizeTrack, findsOneWidget);
+  });
+
+  testWidgets('Font opens a submenu that closes after a pick', (tester) async {
+    final overlay = await pumpToolbar(tester);
+    await tester.tap(find.byKey(const ValueKey('basic-text-font-button')));
+    await tester.pump();
+    expect(find.text('Basic'), findsOneWidget);
+    expect(find.text('Jua'), findsOneWidget);
+    expect(sizeTrack, findsNothing);
+
+    await tester.tap(find.text('Jua'));
+    await tester.pump();
+    expect(overlay.value.fontFamily, OverlayFonts.all[1].id);
+    // Submenu dismissed after selection — main bar returns.
+    expect(find.text('Jua'), findsNothing);
+    expect(find.text('Basic'), findsNothing);
+    expect(find.text('Font'), findsOneWidget);
+    expect(sizeTrack, findsOneWidget);
   });
 }
