@@ -31,6 +31,17 @@
   "galleryBackToGrid": "Back",
   "galleryManageAccess": "Manage",
   "galleryRetry": "Retry",
+  "galleryTabGallery": "Gallery",
+  "galleryTabBackgrounds": "Backgrounds",
+  "galleryBackgroundsEmpty": "No background templates.",
+  "galleryBackgroundsLoadFailed": "Could not load backgrounds: {error}",
+  "@galleryBackgroundsLoadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "pickFromFiles": "Choose video file",
   "recordVideo": "Record video",
   "youtubeSignIn": "Sign in with YouTube",

@@ -17,6 +17,17 @@
   "galleryBackToGrid": "뒤로",
   "galleryManageAccess": "관리",
   "galleryRetry": "다시 시도",
+  "galleryTabGallery": "갤러리",
+  "galleryTabBackgrounds": "배경",
+  "galleryBackgroundsEmpty": "배경 템플릿이 없습니다.",
+  "galleryBackgroundsLoadFailed": "배경을 불러오지 못했습니다: {error}",
+  "@galleryBackgroundsLoadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "pickFromFiles": "동영상 파일 선택",
   "recordVideo": "동영상 촬영",
   "youtubeSignIn": "YouTube 로그인",

@@ -948,12 +948,27 @@ bool isOverlayVisibleAt(
 /// Touching clips stay one window, matching the timeline. A deleted gap stays
 /// two windows. [sourceStartMs] is the source time at [start], so motion can
 /// keep counting from the overlay's own start across a gap.
+///
+/// Spans may extend past picture EOF (black runway) — same as preview via
+/// [isOverlayVisibleAt] / [projectSequenceDuration]. Clamping to the video
+/// length alone dropped Journal / Star Crawl titles placed after the last
+/// frame when several overlays were burned in.
 List<({double start, double end, int sourceStartMs})> overlayExportSpans(
   TextOverlay overlay,
   List<ClipSegment> segments,
 ) {
-  final exportDurationSec =
-      exportTimelineDuration(segments).inMilliseconds / 1000.0;
+  // Multi-source projects already use the packed sequence clock on overlays.
+  if (segments.any((s) => s.mediaId != null)) {
+    if (overlay.end <= overlay.start) return const [];
+    return [
+      (
+        start: overlay.start.inMilliseconds / 1000.0,
+        end: overlay.end.inMilliseconds / 1000.0,
+        sourceStartMs: overlay.start.inMilliseconds,
+      ),
+    ];
+  }
+
   final spans = <({double start, double end, int sourceStartMs})>[];
 
   for (final range in overlayTimelineRanges(overlay, segments)) {
@@ -982,16 +997,66 @@ List<({double start, double end, int sourceStartMs})> overlayExportSpans(
 
     final startSec = exportStart.inMilliseconds / 1000.0;
     final endSec = (exportEnd.inMilliseconds + 1) / 1000.0;
-    if (endSec <= startSec || startSec >= exportDurationSec) continue;
-
-    final clampedStart = startSec.clamp(0.0, exportDurationSec);
-    final clampedEnd = endSec.clamp(0.0, exportDurationSec);
-    if (clampedEnd <= clampedStart) continue;
+    if (endSec <= startSec || startSec < 0) continue;
     spans.add((
-      start: clampedStart,
-      end: clampedEnd,
+      start: startSec,
+      end: endSec,
       sourceStartMs: range.start.inMilliseconds,
     ));
+  }
+
+  // Tail past the last kept source frame (titles after picture EOF).
+  // Preview shows these; export duration already extends via
+  // projectSequenceDuration — spans must match or native drops the burn.
+  var maxSourceEnd = Duration.zero;
+  for (final segment in segments) {
+    if (segment.end > maxSourceEnd) maxSourceEnd = segment.end;
+  }
+  if (overlay.end > maxSourceEnd && overlay.start < overlay.end) {
+    final tailSourceStart =
+        overlay.start > maxSourceEnd ? overlay.start : maxSourceEnd;
+    final exportStart = sourceTimeToExportTime(
+      segments,
+      tailSourceStart,
+      applyTransitions: true,
+    );
+    final exportEnd = sourceTimeToExportTime(
+          segments,
+          overlay.end,
+          applyTransitions: true,
+        ) ??
+        overlayExportTimeForEnd(segments, overlay.end);
+    if (exportStart != null && exportEnd != null) {
+      final startSec = exportStart.inMilliseconds / 1000.0;
+      final endSec = exportEnd.inMilliseconds / 1000.0;
+      if (endSec > startSec && startSec >= 0) {
+        if (spans.isNotEmpty) {
+          final last = spans.last;
+          // Extend the last in-picture window when the tail touches it
+          // (straddle EOF). Keep a separate window when the title starts
+          // entirely after picture (Star Crawl after the last frame).
+          if (startSec <= last.end + 0.001) {
+            spans[spans.length - 1] = (
+              start: last.start,
+              end: endSec > last.end ? endSec : last.end,
+              sourceStartMs: last.sourceStartMs,
+            );
+          } else {
+            spans.add((
+              start: startSec,
+              end: endSec,
+              sourceStartMs: tailSourceStart.inMilliseconds,
+            ));
+          }
+        } else {
+          spans.add((
+            start: startSec,
+            end: endSec,
+            sourceStartMs: tailSourceStart.inMilliseconds,
+          ));
+        }
+      }
+    }
   }
 
   return spans;

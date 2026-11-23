@@ -64,6 +64,20 @@ class AppLocalizationsKo extends AppLocalizations {
   String get galleryRetry => '다시 시도';
 
   @override
+  String get galleryTabGallery => '갤러리';
+
+  @override
+  String get galleryTabBackgrounds => '배경';
+
+  @override
+  String get galleryBackgroundsEmpty => '배경 템플릿이 없습니다.';
+
+  @override
+  String galleryBackgroundsLoadFailed(String error) {
+    return '배경을 불러오지 못했습니다: $error';
+  }
+
+  @override
   String get pickFromFiles => '동영상 파일 선택';
 
   @override

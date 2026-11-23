@@ -458,6 +458,35 @@ void main() {
     expect(spans.single.sourceStartMs, 1000);
   });
 
+  test('overlayExportSpans keeps titles that straddle or sit past picture EOF', () {
+    final segments = [
+      seg(Duration.zero, const Duration(seconds: 10)),
+    ];
+    final straddling = TextOverlay(
+      text: 'Hello\nWorld',
+      start: const Duration(seconds: 9),
+      end: const Duration(seconds: 12),
+      packItemId: 'pack_journal',
+    );
+    final pastEof = TextOverlay(
+      text: 'A long time ago',
+      start: const Duration(seconds: 11),
+      end: const Duration(seconds: 29),
+      packItemId: 'tpl_star_wars_crawl',
+      animationId: 'crawl',
+    );
+
+    final journal = overlayExportSpans(straddling, segments);
+    expect(journal, hasLength(1));
+    expect(journal.single.start, closeTo(9.0, 0.001));
+    expect(journal.single.end, closeTo(12.0, 0.001));
+
+    final crawl = overlayExportSpans(pastEof, segments);
+    expect(crawl, hasLength(1));
+    expect(crawl.single.start, closeTo(11.0, 0.001));
+    expect(crawl.single.end, closeTo(29.0, 0.001));
+  });
+
   test('exportTimeToSourceTime maps packed timeline positions', () {
     final segments = [
       seg(Duration.zero, const Duration(seconds: 3)),

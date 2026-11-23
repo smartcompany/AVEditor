@@ -144,10 +144,26 @@ TextEntranceState evaluateTextEntrance({
         perGlyph: false,
       );
     case TextEntranceIds.typewriter:
+      final overlap = animation?.typewriterStaggerOverlap ??
+          TextEntranceAnimation.defaultStaggerOverlap;
+      final byLine = animation?.typewriterStaggerByLine(text) ??
+          text.contains('\n');
       return TextEntranceState(
         animationId: id,
         progress: t,
-        glyphs: _staggered(count: graphemes.length, progress: t, hardCut: true),
+        glyphs: byLine
+            ? _staggeredByLine(
+                graphemes: graphemes,
+                progress: t,
+                hardCut: true,
+                overlap: overlap,
+              )
+            : _staggered(
+                count: graphemes.length,
+                progress: t,
+                hardCut: true,
+                overlap: overlap,
+              ),
         perGlyph: true,
       );
     case TextEntranceIds.fade:
@@ -202,12 +218,13 @@ List<TextEntranceGlyph> _staggered({
   required int count,
   required double progress,
   required bool hardCut,
+  double overlap = TextEntranceAnimation.defaultStaggerOverlap,
 }) {
   if (count <= 0) return const [];
-  const overlap = 0.55;
-  final slot = 1 / (count + (count - 1) * overlap);
-  final step = slot * (1 + overlap);
-  final window = slot * (1 + overlap * 0.5);
+  final o = overlap.clamp(0.0, 0.95);
+  final slot = 1 / (count + (count - 1) * o);
+  final step = slot * (1 + o);
+  final window = slot * (1 + o * 0.5);
   final out = <TextEntranceGlyph>[];
   for (var i = 0; i < count; i++) {
     final start = i * step;
@@ -224,6 +241,74 @@ List<TextEntranceGlyph> _staggered({
       out.add(TextEntranceGlyph(opacity: local > 0.15 ? 1 : 0));
     } else {
       out.add(TextEntranceGlyph(opacity: _easeOutCubic(local)));
+    }
+  }
+  return out;
+}
+
+/// Finish each visual line before starting the next (Hello… then World…).
+List<TextEntranceGlyph> _staggeredByLine({
+  required List<String> graphemes,
+  required double progress,
+  required bool hardCut,
+  required double overlap,
+}) {
+  if (graphemes.isEmpty) return const [];
+  final lines = <List<int>>[];
+  var current = <int>[];
+  for (var i = 0; i < graphemes.length; i++) {
+    current.add(i);
+    if (graphemes[i] == '\n') {
+      lines.add(current);
+      current = <int>[];
+    }
+  }
+  if (current.isNotEmpty) lines.add(current);
+
+  final out = List<TextEntranceGlyph>.filled(
+    graphemes.length,
+    const TextEntranceGlyph(opacity: 0),
+    growable: false,
+  );
+  if (lines.isEmpty) return out;
+
+  final lineCount = lines.length;
+  final scaled = progress.clamp(0.0, 1.0) * lineCount;
+  final active = scaled.floor().clamp(0, lineCount - 1);
+  final localT = (scaled - active).clamp(0.0, 1.0);
+
+  for (var li = 0; li < lineCount; li++) {
+    final idxs = lines[li];
+    if (li < active) {
+      for (final i in idxs) {
+        out[i] = const TextEntranceGlyph(opacity: 1);
+      }
+      continue;
+    }
+    if (li > active) continue;
+    final content = [
+      for (final i in idxs)
+        if (graphemes[i] != '\n') i,
+    ];
+    if (content.isEmpty) {
+      for (final i in idxs) {
+        out[i] = const TextEntranceGlyph(opacity: 1);
+      }
+      continue;
+    }
+    final inner = _staggered(
+      count: content.length,
+      progress: localT,
+      hardCut: hardCut,
+      overlap: overlap,
+    );
+    for (var k = 0; k < content.length; k++) {
+      out[content[k]] = inner[k];
+    }
+    for (final i in idxs) {
+      if (graphemes[i] == '\n') {
+        out[i] = const TextEntranceGlyph(opacity: 1);
+      }
     }
   }
   return out;

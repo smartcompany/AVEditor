@@ -20,6 +20,9 @@ class TextTemplatePackItem {
     this.sampleText,
   });
 
+  static const defaultEffectSampleText = 'Aa';
+  static const defaultTemplateSampleText = 'Hello\nWorld';
+
   final String id;
   final String title;
   final TextStyleTemplate style;
@@ -42,12 +45,29 @@ class TextTemplatePackItem {
   /// Default entrance animation when this pack is applied.
   final TextEntranceAnimation animation;
 
-  /// Optional body text applied when the user picks this pack (e.g. crawl).
+  /// Dashboard-editable body shown on app tiles and applied for crawl packs.
   final String? sampleText;
 
   bool get hasLottie =>
       (lottieAsset != null && lottieAsset!.isNotEmpty) ||
       (lottieUrl != null && lottieUrl!.isNotEmpty);
+
+  /// Text shown on the studio grid tile (server [sampleText]).
+  String get tilePreviewText {
+    final sample = sampleText?.trim();
+    if (sample != null && sample.isNotEmpty) {
+      final lines = sample
+          .split(RegExp(r'\n+'))
+          .map((l) => l.trim())
+          .where((l) => l.isNotEmpty)
+          .take(3)
+          .toList();
+      if (lines.isNotEmpty) return lines.join('\n');
+    }
+    return kind == 'template'
+        ? defaultTemplateSampleText
+        : defaultEffectSampleText;
+  }
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -70,11 +90,13 @@ class TextTemplatePackItem {
     );
     styleJson['id'] ??= json['id'];
     styleJson['label'] ??= json['title'] ?? json['id'];
+    final kind = json['kind'] as String? ?? 'effect';
+    final sample = (json['sampleText'] as String?)?.trim();
 
     return TextTemplatePackItem(
       id: json['id'] as String,
       title: json['title'] as String? ?? json['id'] as String,
-      kind: json['kind'] as String? ?? 'effect',
+      kind: kind,
       accessTier: EffectAccessTier.fromJson(
         json['accessTier'] ?? json['plan'],
         legacyPremium: json['premium'] as bool?,
@@ -87,7 +109,11 @@ class TextTemplatePackItem {
       animation: TextEntranceAnimation.fromJson(
         json['animation'] as Map<String, dynamic>?,
       ),
-      sampleText: json['sampleText'] as String?,
+      sampleText: (sample != null && sample.isNotEmpty)
+          ? sample
+          : (kind == 'template'
+              ? defaultTemplateSampleText
+              : defaultEffectSampleText),
     );
   }
 }

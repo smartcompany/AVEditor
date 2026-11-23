@@ -17,6 +17,17 @@
   "galleryBackToGrid": "返回",
   "galleryManageAccess": "管理",
   "galleryRetry": "重试",
+  "galleryTabGallery": "相册",
+  "galleryTabBackgrounds": "背景",
+  "galleryBackgroundsEmpty": "暂无背景模板。",
+  "galleryBackgroundsLoadFailed": "无法加载背景：{error}",
+  "@galleryBackgroundsLoadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "pickFromFiles": "选择视频文件",
   "recordVideo": "拍摄视频",
   "youtubeSignIn": "YouTube 登录",

@@ -15,6 +15,7 @@ import 'package:aveditor/services/music_storage_service.dart';
 import 'package:aveditor/services/native_video_engine.dart';
 import 'package:aveditor/services/overlay_raster_service.dart';
 import 'package:aveditor/models/transition_role_effect.dart';
+import 'package:aveditor/services/text_template_pack_service.dart';
 import 'package:aveditor/services/transition_catalog_service.dart';
 import 'package:aveditor/services/video_probe_service.dart';
 import 'package:aveditor/utils/clip_rotation.dart';
@@ -60,6 +61,8 @@ class ExportService {
     onProgress?.call(0.05);
 
     await TransitionCatalogService.instance.ensureInitialized();
+    // Pack styles / crawl geometry resolve from the catalog during raster.
+    await TextTemplatePackService.instance.ensureInitialized();
 
     final primaryPath = project.primaryVideoPath;
     final sourceFile = File(primaryPath);

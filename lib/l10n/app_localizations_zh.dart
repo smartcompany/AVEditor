@@ -64,6 +64,20 @@ class AppLocalizationsZh extends AppLocalizations {
   String get galleryRetry => '重试';
 
   @override
+  String get galleryTabGallery => '相册';
+
+  @override
+  String get galleryTabBackgrounds => '背景';
+
+  @override
+  String get galleryBackgroundsEmpty => '暂无背景模板。';
+
+  @override
+  String galleryBackgroundsLoadFailed(String error) {
+    return '无法加载背景：$error';
+  }
+
+  @override
   String get pickFromFiles => '选择视频文件';
 
   @override

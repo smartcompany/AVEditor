@@ -149,10 +149,8 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
       }
     }
     final current = widget.overlay;
-    final sample = item.sampleText?.trim();
-    final replaceText = sample != null &&
-        sample.isNotEmpty &&
-        (current.text.trim().isEmpty || item.animation.isContinuous);
+    // sampleText is tile-preview only — never overwrite the overlay body.
+    // Empty / placeholder text stays until the user types.
     var nextEnd = current.end;
     if (item.animation.isContinuous) {
       final spanMs = item.animation.durationMs.clamp(1000, 30000);
@@ -168,7 +166,6 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
         style: TextOverlayStyle.plain,
         fontFamily: fontId ?? current.fontFamily,
         color: seededColor ?? current.color,
-        text: replaceText ? sample : current.text,
         end: nextEnd,
         // Clear override so pack animation (templates) can apply;
         // static effects ship with no animation.
@@ -296,40 +293,19 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
     );
   }
 
-  /// Compact tile copy: multi-line so templates read as body text, not a glyph.
-  static const _effectPreview = 'Aa';
-  static const _templatePreview = 'Hello\nWorld';
-
-  /// First few lines of [sample], capped for the small grid cell.
-  static String _tilePreviewText(TextTemplatePackItem pack, String fallback) {
-    final sample = pack.sampleText?.trim();
-    if (sample == null || sample.isEmpty) return fallback;
-    final lines = sample
-        .split(RegExp(r'\n+'))
-        .map((l) => l.trim())
-        .where((l) => l.isNotEmpty)
-        .take(3)
-        .toList();
-    if (lines.isEmpty) return fallback;
-    return lines.join('\n');
-  }
-
   Widget _buildTabBody(AppLocalizations l10n) {
     switch (_tab) {
       case TextStudioTab.templates:
         return _buildPackGrid(
           l10n,
           kind: 'effect',
-          previewText: _effectPreview,
           includeDefault: true,
         );
       case TextStudioTab.textTemplates:
         return _buildPackGrid(
           l10n,
           kind: 'template',
-          previewText: _templatePreview,
           loopSelectedAnimation: true,
-          useSamplePreview: true,
         );
     }
   }
@@ -337,10 +313,8 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
   Widget _buildPackGrid(
     AppLocalizations l10n, {
     required String kind,
-    required String previewText,
     bool loopSelectedAnimation = false,
     bool includeDefault = false,
-    bool useSamplePreview = false,
   }) {
     final packItems = <TextTemplatePackItem>[
       for (final category in _packService.catalog.categories)
@@ -348,6 +322,9 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
           if (item.kind == kind) item,
     ];
     final defaultOffset = includeDefault ? 1 : 0;
+    final defaultTileText = kind == 'template'
+        ? TextTemplatePackItem.defaultTemplateSampleText
+        : TextTemplatePackItem.defaultEffectSampleText;
 
     return GridView.builder(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
@@ -366,7 +343,7 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
             label: l10n.textStudioDefault,
             onTap: _selectDefaultLook,
             child: OverlayTextDisplay(
-              text: previewText,
+              text: defaultTileText,
               // Fixed catalog look — do not bind to the live overlay color/font
               // or every tile jumps when another pack is selected.
               color: Colors.white,
@@ -380,9 +357,7 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
         final selected = widget.overlay.packItemId == pack.id;
         final downloading = _packService.isDownloading(pack.id);
         final installed = _packService.isInstalled(pack);
-        final tileText = useSamplePreview
-            ? _tilePreviewText(pack, previewText)
-            : previewText;
+        final tileText = pack.tilePreviewText;
         return _TemplateTile(
           selected: selected,
           label: pack.title,

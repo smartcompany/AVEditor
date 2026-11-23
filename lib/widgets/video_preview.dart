@@ -570,6 +570,15 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
   bool claimsOverlayPointer(PointerDownEvent event) {
     final local = _toPreviewLocal(event);
     if (local == null) return false;
+    // globalToLocal still returns a point when the finger is on the dock
+    // resize strip below the preview; oversized text bodyRects can contain
+    // that extrapolated point and steal the handle. Only claim inside canvas.
+    if (local.dx < 0 ||
+        local.dy < 0 ||
+        local.dx > _previewW ||
+        local.dy > _previewH) {
+      return false;
+    }
 
     final editing = _editingOverlay;
     if (editing != null) {

@@ -295,7 +295,7 @@ class _GalleryPickerScreenState extends State<GalleryPickerScreen> {
       if (!mounted) return;
       setState(() => _confirmingBackgrounds = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('배경을 불러오지 못했습니다: $e')),
+        SnackBar(content: Text(context.l10n.galleryBackgroundsLoadFailed('$e'))),
       );
     }
   }
@@ -358,33 +358,25 @@ class _GalleryPickerScreenState extends State<GalleryPickerScreen> {
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         backgroundColor: AppTheme.background,
-        title: onBackgrounds
-            ? Text(
-                '배경',
-                style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
-              )
-            : InkWell(
-                onTap: _albums.length > 1 ? _pickAlbum : null,
-                borderRadius: BorderRadius.circular(8),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          _album?.name ?? l10n.galleryPickerTitle,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (_albums.length > 1) ...[
-                        const SizedBox(width: 4),
-                        const Icon(Icons.expand_more, size: 20),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
+        automaticallyImplyLeading: false,
+        leading: const SizedBox.shrink(),
+        leadingWidth: 0,
+        titleSpacing: 12,
+        title: Row(
+          children: [
+            _tabChip(
+              label: l10n.galleryTabGallery,
+              selected: _tab == _PickerTab.gallery,
+              onTap: () => setState(() => _tab = _PickerTab.gallery),
+            ),
+            const SizedBox(width: 8),
+            _tabChip(
+              label: l10n.galleryTabBackgrounds,
+              selected: onBackgrounds,
+              onTap: () => setState(() => _tab = _PickerTab.backgrounds),
+            ),
+          ],
+        ),
         actions: [
           if (!onBackgrounds && _permission.isLimited)
             TextButton(
@@ -399,27 +391,50 @@ class _GalleryPickerScreenState extends State<GalleryPickerScreen> {
             child: Text(l10n.cancel),
           ),
         ],
+        bottom: onBackgrounds
+            ? null
+            : PreferredSize(
+                preferredSize: const Size.fromHeight(40),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                    child: InkWell(
+                      onTap: _albums.length > 1 ? _pickAlbum : null,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 4,
+                          horizontal: 4,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                _album?.name ?? l10n.galleryPickerTitle,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.dmSans(
+                                  color: AppTheme.ink,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 15,
+                                ),
+                              ),
+                            ),
+                            if (_albums.length > 1) ...[
+                              const SizedBox(width: 4),
+                              const Icon(Icons.expand_more, size: 20),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
       ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Row(
-              children: [
-                _tabChip(
-                  label: '갤러리',
-                  selected: _tab == _PickerTab.gallery,
-                  onTap: () => setState(() => _tab = _PickerTab.gallery),
-                ),
-                const SizedBox(width: 8),
-                _tabChip(
-                  label: '배경',
-                  selected: onBackgrounds,
-                  onTap: () => setState(() => _tab = _PickerTab.backgrounds),
-                ),
-              ],
-            ),
-          ),
           Expanded(
             child: onBackgrounds ? _buildBackgroundsBody() : _buildBody(),
           ),
@@ -475,7 +490,7 @@ class _GalleryPickerScreenState extends State<GalleryPickerScreen> {
     if (items.isEmpty) {
       return Center(
         child: Text(
-          '배경 템플릿이 없습니다',
+          context.l10n.galleryBackgroundsEmpty,
           style: GoogleFonts.dmSans(color: AppTheme.muted, fontSize: 15),
         ),
       );

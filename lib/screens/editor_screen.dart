@@ -630,10 +630,15 @@ class _EditorScreenState extends State<EditorScreen>
     }
   }
 
-  void _onPreviewMaximizePointerDown(PointerDownEvent event) {
-    // Text overlays in the lower preview fifth share this hit zone — yield so
-    // dragging text never also resizes the dock.
-    if (_previewKey.currentState?.claimsOverlayPointer(event) == true) {
+  void _onPreviewMaximizePointerDown(
+    PointerDownEvent event, {
+    bool yieldToOverlay = true,
+  }) {
+    // In-preview lower-fifth zone shares space with text — yield so dragging
+    // text does not also resize the dock. The always-visible arrow strip below
+    // the preview must never yield (oversized text used to steal it).
+    if (yieldToOverlay &&
+        _previewKey.currentState?.claimsOverlayPointer(event) == true) {
       return;
     }
     _stopDockSnapAnim();
@@ -751,7 +756,8 @@ class _EditorScreenState extends State<EditorScreen>
               : context.l10n.hideTimeline,
           child: Listener(
             behavior: HitTestBehavior.opaque,
-            onPointerDown: _onPreviewMaximizePointerDown,
+            onPointerDown: (e) =>
+                _onPreviewMaximizePointerDown(e, yieldToOverlay: false),
             onPointerMove: _onPreviewMaximizePointerMove,
             onPointerUp: _onPreviewMaximizePointerEnd,
             onPointerCancel: _onPreviewMaximizePointerEnd,
@@ -5371,7 +5377,12 @@ class _EditorScreenState extends State<EditorScreen>
                                               height: targetHeight,
                                               child: AbsorbPointer(
                                                 absorbing: _exporting,
-                                                child: VideoPreviewWithOverlays(
+                                                // Progress must paint above text/sticker
+                                                // overlays — videoChild sits under them.
+                                                child: Stack(
+                                                  fit: StackFit.expand,
+                                                  children: [
+                                                    VideoPreviewWithOverlays(
                                                 key: _previewKey,
                                                 videoAspectRatio: sourceAspect,
                                                 canvasAspectRatio: canvasAspect,
@@ -5385,11 +5396,6 @@ class _EditorScreenState extends State<EditorScreen>
                                                     if (_playheadPastPicture)
                                                       const ColoredBox(
                                                         color: Colors.black,
-                                                      ),
-                                                    if (_exportProgress != null)
-                                                      _ExportPreviewPercent(
-                                                        progress:
-                                                            _exportProgress!,
                                                       ),
                                                   ],
                                                 ),
@@ -5521,6 +5527,16 @@ class _EditorScreenState extends State<EditorScreen>
                                                       );
                                                     },
                                               ),
+                                                    if (_exportProgress != null)
+                                                      Positioned.fill(
+                                                        child:
+                                                            _ExportPreviewPercent(
+                                                          progress:
+                                                              _exportProgress!,
+                                                        ),
+                                                      ),
+                                                  ],
+                                                ),
                                               ),
                                             ),
                                           ),

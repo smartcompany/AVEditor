@@ -27,6 +27,8 @@ class TextEntranceAnimation {
   const TextEntranceAnimation({
     required this.id,
     this.durationMs = defaultDurationMs,
+    this.staggerOverlap = defaultStaggerOverlap,
+    this.staggerBy = defaultStaggerBy,
     this.tiltDeg = defaultTiltDeg,
     this.perspective = defaultPerspective,
     this.scrollStartFactor = defaultScrollStartFactor,
@@ -38,6 +40,12 @@ class TextEntranceAnimation {
   /// Suggested crawl / entrance length when the overlay span is unknown.
   static const maxContinuousMs = 30000;
 
+  /// Typewriter glyph-window overlap (matches server default).
+  static const defaultStaggerOverlap = 0.55;
+
+  /// `glyph` | `line` | `auto` (line when text has a newline).
+  static const defaultStaggerBy = 'auto';
+
   /// Classic crawl tilt magnitude in degrees (bottom nearer). Flutter applies
   /// the Y-down sign in [flutterCrawlTiltRadians].
   static const defaultTiltDeg = 54.0;
@@ -47,6 +55,12 @@ class TextEntranceAnimation {
 
   final String id;
   final int durationMs;
+
+  /// Typewriter: neighbouring glyph reveal windows overlap (0…0.95).
+  final double staggerOverlap;
+
+  /// Typewriter stagger scope from the server catalog.
+  final String staggerBy;
 
   /// Server-driven crawl tilt in degrees (positive = Star Wars direction).
   final double tiltDeg;
@@ -59,6 +73,21 @@ class TextEntranceAnimation {
 
   /// End translateY as a multiple of font size (negative = into distance).
   final double scrollEndFactor;
+
+  double get typewriterStaggerOverlap =>
+      staggerOverlap.clamp(0.0, 0.95);
+
+  /// Whether typewriter should finish each line before starting the next.
+  bool typewriterStaggerByLine(String text) {
+    switch (staggerBy) {
+      case 'line':
+        return true;
+      case 'glyph':
+        return false;
+      default:
+        return text.contains('\n');
+    }
+  }
 
   Duration get duration => Duration(
         milliseconds: durationMs.clamp(
@@ -84,6 +113,10 @@ class TextEntranceAnimation {
   Map<String, dynamic> toJson() => {
         'id': id,
         'durationMs': durationMs,
+        if (id == TextEntranceIds.typewriter) ...{
+          'staggerOverlap': staggerOverlap,
+          'staggerBy': staggerBy,
+        },
         if (TextEntranceIds.isContinuous(id)) ...{
           'tiltDeg': tiltDeg,
           'perspective': perspective,
@@ -99,6 +132,9 @@ class TextEntranceAnimation {
     return TextEntranceAnimation(
       id: json['id'] as String? ?? '',
       durationMs: (json['durationMs'] as num?)?.toInt() ?? defaultDurationMs,
+      staggerOverlap: (json['staggerOverlap'] as num?)?.toDouble() ??
+          defaultStaggerOverlap,
+      staggerBy: json['staggerBy'] as String? ?? defaultStaggerBy,
       tiltDeg: (json['tiltDeg'] as num?)?.toDouble() ?? defaultTiltDeg,
       perspective:
           (json['perspective'] as num?)?.toDouble() ?? defaultPerspective,
@@ -112,6 +148,8 @@ class TextEntranceAnimation {
   TextEntranceAnimation copyWith({
     String? id,
     int? durationMs,
+    double? staggerOverlap,
+    String? staggerBy,
     double? tiltDeg,
     double? perspective,
     double? scrollStartFactor,
@@ -120,6 +158,8 @@ class TextEntranceAnimation {
     return TextEntranceAnimation(
       id: id ?? this.id,
       durationMs: durationMs ?? this.durationMs,
+      staggerOverlap: staggerOverlap ?? this.staggerOverlap,
+      staggerBy: staggerBy ?? this.staggerBy,
       tiltDeg: tiltDeg ?? this.tiltDeg,
       perspective: perspective ?? this.perspective,
       scrollStartFactor: scrollStartFactor ?? this.scrollStartFactor,

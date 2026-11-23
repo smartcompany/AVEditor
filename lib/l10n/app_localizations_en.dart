@@ -65,6 +65,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get galleryRetry => 'Retry';
 
   @override
+  String get galleryTabGallery => 'Gallery';
+
+  @override
+  String get galleryTabBackgrounds => 'Backgrounds';
+
+  @override
+  String get galleryBackgroundsEmpty => 'No background templates.';
+
+  @override
+  String galleryBackgroundsLoadFailed(String error) {
+    return 'Could not load backgrounds: $error';
+  }
+
+  @override
   String get pickFromFiles => 'Choose video file';
 
   @override

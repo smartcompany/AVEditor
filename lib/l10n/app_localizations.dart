@@ -204,6 +204,30 @@ abstract class AppLocalizations {
   /// **'Retry'**
   String get galleryRetry;
 
+  /// No description provided for @galleryTabGallery.
+  ///
+  /// In en, this message translates to:
+  /// **'Gallery'**
+  String get galleryTabGallery;
+
+  /// No description provided for @galleryTabBackgrounds.
+  ///
+  /// In en, this message translates to:
+  /// **'Backgrounds'**
+  String get galleryTabBackgrounds;
+
+  /// No description provided for @galleryBackgroundsEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No background templates.'**
+  String get galleryBackgroundsEmpty;
+
+  /// No description provided for @galleryBackgroundsLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load backgrounds: {error}'**
+  String galleryBackgroundsLoadFailed(String error);
+
   /// No description provided for @pickFromFiles.
   ///
   /// In en, this message translates to:

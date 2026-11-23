@@ -17,6 +17,17 @@
   "galleryBackToGrid": "戻る",
   "galleryManageAccess": "管理",
   "galleryRetry": "再試行",
+  "galleryTabGallery": "ギャラリー",
+  "galleryTabBackgrounds": "背景",
+  "galleryBackgroundsEmpty": "背景テンプレートがありません。",
+  "galleryBackgroundsLoadFailed": "背景を読み込めませんでした: {error}",
+  "@galleryBackgroundsLoadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "pickFromFiles": "動画ファイルを選択",
   "recordVideo": "動画を撮影",
   "youtubeSignIn": "YouTubeにログイン",

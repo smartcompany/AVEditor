@@ -64,6 +64,20 @@ class AppLocalizationsJa extends AppLocalizations {
   String get galleryRetry => '再試行';
 
   @override
+  String get galleryTabGallery => 'ギャラリー';
+
+  @override
+  String get galleryTabBackgrounds => '背景';
+
+  @override
+  String get galleryBackgroundsEmpty => '背景テンプレートがありません。';
+
+  @override
+  String galleryBackgroundsLoadFailed(String error) {
+    return '背景を読み込めませんでした: $error';
+  }
+
+  @override
   String get pickFromFiles => '動画ファイルを選択';
 
   @override

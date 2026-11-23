@@ -119,6 +119,8 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
         _progress = 1;
         _preparingShareUi = false;
       });
+      // Gallery save belongs with the share screen so the status line is true.
+      unawaited(_saveToAlbumIfNeeded());
     } catch (error, stack) {
       debugPrint('[ExportShare] prepared open failed: $error\n$stack');
       if (!mounted) return;
@@ -241,6 +243,7 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
         _player = player;
         _progress = 1;
       });
+      unawaited(_saveToAlbumIfNeeded());
     } catch (error, stack) {
       final cancelled =
           _cancelled ||
@@ -491,6 +494,10 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
                   videoPath: _exportedPath!,
                 ),
               ],
+              if (_savedToAlbum) ...[
+                const SizedBox(height: 12),
+                _SavedToDeviceLine(label: l10n.savedToDevice),
+              ],
               const SizedBox(height: 16),
               // Equal-weight 2×2 share grid (no YouTube-primary CTA).
               for (var i = 0; i < buttons.length; i += 2) ...[
@@ -625,6 +632,37 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
         color: const Color(0xFFF5F5F5),
       ),
     };
+  }
+}
+
+/// Compact confirmation that the export landed in Photos / gallery.
+class _SavedToDeviceLine extends StatelessWidget {
+  const _SavedToDeviceLine({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          Icons.check_circle_outline,
+          size: 16,
+          color: AppTheme.accentCyan.withValues(alpha: 0.9),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: GoogleFonts.dmSans(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: AppTheme.muted,
+            height: 1.2,
+          ),
+        ),
+      ],
+    );
   }
 }
 

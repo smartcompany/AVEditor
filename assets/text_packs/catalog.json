@@ -39,7 +39,8 @@
               "opacity": 0.55
             }
           },
-          "accessTier": "free"
+          "accessTier": "free",
+          "sampleText": "Aa"
         },
         {
           "id": "effect_pastel",
@@ -61,7 +62,8 @@
               ]
             }
           },
-          "accessTier": "free"
+          "accessTier": "free",
+          "sampleText": "Aa"
         },
         {
           "id": "effect_torn_label",
@@ -87,7 +89,8 @@
               "shadowBlurFactor": 0.2
             }
           },
-          "accessTier": "free"
+          "accessTier": "free",
+          "sampleText": "Aa"
         },
         {
           "id": "effect_outline",
@@ -109,6 +112,7 @@
               }
             ]
           },
+          "sampleText": "Aa",
           "accessTier": "free"
         },
         {
@@ -133,6 +137,7 @@
               "shape": "capsule"
             }
           },
+          "sampleText": "Aa",
           "accessTier": "free"
         },
         {
@@ -157,6 +162,7 @@
               "shape": "capsule"
             }
           },
+          "sampleText": "Aa",
           "accessTier": "free"
         },
         {
@@ -181,6 +187,7 @@
               "shape": "capsule"
             }
           },
+          "sampleText": "Aa",
           "accessTier": "free"
         },
         {
@@ -210,6 +217,7 @@
               "opacity": 0.95
             }
           },
+          "sampleText": "Aa",
           "accessTier": "plus"
         },
         {
@@ -239,6 +247,7 @@
               "opacity": 0.95
             }
           },
+          "sampleText": "Aa",
           "accessTier": "plus"
         },
         {
@@ -276,6 +285,7 @@
               "opacity": 0.55
             }
           },
+          "sampleText": "Aa",
           "accessTier": "plus"
         },
         {
@@ -312,6 +322,7 @@
               "opacity": 0.7
             }
           },
+          "sampleText": "Aa",
           "accessTier": "plus"
         },
         {
@@ -348,6 +359,7 @@
               "opacity": 0.8
             }
           },
+          "sampleText": "Aa",
           "accessTier": "plus"
         },
         {
@@ -378,6 +390,7 @@
               "opacity": 1
             }
           },
+          "sampleText": "Aa",
           "accessTier": "free"
         },
         {
@@ -408,6 +421,7 @@
               "opacity": 1
             }
           },
+          "sampleText": "Aa",
           "accessTier": "free"
         },
         {
@@ -443,6 +457,7 @@
               "opacity": 0.35
             }
           },
+          "sampleText": "Aa",
           "accessTier": "plus"
         },
         {
@@ -473,6 +488,7 @@
               "opacity": 0.5
             }
           },
+          "sampleText": "Aa",
           "accessTier": "free"
         },
         {
@@ -502,6 +518,7 @@
               }
             ]
           },
+          "sampleText": "Aa",
           "accessTier": "free"
         },
         {
@@ -525,6 +542,7 @@
               "opacity": 0.75
             }
           },
+          "sampleText": "Aa",
           "accessTier": "free"
         },
         {
@@ -547,6 +565,7 @@
               "opacity": 0.85
             }
           },
+          "sampleText": "Aa",
           "accessTier": "plus"
         },
         {
@@ -573,6 +592,7 @@
               }
             ]
           },
+          "sampleText": "Aa",
           "accessTier": "plus"
         }
       ]
@@ -588,6 +608,8 @@
           "premium": false,
           "downloadSizeBytes": 0,
           "animation": {
+            "staggerOverlap": 0.55,
+            "staggerBy": "line",
             "id": "typewriter",
             "durationMs": 900
           },
@@ -609,7 +631,8 @@
               "shadowBlurFactor": 0.28
             }
           },
-          "accessTier": "free"
+          "accessTier": "free",
+          "sampleText": "Hello\nWorld"
         },
         {
           "id": "pack_neon_pulse",
@@ -653,7 +676,8 @@
               "opacity": 0.5
             }
           },
-          "accessTier": "free"
+          "accessTier": "free",
+          "sampleText": "Hello\nWorld"
         },
         {
           "id": "pack_sticker",
@@ -691,7 +715,8 @@
               "opacity": 0.85
             }
           },
-          "accessTier": "free"
+          "accessTier": "free",
+          "sampleText": "Hello\nWorld"
         },
         {
           "id": "pack_subtitle",
@@ -719,6 +744,7 @@
               "shape": "capsule"
             }
           },
+          "sampleText": "Hello\nWorld",
           "accessTier": "free"
         },
         {
@@ -728,6 +754,8 @@
           "premium": false,
           "downloadSizeBytes": 0,
           "animation": {
+            "staggerOverlap": 0.55,
+            "staggerBy": "auto",
             "id": "typewriter",
             "durationMs": 1000
           },
@@ -747,6 +775,7 @@
               "shape": "capsule"
             }
           },
+          "sampleText": "Hello\nWorld",
           "accessTier": "free"
         },
         {
@@ -775,6 +804,7 @@
               "shape": "capsule"
             }
           },
+          "sampleText": "Hello\nWorld",
           "accessTier": "plus"
         },
         {
@@ -784,6 +814,8 @@
           "premium": false,
           "downloadSizeBytes": 0,
           "animation": {
+            "staggerOverlap": 0.55,
+            "staggerBy": "auto",
             "id": "typewriter",
             "durationMs": 800
           },
@@ -803,6 +835,7 @@
               "shape": "capsule"
             }
           },
+          "sampleText": "Hello\nWorld",
           "accessTier": "free"
         },
         {
@@ -812,6 +845,8 @@
           "premium": false,
           "downloadSizeBytes": 0,
           "animation": {
+            "staggerOverlap": 0.55,
+            "staggerBy": "auto",
             "id": "typewriter",
             "durationMs": 900
           },
@@ -833,6 +868,7 @@
               "shadowBlurFactor": 0.25
             }
           },
+          "sampleText": "Hello\nWorld",
           "accessTier": "free"
         },
         {
@@ -866,6 +902,7 @@
               "opacity": 0.95
             }
           },
+          "sampleText": "Hello\nWorld",
           "accessTier": "plus"
         },
         {
@@ -875,6 +912,8 @@
           "premium": true,
           "downloadSizeBytes": 0,
           "animation": {
+            "staggerOverlap": 0.55,
+            "staggerBy": "auto",
             "id": "typewriter",
             "durationMs": 700
           },
@@ -899,6 +938,7 @@
               "opacity": 0.95
             }
           },
+          "sampleText": "Hello\nWorld",
           "accessTier": "plus"
         },
         {
@@ -940,6 +980,7 @@
               "opacity": 0.55
             }
           },
+          "sampleText": "Hello\nWorld",
           "accessTier": "plus"
         },
         {
@@ -980,6 +1021,7 @@
               "opacity": 0.7
             }
           },
+          "sampleText": "Hello\nWorld",
           "accessTier": "plus"
         },
         {
@@ -1020,6 +1062,7 @@
               "opacity": 0.8
             }
           },
+          "sampleText": "Hello\nWorld",
           "accessTier": "plus"
         },
         {
@@ -1054,6 +1097,7 @@
               "opacity": 1
             }
           },
+          "sampleText": "Hello\nWorld",
           "accessTier": "free"
         },
         {
@@ -1063,6 +1107,8 @@
           "premium": false,
           "downloadSizeBytes": 0,
           "animation": {
+            "staggerOverlap": 0.55,
+            "staggerBy": "auto",
             "id": "typewriter",
             "durationMs": 600
           },
@@ -1088,6 +1134,7 @@
               "opacity": 1
             }
           },
+          "sampleText": "Hello\nWorld",
           "accessTier": "free"
         },
         {
@@ -1127,6 +1174,7 @@
               "opacity": 0.35
             }
           },
+          "sampleText": "Hello\nWorld",
           "accessTier": "plus"
         },
         {
@@ -1161,6 +1209,7 @@
               "opacity": 0.5
             }
           },
+          "sampleText": "Hello\nWorld",
           "accessTier": "plus"
         },
         {
@@ -1188,6 +1237,7 @@
               "opacity": 0.7
             }
           },
+          "sampleText": "Hello\nWorld",
           "accessTier": "free"
         },
         {
@@ -1197,6 +1247,8 @@
           "premium": false,
           "downloadSizeBytes": 0,
           "animation": {
+            "staggerOverlap": 0.55,
+            "staggerBy": "auto",
             "id": "typewriter",
             "durationMs": 1200
           },
@@ -1215,6 +1267,7 @@
               "opacity": 0.8
             }
           },
+          "sampleText": "Hello\nWorld",
           "accessTier": "free"
         },
         {
@@ -1243,6 +1296,7 @@
               "shape": "capsule"
             }
           },
+          "sampleText": "Hello\nWorld",
           "accessTier": "free"
         },
         {
@@ -1252,12 +1306,12 @@
           "premium": false,
           "downloadSizeBytes": 0,
           "animation": {
-            "id": "crawl",
-            "durationMs": 18000,
             "tiltDeg": 54,
             "perspective": 0.0012,
             "scrollStartFactor": 14,
-            "scrollEndFactor": -32
+            "scrollEndFactor": -32,
+            "id": "crawl",
+            "durationMs": 18000
           },
           "style": {
             "id": "tpl_star_wars_crawl",
@@ -1281,7 +1335,7 @@
               "opacity": 0.45
             }
           },
-          "sampleText": "EPISODE ZERO\n\nA NEW TIMELINE\n\nIt is a period of creative chaos.\nRebel editors, striking from a\nhidden studio, have won their\nfirst victory against the Empire\nof blank timelines.\n\nDuring the battle, spies managed\nto steal secret plans to the\nultimate editing station, the\nAV EDITOR, an app with enough\npower to finish an entire short\nin a single afternoon.\n\nPursued by endless export queues,\nthe Rebel editors race home aboard\ntheir timeline, custodians of the\nstolen plans that can save their\npeople and restore free cuts to\nthe galaxy…",
+          "sampleText": "Hello\n\nI am making a short film.\nThis is where the story begins.\n\nThank you for watching.\nSee you next time.",
           "accessTier": "free"
         },
         {
@@ -1291,12 +1345,12 @@
           "premium": false,
           "downloadSizeBytes": 0,
           "animation": {
-            "id": "crawl",
-            "durationMs": 16000,
             "tiltDeg": 0,
             "perspective": 0.0012,
             "scrollStartFactor": 12,
-            "scrollEndFactor": -28
+            "scrollEndFactor": -28,
+            "id": "crawl",
+            "durationMs": 16000
           },
           "style": {
             "id": "tpl_credits_scroll",
@@ -1313,7 +1367,7 @@
               "opacity": 0.55
             }
           },
-          "sampleText": "타이틀\n\n이름              설명\n이름              설명\n이름              설명\n이름              설명\n이름              설명\n이름              설명\n이름              설명",
+          "sampleText": "Hello\n\nI am making a short film.\nThis is where the story begins.\n\nThank you for watching.\nSee you next time.",
           "accessTier": "free"
         }
       ]
