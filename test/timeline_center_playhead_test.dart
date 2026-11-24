@@ -147,7 +147,7 @@ void main() {
       expect(videoBased, greaterThan(viewport * minTimelineZoom + 1));
     });
 
-    test('at max zoom a 1s clip is 40 logical px on any viewport', () {
+    test('at max zoom a 1s clip matches maxZoomOneSecondLogicalWidth', () {
       const source = Duration(seconds: 184);
       for (final vp in [320.0, 390.0, 430.0]) {
         final zoom = maxTimelineZoomFor(source, viewportWidth: vp);
@@ -228,8 +228,8 @@ void main() {
   });
 
   group('transport row fits', () {
-    // The reported overflow was an iPhone 13 mini at the system's 1.35x text
-    // scale, zoomed in so the range label read "00:08 – 00:24".
+    // Clock readout uses fixed slots (`current / total`) so large text scales
+    // must not overflow the transport row on narrow phones.
     for (final scale in [1.0, 1.3529, 2.0, 3.0]) {
       for (final width in [317.0, 264.0]) {
         testWidgets('no overflow at ${scale}x text on a ${width}px row', (
@@ -245,13 +245,12 @@ void main() {
             ),
           );
 
-          // Zoom past 1.01 so the wide "start – end" label is the one shown.
           await tester.tap(find.byIcon(Icons.add));
           await tester.pump();
           await tester.tap(find.byIcon(Icons.add));
           await tester.pump();
 
-          expect(find.textContaining('–'), findsOneWidget);
+          expect(find.textContaining('/'), findsWidgets);
           expect(tester.takeException(), isNull);
         });
       }

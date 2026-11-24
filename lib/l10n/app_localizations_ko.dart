@@ -366,6 +366,15 @@ class AppLocalizationsKo extends AppLocalizations {
   String get projectsSection => '프로젝트';
 
   @override
+  String get projectsEdit => '편집';
+
+  @override
+  String get projectsDone => '완료';
+
+  @override
+  String get deleteSelected => '삭제';
+
+  @override
   String get noProjectsYet => '아직 프로젝트가 없습니다. 위에서 영상을 선택해 시작하세요.';
 
   @override
@@ -384,6 +393,11 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get deleteProjectConfirm => '이 프로젝트를 삭제할까요? 되돌릴 수 없습니다.';
+
+  @override
+  String deleteProjectsConfirm(int count) {
+    return '프로젝트 $count개를 삭제할까요? 되돌릴 수 없습니다.';
+  }
 
   @override
   String get projectNotFound => '저장된 프로젝트를 찾을 수 없습니다.';

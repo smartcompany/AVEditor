@@ -362,6 +362,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get projectsSection => '项目';
 
   @override
+  String get projectsEdit => '编辑';
+
+  @override
+  String get projectsDone => '完成';
+
+  @override
+  String get deleteSelected => '删除';
+
+  @override
   String get noProjectsYet => '还没有项目。请先在上方选择视频开始。';
 
   @override
@@ -380,6 +389,11 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get deleteProjectConfirm => '要删除此项目吗？此操作无法撤销。';
+
+  @override
+  String deleteProjectsConfirm(int count) {
+    return '要删除 $count 个项目吗？此操作无法撤销。';
+  }
 
   @override
   String get projectNotFound => '找不到已保存的项目。';

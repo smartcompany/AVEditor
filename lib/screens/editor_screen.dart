@@ -68,11 +68,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:video_player/video_player.dart';
 
 class EditorScreen extends StatefulWidget {
-  const EditorScreen({
-    super.key,
-    required this.projectId,
-    this.onReady,
-  });
+  const EditorScreen({super.key, required this.projectId, this.onReady});
 
   final String projectId;
 
@@ -86,7 +82,10 @@ class EditorScreen extends StatefulWidget {
 class _EditorScreenState extends State<EditorScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   /// Gap + always-visible resize affordance between preview and dock.
-  static const _dockResizeHandleHeight = 40.0;
+  static const _dockResizeHandleHeight = 35.0;
+
+  /// Resize-strip fill; preview letterbox uses the same so the strip disappears.
+  static const _previewChromeColor = Colors.black;
 
   /// Drag speed past which the dock finishes in the flung direction.
   static const _dockFlingVelocity = 320.0;
@@ -215,6 +214,7 @@ class _EditorScreenState extends State<EditorScreen>
   double? _convertProgress;
   var _appendingMedia = false;
   var _exporting = false;
+
   /// True while catalog/entitlement refresh runs before the premium sheet.
   var _premiumGateBusy = false;
   double? _exportProgress;
@@ -319,8 +319,7 @@ class _EditorScreenState extends State<EditorScreen>
       final anchorAt = _sequenceTailAnchorAt;
       final anchorHead = _sequenceTailAnchorPlayhead;
       if (anchorAt != null && anchorHead != null) {
-        final advanced =
-            anchorHead + DateTime.now().difference(anchorAt);
+        final advanced = anchorHead + DateTime.now().difference(anchorAt);
         final end = _sequenceDuration;
         if (advanced >= end) return end;
         return advanced;
@@ -692,76 +691,57 @@ class _EditorScreenState extends State<EditorScreen>
 
   /// Always-visible strip between the video and the control dock.
   ///
-  /// Arrows: up when fully collapsed, down when at 2/3 max, both in the
-  /// middle (panel) stage. Drag hit-testing also covers the preview's lower
-  /// fifth via [_buildPreviewDockDragEdge].
+  /// Black bar height is fixed at every dock stage (incl. video-min / dock-max).
+  /// Chevrons stay; only the grip shifts inside the bar. Home-indicator
+  /// clearance when fully collapsed is transparent padding below the bar.
   Widget _buildDockResizeHandle({required bool enabled}) {
     final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
     return ValueListenableBuilder<double?>(
       valueListenable: _dockHeight,
       builder: (context, dockH, _) {
-        final entry = _entryDockHeight();
         final maxH = _maxDockHeight();
-        final px = dockH ?? entry;
         final atHidden = dockH != null && dockH <= 0.5;
         final atMax = dockH != null && dockH >= maxH - 24;
-        final t = entry <= 0 ? 0.0 : (px / entry).clamp(0.0, 1.0);
-        final bottomInset = safeBottom * (1 - t);
+        final hint = atHidden
+            ? _DockResizeHint.up
+            : atMax
+            ? _DockResizeHint.down
+            : _DockResizeHint.both;
 
-        Widget arrows() {
-          final color = Colors.white.withValues(alpha: 0.75);
-          if (atHidden) {
-            return Icon(
-              Icons.keyboard_arrow_up_rounded,
-              color: color,
-              size: 26,
-            );
-          }
-          if (atMax) {
-            return Icon(
-              Icons.keyboard_arrow_down_rounded,
-              color: color,
-              size: 26,
-            );
-          }
-          // Panel / mid stage — both directions are available.
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.keyboard_arrow_up_rounded, color: color, size: 18),
-              Icon(Icons.keyboard_arrow_down_rounded, color: color, size: 18),
-            ],
-          );
-        }
-
-        final strip = SizedBox(
-          height: _dockResizeHandleHeight + bottomInset,
+        // Painted black region — never grows with dock stage or chevrons.
+        final bar = SizedBox(
+          height: _dockResizeHandleHeight,
           width: double.infinity,
-          child: Padding(
-            padding: EdgeInsets.only(bottom: bottomInset),
+          child: ClipRect(
             child: ValueListenableBuilder<bool>(
               valueListenable: _previewMaximizeEdgeLit,
               builder: (context, lit, _) {
-                return DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.transparent,
-                        Colors.black.withValues(alpha: lit ? 0.22 : 0.06),
-                        Colors.black.withValues(alpha: lit ? 0.45 : 0.14),
-                      ],
-                      stops: const [0.0, 0.45, 1.0],
-                    ),
+                return ColoredBox(
+                  color: _previewChromeColor,
+                  child: Align(
+                    // Keep bar height fixed; move the notch inside it.
+                    alignment: atHidden
+                        ? const Alignment(0, -0.35)
+                        : atMax
+                        ? const Alignment(0, 0.35)
+                        : Alignment.center,
+                    child: _DockResizeGrip(lit: lit, hint: hint),
                   ),
-                  child: Center(child: arrows()),
                 );
               },
             ),
           ),
         );
+
+        final strip = atHidden && safeBottom > 0
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  bar,
+                  SizedBox(height: safeBottom),
+                ],
+              )
+            : bar;
 
         if (!enabled) return strip;
 
@@ -916,8 +896,8 @@ class _EditorScreenState extends State<EditorScreen>
         ..addAll(
           normalized.isEmpty || totalKeptDuration(normalized) <= Duration.zero
               ? (duration > Duration.zero
-                  ? segmentsFromTrim(start: Duration.zero, end: duration)
-                  : const <ClipSegment>[])
+                    ? segmentsFromTrim(start: Duration.zero, end: duration)
+                    : const <ClipSegment>[])
               : normalized,
         );
       _syncPackedDuration(project);
@@ -1079,8 +1059,9 @@ class _EditorScreenState extends State<EditorScreen>
       );
       if (!mounted) return;
       _project = updated;
-      _selectedSegmentId =
-          updated.segments.isEmpty ? null : updated.segments.last.id;
+      _selectedSegmentId = updated.segments.isEmpty
+          ? null
+          : updated.segments.last.id;
       _selectedOverlayId = null;
       _selectedMusicId = null;
       _selectedTransitionAfterIndex = null;
@@ -1166,9 +1147,7 @@ class _EditorScreenState extends State<EditorScreen>
     _segmentLayoutRebuildDebounce = Timer(const Duration(milliseconds: 16), () {
       if (!mounted) return;
       final land = seekTo ?? _scrubPlayhead ?? _playhead;
-      unawaited(
-        _attachTimelineCompositor(resume: false, seekTo: land),
-      );
+      unawaited(_attachTimelineCompositor(resume: false, seekTo: land));
     });
   }
 
@@ -1265,10 +1244,10 @@ class _EditorScreenState extends State<EditorScreen>
     if (a.length != b.length) return false;
     for (var i = 0; i < a.length; i++) {
       if (a[i].start != b[i].start ||
-        a[i].end != b[i].end ||
-        a[i].mediaId != b[i].mediaId) {
-      return false;
-    }
+          a[i].end != b[i].end ||
+          a[i].mediaId != b[i].mediaId) {
+        return false;
+      }
     }
     return true;
   }
@@ -1532,12 +1511,7 @@ class _EditorScreenState extends State<EditorScreen>
 
   void _showSnack(String message, {Object? error, StackTrace? stackTrace}) {
     if (!mounted) return;
-    showLoggedSnackBar(
-      context,
-      message,
-      error: error,
-      stackTrace: stackTrace,
-    );
+    showLoggedSnackBar(context, message, error: error, stackTrace: stackTrace);
   }
 
   String _timelineSig = '';
@@ -1810,7 +1784,8 @@ class _EditorScreenState extends State<EditorScreen>
     ) {
       if (!mounted) return;
       if (!playing) {
-        final land = _scrubPlayhead ??
+        final land =
+            _scrubPlayhead ??
             _nativePackedToSource(NativeVideoEngine.instance.position);
         _maybeContinuePastPicture(position: land);
       }
@@ -3023,10 +2998,7 @@ class _EditorScreenState extends State<EditorScreen>
       return;
     }
 
-    final musicPath = MusicStorageService.musicPath(
-      project.projectDir,
-      music,
-    );
+    final musicPath = MusicStorageService.musicPath(project.projectDir, music);
     if (!await File(musicPath).exists()) {
       if (gen != _musicSyncGen) return;
       _syncedMusicId = null;
@@ -3124,12 +3096,12 @@ class _EditorScreenState extends State<EditorScreen>
       // Clamp to sequence (video ∪ music ∪ text), not picture-only duration.
       final start = _usesPackedPlayhead
           ? (desired >= seqEnd && seqEnd > Duration.zero
-              ? Duration.zero
-              : clampDuration(desired, Duration.zero, seqEnd))
+                ? Duration.zero
+                : clampDuration(desired, Duration.zero, seqEnd))
           : (isInKeptRegion(project.segments, desired)
-              ? desired
-              : (segmentAt(project.segments, desired)?.start ??
-                    project.segments.first.start));
+                ? desired
+                : (segmentAt(project.segments, desired)?.start ??
+                      project.segments.first.start));
       // Music/text-only region: native clock stops at picture — wall-clock tail.
       if (start >= videoEnd && seqEnd > videoEnd) {
         _wantPlayback = true;
@@ -3484,7 +3456,8 @@ class _EditorScreenState extends State<EditorScreen>
     try {
       final recordedPath = await _voiceRecorder.stop();
       final wallElapsed = DateTime.now().difference(begun);
-      if (recordedPath == null || wallElapsed < const Duration(milliseconds: 250)) {
+      if (recordedPath == null ||
+          wallElapsed < const Duration(milliseconds: 250)) {
         await _cancelVoiceFlow();
         if (mounted) _showSnack(context.l10n.voiceRecordTooShort);
         return;
@@ -3539,9 +3512,7 @@ class _EditorScreenState extends State<EditorScreen>
       _scheduleSave();
       unawaited(_ensureMusicWaveform(committed));
       await _syncMusicPlayback();
-      unawaited(
-        _attachTimelineCompositor(resume: false, seekTo: _playhead),
-      );
+      unawaited(_attachTimelineCompositor(resume: false, seekTo: _playhead));
       AnalyticsService.instance.log('voice_record_committed');
 
       try {
@@ -3568,10 +3539,7 @@ class _EditorScreenState extends State<EditorScreen>
     if (project == null || _exporting) return;
 
     final seq = _sequenceDuration;
-    if (!hasTransitionTargets(
-      project.segments,
-      sequenceDuration: seq,
-    )) {
+    if (!hasTransitionTargets(project.segments, sequenceDuration: seq)) {
       showLoggedSnackBar(context, l10n.transitionNeedsCuts);
       return;
     }
@@ -3581,12 +3549,9 @@ class _EditorScreenState extends State<EditorScreen>
     // targets the cut nearest the playhead: the cut edited last stays
     // selected after the studio closes, and reusing it sent the second
     // transition onto the first cut (replacing it) instead of the new one.
-    final index = cutIndex ??
-        nearestCutIndex(
-          project.segments,
-          sequenceTime,
-          sequenceDuration: seq,
-        );
+    final index =
+        cutIndex ??
+        nearestCutIndex(project.segments, sequenceTime, sequenceDuration: seq);
     final includeEnd = hasPictureBlackPad(
       segments: project.segments,
       sequenceDuration: seq,
@@ -3719,10 +3684,7 @@ class _EditorScreenState extends State<EditorScreen>
       } else {
         final next = isEndCutIndex(p.segments, index)
             ? syntheticBlackPadSegment(
-                blackPadDuration(
-                  segments: p.segments,
-                  sequenceDuration: seq,
-                ),
+                blackPadDuration(segments: p.segments, sequenceDuration: seq),
               )
             : p.segments[index + 1];
         final clamped = clampedTransitionDuration(
@@ -3788,10 +3750,7 @@ class _EditorScreenState extends State<EditorScreen>
     if (!segment.hasTransition) return;
     final nextSeg = isEndCutIndex(project.segments, index)
         ? syntheticBlackPadSegment(
-            blackPadDuration(
-              segments: project.segments,
-              sequenceDuration: seq,
-            ),
+            blackPadDuration(segments: project.segments, sequenceDuration: seq),
           )
         : project.segments[index + 1];
     final tentative = segment.copyWith(
@@ -3954,10 +3913,7 @@ class _EditorScreenState extends State<EditorScreen>
     final endCut = isEndCutIndex(project.segments, cutIndex);
     final incoming = endCut
         ? syntheticBlackPadSegment(
-            blackPadDuration(
-              segments: project.segments,
-              sequenceDuration: seq,
-            ),
+            blackPadDuration(segments: project.segments, sequenceDuration: seq),
           )
         : project.segments[cutIndex + 1];
     final td = clampedTransitionDuration(outgoing, next: incoming);
@@ -4181,10 +4137,7 @@ class _EditorScreenState extends State<EditorScreen>
   Future<void> _ensureMusicMetadata(ProjectMusic music) async {
     final project = _project;
     if (project == null) return;
-    final path = MusicStorageService.musicPath(
-      project.projectDir,
-      music,
-    );
+    final path = MusicStorageService.musicPath(project.projectDir, music);
 
     var fileDuration = music.fileDuration;
     if (fileDuration == null || fileDuration <= Duration.zero) {
@@ -4257,9 +4210,7 @@ class _EditorScreenState extends State<EditorScreen>
     });
     unawaited(_syncMusicPlayback());
     // Rebuild native length when music extends past picture (black pad).
-    unawaited(
-      _attachTimelineCompositor(resume: false, seekTo: _playhead),
-    );
+    unawaited(_attachTimelineCompositor(resume: false, seekTo: _playhead));
   }
 
   void _removeSelectedMusic() {
@@ -5044,22 +4995,22 @@ class _EditorScreenState extends State<EditorScreen>
         if (!active || !mounted) return null;
         // Plus may still be short of Pro effects — only continue when covered.
         if (lockedUsesIn(
-              project,
-              catalog,
-              pro.tier,
-              isAdUnlocked: adUnlocked,
-            ).isEmpty) {
+          project,
+          catalog,
+          pro.tier,
+          isAdUnlocked: adUnlocked,
+        ).isEmpty) {
           return project;
         }
         return null;
       case PremiumExportChoice.continueWithUnlocks:
         analytics.log('premium_choice_ad');
         if (lockedUsesIn(
-              project,
-              catalog,
-              pro.tier,
-              isAdUnlocked: adUnlocked,
-            ).isEmpty) {
+          project,
+          catalog,
+          pro.tier,
+          isAdUnlocked: adUnlocked,
+        ).isEmpty) {
           return project;
         }
         return null;
@@ -5157,11 +5108,11 @@ class _EditorScreenState extends State<EditorScreen>
   Widget _buildEditorTitle(AppLocalizations l10n, VideoProject project) {
     final name = project.name?.trim();
     if (name == null || name.isEmpty) return Text(l10n.editorTitle);
-    // Tap to rename. Long names stay on one line, left-aligned, with "…".
+    // Tap to rename. Multi-line names wrap up to two lines.
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: _renameProject,
-      child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
+      child: Text(name, maxLines: 2, overflow: TextOverflow.ellipsis),
     );
   }
 
@@ -5186,10 +5137,7 @@ class _EditorScreenState extends State<EditorScreen>
         );
       }
       return const AbsorbPointer(
-        child: ColoredBox(
-          color: Color(0x00000000),
-          child: SizedBox.expand(),
-        ),
+        child: ColoredBox(color: Color(0x00000000), child: SizedBox.expand()),
       );
     }
 
@@ -5214,16 +5162,17 @@ class _EditorScreenState extends State<EditorScreen>
 
     // Timeline preview owns canvas size; the hard-cut VideoPlayerController
     // may still be the orphaned first import (wrong aspect after replace).
-    final sourceAspect = NativeVideoEngine.instance.isTimelineActive &&
+    final sourceAspect =
+        NativeVideoEngine.instance.isTimelineActive &&
             NativeVideoEngine.instance.previewWidth > 0 &&
             NativeVideoEngine.instance.previewHeight > 0
         ? NativeVideoEngine.instance.previewWidth /
-            NativeVideoEngine.instance.previewHeight
+              NativeVideoEngine.instance.previewHeight
         : (_sourceAspect > 0
-            ? _sourceAspect
-            : (controller != null && controller.value.aspectRatio != 0
-                ? controller.value.aspectRatio
-                : 9 / 16));
+              ? _sourceAspect
+              : (controller != null && controller.value.aspectRatio != 0
+                    ? controller.value.aspectRatio
+                    : 9 / 16));
     final canvasAspect = project.canvas.frameAspect(sourceAspect);
     final inTextStudio = _inTextStudio;
     final studioOverlay = _textStudioOverlay;
@@ -5304,9 +5253,9 @@ class _EditorScreenState extends State<EditorScreen>
                   children: [
                     Expanded(
                       child: ColoredBox(
-                        color: AppTheme.surfaceElevated,
+                        color: _previewChromeColor,
                         child: Padding(
-                          padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+                          padding: const EdgeInsets.fromLTRB(0, 4, 0, 0),
                           child: LayoutBuilder(
                             builder: (context, constraints) {
                               final targetWidth = constraints.maxWidth;
@@ -5379,154 +5328,164 @@ class _EditorScreenState extends State<EditorScreen>
                                                   fit: StackFit.expand,
                                                   children: [
                                                     VideoPreviewWithOverlays(
-                                                key: _previewKey,
-                                                videoAspectRatio: sourceAspect,
-                                                canvasAspectRatio: canvasAspect,
-                                                videoChild: Stack(
-                                                  fit: StackFit.expand,
-                                                  children: [
-                                                    _buildPreviewVideoChild(
-                                                      controller,
-                                                    ),
-                                                    // Music/text past picture → solid black.
-                                                    if (_playheadPastPicture)
-                                                      const ColoredBox(
-                                                        color: Colors.black,
-                                                      ),
-                                                  ],
-                                                ),
-                                                overlays: project.overlays,
-                                                segments: project.segments,
-                                                position: _playhead,
-                                                isPlaying: _transportPlaying,
-                                                clipRotation: project.rotation,
-                                                hostViewportSize: Size(
-                                                  constraints.maxWidth,
-                                                  constraints.maxHeight,
-                                                ),
-                                                projectDir: project.projectDir,
-                                                selectedOverlayId:
-                                                    _selectedOverlayId,
-                                                editingOverlayId:
-                                                    _editingOverlayId,
-                                                selectAllOnEdit:
-                                                    _inlineEditSelectAll,
-                                                textHint: l10n.textOverlayHint,
-                                                onOverlaySelected: (overlay) {
-                                                  if (_editingOverlayId !=
-                                                          null &&
-                                                      _editingOverlayId !=
-                                                          overlay.id) {
-                                                    _finishInlineEditing(
-                                                      'select_other_overlay',
-                                                    );
-                                                  }
-                                                  setState(() {
-                                                    _selectedOverlayId =
-                                                        overlay.id;
-                                                    // Keep the studio open; retarget it.
-                                                    if (_textStudioOverlayId !=
-                                                        null) {
-                                                      _textStudioOverlayId =
-                                                          overlay.id;
-                                                    }
-                                                    _retargetStickerStudioIfNeeded(
-                                                      overlay,
-                                                    );
-                                                  });
-                                                },
-                                                onRequestEdit:
-                                                    _startInlineEditing,
-                                                onBackgroundTap:
-                                                    _onPreviewBackgroundTap,
-                                                onOverlayTextChanged:
-                                                    _onOverlayTextChanged,
-                                                onEditingComplete:
-                                                    _finishInlineEditing,
-                                                onOverlayOffsetChanged:
-                                                    (overlay, offset) {
-                                                      _patchOverlay(
-                                                        overlay.id,
-                                                        (current) =>
-                                                            current.copyWith(
-                                                              offset: offset,
+                                                      key: _previewKey,
+                                                      videoAspectRatio:
+                                                          sourceAspect,
+                                                      canvasAspectRatio:
+                                                          canvasAspect,
+                                                      videoChild: Stack(
+                                                        fit: StackFit.expand,
+                                                        children: [
+                                                          _buildPreviewVideoChild(
+                                                            controller,
+                                                          ),
+                                                          // Music/text past picture → solid black.
+                                                          if (_playheadPastPicture)
+                                                            const ColoredBox(
+                                                              color:
+                                                                  Colors.black,
                                                             ),
-                                                      );
-                                                    },
-                                                onOverlayDeleted:
-                                                    _deleteOverlayByOverlay,
-                                                onOverlayDuplicated:
-                                                    _duplicateOverlay,
-                                                onOverlayEdit: (overlay) {
-                                                  setState(() {
-                                                    _selectedOverlayId =
-                                                        overlay.id;
-                                                    _retargetStickerStudioIfNeeded(
-                                                      overlay,
-                                                    );
-                                                  });
-                                                  if (overlay.isSticker) {
-                                                    _openStickerStudio(
-                                                      replace: overlay,
-                                                    );
-                                                    return;
-                                                  }
-                                                  _editSelectedOverlay();
-                                                },
-                                                onOverlayBoxChanged:
-                                                    (overlay, transform) {
-                                                      OverlayEventLog.log(
-                                                        'Editor',
-                                                        'overlayBoxChanged',
-                                                        {
-                                                          'id': overlay.id,
-                                                          'width': transform
-                                                              .width
-                                                              .toStringAsFixed(
-                                                                1,
-                                                              ),
-                                                          'height': transform
-                                                              .height
-                                                              .toStringAsFixed(
-                                                                1,
-                                                              ),
-                                                          'font': transform
-                                                              .fontSize
-                                                              .toStringAsFixed(
-                                                                1,
-                                                              ),
-                                                          'offset':
-                                                              transform.offset,
-                                                          'rotation': transform
-                                                              .rotation
-                                                              .toStringAsFixed(
-                                                                3,
-                                                              ),
-                                                        },
-                                                      );
-                                                      _patchOverlay(
-                                                        overlay.id,
-                                                        (
-                                                          current,
-                                                        ) => current.copyWith(
-                                                          boxWidth:
-                                                              transform.width,
-                                                          boxHeight:
-                                                              transform.height,
-                                                          fontSize: transform
-                                                              .fontSize,
-                                                          offset:
-                                                              transform.offset,
-                                                          rotation: transform
-                                                              .rotation,
-                                                        ),
-                                                      );
-                                                    },
-                                              ),
+                                                        ],
+                                                      ),
+                                                      overlays:
+                                                          project.overlays,
+                                                      segments:
+                                                          project.segments,
+                                                      position: _playhead,
+                                                      isPlaying:
+                                                          _transportPlaying,
+                                                      clipRotation:
+                                                          project.rotation,
+                                                      hostViewportSize: Size(
+                                                        constraints.maxWidth,
+                                                        constraints.maxHeight,
+                                                      ),
+                                                      projectDir:
+                                                          project.projectDir,
+                                                      selectedOverlayId:
+                                                          _selectedOverlayId,
+                                                      editingOverlayId:
+                                                          _editingOverlayId,
+                                                      selectAllOnEdit:
+                                                          _inlineEditSelectAll,
+                                                      textHint:
+                                                          l10n.textOverlayHint,
+                                                      onOverlaySelected: (overlay) {
+                                                        if (_editingOverlayId !=
+                                                                null &&
+                                                            _editingOverlayId !=
+                                                                overlay.id) {
+                                                          _finishInlineEditing(
+                                                            'select_other_overlay',
+                                                          );
+                                                        }
+                                                        setState(() {
+                                                          _selectedOverlayId =
+                                                              overlay.id;
+                                                          // Keep the studio open; retarget it.
+                                                          if (_textStudioOverlayId !=
+                                                              null) {
+                                                            _textStudioOverlayId =
+                                                                overlay.id;
+                                                          }
+                                                          _retargetStickerStudioIfNeeded(
+                                                            overlay,
+                                                          );
+                                                        });
+                                                      },
+                                                      onRequestEdit:
+                                                          _startInlineEditing,
+                                                      onBackgroundTap:
+                                                          _onPreviewBackgroundTap,
+                                                      onOverlayTextChanged:
+                                                          _onOverlayTextChanged,
+                                                      onEditingComplete:
+                                                          _finishInlineEditing,
+                                                      onOverlayOffsetChanged:
+                                                          (overlay, offset) {
+                                                            _patchOverlay(
+                                                              overlay.id,
+                                                              (
+                                                                current,
+                                                              ) => current
+                                                                  .copyWith(
+                                                                    offset:
+                                                                        offset,
+                                                                  ),
+                                                            );
+                                                          },
+                                                      onOverlayDeleted:
+                                                          _deleteOverlayByOverlay,
+                                                      onOverlayDuplicated:
+                                                          _duplicateOverlay,
+                                                      onOverlayEdit: (overlay) {
+                                                        setState(() {
+                                                          _selectedOverlayId =
+                                                              overlay.id;
+                                                          _retargetStickerStudioIfNeeded(
+                                                            overlay,
+                                                          );
+                                                        });
+                                                        if (overlay.isSticker) {
+                                                          _openStickerStudio(
+                                                            replace: overlay,
+                                                          );
+                                                          return;
+                                                        }
+                                                        _editSelectedOverlay();
+                                                      },
+                                                      onOverlayBoxChanged: (overlay, transform) {
+                                                        OverlayEventLog.log(
+                                                          'Editor',
+                                                          'overlayBoxChanged',
+                                                          {
+                                                            'id': overlay.id,
+                                                            'width': transform
+                                                                .width
+                                                                .toStringAsFixed(
+                                                                  1,
+                                                                ),
+                                                            'height': transform
+                                                                .height
+                                                                .toStringAsFixed(
+                                                                  1,
+                                                                ),
+                                                            'font': transform
+                                                                .fontSize
+                                                                .toStringAsFixed(
+                                                                  1,
+                                                                ),
+                                                            'offset': transform
+                                                                .offset,
+                                                            'rotation': transform
+                                                                .rotation
+                                                                .toStringAsFixed(
+                                                                  3,
+                                                                ),
+                                                          },
+                                                        );
+                                                        _patchOverlay(
+                                                          overlay.id,
+                                                          (
+                                                            current,
+                                                          ) => current.copyWith(
+                                                            boxWidth:
+                                                                transform.width,
+                                                            boxHeight: transform
+                                                                .height,
+                                                            fontSize: transform
+                                                                .fontSize,
+                                                            offset: transform
+                                                                .offset,
+                                                            rotation: transform
+                                                                .rotation,
+                                                          ),
+                                                        );
+                                                      },
+                                                    ),
                                                     if (_exportProgress != null)
                                                       Positioned.fill(
-                                                        child:
-                                                            _ExportPreviewPercent(
+                                                        child: _ExportPreviewPercent(
                                                           progress:
                                                               _exportProgress!,
                                                         ),
@@ -5624,7 +5583,7 @@ class _EditorScreenState extends State<EditorScreen>
                   ],
                 ),
                 // Keyboard tray — same strip for basic text and effect/template edit.
-                  if (editingOverlay != null)
+                if (editingOverlay != null)
                   Positioned(
                     left: 0,
                     right: 0,
@@ -5676,7 +5635,10 @@ class _EditorScreenState extends State<EditorScreen>
       valueListenable: _dockHeight,
       builder: (context, dockH, _) {
         final h = (dockH ?? entryH).clamp(0.0, bodyH);
-        if (h <= 0.5) {
+        // Full-video (and the last stretch of the collapse animation): do not
+        // lay out timeline/chips in a sliver shorter than the home indicator —
+        // that was overflowing Column by ~20–55px.
+        if (h <= 0.5 || h <= safeBottom + 8) {
           return const SizedBox(width: double.infinity, height: 0);
         }
 
@@ -5804,15 +5766,13 @@ class _EditorScreenState extends State<EditorScreen>
                 maintainSize: false,
                 maintainInteractivity: false,
                 child: IgnorePointer(
-                  ignoring:
-                      showStudio || editingOverlay != null || _exporting,
+                  ignoring: showStudio || editingOverlay != null || _exporting,
                   child: _buildCollapsibleChrome(
                     l10n: l10n,
                     project: project,
                     controller: controller,
                     isInlineEditing: _editingOverlayId != null,
                     dockHeight: dockH,
-                    entryHeight: entryH,
                   ),
                 ),
               ),
@@ -5839,10 +5799,8 @@ class _EditorScreenState extends State<EditorScreen>
     required VideoPlayerController? controller,
     required bool isInlineEditing,
     required double? dockHeight,
-    required double entryHeight,
   }) {
     final hidden = dockHeight != null && dockHeight <= 0.5;
-    final height = dockHeight ?? entryHeight;
 
     Widget timeline = _buildTimeline(
       project: project,
@@ -5870,14 +5828,23 @@ class _EditorScreenState extends State<EditorScreen>
 
     // Fill the padded dock (bottom safe inset is applied by the parent).
     // Timeline fills leftover space; extra lanes scroll inside.
-    final showActions = height >= 120;
-    return SizedBox.expand(
-      child: Column(
-        children: [
-          Expanded(child: timeline),
-          if (showActions) ...[const SizedBox(height: 8), actions],
-        ],
-      ),
+    // Compact keeps tool chips; while collapsing to full-video, drop chips
+    // before the Column overflows.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxH = constraints.maxHeight;
+        if (maxH < 56) {
+          return const SizedBox.expand();
+        }
+        // Transport + skimpy strip ≈ 56; chips ≈ 56 + gap.
+        final showActions = maxH >= 130;
+        return Column(
+          children: [
+            Expanded(child: timeline),
+            if (showActions) ...[const SizedBox(height: 8), actions],
+          ],
+        );
+      },
     );
   }
 
@@ -6029,10 +5996,9 @@ class _EditorScreenState extends State<EditorScreen>
                 ),
                 const SizedBox(width: 8),
                 IconButton.outlined(
-                  onPressed:
-                      _exporting || _selectedOverlay == null
-                          ? null
-                          : _editSelectedOverlay,
+                  onPressed: _exporting || _selectedOverlay == null
+                      ? null
+                      : _editSelectedOverlay,
                   icon: const Icon(Icons.edit_outlined),
                   tooltip: l10n.editText,
                 ),
@@ -6041,17 +6007,6 @@ class _EditorScreenState extends State<EditorScreen>
                   onPressed: _exporting ? null : _splitAtPlayhead,
                   icon: const Icon(Icons.content_cut),
                   tooltip: l10n.splitVideo,
-                ),
-                const SizedBox(width: 8),
-                IconButton.outlined(
-                  onPressed:
-                      _exporting ||
-                          _project == null ||
-                          !hasVideoCuts(_project!.segments)
-                      ? null
-                      : _openTransitionPicker,
-                  icon: const Icon(Icons.auto_awesome_motion_outlined),
-                  tooltip: l10n.transition,
                 ),
                 const SizedBox(width: 8),
                 IconButton.outlined(
@@ -6147,13 +6102,17 @@ class _EditorScreenState extends State<EditorScreen>
                     ? null
                     : () => unawaited(_onVoicePrimaryPressed()),
                 child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 14,
+                  ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        recording ? Icons.stop_rounded : Icons.fiber_manual_record,
+                        recording
+                            ? Icons.stop_rounded
+                            : Icons.fiber_manual_record,
                         color: Colors.white,
                         size: 22,
                       ),
@@ -6208,6 +6167,89 @@ class _CanvasRatioButton extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+enum _DockResizeHint { up, down, both }
+
+/// CapCut-style capsule + chevron grip between preview and timeline dock.
+class _DockResizeGrip extends StatelessWidget {
+  const _DockResizeGrip({required this.lit, required this.hint});
+
+  final bool lit;
+  final _DockResizeHint hint;
+
+  @override
+  Widget build(BuildContext context) {
+    final barAlpha = lit ? 0.92 : 0.55;
+    final tipAlpha = lit ? 0.7 : 0.4;
+    final bar = Colors.white.withValues(alpha: barAlpha);
+    final tip = Colors.white.withValues(alpha: tipAlpha);
+
+    Widget chevron(bool up) => CustomPaint(
+      size: const Size(18, 6),
+      painter: _MiniChevronPainter(color: tip, up: up),
+    );
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (hint == _DockResizeHint.up || hint == _DockResizeHint.both) ...[
+          chevron(true),
+          const SizedBox(height: 3),
+        ],
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOut,
+          width: lit ? 46 : 40,
+          height: 5,
+          decoration: BoxDecoration(
+            color: bar,
+            borderRadius: BorderRadius.circular(999),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: lit ? 0.35 : 0.18),
+                blurRadius: lit ? 6 : 3,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+        ),
+        if (hint == _DockResizeHint.down || hint == _DockResizeHint.both) ...[
+          const SizedBox(height: 3),
+          chevron(false),
+        ],
+      ],
+    );
+  }
+}
+
+class _MiniChevronPainter extends CustomPainter {
+  _MiniChevronPainter({required this.color, required this.up});
+
+  final Color color;
+  final bool up;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.6
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final midY = up ? size.height * 0.7 : size.height * 0.3;
+    final tipY = up ? size.height * 0.15 : size.height * 0.85;
+    final path = Path()
+      ..moveTo(2, midY)
+      ..lineTo(size.width / 2, tipY)
+      ..lineTo(size.width - 2, midY);
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _MiniChevronPainter oldDelegate) {
+    return oldDelegate.color != color || oldDelegate.up != up;
   }
 }
 
@@ -6316,10 +6358,12 @@ class _ProjectNameDialogState extends State<_ProjectNameDialog> {
       content: TextField(
         controller: _controller,
         autofocus: true,
-        maxLength: 40,
-        textInputAction: TextInputAction.done,
+        maxLength: 80,
+        maxLines: null,
+        minLines: 1,
+        keyboardType: TextInputType.multiline,
+        textInputAction: TextInputAction.newline,
         decoration: InputDecoration(hintText: l10n.projectNameHint),
-        onSubmitted: (_) => _submit(),
       ),
       actions: [
         TextButton(
@@ -6374,9 +6418,7 @@ class _ExportPreviewPercent extends StatelessWidget {
               fontWeight: FontWeight.w700,
               letterSpacing: -1.2,
               color: Colors.white,
-              shadows: const [
-                Shadow(blurRadius: 18, color: Colors.black54),
-              ],
+              shadows: const [Shadow(blurRadius: 18, color: Colors.black54)],
             ),
           ),
         ),
@@ -6411,10 +6453,7 @@ class _ExportGateBusyOverlay extends StatelessWidget {
 
 /// Dimmed timeline dock with scissors mascot + exporting label only.
 class _ExportDockBusyOverlay extends StatefulWidget {
-  const _ExportDockBusyOverlay({
-    required this.label,
-    required this.progress,
-  });
+  const _ExportDockBusyOverlay({required this.label, required this.progress});
 
   final String label;
   final double progress;
@@ -6440,9 +6479,7 @@ class _ExportDockBusyOverlayState extends State<_ExportDockBusyOverlay>
   Widget build(BuildContext context) {
     return AbsorbPointer(
       child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.72),
-        ),
+        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.72)),
         child: Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 28),
@@ -6517,7 +6554,11 @@ class _ScissorsMascotPainter extends CustomPainter {
         ..close();
       canvas.drawPath(path, blade);
       canvas.drawCircle(Offset(-10, mirror ? -8 : 8), 7, grip);
-      canvas.drawCircle(Offset(-10, mirror ? -8 : 8), 3.2, Paint()..color = const Color(0xFF0B0610));
+      canvas.drawCircle(
+        Offset(-10, mirror ? -8 : 8),
+        3.2,
+        Paint()..color = const Color(0xFF0B0610),
+      );
       canvas.restore();
     }
 

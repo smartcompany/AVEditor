@@ -117,10 +117,21 @@
   "pushCatalogTitle": "新しい編集ツール",
   "pushCatalogBody": "新しいトランジションとテキストスタイルが追加されました。",
   "projectsSection": "プロジェクト",
+  "projectsEdit": "編集",
+  "projectsDone": "完了",
+  "deleteSelected": "削除",
   "noProjectsYet": "プロジェクトはまだありません。上で動画を選んで始めてください。",
   "projectListSubtitle": "{count, plural, =0{テキストなし} other{テキスト {count}件}}",
   "deleteProject": "プロジェクトを削除",
   "deleteProjectConfirm": "このプロジェクトを削除しますか？元に戻せません。",
+  "deleteProjectsConfirm": "プロジェクトを {count} 件削除しますか？元に戻せません。",
+  "@deleteProjectsConfirm": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "projectNotFound": "保存されたプロジェクトが見つかりません。",
   "settingsTitle": "設定",
   "exportQualitySection": "書き出し品質",

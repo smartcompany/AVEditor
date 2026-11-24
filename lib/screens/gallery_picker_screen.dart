@@ -365,12 +365,14 @@ class _GalleryPickerScreenState extends State<GalleryPickerScreen> {
         title: Row(
           children: [
             _tabChip(
+              icon: Icons.photo_library_outlined,
               label: l10n.galleryTabGallery,
               selected: _tab == _PickerTab.gallery,
               onTap: () => setState(() => _tab = _PickerTab.gallery),
             ),
             const SizedBox(width: 8),
             _tabChip(
+              icon: Icons.wallpaper_outlined,
               label: l10n.galleryTabBackgrounds,
               selected: onBackgrounds,
               onTap: () => setState(() => _tab = _PickerTab.backgrounds),
@@ -457,25 +459,43 @@ class _GalleryPickerScreenState extends State<GalleryPickerScreen> {
   }
 
   Widget _tabChip({
+    required IconData icon,
     required String label,
     required bool selected,
     required VoidCallback onTap,
   }) {
+    final fg = selected ? AppTheme.accentCyan : AppTheme.ink;
     return Material(
-      color: selected ? AppTheme.accentCyan.withValues(alpha: 0.2) : AppTheme.surface,
-      borderRadius: BorderRadius.circular(20),
+      color: selected
+          ? AppTheme.accentCyan.withValues(alpha: 0.22)
+          : AppTheme.surfaceElevated,
+      shape: StadiumBorder(
+        side: BorderSide(
+          color: selected
+              ? AppTheme.accentCyan.withValues(alpha: 0.85)
+              : AppTheme.ink.withValues(alpha: 0.35),
+          width: selected ? 1.4 : 1,
+        ),
+      ),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
+        customBorder: const StadiumBorder(),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          child: Text(
-            label,
-            style: GoogleFonts.dmSans(
-              color: selected ? AppTheme.accentCyan : AppTheme.muted,
-              fontWeight: FontWeight.w600,
-              fontSize: 13,
-            ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 16, color: fg),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: GoogleFonts.dmSans(
+                  color: fg,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+            ],
           ),
         ),
       ),

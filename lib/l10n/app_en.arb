@@ -169,6 +169,9 @@
     }
   },
   "projectsSection": "Projects",
+  "projectsEdit": "Edit",
+  "projectsDone": "Done",
+  "deleteSelected": "Delete",
   "noProjectsYet": "No projects yet. Choose a video above to start.",
   "projectListSubtitle": "{count, plural, =0{No text layers} other{{count} text layers}}",
   "@projectListSubtitle": {
@@ -180,6 +183,14 @@
   },
   "deleteProject": "Delete project",
   "deleteProjectConfirm": "Delete this project? This cannot be undone.",
+  "deleteProjectsConfirm": "Delete {count} projects? This cannot be undone.",
+  "@deleteProjectsConfirm": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "projectNotFound": "Saved project could not be found.",
   "settingsTitle": "Settings",
   "exportQualitySection": "Export quality",

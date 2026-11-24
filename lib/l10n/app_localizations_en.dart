@@ -373,6 +373,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get projectsSection => 'Projects';
 
   @override
+  String get projectsEdit => 'Edit';
+
+  @override
+  String get projectsDone => 'Done';
+
+  @override
+  String get deleteSelected => 'Delete';
+
+  @override
   String get noProjectsYet => 'No projects yet. Choose a video above to start.';
 
   @override
@@ -392,6 +401,11 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get deleteProjectConfirm =>
       'Delete this project? This cannot be undone.';
+
+  @override
+  String deleteProjectsConfirm(int count) {
+    return 'Delete $count projects? This cannot be undone.';
+  }
 
   @override
   String get projectNotFound => 'Saved project could not be found.';

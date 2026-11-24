@@ -762,6 +762,24 @@ abstract class AppLocalizations {
   /// **'Projects'**
   String get projectsSection;
 
+  /// No description provided for @projectsEdit.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get projectsEdit;
+
+  /// No description provided for @projectsDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get projectsDone;
+
+  /// No description provided for @deleteSelected.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get deleteSelected;
+
   /// No description provided for @noProjectsYet.
   ///
   /// In en, this message translates to:
@@ -785,6 +803,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Delete this project? This cannot be undone.'**
   String get deleteProjectConfirm;
+
+  /// No description provided for @deleteProjectsConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete {count} projects? This cannot be undone.'**
+  String deleteProjectsConfirm(int count);
 
   /// No description provided for @projectNotFound.
   ///

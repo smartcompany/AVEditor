@@ -12,11 +12,11 @@ const handleHitWidth = 18.0;
 const minTimelineZoom = 2 / 3;
 
 /// At max zoom, a 1s clip body is this many logical pixels wide.
-/// CapCut iPhone capture: 120px body @ ~3x → 40pt (handles excluded).
-const maxZoomOneSecondLogicalWidth = 40.0;
+/// Deep enough for CapCut-style frame ruler labels (~360pt/s).
+const maxZoomOneSecondLogicalWidth = 360.0;
 
 /// Hard ceiling so multi-hour sources cannot demand absurd zoom factors.
-const maxTimelineZoomCeiling = 200.0;
+const maxTimelineZoomCeiling = 600.0;
 
 /// Empty runway past the last video/music/text so the playhead and trim
 /// handles can move past current content. There is no hard project duration.

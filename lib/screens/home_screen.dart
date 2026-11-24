@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/navigation/editor_route.dart';
@@ -25,6 +26,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   static const _appShareUrl = 'https://easyclip.coinpang.org';
+  static const _danger = Color(0xFFE53935);
 
   final _import = VideoImportService();
   final _projectStorage = const ProjectStorageService();
@@ -34,6 +36,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _projectsLoading = true;
   String? _openingProjectId;
   List<ProjectSummary> _projects = const [];
+  bool _selecting = false;
+  final Set<String> _selectedIds = {};
 
   /// Cover thumbnail lookups, keyed by project id + first-frame time so a
   /// trimmed project gets a fresh cover and others are not re-read.
@@ -60,6 +64,30 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _projects = summaries;
       _projectsLoading = false;
+      _selectedIds.removeWhere(
+        (id) => !summaries.any((p) => p.id == id),
+      );
+      if (_selecting && summaries.isEmpty) {
+        _selecting = false;
+        _selectedIds.clear();
+      }
+    });
+  }
+
+  void _toggleSelecting() {
+    setState(() {
+      _selecting = !_selecting;
+      if (!_selecting) _selectedIds.clear();
+    });
+  }
+
+  void _toggleSelected(String id) {
+    setState(() {
+      if (_selectedIds.contains(id)) {
+        _selectedIds.remove(id);
+      } else {
+        _selectedIds.add(id);
+      }
     });
   }
 
@@ -179,14 +207,18 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _deleteProject(ProjectSummary project) async {
+  Future<bool> _confirmDelete({required int count}) async {
     final l10n = context.l10n;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
           title: Text(l10n.deleteProject),
-          content: Text(l10n.deleteProjectConfirm),
+          content: Text(
+            count == 1
+                ? l10n.deleteProjectConfirm
+                : l10n.deleteProjectsConfirm(count),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
@@ -194,14 +226,35 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: Text(l10n.deleteProject),
+              child: Text(l10n.deleteSelected),
             ),
           ],
         );
       },
     );
-    if (!mounted || confirmed != true) return;
+    return confirmed == true;
+  }
+
+  Future<void> _deleteProject(ProjectSummary project) async {
+    final ok = await _confirmDelete(count: 1);
+    if (!mounted || !ok) return;
     await _projectStorage.delete(project.id);
+    await _loadProjects();
+  }
+
+  Future<void> _deleteSelected() async {
+    if (_selectedIds.isEmpty) return;
+    final ids = List<String>.from(_selectedIds);
+    final ok = await _confirmDelete(count: ids.length);
+    if (!mounted || !ok) return;
+    for (final id in ids) {
+      await _projectStorage.delete(id);
+    }
+    if (!mounted) return;
+    setState(() {
+      _selecting = false;
+      _selectedIds.clear();
+    });
     await _loadProjects();
   }
 
@@ -220,6 +273,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final showProjectsHeader = _projectsLoading || _projects.isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -290,15 +344,28 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ],
                 ],
-                if (_projectsLoading || _projects.isNotEmpty) ...[
+                if (showProjectsHeader) ...[
                   const SizedBox(height: 28),
-                  Text(
-                    l10n.projectsSection,
-                    style: GoogleFonts.dmSans(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.ink,
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          l10n.projectsSection,
+                          style: GoogleFonts.dmSans(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.ink,
+                          ),
+                        ),
+                      ),
+                      if (!_projectsLoading && _projects.isNotEmpty)
+                        TextButton(
+                          onPressed: _loading ? null : _toggleSelecting,
+                          child: Text(
+                            _selecting ? l10n.projectsDone : l10n.projectsEdit,
+                          ),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 10),
                 ],
@@ -314,22 +381,33 @@ class _HomeScreenState extends State<HomeScreen> {
                               Builder(
                                 builder: (context) {
                                   final project = _projects[i];
-                                  return _ProjectTile(
-                                    cover: _coverFor(project),
-                                    title: _projectTitle(project),
-                                    subtitle: l10n.projectListSubtitle(
-                                      project.overlayCount,
-                                    ),
-                                    draftBadge: project.isDraft
-                                        ? l10n.draftBadge
-                                        : null,
-                                    opening: _openingProjectId == project.id,
-                                    enabled: !_loading &&
+                                  final selected =
+                                      _selectedIds.contains(project.id);
+                                  return _SwipeToDelete(
+                                    enabled: !_selecting &&
+                                        !_loading &&
                                         _openingProjectId == null,
-                                    onOpen: () => _openEditor(project.id),
-                                    onDelete: () =>
-                                        _deleteProject(project),
-                                    deleteTooltip: l10n.deleteProject,
+                                    deleteLabel: l10n.deleteSelected,
+                                    onDelete: () => _deleteProject(project),
+                                    child: _ProjectTile(
+                                      cover: _coverFor(project),
+                                      title: _projectTitle(project),
+                                      opening:
+                                          _openingProjectId == project.id,
+                                      enabled: !_loading &&
+                                          _openingProjectId == null,
+                                      selecting: _selecting,
+                                      selected: selected,
+                                      onOpen: () {
+                                        if (_selecting) {
+                                          _toggleSelected(project.id);
+                                        } else {
+                                          _openEditor(project.id);
+                                        }
+                                      },
+                                      onToggleSelect: () =>
+                                          _toggleSelected(project.id),
+                                    ),
                                   );
                                 },
                               ),
@@ -337,6 +415,28 @@ class _HomeScreenState extends State<HomeScreen> {
                           ],
                         ),
                 ),
+                if (_selecting && _projects.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: FilledButton.icon(
+                      onPressed: _selectedIds.isEmpty || _loading
+                          ? null
+                          : _deleteSelected,
+                      icon: const Icon(Icons.delete_outline),
+                      label: Text(
+                        _selectedIds.isEmpty
+                            ? l10n.deleteSelected
+                            : '${l10n.deleteSelected} (${_selectedIds.length})',
+                      ),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _danger,
+                        foregroundColor: Colors.white,
+                        disabledBackgroundColor:
+                            _danger.withValues(alpha: 0.35),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -346,29 +446,159 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
+/// Swipe left to reveal a delete action (iOS-style).
+class _SwipeToDelete extends StatefulWidget {
+  const _SwipeToDelete({
+    required this.child,
+    required this.onDelete,
+    required this.deleteLabel,
+    this.enabled = true,
+  });
+
+  final Widget child;
+  final VoidCallback onDelete;
+  final String deleteLabel;
+  final bool enabled;
+
+  @override
+  State<_SwipeToDelete> createState() => _SwipeToDeleteState();
+}
+
+class _SwipeToDeleteState extends State<_SwipeToDelete>
+    with SingleTickerProviderStateMixin {
+  static const _actionWidth = 88.0;
+  static const _danger = Color(0xFFE53935);
+
+  late final AnimationController _controller;
+  double _dragExtent = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+      upperBound: _actionWidth,
+    )..addListener(() {
+        setState(() => _dragExtent = _controller.value);
+      });
+  }
+
+  @override
+  void didUpdateWidget(covariant _SwipeToDelete oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.enabled && _dragExtent != 0) {
+      _controller.animateTo(0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onDragUpdate(DragUpdateDetails details) {
+    if (!widget.enabled) return;
+    final next = (_dragExtent - details.delta.dx).clamp(0.0, _actionWidth);
+    _controller.value = next;
+  }
+
+  void _onDragEnd(DragEndDetails details) {
+    if (!widget.enabled) return;
+    final velocity = details.primaryVelocity ?? 0;
+    final open = velocity < -300 ||
+        (velocity <= 300 && _dragExtent > _actionWidth / 2);
+    _controller.animateTo(open ? _actionWidth : 0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final openFraction =
+        _actionWidth == 0 ? 0.0 : (_dragExtent / _actionWidth).clamp(0.0, 1.0);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: SizedBox(
+                width: math.max(_dragExtent, 0.001),
+                child: Material(
+                  color: _danger,
+                  child: InkWell(
+                    onTap: openFraction > 0.85
+                        ? () {
+                            _controller.animateTo(0);
+                            widget.onDelete();
+                          }
+                        : null,
+                    child: Opacity(
+                      opacity: openFraction,
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.delete_outline,
+                              color: Colors.white,
+                              size: 22,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              widget.deleteLabel,
+                              style: GoogleFonts.dmSans(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          GestureDetector(
+            onHorizontalDragUpdate: widget.enabled ? _onDragUpdate : null,
+            onHorizontalDragEnd: widget.enabled ? _onDragEnd : null,
+            child: Transform.translate(
+              offset: Offset(-_dragExtent, 0),
+              child: widget.child,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ProjectTile extends StatelessWidget {
   const _ProjectTile({
     required this.cover,
     required this.title,
-    required this.subtitle,
     required this.enabled,
     required this.onOpen,
-    required this.onDelete,
-    required this.deleteTooltip,
-    this.draftBadge,
+    required this.selecting,
+    required this.selected,
+    required this.onToggleSelect,
     this.opening = false,
   });
 
   /// Path of the cover JPEG (first frame), or null when none could be made.
   final Future<String?> cover;
   final String title;
-  final String subtitle;
-  final String? draftBadge;
   final bool opening;
   final bool enabled;
+  final bool selecting;
+  final bool selected;
   final VoidCallback onOpen;
-  final VoidCallback onDelete;
-  final String deleteTooltip;
+  final VoidCallback onToggleSelect;
 
   @override
   Widget build(BuildContext context) {
@@ -382,7 +612,9 @@ class _ProjectTile extends StatelessWidget {
             color: AppTheme.surface,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: opening
+              color: selected
+                  ? AppTheme.accent.withValues(alpha: 0.55)
+                  : opening
                   ? AppTheme.accent.withValues(alpha: 0.45)
                   : AppTheme.accent.withValues(alpha: 0.18),
             ),
@@ -411,51 +643,20 @@ class _ProjectTile extends StatelessWidget {
                             vertical: 6,
                           ),
                           leading: _ProjectCover(cover: cover),
-                          title: Row(
-                            children: [
-                              if (draftBadge != null) ...[
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 7,
-                                    vertical: 1,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.accent
-                                        .withValues(alpha: 0.18),
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                  child: Text(
-                                    draftBadge!,
-                                    style: GoogleFonts.dmSans(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppTheme.ink,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                              ],
-                              Expanded(
-                                child: Text(
-                                  title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
+                          title: Text(
+                            title,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          subtitle: Text(subtitle),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                onPressed: enabled ? onDelete : null,
-                                icon: const Icon(Icons.delete_outline),
-                                tooltip: deleteTooltip,
-                              ),
-                              const Icon(Icons.chevron_right),
-                            ],
-                          ),
+                          trailing: selecting
+                              ? Checkbox(
+                                  value: selected,
+                                  onChanged: enabled
+                                      ? (_) => onToggleSelect()
+                                      : null,
+                                  activeColor: AppTheme.accent,
+                                )
+                              : const Icon(Icons.chevron_right),
                         ),
                       ),
                     ],

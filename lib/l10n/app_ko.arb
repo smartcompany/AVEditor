@@ -117,10 +117,21 @@
   "pushCatalogTitle": "새 편집 도구",
   "pushCatalogBody": "새로운 전환·텍스트 스타일이 추가됐어요. 다음 클립에 써 보세요.",
   "projectsSection": "프로젝트",
+  "projectsEdit": "편집",
+  "projectsDone": "완료",
+  "deleteSelected": "삭제",
   "noProjectsYet": "아직 프로젝트가 없습니다. 위에서 영상을 선택해 시작하세요.",
   "projectListSubtitle": "{count, plural, =0{텍스트 없음} other{텍스트 {count}개}}",
   "deleteProject": "프로젝트 삭제",
   "deleteProjectConfirm": "이 프로젝트를 삭제할까요? 되돌릴 수 없습니다.",
+  "deleteProjectsConfirm": "프로젝트 {count}개를 삭제할까요? 되돌릴 수 없습니다.",
+  "@deleteProjectsConfirm": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "projectNotFound": "저장된 프로젝트를 찾을 수 없습니다.",
   "settingsTitle": "설정",
   "exportQualitySection": "보내기 품질",

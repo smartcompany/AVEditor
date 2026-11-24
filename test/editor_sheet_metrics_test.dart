@@ -20,7 +20,7 @@ void main() {
       expect(metrics.compactFraction, EditorSheetMetrics.compactFractionValue);
       expect(metrics.entryFraction, EditorSheetMetrics.entryFractionValue);
       expect(metrics.maxFraction, EditorSheetMetrics.maxFractionValue);
-      expect(metrics.compactHeight, closeTo(844 * 0.22, 0.001));
+      expect(metrics.compactHeight, closeTo(844 * 0.30, 0.001));
       expect(metrics.entryHeight, closeTo(844 * 0.45, 0.001));
       expect(metrics.maxHeight, closeTo(844 * 2 / 3, 0.001));
       expect(metrics.compactHeight, lessThan(metrics.entryHeight));

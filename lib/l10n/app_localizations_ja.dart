@@ -366,6 +366,15 @@ class AppLocalizationsJa extends AppLocalizations {
   String get projectsSection => 'プロジェクト';
 
   @override
+  String get projectsEdit => '編集';
+
+  @override
+  String get projectsDone => '完了';
+
+  @override
+  String get deleteSelected => '削除';
+
+  @override
   String get noProjectsYet => 'プロジェクトはまだありません。上で動画を選んで始めてください。';
 
   @override
@@ -384,6 +393,11 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get deleteProjectConfirm => 'このプロジェクトを削除しますか？元に戻せません。';
+
+  @override
+  String deleteProjectsConfirm(int count) {
+    return 'プロジェクトを $count 件削除しますか？元に戻せません。';
+  }
 
   @override
   String get projectNotFound => '保存されたプロジェクトが見つかりません。';

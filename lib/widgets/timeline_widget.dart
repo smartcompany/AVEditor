@@ -11,6 +11,8 @@ import 'package:aveditor/utils/clip_segment_ops.dart';
 import 'package:aveditor/utils/duration_format.dart';
 import 'package:aveditor/utils/music_timeline_ops.dart';
 import 'package:aveditor/utils/timeline_math.dart';
+import 'package:aveditor/widgets/timeline_ruler_painter.dart';
+import 'package:aveditor/widgets/transition_cut_icon.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -37,8 +39,8 @@ const _videoAudioHeight = 20.0;
 const _videoTrackHeight = _videoFilmstripHeight + _videoAudioHeight;
 
 /// Background-music lane under the filmstrip (waveform + volume envelope).
-/// Match the main video+source-audio track height.
-const _musicTrackHeight = _videoTrackHeight;
+/// 80% of the main video+source-audio track height (text/sticker lanes match).
+const _musicTrackHeight = _videoTrackHeight * 0.8;
 const _musicTrackGap = 4.0;
 const _musicLaneStride = _musicTrackHeight + _musicTrackGap;
 
@@ -47,6 +49,7 @@ const _musicFadeHandleInset = 18.0;
 
 /// CapCut-style end caps: wide, full-lane height, outside the clip time span.
 const _overlayHandleWidth = 22.0;
+
 /// Handles match the clip height (no vertical pad around selected bars).
 const _overlayHandleOutsetY = 0.0;
 
@@ -530,7 +533,7 @@ class TimelineWidgetState extends State<TimelineWidget>
   double get _contentInsetX => timelineContentInsetX(_viewportWidth);
   bool get _isPinching => _pointers.length >= 2;
 
-  /// CapCut-like max zoom: 1s clip body ≈ 40 logical px on every phone.
+  /// CapCut-like max zoom: 1s clip body ≈ [maxZoomOneSecondLogicalWidth] px.
   double get _maxZoom =>
       maxTimelineZoomFor(_scaleReference, viewportWidth: _viewportWidth);
 
@@ -706,9 +709,9 @@ class TimelineWidgetState extends State<TimelineWidget>
   }
 
   bool get _hasPictureBlackPad => hasPictureBlackPad(
-        segments: widget.segments,
-        sequenceDuration: _envelopeDuration,
-      );
+    segments: widget.segments,
+    sequenceDuration: _envelopeDuration,
+  );
 
   /// Mid cuts + optional picture→black end cut.
   int get _cutMarkerExclusiveEnd {
@@ -855,10 +858,7 @@ class TimelineWidgetState extends State<TimelineWidget>
     final to = targetSequence;
     final deltaMs = (from - to).inMilliseconds.abs();
     if (deltaMs < 12) {
-      _emitPlayhead(
-        snapDuration(_uiTimeFromSequence(to)),
-        seekVideo: true,
-      );
+      _emitPlayhead(snapDuration(_uiTimeFromSequence(to)), seekVideo: true);
       return;
     }
     _edgeSettleFrom = from;
@@ -1816,8 +1816,7 @@ class TimelineWidgetState extends State<TimelineWidget>
     }
     final guideMs = (_pictureEndGuidePx * msPerPx).round().clamp(1, 1 << 30);
     final near = edges.any(
-      (e) =>
-          (e.inMilliseconds - pictureEnd.inMilliseconds).abs() <= guideMs,
+      (e) => (e.inMilliseconds - pictureEnd.inMilliseconds).abs() <= guideMs,
     );
     _setPictureEndGuideVisible(near);
   }
@@ -1836,8 +1835,8 @@ class TimelineWidgetState extends State<TimelineWidget>
       return (start: nextStart, end: nextEnd);
     }
     final threshMs = (_pictureEndSnapPx * msPerPx).round().clamp(1, 1 << 30);
-    final startDist =
-        (nextStart.inMilliseconds - pictureEnd.inMilliseconds).abs();
+    final startDist = (nextStart.inMilliseconds - pictureEnd.inMilliseconds)
+        .abs();
     final endDist = (nextEnd.inMilliseconds - pictureEnd.inMilliseconds).abs();
     if (endDist <= threshMs && endDist <= startDist) {
       nextEnd = pictureEnd;
@@ -1945,8 +1944,7 @@ class TimelineWidgetState extends State<TimelineWidget>
     final homeLeft = _reorderHomeLeftForSegment(segment);
     final from = widget.segments.indexWhere((s) => s.id == segment.id);
     final stride = _videoTrackHeight + _segmentReorderCellGap;
-    final stripLeft =
-        from >= 0 ? homeLeft - from * stride : homeLeft;
+    final stripLeft = from >= 0 ? homeLeft - from * stride : homeLeft;
     final fingerX = _pointerDownLocal?.dx ?? (homeLeft + _videoTrackHeight / 2);
     setState(() {
       _segmentReorderActive = true;
@@ -2058,11 +2056,9 @@ class TimelineWidgetState extends State<TimelineWidget>
     return null;
   }
 
-  bool get _pressedMusicMove =>
-      _dragTarget == TimelineDragTarget.musicMove;
+  bool get _pressedMusicMove => _dragTarget == TimelineDragTarget.musicMove;
 
-  bool get _pressedOverlayMove =>
-      _dragTarget == TimelineDragTarget.overlayMove;
+  bool get _pressedOverlayMove => _dragTarget == TimelineDragTarget.overlayMove;
 
   /// Video clip body press chrome — hidden during long-press reorder.
   bool get _pressedSegmentMove =>
@@ -2377,10 +2373,10 @@ class TimelineWidgetState extends State<TimelineWidget>
           );
           nextStart = snapped.start;
           final nextEnd = snapped.end;
-          _updatePictureEndGuideForEdges(
-            [nextStart, nextEnd],
-            msPerPx: msPerPx,
-          );
+          _updatePictureEndGuideForEdges([
+            nextStart,
+            nextEnd,
+          ], msPerPx: msPerPx);
           widget.onOverlayChanged(
             overlay.copyWith(start: nextStart, end: nextEnd, lane: targetLane),
           );
@@ -2401,10 +2397,10 @@ class TimelineWidgetState extends State<TimelineWidget>
           msPerPx: msPerPx,
         );
         nextExportStart = snappedExport.start;
-        _updatePictureEndGuideForEdges(
-          [snappedExport.start, snappedExport.end],
-          msPerPx: msPerPx,
-        );
+        _updatePictureEndGuideForEdges([
+          snappedExport.start,
+          snappedExport.end,
+        ], msPerPx: msPerPx);
 
         final nextStart = exportTimeToSourceTime(
           widget.segments,
@@ -2439,10 +2435,10 @@ class TimelineWidgetState extends State<TimelineWidget>
           msPerPx: msPerPx,
         );
         nextStart = snapped.start;
-        _updatePictureEndGuideForEdges(
-          [snapped.start, snapped.end],
-          msPerPx: msPerPx,
-        );
+        _updatePictureEndGuideForEdges([
+          snapped.start,
+          snapped.end,
+        ], msPerPx: msPerPx);
         final targetLane = _musicLaneAtLocal(local, currentLane: music.lane);
         widget.onMusicChanged?.call(
           music.copyWith(timelineStart: nextStart, lane: targetLane),
@@ -2723,10 +2719,9 @@ class TimelineWidgetState extends State<TimelineWidget>
           sequenceDuration: _envelopeDuration,
         );
         if (span != null) {
-          final edgeSeq =
-              _dragTarget == TimelineDragTarget.transitionEnd
-                  ? span.end
-                  : span.start;
+          final edgeSeq = _dragTarget == TimelineDragTarget.transitionEnd
+              ? span.end
+              : span.start;
           _previewEdgeDragTime(_uiTimeFromSequence(edgeSeq));
         }
     }
@@ -2819,15 +2814,12 @@ class TimelineWidgetState extends State<TimelineWidget>
     return local;
   }
 
-  void _previewEdgeDragTime(
-    Duration sourceTime, {
-    ClipSegment? forSegment,
-  }) {
+  void _previewEdgeDragTime(Duration sourceTime, {ClipSegment? forSegment}) {
     // Multi-source: UI + native share the packed sequence clock.
     var seq = _usesPackedPlayhead
         ? (forSegment != null
-            ? _sequenceTimeForSegmentLocal(forSegment, sourceTime)
-            : sourceTime)
+              ? _sequenceTimeForSegmentLocal(forSegment, sourceTime)
+              : sourceTime)
         : (sourceTimeToExportTime(widget.segments, sourceTime) ?? sourceTime);
     // Exact segment end equals the next clip's start on the packed clock —
     // nudge back so the preview stays on this clip (photo, not the next video).
@@ -3349,6 +3341,31 @@ class TimelineWidgetState extends State<TimelineWidget>
     );
   }
 
+  /// CapCut-style second / frame labels; shares scroll+zoom with the strip.
+  Widget _buildTimeRuler() {
+    return SizedBox(
+      height: 14,
+      width: double.infinity,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Keep scale in sync when the ruler is laid out before the strip.
+          if (constraints.maxWidth > 0) {
+            _viewportWidth = constraints.maxWidth;
+          }
+          return CustomPaint(
+            painter: TimelineRulerPainter(
+              sequenceDuration: _editableTimelineDuration,
+              scrollPx: _scrollPx,
+              contentWidth: _contentWidth,
+              contentInsetX: _contentInsetX,
+              msPerPx: _msPerPx,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   /// Current, slash, and total as separate fixed-width slots so scrubbing
   /// never shifts neighbors when digit glyphs change width.
   Widget _buildClockReadout(TextStyle? base) {
@@ -3506,11 +3523,17 @@ class TimelineWidgetState extends State<TimelineWidget>
 
     return LayoutBuilder(
       builder: (context, outerConstraints) {
-        final tight = widget.expandToFill &&
-            outerConstraints.maxHeight.isFinite &&
-            outerConstraints.maxHeight < 88;
+        final maxH = outerConstraints.maxHeight;
+        // Collapse-to-full-video: parent can be a few px tall — paint nothing.
+        if (widget.expandToFill && maxH.isFinite && maxH < 36) {
+          return const SizedBox.expand();
+        }
+        final tight =
+            widget.expandToFill && maxH.isFinite && maxH < 88;
+        // Keep play row whenever it fits; never force it into a sub-44px dock.
+        final showTransport = !maxH.isFinite || maxH >= 48;
         return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16),
+          margin: const EdgeInsets.symmetric(horizontal: 0),
           padding: EdgeInsets.fromLTRB(12, tight ? 4 : 8, 12, tight ? 4 : 8),
           decoration: BoxDecoration(
             color: AppTheme.surface,
@@ -3520,16 +3543,32 @@ class TimelineWidgetState extends State<TimelineWidget>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (!tight) ...[
+              if (showTransport) ...[
                 GestureDetector(
                   behavior: HitTestBehavior.translucent,
                   onVerticalDragUpdate: widget.onHandleDragUpdate,
                   onVerticalDragEnd: widget.onHandleDragEnd,
                   child: _buildTransportRow(),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
               ],
-              if (widget.expandToFill) Expanded(child: body) else body,
+              if (widget.expandToFill)
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (!tight && showTransport) ...[
+                        _buildTimeRuler(),
+                        const SizedBox(height: 2),
+                      ],
+                      Expanded(child: body),
+                    ],
+                  ),
+                )
+              else ...[
+                if (!tight) ...[_buildTimeRuler(), const SizedBox(height: 2)],
+                body,
+              ],
             ],
           ),
         );
@@ -3797,8 +3836,7 @@ class _TimelinePainter extends CustomPainter {
           bottom: bottom,
         );
       }
-      final movePressed =
-          music.id == selectedMusicId && pressedMusicMove;
+      final movePressed = music.id == selectedMusicId && pressedMusicMove;
       final edge = music.id == selectedMusicId
           ? pressedMusicHandleAtStart
           : null;
@@ -3932,11 +3970,7 @@ class _TimelinePainter extends CustomPainter {
     return Offset(fadeIn ? xs.inX : xs.outX, y);
   }
 
-  void _paintFadeHandle(
-    Canvas canvas,
-    Offset center, {
-    bool pressed = false,
-  }) {
+  void _paintFadeHandle(Canvas canvas, Offset center, {bool pressed = false}) {
     canvas.drawCircle(
       center,
       _audioFadeKnobRadius,
@@ -3946,9 +3980,7 @@ class _TimelinePainter extends CustomPainter {
       center,
       _audioFadeKnobRadius,
       Paint()
-        ..color = pressed
-            ? Colors.white
-            : Colors.white.withValues(alpha: 0.95)
+        ..color = pressed ? Colors.white : Colors.white.withValues(alpha: 0.95)
         ..style = PaintingStyle.stroke
         ..strokeWidth = pressed ? 2.0 : 1.2,
     );
@@ -4093,12 +4125,14 @@ class _TimelinePainter extends CustomPainter {
     if (segments.isEmpty) return;
 
     final filmTop = 0.0;
-    final filmBottom =
-        hasSourceAudio ? _videoFilmstripHeight : _videoTrackHeight;
+    final filmBottom = hasSourceAudio
+        ? _videoFilmstripHeight
+        : _videoTrackHeight;
     final audioTop = _videoFilmstripHeight;
     final audioBottom = _videoTrackHeight;
     final preview = segmentReorderPreview;
-    final reordering = segmentReorderActive &&
+    final reordering =
+        segmentReorderActive &&
         preview != null &&
         preview.length > 1 &&
         segmentReorderDraggingId != null;
@@ -4149,7 +4183,9 @@ class _TimelinePainter extends CustomPainter {
 
       final selected = segment.id == selectedSegmentId;
       final showAudio = hasSourceAudio && !_segmentIsImage(segment);
-      final clipFilmBottom = showAudio ? _videoFilmstripHeight : _videoTrackHeight;
+      final clipFilmBottom = showAudio
+          ? _videoFilmstripHeight
+          : _videoTrackHeight;
       final filmRect = Rect.fromLTRB(
         bounds.left,
         filmTop,
@@ -4248,8 +4284,9 @@ class _TimelinePainter extends CustomPainter {
       }
 
       final showAudio = hasSourceAudio && !_segmentIsImage(segment);
-      final clipFilmBottom =
-          showAudio ? _videoFilmstripHeight : _videoTrackHeight;
+      final clipFilmBottom = showAudio
+          ? _videoFilmstripHeight
+          : _videoTrackHeight;
       final clipFilmRect = Rect.fromLTRB(left, filmTop, right, clipFilmBottom);
       _paintFilmstrip(canvas, clipFilmRect, segment);
       canvas.drawRect(
@@ -4432,9 +4469,7 @@ class _TimelinePainter extends CustomPainter {
 
   bool _cutMarkerHiddenBySegmentFocus(int afterIndex) {
     final selectedId = selectedSegmentId;
-    if (selectedId == null ||
-        afterIndex < 0 ||
-        afterIndex >= segments.length) {
+    if (selectedId == null || afterIndex < 0 || afterIndex >= segments.length) {
       return false;
     }
     if (isEndCutIndex(segments, afterIndex)) {
@@ -4452,55 +4487,14 @@ class _TimelinePainter extends CustomPainter {
     bool selected = false,
   }) {
     // Selected: warm amber so the cut chip alone reads as focused.
-    final paint = Paint()
-      ..color = selected
-          ? AppTheme.accentWarm
-          : const Color(0xFF1F1F1F).withValues(alpha: 0.88)
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.8;
-
-    final c = chip.center;
+    final color = selected
+        ? AppTheme.accentWarm
+        : const Color(0xFF1F1F1F).withValues(alpha: 0.88);
     if (!hasTransition) {
-      // Hard cut — vertical bar.
-      paint.strokeWidth = 2.4;
-      canvas.drawLine(
-        Offset(c.dx, chip.top + 6),
-        Offset(c.dx, chip.bottom - 6),
-        paint,
-      );
+      paintHardCutIcon(canvas, chip, color: color);
       return;
     }
-
-    // Transition Push — arrow into a vertical frame (door / screen).
-    final h = chip.height * 0.42;
-    final frameW = chip.width * 0.22;
-    final frameLeft = c.dx + chip.width * 0.02;
-    final frame = RRect.fromRectAndRadius(
-      Rect.fromCenter(
-        center: Offset(frameLeft + frameW / 2, c.dy),
-        width: frameW,
-        height: h,
-      ),
-      const Radius.circular(1.2),
-    );
-    canvas.drawRRect(frame, paint);
-
-    final arrowTipX = frame.left - 1.5;
-    final arrowTailX = c.dx - chip.width * 0.28;
-    final head = chip.width * 0.12;
-    canvas.drawLine(Offset(arrowTailX, c.dy), Offset(arrowTipX, c.dy), paint);
-    canvas.drawLine(
-      Offset(arrowTipX - head, c.dy - head * 0.85),
-      Offset(arrowTipX, c.dy),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(arrowTipX - head, c.dy + head * 0.85),
-      Offset(arrowTipX, c.dy),
-      paint,
-    );
+    paintTransitionCutIcon(canvas, chip, color: color);
   }
 
   void _paintSourceAudioBand(
@@ -4531,8 +4525,9 @@ class _TimelinePainter extends CustomPainter {
     canvas.restore();
 
     if (selected) {
-      final fade =
-          segment.id == selectedSegmentId ? pressedSegmentFadeAtIn : null;
+      final fade = segment.id == selectedSegmentId
+          ? pressedSegmentFadeAtIn
+          : null;
       _paintFadeHandle(
         canvas,
         _segmentFadeHandleOffset(segment, rect.left, rect.right, fadeIn: true),
@@ -4639,8 +4634,10 @@ class _TimelinePainter extends CustomPainter {
 
     // segment.start/end are local media times — never map against packed
     // project.duration (sourceDuration), which collapses the waveform.
-    final totalMs =
-        _sourceDurationForSegment(segment, peaks).inMilliseconds.clamp(1, 1 << 31);
+    final totalMs = _sourceDurationForSegment(
+      segment,
+      peaks,
+    ).inMilliseconds.clamp(1, 1 << 31);
 
     final startF = (segment.start.inMilliseconds / totalMs).clamp(0.0, 1.0);
     final endF = (segment.end.inMilliseconds / totalMs).clamp(
@@ -4728,8 +4725,7 @@ class _TimelinePainter extends CustomPainter {
     );
 
     if (selected) {
-      final movePressed =
-          overlay.id == selectedOverlayId && pressedOverlayMove;
+      final movePressed = overlay.id == selectedOverlayId && pressedOverlayMove;
       final edge = overlay.id == selectedOverlayId
           ? pressedOverlayHandleAtStart
           : null;
@@ -4916,8 +4912,7 @@ class _TimelinePainter extends CustomPainter {
       final width = isLast ? (rect.right - left) : _filmstripTileWidth;
       if (width <= 0) break;
 
-      final centerFraction =
-          ((left - rect.left) + width / 2) / rect.width;
+      final centerFraction = ((left - rect.left) + width / 2) / rect.width;
       final sourceMs =
           segment.start.inMilliseconds +
           (segment.duration.inMilliseconds * centerFraction.clamp(0.0, 1.0))
@@ -4964,8 +4959,8 @@ class _TimelinePainter extends CustomPainter {
     var bestInDelta = 1 << 62;
     final mediaId = within?.mediaId;
     final imageClip = within != null && _segmentIsImage(within);
-    final hasTaggedFrames = mediaId != null &&
-        filmstripFrames.any((f) => f.mediaId == mediaId);
+    final hasTaggedFrames =
+        mediaId != null && filmstripFrames.any((f) => f.mediaId == mediaId);
     for (final frame in filmstripFrames) {
       // Never paint another clip's frames onto this one — but if this media
       // has no tagged frames yet, allow untagged frames (legacy strip).
@@ -5018,10 +5013,7 @@ class _TimelinePainter extends CustomPainter {
       bottom: bottom,
       atStart: atStart,
     );
-    canvas.drawRect(
-      rect,
-      Paint()..color = color,
-    );
+    canvas.drawRect(rect, Paint()..color = color);
     // CapCut-style grip cue down the middle of trim caps.
     final midX = rect.center.dx;
     canvas.drawLine(

@@ -28,7 +28,8 @@ class EditorSheetMetrics {
   double get minHeight => screenHeight * minFraction;
 
   /// Peek dock between full-video and the default mid stage.
-  static const compactFractionValue = 0.22;
+  /// Tall enough for transport + filmstrip + tool chips (+ home indicator).
+  static const compactFractionValue = 0.30;
   static const entryFractionValue = 0.45;
   static const maxFractionValue = 2 / 3;
   static const minFractionValue = 0.12;
