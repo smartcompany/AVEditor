@@ -160,11 +160,18 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
         nextEnd = current.start + const Duration(seconds: 18);
       }
     }
-    // Composition templates seed multi-slot sample text when the body is empty.
+    // Composition templates need slot-shaped sample text (e.g. Chat Message
+    // bubbles). Replace empty/placeholder bodies; keep user edits otherwise.
     final seededText = () {
       if (!item.hasComposition) return null;
       final t = current.text.trim();
       if (t.isEmpty || t == kEmptyOverlayLayoutSample) {
+        return item.composition!.sampleText;
+      }
+      // Switching onto a multi-slot pack from a single-line body → seed so
+      // bubbles / staged slots are visible immediately.
+      final slotCount = item.composition!.slots.length;
+      if (slotCount > 1 && !t.contains('\n')) {
         return item.composition!.sampleText;
       }
       return null;
@@ -491,7 +498,8 @@ class _PackAaPreviewState extends State<_PackAaPreview>
   void _syncLoop() {
     final anim = widget.animation;
     if (widget.loopAnimation && !anim.isNone) {
-      final totalMs = anim.durationMs.clamp(100, 10000) + _holdMs;
+      final maxMs = anim.isContinuous ? 30000 : 10000;
+      final totalMs = anim.durationMs.clamp(100, maxMs) + _holdMs;
       _loop.duration = Duration(milliseconds: totalMs);
       if (!_loop.isAnimating) {
         _loop.repeat();
@@ -507,7 +515,8 @@ class _PackAaPreviewState extends State<_PackAaPreview>
     if (!widget.loopAnimation || anim.isNone) {
       return TextEntranceState.fullyVisible;
     }
-    final entranceMs = anim.durationMs.clamp(100, 10000).toDouble();
+    final maxMs = anim.isContinuous ? 30000 : 10000;
+    final entranceMs = anim.durationMs.clamp(100, maxMs).toDouble();
     final totalMs = entranceMs + _holdMs;
     final elapsed = controllerValue * totalMs;
     final progress = (elapsed / entranceMs).clamp(0.0, 1.0);
@@ -517,6 +526,7 @@ class _PackAaPreviewState extends State<_PackAaPreview>
       text: widget.text,
       progress: progress,
       fontSize: 14,
+      slotCount: widget.composition?.slots.length,
     );
   }
 

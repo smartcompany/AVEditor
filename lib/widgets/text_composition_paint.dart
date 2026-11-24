@@ -33,13 +33,19 @@ Size paintTextComposition({
     final slot = composition.slots[i];
     final body = i < slotTexts.length ? slotTexts[i] : slot.defaultText;
     final slotFs = (fontSize * slot.fontSizeFactor).clamp(6.0, 400.0);
+    final slotOp = i < state.slotOpacity.length
+        ? state.slotOpacity[i]
+        : state.layerOpacity;
+    if (slotOp <= 0.01 && state.slotOpacity.isNotEmpty) {
+      // Reserve layout height for staged slots that have not appeared yet.
+    }
     final fillBase = slot.fillArgb != null
         ? Color(slot.fillArgb!)
         : (fallbackStyle.fillArgb != null
               ? Color(fallbackStyle.fillArgb!)
               : accent);
     final fill = fillBase.withValues(
-      alpha: state.layerOpacity.clamp(0.0, 1.0),
+      alpha: (state.layerOpacity * slotOp).clamp(0.0, 1.0),
     );
     final base = TextStyle(
       fontSize: slotFs,
@@ -64,6 +70,8 @@ Size paintTextComposition({
     final w = painter.width + padH * 2;
     final h = painter.height + padV * 2;
     final dx = fontSize * slot.dxFactor;
+    final slotDy =
+        i < state.slotDy.length ? state.slotDy[i] : 0.0;
     laid.add(
       _SlotLayout(
         slot: slot,
@@ -75,6 +83,8 @@ Size paintTextComposition({
         padV: padV,
         dx: dx,
         top: contentH,
+        opacity: slotOp,
+        dy: slotDy,
       ),
     );
     contentW = math.max(contentW, w + dx.abs());
@@ -111,7 +121,7 @@ Size paintTextComposition({
   for (final s in laid) {
     final x =
         stackLeft + s.dx + _alignOffset(composition.align, contentW, s.width);
-    s.origin = Offset(x, stackTop + s.top);
+    s.origin = Offset(x, stackTop + s.top + s.dy);
   }
 
   final slotById = {for (final s in laid) s.slot.id: s};
@@ -139,7 +149,18 @@ Size paintTextComposition({
   }
 
   for (final s in laid) {
+    if (s.opacity <= 0.01) {
+      s.painter.dispose();
+      continue;
+    }
     final o = s.origin!;
+    canvas.save();
+    if (s.opacity < 0.999) {
+      canvas.saveLayer(
+        Rect.fromLTWH(o.dx - 2, o.dy - 2, s.width + 4, s.height + 4),
+        Paint()..color = Color.fromRGBO(255, 255, 255, s.opacity),
+      );
+    }
     if (s.slot.boxFillArgb != null) {
       final rect = Rect.fromLTWH(o.dx, o.dy, s.width, s.height);
       canvas.drawRRect(
@@ -158,6 +179,8 @@ Size paintTextComposition({
       }
     }
     s.painter.paint(canvas, Offset(o.dx + s.padH, o.dy + s.padV));
+    if (s.opacity < 0.999) canvas.restore();
+    canvas.restore();
     s.painter.dispose();
   }
 
@@ -287,6 +310,8 @@ class _SlotLayout {
     required this.padV,
     required this.dx,
     required this.top,
+    this.opacity = 1,
+    this.dy = 0,
   });
 
   final TextCompSlot slot;
@@ -298,5 +323,7 @@ class _SlotLayout {
   final double padV;
   final double dx;
   final double top;
+  final double opacity;
+  final double dy;
   Offset? origin;
 }

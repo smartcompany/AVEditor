@@ -15,29 +15,37 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  test('bundled catalog ships effects and templates', () async {
+  test('bundled catalog ships effects and CapCut templates', () async {
     final raw = await rootBundle.loadString('assets/text_packs/catalog.json');
     final catalog = TextTemplatePackCatalog.fromJson(
       jsonDecode(raw) as Map<String, dynamic>,
     );
 
-    expect(catalog.version, 0);
+    expect(catalog.version, 15);
     final effects = catalog.allItems.where((e) => e.kind == 'effect').toList();
     final templates =
         catalog.allItems.where((e) => e.kind == 'template').toList();
     expect(effects, hasLength(20));
-    expect(templates, hasLength(22));
-    // Original items stay first so existing projects keep their look.
+    // Journal + Star Crawl + Credits + CapCut 30.
+    expect(templates, hasLength(33));
     expect(effects.take(3).map((e) => e.id), [
       'effect_pop_green',
       'effect_pastel',
       'effect_torn_label',
     ]);
-    expect(templates.take(3).map((e) => e.id), [
-      'pack_journal',
-      'pack_neon_pulse',
-      'pack_sticker',
-    ]);
+    expect(templates.first.id, 'pack_journal');
+    expect(
+      templates.map((e) => e.id),
+      containsAll([
+        'pack_journal',
+        'tpl_star_wars_crawl',
+        'tpl_credits_scroll',
+        'tpl_pop_up',
+        'tpl_typewriter',
+        'tpl_glitch',
+        'tpl_neon',
+      ]),
+    );
     final ids = catalog.allItems.map((e) => e.id).toList();
     expect(ids.toSet(), hasLength(ids.length), reason: 'ids are unique');
     const fonts = {
@@ -75,15 +83,22 @@ void main() {
     expect(journal.kind, 'template');
     expect(journal.animation.id, 'typewriter');
     expect(journal.animation.durationMs, 900);
+    expect(journal.animation.staggerBy, 'line');
+    expect(journal.layout.perLine, isTrue);
+    expect(journal.layout.lineGapFactor, 0.12);
     expect(journal.style.preferredFontId, 'gaegu');
+    expect(journal.style.lineBackground?.hasUnderlayImage, isTrue);
+    expect(
+      journal.style.lineBackground?.underlayAsset,
+      'text_packs/journal/paper_a.png',
+    );
 
-    final neon = catalog.itemById('pack_neon_pulse')!;
-    expect(neon.kind, 'template');
-    expect(neon.animation.id, 'fade');
+    final popUp = catalog.itemById('tpl_pop_up')!;
+    expect(popUp.animation.id, 'pop');
+    expect(popUp.animation.bounce, greaterThan(0));
 
-    final sticker = catalog.itemById('pack_sticker')!;
-    expect(sticker.kind, 'template');
-    expect(sticker.animation.id, 'slide_up');
+    final crawl = catalog.itemById('tpl_star_wars_crawl')!;
+    expect(crawl.animation.id, 'crawl');
   });
 
   test('pack service loads bundled effect and template catalog', () async {
@@ -94,6 +109,7 @@ void main() {
     expect(service.itemById('effect_pop_green')?.title, 'Pop');
     expect(service.styleFor('effect_pastel')?.fillGradient, isNotNull);
     expect(service.itemById('pack_journal')?.kind, 'template');
-    expect(service.itemById('pack_sticker')?.animation.id, 'slide_up');
+    expect(service.itemById('tpl_pop_up')?.animation.id, 'pop');
+    expect(service.itemById('tpl_neon')?.animation.id, 'neon');
   });
 }

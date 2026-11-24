@@ -143,6 +143,11 @@ class TextStyleLineBackground {
     this.shape = TextStyleLineShape.capsule,
     this.shadowOpacity = 0,
     this.shadowBlurFactor = 0.12,
+    this.underlayAsset,
+    this.underlayUrl,
+    this.underlayVariants = const [],
+    this.grainAsset,
+    this.nineSlice,
   });
 
   final bool useAccent;
@@ -156,6 +161,41 @@ class TextStyleLineBackground {
   /// Soft drop under the strip (journal paper depth).
   final double shadowOpacity;
   final double shadowBlurFactor;
+
+  /// Bundled underlay image (`assets/…` or `text_packs/journal/paper_a.png`).
+  /// When set with [shape] brush, paints nine-slice paper instead of procedural.
+  final String? underlayAsset;
+
+  /// Remote underlay (absolute or site-relative). Preferred when warmable.
+  final String? underlayUrl;
+
+  /// Optional per-line variants (cycle by line index).
+  final List<String> underlayVariants;
+
+  /// Optional tiled grain overlay asset/path.
+  final String? grainAsset;
+
+  /// Normalized nine-slice insets `{l,t,r,b}` in 0…1 of source size.
+  final Map<String, double>? nineSlice;
+
+  bool get hasUnderlayImage {
+    final a = underlayAsset?.trim();
+    final u = underlayUrl?.trim();
+    return (a != null && a.isNotEmpty) ||
+        (u != null && u.isNotEmpty) ||
+        underlayVariants.isNotEmpty;
+  }
+
+  String? underlayKeyForLine(int lineIndex) {
+    if (underlayVariants.isNotEmpty) {
+      return underlayVariants[lineIndex % underlayVariants.length];
+    }
+    final u = underlayUrl?.trim();
+    if (u != null && u.isNotEmpty) return u;
+    final a = underlayAsset?.trim();
+    if (a != null && a.isNotEmpty) return a;
+    return null;
+  }
 
   Color resolveColor(Color accent) {
     final base = useAccent ? accent : Color(colorArgb ?? 0xFF000000);
@@ -172,6 +212,11 @@ class TextStyleLineBackground {
     'shadowOpacity': shadowOpacity,
     'shadowBlurFactor': shadowBlurFactor,
     if (colorArgb != null) 'color': colorArgb,
+    if (underlayAsset != null) 'underlayAsset': underlayAsset,
+    if (underlayUrl != null) 'underlayUrl': underlayUrl,
+    if (underlayVariants.isNotEmpty) 'underlayVariants': underlayVariants,
+    if (grainAsset != null) 'grainAsset': grainAsset,
+    if (nineSlice != null) 'nineSlice': nineSlice,
   };
 
   factory TextStyleLineBackground.fromJson(Map<String, dynamic> json) {
@@ -179,6 +224,8 @@ class TextStyleLineBackground {
     final shape = shapeName == TextStyleLineShape.brush.name
         ? TextStyleLineShape.brush
         : TextStyleLineShape.capsule;
+    final variantsRaw = json['underlayVariants'] as List<dynamic>?;
+    final nineRaw = json['nineSlice'] as Map<String, dynamic>?;
     return TextStyleLineBackground(
       useAccent: json['useAccent'] as bool? ?? true,
       colorArgb: json['color'] as int?,
@@ -189,6 +236,17 @@ class TextStyleLineBackground {
       shape: shape,
       shadowOpacity: (json['shadowOpacity'] as num?)?.toDouble() ?? 0,
       shadowBlurFactor: (json['shadowBlurFactor'] as num?)?.toDouble() ?? 0.12,
+      underlayAsset: json['underlayAsset'] as String?,
+      underlayUrl: json['underlayUrl'] as String?,
+      underlayVariants: variantsRaw
+              ?.map((e) => e.toString())
+              .where((e) => e.isNotEmpty)
+              .toList() ??
+          const [],
+      grainAsset: json['grainAsset'] as String?,
+      nineSlice: nineRaw?.map(
+        (k, v) => MapEntry(k, (v as num).toDouble()),
+      ),
     );
   }
 }

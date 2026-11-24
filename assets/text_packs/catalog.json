@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 15,
   "baseUrl": "",
   "categories": [
     {
@@ -71,6 +71,11 @@
           "kind": "effect",
           "premium": false,
           "downloadSizeBytes": 0,
+          "layout": {
+            "perLine": true,
+            "lineGapFactor": 0.12,
+            "align": "center"
+          },
           "style": {
             "id": "effect_torn_label",
             "label": "Torn",
@@ -610,8 +615,15 @@
           "animation": {
             "staggerOverlap": 0.55,
             "staggerBy": "line",
+            "cursor": false,
+            "cursorBlinkHz": 2,
             "id": "typewriter",
             "durationMs": 900
+          },
+          "layout": {
+            "perLine": true,
+            "lineGapFactor": 0.12,
+            "align": "center"
           },
           "style": {
             "id": "pack_journal",
@@ -623,1030 +635,29 @@
               "useAccent": false,
               "color": 4294108364,
               "opacity": 1,
-              "padHFactor": 0.42,
-              "padVFactor": 0.32,
+              "padHFactor": 0.48,
+              "padVFactor": 0.38,
               "radiusFactor": 0.35,
               "shape": "brush",
-              "shadowOpacity": 0.55,
-              "shadowBlurFactor": 0.28
-            }
-          },
-          "accessTier": "free",
-          "sampleText": "Hello\nWorld"
-        },
-        {
-          "id": "pack_neon_pulse",
-          "title": "Neon",
-          "kind": "template",
-          "premium": false,
-          "downloadSizeBytes": 0,
-          "animation": {
-            "id": "fade",
-            "durationMs": 800
-          },
-          "style": {
-            "id": "pack_neon_pulse",
-            "label": "Neon",
-            "fillColor": 4294967295,
-            "fillUseAccent": false,
-            "preferredFontId": "blackHanSans",
-            "strokes": [
-              {
-                "widthFactor": 0.18,
-                "useAccent": true
-              },
-              {
-                "widthFactor": 0.08,
-                "useAccent": false,
-                "color": 4294967295
-              }
-            ],
-            "glow": {
-              "blurFactor": 0.7,
-              "widthFactor": 0.28,
-              "useAccent": true,
-              "opacity": 0.95
-            },
-            "shadow": {
-              "dxFactor": 0,
-              "dyFactor": 0.02,
-              "blurFactor": 0.18,
-              "useAccent": false,
-              "color": 4278190080,
-              "opacity": 0.5
-            }
-          },
-          "accessTier": "free",
-          "sampleText": "Hello\nWorld"
-        },
-        {
-          "id": "pack_sticker",
-          "title": "Sticker",
-          "kind": "template",
-          "premium": false,
-          "downloadSizeBytes": 0,
-          "animation": {
-            "id": "slide_up",
-            "durationMs": 700
-          },
-          "style": {
-            "id": "pack_sticker",
-            "label": "Sticker",
-            "fillUseAccent": true,
-            "preferredFontId": "blackHanSans",
-            "strokes": [
-              {
-                "widthFactor": 0.26,
-                "useAccent": false,
-                "color": 4294967295
-              },
-              {
-                "widthFactor": 0.12,
-                "useAccent": false,
-                "color": 4279308561
-              }
-            ],
-            "shadow": {
-              "dxFactor": 0.07,
-              "dyFactor": 0.09,
-              "blurFactor": 0,
-              "useAccent": false,
-              "color": 4278190080,
-              "opacity": 0.85
-            }
-          },
-          "accessTier": "free",
-          "sampleText": "Hello\nWorld"
-        },
-        {
-          "id": "tpl_daily_vlog",
-          "title": "Daily Vlog",
-          "kind": "template",
-          "downloadSizeBytes": 0,
-          "animation": {
-            "id": "fade",
-            "durationMs": 700
-          },
-          "style": {
-            "id": "tpl_daily_vlog",
-            "label": "Daily Vlog",
-            "fillColor": 4294967295,
-            "fillUseAccent": false,
-            "preferredFontId": "gothicA1"
-          },
-          "composition": {
-            "align": "center",
-            "gapFactor": 0.18,
-            "slots": [
-              {
-                "id": "eyebrow",
-                "role": "eyebrow",
-                "defaultText": "BY EASYCLIP",
-                "fontSizeFactor": 0.32,
-                "fontWeight": 600,
-                "letterSpacingEm": 0.18,
-                "fillColor": 4294967295
-              },
-              {
-                "id": "title",
-                "role": "title",
-                "defaultText": "Daily Vlog",
-                "fontSizeFactor": 1.05,
-                "fontWeight": 800,
-                "fillColor": 4294967295,
-                "preferredFontId": "doHyeon"
-              }
-            ],
-            "decorations": [
-              {
-                "id": "slash",
-                "kind": "slash",
-                "color": 4294967295,
-                "slotId": "title",
-                "attach": "below",
-                "thicknessFactor": 0.045,
-                "lengthFactor": 0.55,
-                "gapFactor": 0.2
-              }
-            ]
-          },
-          "accessTier": "free",
-          "premium": false,
-          "sampleText": "BY EASYCLIP\nDaily Vlog"
-        },
-        {
-          "id": "tpl_back",
-          "title": "Back",
-          "kind": "template",
-          "downloadSizeBytes": 0,
-          "animation": {
-            "id": "slide_up",
-            "durationMs": 650
-          },
-          "style": {
-            "id": "tpl_back",
-            "label": "Back",
-            "fillColor": 4294967295,
-            "fillUseAccent": false,
-            "preferredFontId": "blackHanSans",
-            "strokes": [
-              {
-                "widthFactor": 0.1,
-                "useAccent": false,
-                "color": 4278190080
-              }
-            ]
-          },
-          "composition": {
-            "align": "center",
-            "gapFactor": 0.35,
-            "slots": [
-              {
-                "id": "title",
-                "role": "title",
-                "defaultText": "BACK",
-                "fontSizeFactor": 1.35,
-                "fontWeight": 900,
-                "letterSpacingEm": 0.06,
-                "fillColor": 4294967295,
-                "preferredFontId": "blackHanSans"
-              }
-            ],
-            "decorations": [
-              {
-                "id": "arrow",
-                "kind": "chevron_down",
-                "color": 4289769648,
-                "slotId": "title",
-                "attach": "above",
-                "widthFactor": 0.9,
-                "heightFactor": 0.55,
-                "gapFactor": 0.15
-              }
-            ]
-          },
-          "accessTier": "free",
-          "premium": false,
-          "sampleText": "BACK"
-        },
-        {
-          "id": "tpl_trending_now",
-          "title": "Trending Now",
-          "kind": "template",
-          "downloadSizeBytes": 0,
-          "animation": {
-            "id": "slide_up",
-            "durationMs": 550
-          },
-          "style": {
-            "id": "tpl_trending_now",
-            "label": "Trending Now",
-            "fillColor": 4294967295,
-            "fillUseAccent": false,
-            "preferredFontId": "blackHanSans"
-          },
-          "composition": {
-            "align": "start",
-            "gapFactor": 0.08,
-            "slots": [
-              {
-                "id": "line1",
-                "role": "title",
-                "defaultText": "TRENDING",
-                "fontSizeFactor": 0.95,
-                "fontWeight": 900,
-                "fillColor": 4294967295,
-                "align": "start"
-              },
-              {
-                "id": "line2",
-                "role": "title",
-                "defaultText": "NOW",
-                "fontSizeFactor": 0.95,
-                "fontWeight": 900,
-                "fillColor": 4294967295,
-                "align": "start"
-              }
-            ],
-            "decorations": [
-              {
-                "id": "accent",
-                "kind": "bar_v",
-                "color": 4281193663,
-                "attach": "left",
-                "thicknessFactor": 0.22,
-                "lengthFactor": 1,
-                "gapFactor": 0.28
-              },
-              {
-                "id": "underline",
-                "kind": "rule",
-                "color": 4294967295,
-                "slotId": "line2",
-                "attach": "below",
-                "thicknessFactor": 0.04,
-                "lengthFactor": 1,
-                "gapFactor": 0.12
-              }
-            ]
-          },
-          "accessTier": "free",
-          "premium": false,
-          "sampleText": "TRENDING\nNOW"
-        },
-        {
-          "id": "tpl_bold_brave",
-          "title": "Bold Brave",
-          "kind": "template",
-          "downloadSizeBytes": 0,
-          "animation": {
-            "staggerOverlap": 0.55,
-            "staggerBy": "line",
-            "id": "typewriter",
-            "durationMs": 1100
-          },
-          "style": {
-            "id": "tpl_bold_brave",
-            "label": "Bold Brave",
-            "fillColor": 4294967295,
-            "fillUseAccent": false,
-            "preferredFontId": "notoSansKr"
-          },
-          "composition": {
-            "align": "start",
-            "gapFactor": 0.12,
-            "slots": [
-              {
-                "id": "a",
-                "role": "body",
-                "defaultText": "Bold.",
-                "fontSizeFactor": 0.85,
-                "fontWeight": 600,
-                "fillColor": 4294967295,
-                "align": "start"
-              },
-              {
-                "id": "b",
-                "role": "body",
-                "defaultText": "Brave.",
-                "fontSizeFactor": 0.85,
-                "fontWeight": 500,
-                "italic": true,
-                "fillColor": 4294967295,
-                "align": "start",
-                "dxFactor": 0.55
-              },
-              {
-                "id": "c",
-                "role": "body",
-                "defaultText": "Beautiful.",
-                "fontSizeFactor": 0.9,
-                "fontWeight": 700,
-                "fillColor": 4294967295,
-                "align": "start"
-              }
-            ]
-          },
-          "accessTier": "free",
-          "premium": false,
-          "sampleText": "Bold.\nBrave.\nBeautiful."
-        },
-        {
-          "id": "tpl_title_simple",
-          "title": "Title Simple",
-          "kind": "template",
-          "downloadSizeBytes": 0,
-          "animation": {
-            "id": "fade",
-            "durationMs": 600
-          },
-          "style": {
-            "id": "tpl_title_simple",
-            "label": "Title Simple",
-            "fillColor": 4294967295,
-            "fillUseAccent": false,
-            "preferredFontId": "gothicA1"
-          },
-          "composition": {
-            "align": "start",
-            "gapFactor": 0.22,
-            "slots": [
-              {
-                "id": "title",
-                "role": "title",
-                "defaultText": "TITLE SIMPLE",
-                "fontSizeFactor": 0.9,
-                "fontWeight": 800,
-                "fillColor": 4294967295,
-                "align": "start"
-              },
-              {
-                "id": "subtitle",
-                "role": "subtitle",
-                "defaultText": "sub heading",
-                "fontSizeFactor": 0.42,
-                "fontWeight": 500,
-                "fillColor": 4279308561,
-                "align": "start",
-                "boxFillColor": 4294967295,
-                "boxPadHFactor": 0.35,
-                "boxPadVFactor": 0.28
-              }
-            ],
-            "decorations": [
-              {
-                "id": "orange",
-                "kind": "bar_v",
-                "color": 4294937088,
-                "attach": "right",
-                "thicknessFactor": 0.2,
-                "lengthFactor": 1,
-                "gapFactor": 0.3
-              }
-            ]
-          },
-          "accessTier": "free",
-          "premium": false,
-          "sampleText": "TITLE SIMPLE\nsub heading"
-        },
-        {
-          "id": "tpl_archive_july",
-          "title": "Archive",
-          "kind": "template",
-          "downloadSizeBytes": 0,
-          "animation": {
-            "id": "fade",
-            "durationMs": 800
-          },
-          "style": {
-            "id": "tpl_archive_july",
-            "label": "Archive",
-            "fillColor": 4294967295,
-            "fillUseAccent": false,
-            "preferredFontId": "blackHanSans"
-          },
-          "composition": {
-            "align": "center",
-            "gapFactor": 0.2,
-            "slots": [
-              {
-                "id": "title",
-                "role": "title",
-                "defaultText": "ARCHIVE OF JULY",
-                "fontSizeFactor": 0.78,
-                "fontWeight": 900,
-                "fillColor": 4294967295,
-                "preferredFontId": "blackHanSans"
-              },
-              {
-                "id": "subtitle",
-                "role": "subtitle",
-                "defaultText": "short memory",
-                "fontSizeFactor": 0.38,
-                "fontWeight": 400,
-                "italic": true,
-                "letterSpacingEm": 0.12,
-                "fillColor": 4294967295,
-                "preferredFontId": "gaegu"
-              }
-            ],
-            "decorations": [
-              {
-                "id": "divider",
-                "kind": "rule",
-                "color": 4294967295,
-                "slotId": "title",
-                "attach": "below",
-                "thicknessFactor": 0.035,
-                "lengthFactor": 0.85,
-                "gapFactor": 0.18
-              }
-            ]
-          },
-          "accessTier": "free",
-          "premium": false,
-          "sampleText": "ARCHIVE OF JULY\nshort memory"
-        },
-        {
-          "id": "pack_subtitle",
-          "title": "Subtitle",
-          "kind": "template",
-          "premium": false,
-          "downloadSizeBytes": 0,
-          "animation": {
-            "id": "fade",
-            "durationMs": 400
-          },
-          "style": {
-            "id": "pack_subtitle",
-            "label": "Subtitle",
-            "fillUseAccent": false,
-            "fillColor": 4294967295,
-            "preferredFontId": "notoSansKr",
-            "lineBackground": {
-              "useAccent": false,
-              "color": 4278190080,
-              "opacity": 0.62,
-              "padHFactor": 0.28,
-              "padVFactor": 0.16,
-              "radiusFactor": 0.14,
-              "shape": "capsule"
-            }
-          },
-          "sampleText": "Hello\nWorld",
-          "accessTier": "free"
-        },
-        {
-          "id": "pack_typing",
-          "title": "Typing",
-          "kind": "template",
-          "premium": false,
-          "downloadSizeBytes": 0,
-          "animation": {
-            "staggerOverlap": 0.55,
-            "staggerBy": "auto",
-            "id": "typewriter",
-            "durationMs": 1000
-          },
-          "style": {
-            "id": "pack_typing",
-            "label": "Typing",
-            "fillUseAccent": false,
-            "fillColor": 4294967295,
-            "preferredFontId": "roboto",
-            "lineBackground": {
-              "useAccent": false,
-              "color": 4279308561,
-              "opacity": 0.85,
-              "padHFactor": 0.28,
-              "padVFactor": 0.16,
-              "radiusFactor": 0.1,
-              "shape": "capsule"
-            }
-          },
-          "sampleText": "Hello\nWorld",
-          "accessTier": "free"
-        },
-        {
-          "id": "pack_breaking",
-          "title": "Breaking",
-          "kind": "template",
-          "premium": true,
-          "downloadSizeBytes": 0,
-          "animation": {
-            "id": "slide_up",
-            "durationMs": 500
-          },
-          "style": {
-            "id": "pack_breaking",
-            "label": "Breaking",
-            "fillUseAccent": false,
-            "fillColor": 4294967295,
-            "preferredFontId": "blackHanSans",
-            "lineBackground": {
-              "useAccent": false,
-              "color": 4293212469,
-              "opacity": 1,
-              "padHFactor": 0.28,
-              "padVFactor": 0.16,
-              "radiusFactor": 0.06,
-              "shape": "capsule"
-            }
-          },
-          "sampleText": "Hello\nWorld",
-          "accessTier": "plus"
-        },
-        {
-          "id": "pack_marker",
-          "title": "Marker",
-          "kind": "template",
-          "premium": false,
-          "downloadSizeBytes": 0,
-          "animation": {
-            "staggerOverlap": 0.55,
-            "staggerBy": "auto",
-            "id": "typewriter",
-            "durationMs": 800
-          },
-          "style": {
-            "id": "pack_marker",
-            "label": "Marker",
-            "fillUseAccent": false,
-            "fillColor": 4279308561,
-            "preferredFontId": "doHyeon",
-            "lineBackground": {
-              "useAccent": false,
-              "color": 4294959437,
-              "opacity": 1,
-              "padHFactor": 0.28,
-              "padVFactor": 0.16,
-              "radiusFactor": 0.08,
-              "shape": "capsule"
-            }
-          },
-          "sampleText": "Hello\nWorld",
-          "accessTier": "free"
-        },
-        {
-          "id": "pack_memo",
-          "title": "Memo",
-          "kind": "template",
-          "premium": false,
-          "downloadSizeBytes": 0,
-          "animation": {
-            "staggerOverlap": 0.55,
-            "staggerBy": "auto",
-            "id": "typewriter",
-            "durationMs": 900
-          },
-          "style": {
-            "id": "pack_memo",
-            "label": "Memo",
-            "fillUseAccent": false,
-            "fillColor": 4282001936,
-            "preferredFontId": "gaegu",
-            "lineBackground": {
-              "useAccent": false,
-              "color": 4294961546,
-              "opacity": 1,
-              "padHFactor": 0.42,
-              "padVFactor": 0.32,
-              "radiusFactor": 0.3,
-              "shape": "brush",
               "shadowOpacity": 0.45,
-              "shadowBlurFactor": 0.25
-            }
-          },
-          "sampleText": "Hello\nWorld",
-          "accessTier": "free"
-        },
-        {
-          "id": "pack_neon_pink",
-          "title": "Neon Pink",
-          "kind": "template",
-          "premium": true,
-          "downloadSizeBytes": 0,
-          "animation": {
-            "id": "fade",
-            "durationMs": 900
-          },
-          "style": {
-            "id": "pack_neon_pink",
-            "label": "Neon Pink",
-            "fillUseAccent": false,
-            "fillColor": 4294967295,
-            "preferredFontId": "blackHanSans",
-            "strokes": [
-              {
-                "widthFactor": 0.1,
-                "useAccent": false,
-                "color": 4294922147
+              "shadowBlurFactor": 0.22,
+              "underlayAsset": "text_packs/journal/paper_a.png",
+              "underlayUrl": "text_packs/journal/paper_a.png",
+              "underlayVariants": [
+                "text_packs/journal/paper_a.png",
+                "text_packs/journal/paper_b.png"
+              ],
+              "grainAsset": "text_packs/journal/grain.png",
+              "nineSlice": {
+                "l": 0.2,
+                "t": 0.26,
+                "r": 0.2,
+                "b": 0.26
               }
-            ],
-            "glow": {
-              "blurFactor": 0.6,
-              "widthFactor": 0.24,
-              "useAccent": false,
-              "color": 4294922147,
-              "opacity": 0.95
             }
           },
-          "sampleText": "Hello\nWorld",
-          "accessTier": "plus"
-        },
-        {
-          "id": "pack_cyber",
-          "title": "Cyber",
-          "kind": "template",
-          "premium": true,
-          "downloadSizeBytes": 0,
-          "animation": {
-            "staggerOverlap": 0.55,
-            "staggerBy": "auto",
-            "id": "typewriter",
-            "durationMs": 700
-          },
-          "style": {
-            "id": "pack_cyber",
-            "label": "Cyber",
-            "fillUseAccent": false,
-            "fillColor": 4294967295,
-            "preferredFontId": "blackHanSans",
-            "strokes": [
-              {
-                "widthFactor": 0.1,
-                "useAccent": false,
-                "color": 4281721087
-              }
-            ],
-            "glow": {
-              "blurFactor": 0.6,
-              "widthFactor": 0.24,
-              "useAccent": false,
-              "color": 4281721087,
-              "opacity": 0.95
-            }
-          },
-          "sampleText": "Hello\nWorld",
-          "accessTier": "plus"
-        },
-        {
-          "id": "pack_gold_title",
-          "title": "Gold Title",
-          "kind": "template",
-          "premium": true,
-          "downloadSizeBytes": 0,
-          "animation": {
-            "id": "slide_up",
-            "durationMs": 800
-          },
-          "style": {
-            "id": "pack_gold_title",
-            "label": "Gold Title",
-            "fillUseAccent": false,
-            "fillColor": 4294296898,
-            "preferredFontId": "blackHanSans",
-            "fillGradient": {
-              "colors": [
-                4294964144,
-                4294296898,
-                4291334174
-              ]
-            },
-            "strokes": [
-              {
-                "widthFactor": 0.08,
-                "useAccent": false,
-                "color": 4284103178
-              }
-            ],
-            "shadow": {
-              "dxFactor": 0,
-              "dyFactor": 0.05,
-              "blurFactor": 0.2,
-              "useAccent": false,
-              "color": 4278190080,
-              "opacity": 0.55
-            }
-          },
-          "sampleText": "Hello\nWorld",
-          "accessTier": "plus"
-        },
-        {
-          "id": "pack_hot",
-          "title": "Hot",
-          "kind": "template",
-          "premium": true,
-          "downloadSizeBytes": 0,
-          "animation": {
-            "id": "slide_up",
-            "durationMs": 600
-          },
-          "style": {
-            "id": "pack_hot",
-            "label": "Hot",
-            "fillUseAccent": false,
-            "fillColor": 4294937119,
-            "preferredFontId": "blackHanSans",
-            "fillGradient": {
-              "colors": [
-                4294959206,
-                4294937119,
-                4293404188
-              ]
-            },
-            "strokes": [
-              {
-                "widthFactor": 0.1,
-                "useAccent": false,
-                "color": 4284221952
-              }
-            ],
-            "glow": {
-              "blurFactor": 0.5,
-              "widthFactor": 0.18,
-              "useAccent": false,
-              "color": 4294928896,
-              "opacity": 0.7
-            }
-          },
-          "sampleText": "Hello\nWorld",
-          "accessTier": "plus"
-        },
-        {
-          "id": "pack_frost",
-          "title": "Frost",
-          "kind": "template",
-          "premium": true,
-          "downloadSizeBytes": 0,
-          "animation": {
-            "id": "fade",
-            "durationMs": 1000
-          },
-          "style": {
-            "id": "pack_frost",
-            "label": "Frost",
-            "fillUseAccent": false,
-            "fillColor": 4290701823,
-            "preferredFontId": "blackHanSans",
-            "fillGradient": {
-              "colors": [
-                4294967295,
-                4290701823,
-                4284135664
-              ]
-            },
-            "strokes": [
-              {
-                "widthFactor": 0.08,
-                "useAccent": false,
-                "color": 4279979898
-              }
-            ],
-            "glow": {
-              "blurFactor": 0.5,
-              "widthFactor": 0.2,
-              "useAccent": false,
-              "color": 4290767615,
-              "opacity": 0.8
-            }
-          },
-          "sampleText": "Hello\nWorld",
-          "accessTier": "plus"
-        },
-        {
-          "id": "pack_retro",
-          "title": "Retro",
-          "kind": "template",
-          "premium": false,
-          "downloadSizeBytes": 0,
-          "animation": {
-            "id": "slide_up",
-            "durationMs": 600
-          },
-          "style": {
-            "id": "pack_retro",
-            "label": "Retro",
-            "fillUseAccent": false,
-            "fillColor": 4294959437,
-            "preferredFontId": "blackHanSans",
-            "strokes": [
-              {
-                "widthFactor": 0.1,
-                "useAccent": false,
-                "color": 4279308561
-              }
-            ],
-            "shadow": {
-              "dxFactor": 0.08,
-              "dyFactor": 0.1,
-              "blurFactor": 0,
-              "useAccent": false,
-              "color": 4293212469,
-              "opacity": 1
-            }
-          },
-          "sampleText": "Hello\nWorld",
-          "accessTier": "free"
-        },
-        {
-          "id": "pack_comic",
-          "title": "Comic",
-          "kind": "template",
-          "premium": false,
-          "downloadSizeBytes": 0,
-          "animation": {
-            "staggerOverlap": 0.55,
-            "staggerBy": "auto",
-            "id": "typewriter",
-            "durationMs": 600
-          },
-          "style": {
-            "id": "pack_comic",
-            "label": "Comic",
-            "fillUseAccent": false,
-            "fillColor": 4294959437,
-            "preferredFontId": "doHyeon",
-            "strokes": [
-              {
-                "widthFactor": 0.22,
-                "useAccent": false,
-                "color": 4279308561
-              }
-            ],
-            "shadow": {
-              "dxFactor": 0.06,
-              "dyFactor": 0.08,
-              "blurFactor": 0,
-              "useAccent": false,
-              "color": 4279308561,
-              "opacity": 1
-            }
-          },
-          "sampleText": "Hello\nWorld",
-          "accessTier": "free"
-        },
-        {
-          "id": "pack_candy",
-          "title": "Candy",
-          "kind": "template",
-          "premium": true,
-          "downloadSizeBytes": 0,
-          "animation": {
-            "id": "slide_up",
-            "durationMs": 500
-          },
-          "style": {
-            "id": "pack_candy",
-            "label": "Candy",
-            "fillUseAccent": false,
-            "fillColor": 4294922147,
-            "preferredFontId": "blackHanSans",
-            "strokes": [
-              {
-                "widthFactor": 0.28,
-                "useAccent": false,
-                "color": 4294967295
-              },
-              {
-                "widthFactor": 0.12,
-                "useAccent": false,
-                "color": 4289729130
-              }
-            ],
-            "shadow": {
-              "dxFactor": 0,
-              "dyFactor": 0.05,
-              "blurFactor": 0.2,
-              "useAccent": false,
-              "color": 4278190080,
-              "opacity": 0.35
-            }
-          },
-          "sampleText": "Hello\nWorld",
-          "accessTier": "plus"
-        },
-        {
-          "id": "pack_sunset",
-          "title": "Sunset",
-          "kind": "template",
-          "premium": true,
-          "downloadSizeBytes": 0,
-          "animation": {
-            "id": "fade",
-            "durationMs": 1000
-          },
-          "style": {
-            "id": "pack_sunset",
-            "label": "Sunset",
-            "fillUseAccent": false,
-            "fillColor": 4294941244,
-            "preferredFontId": "blackHanSans",
-            "fillGradient": {
-              "colors": [
-                4294926242,
-                4294941244,
-                4294959206
-              ]
-            },
-            "shadow": {
-              "dxFactor": 0,
-              "dyFactor": 0.05,
-              "blurFactor": 0.25,
-              "useAccent": false,
-              "color": 4278190080,
-              "opacity": 0.5
-            }
-          },
-          "sampleText": "Hello\nWorld",
-          "accessTier": "plus"
-        },
-        {
-          "id": "pack_vlog",
-          "title": "Vlog",
-          "kind": "template",
-          "premium": false,
-          "downloadSizeBytes": 0,
-          "animation": {
-            "id": "fade",
-            "durationMs": 700
-          },
-          "style": {
-            "id": "pack_vlog",
-            "label": "Vlog",
-            "fillUseAccent": false,
-            "fillColor": 4294967295,
-            "preferredFontId": "gothicA1",
-            "shadow": {
-              "dxFactor": 0,
-              "dyFactor": 0.05,
-              "blurFactor": 0.35,
-              "useAccent": false,
-              "color": 4278190080,
-              "opacity": 0.7
-            }
-          },
-          "sampleText": "Hello\nWorld",
-          "accessTier": "free"
-        },
-        {
-          "id": "pack_quote",
-          "title": "Quote",
-          "kind": "template",
-          "premium": false,
-          "downloadSizeBytes": 0,
-          "animation": {
-            "staggerOverlap": 0.55,
-            "staggerBy": "auto",
-            "id": "typewriter",
-            "durationMs": 1200
-          },
-          "style": {
-            "id": "pack_quote",
-            "label": "Quote",
-            "fillUseAccent": false,
-            "fillColor": 4294967295,
-            "preferredFontId": "gaegu",
-            "shadow": {
-              "dxFactor": 0,
-              "dyFactor": 0.05,
-              "blurFactor": 0.3,
-              "useAccent": false,
-              "color": 4278190080,
-              "opacity": 0.8
-            }
-          },
-          "sampleText": "Hello\nWorld",
-          "accessTier": "free"
-        },
-        {
-          "id": "pack_label",
-          "title": "Label",
-          "kind": "template",
-          "premium": false,
-          "downloadSizeBytes": 0,
-          "animation": {
-            "id": "slide_up",
-            "durationMs": 500
-          },
-          "style": {
-            "id": "pack_label",
-            "label": "Label",
-            "fillUseAccent": false,
-            "fillColor": 4279308561,
-            "preferredFontId": "doHyeon",
-            "lineBackground": {
-              "useAccent": false,
-              "color": 4294967295,
-              "opacity": 1,
-              "padHFactor": 0.28,
-              "padVFactor": 0.16,
-              "radiusFactor": 0.12,
-              "shape": "capsule"
-            }
-          },
-          "sampleText": "Hello\nWorld",
-          "accessTier": "free"
+          "accessTier": "free",
+          "sampleText": "Hello\nWorld"
         },
         {
           "id": "tpl_star_wars_crawl",
@@ -1718,6 +729,1271 @@
           },
           "sampleText": "Hello\n\nI am making a short film.\nThis is where the story begins.\n\nThank you for watching.\nSee you next time.",
           "accessTier": "free"
+        },
+        {
+          "id": "tpl_pop_up",
+          "title": "Pop Up",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "POP!",
+          "animation": {
+            "bounce": 0.22,
+            "shake": 0.02,
+            "scaleFrom": 0.2,
+            "id": "pop",
+            "durationMs": 700
+          },
+          "style": {
+            "id": "tpl_pop_up",
+            "label": "Pop Up",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "blackHanSans",
+            "strokes": [
+              {
+                "widthFactor": 0.14,
+                "useAccent": false,
+                "color": 4279308561
+              }
+            ],
+            "shadow": {
+              "dxFactor": 0.04,
+              "dyFactor": 0.06,
+              "blurFactor": 0.25,
+              "useAccent": false,
+              "color": 4278190080,
+              "opacity": 0.65
+            }
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_kinetic",
+          "title": "Kinetic",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "MOVE\nWITH IT",
+          "animation": {
+            "staggerOverlap": 0.4,
+            "kineticAmp": 0.7,
+            "kineticRotDeg": 14,
+            "id": "kinetic",
+            "durationMs": 1100
+          },
+          "style": {
+            "id": "tpl_kinetic",
+            "label": "Kinetic",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "doHyeon",
+            "strokes": [
+              {
+                "widthFactor": 0.1,
+                "useAccent": false,
+                "color": 4279308561
+              }
+            ]
+          },
+          "accessTier": "plus",
+          "premium": true
+        },
+        {
+          "id": "tpl_name_highlight",
+          "title": "Name Highlight",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "ALEX",
+          "animation": {
+            "scaleFrom": 0.7,
+            "blurFrom": 0.45,
+            "id": "focus",
+            "durationMs": 1200
+          },
+          "style": {
+            "id": "tpl_name_highlight",
+            "label": "Name Highlight",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "notoSansKr",
+            "glow": {
+              "blurFactor": 0.35,
+              "widthFactor": 0.08,
+              "useAccent": true,
+              "opacity": 0.7
+            }
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_chat_message",
+          "title": "Chat Message",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "hey!\nyeah I'm free\nlet's go ☕",
+          "animation": {
+            "slotStagger": 0.9,
+            "id": "staged",
+            "durationMs": 1400
+          },
+          "style": {
+            "id": "tpl_chat_message",
+            "label": "Chat Message",
+            "fillColor": 4279308561,
+            "fillUseAccent": false,
+            "preferredFontId": "gothicA1"
+          },
+          "composition": {
+            "align": "start",
+            "gapFactor": 0.28,
+            "slots": [
+              {
+                "id": "m1",
+                "role": "body",
+                "defaultText": "hey!",
+                "fontSizeFactor": 0.55,
+                "fontWeight": 500,
+                "fillColor": 4294967295,
+                "align": "start",
+                "boxFillColor": 4282090230,
+                "boxPadHFactor": 0.45,
+                "boxPadVFactor": 0.28
+              },
+              {
+                "id": "m2",
+                "role": "body",
+                "defaultText": "yeah I'm free",
+                "fontSizeFactor": 0.55,
+                "fontWeight": 500,
+                "fillColor": 4279308561,
+                "align": "end",
+                "dxFactor": 0.35,
+                "boxFillColor": 4293257195,
+                "boxPadHFactor": 0.45,
+                "boxPadVFactor": 0.28
+              },
+              {
+                "id": "m3",
+                "role": "body",
+                "defaultText": "let's go ☕",
+                "fontSizeFactor": 0.55,
+                "fontWeight": 500,
+                "fillColor": 4294967295,
+                "align": "start",
+                "boxFillColor": 4282090230,
+                "boxPadHFactor": 0.45,
+                "boxPadVFactor": 0.28
+              }
+            ]
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_newspaper",
+          "title": "Newspaper",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "EXTRA\nCity awakens\nMorning edition",
+          "animation": {
+            "slotStagger": 0.75,
+            "id": "staged",
+            "durationMs": 1200
+          },
+          "layout": {
+            "perLine": false,
+            "align": "center"
+          },
+          "style": {
+            "id": "tpl_newspaper",
+            "label": "Newspaper",
+            "fillColor": 4279308561,
+            "fillUseAccent": false,
+            "preferredFontId": "notoSansKr",
+            "lineBackground": {
+              "useAccent": false,
+              "color": 4294308070,
+              "opacity": 1,
+              "padHFactor": 0.55,
+              "padVFactor": 0.4,
+              "radiusFactor": 0.05,
+              "shape": "capsule",
+              "shadowOpacity": 0.25,
+              "shadowBlurFactor": 0.15
+            }
+          },
+          "composition": {
+            "align": "center",
+            "gapFactor": 0.1,
+            "slots": [
+              {
+                "id": "head",
+                "role": "eyebrow",
+                "defaultText": "EXTRA",
+                "fontSizeFactor": 0.45,
+                "fontWeight": 800,
+                "letterSpacingEm": 0.2,
+                "fillColor": 4290321436,
+                "align": "center"
+              },
+              {
+                "id": "title",
+                "role": "title",
+                "defaultText": "City awakens",
+                "fontSizeFactor": 0.95,
+                "fontWeight": 900,
+                "fillColor": 4279308561,
+                "align": "center"
+              },
+              {
+                "id": "sub",
+                "role": "subtitle",
+                "defaultText": "Morning edition",
+                "fontSizeFactor": 0.42,
+                "fontWeight": 500,
+                "italic": true,
+                "fillColor": 4282664004,
+                "align": "center"
+              }
+            ]
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_text_overlay",
+          "title": "Text Overlay",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "soft light",
+          "animation": {
+            "id": "fade",
+            "durationMs": 900
+          },
+          "layout": {
+            "align": "center"
+          },
+          "style": {
+            "id": "tpl_text_overlay",
+            "label": "Text Overlay",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "gothicA1",
+            "shadow": {
+              "dxFactor": 0.04,
+              "dyFactor": 0.06,
+              "blurFactor": 0.4,
+              "useAccent": false,
+              "color": 4278190080,
+              "opacity": 0.4
+            }
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_big_typography",
+          "title": "Big Typography",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "NOW",
+          "animation": {
+            "staggerOverlap": 0.35,
+            "kineticAmp": 0.9,
+            "kineticRotDeg": 6,
+            "id": "kinetic",
+            "durationMs": 900
+          },
+          "style": {
+            "id": "tpl_big_typography",
+            "label": "Big Typography",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "blackHanSans",
+            "strokes": [
+              {
+                "widthFactor": 0.08,
+                "useAccent": true
+              }
+            ]
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_social_profile",
+          "title": "Social Profile",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "Mina Park\n@mina\ncreating daily",
+          "animation": {
+            "slotStagger": 0.85,
+            "id": "staged",
+            "durationMs": 1300
+          },
+          "style": {
+            "id": "tpl_social_profile",
+            "label": "Social Profile",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "notoSansKr"
+          },
+          "composition": {
+            "align": "center",
+            "gapFactor": 0.14,
+            "slots": [
+              {
+                "id": "name",
+                "role": "title",
+                "defaultText": "Mina Park",
+                "fontSizeFactor": 0.9,
+                "fontWeight": 800,
+                "fillColor": 4294967295,
+                "align": "center"
+              },
+              {
+                "id": "handle",
+                "role": "subtitle",
+                "defaultText": "@mina",
+                "fontSizeFactor": 0.45,
+                "fontWeight": 500,
+                "fillColor": 4289049852,
+                "align": "center"
+              },
+              {
+                "id": "bio",
+                "role": "caption",
+                "defaultText": "creating daily",
+                "fontSizeFactor": 0.4,
+                "fontWeight": 400,
+                "fillColor": 4293257195,
+                "align": "center"
+              }
+            ]
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_youtube_intro",
+          "title": "YouTube Intro",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "CHANNEL\nNAME",
+          "animation": {
+            "slotStagger": 0.7,
+            "id": "staged",
+            "durationMs": 1400
+          },
+          "style": {
+            "id": "tpl_youtube_intro",
+            "label": "YouTube Intro",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "blackHanSans",
+            "glow": {
+              "blurFactor": 0.55,
+              "widthFactor": 0.12,
+              "useAccent": false,
+              "color": 4294967295,
+              "opacity": 0.85
+            }
+          },
+          "composition": {
+            "align": "center",
+            "gapFactor": 0.08,
+            "slots": [
+              {
+                "id": "a",
+                "role": "title",
+                "defaultText": "CHANNEL",
+                "fontSizeFactor": 0.7,
+                "fontWeight": 900,
+                "letterSpacingEm": 0.18,
+                "fillColor": 4294967295,
+                "align": "center"
+              },
+              {
+                "id": "b",
+                "role": "title",
+                "defaultText": "NAME",
+                "fontSizeFactor": 1.05,
+                "fontWeight": 900,
+                "fillColor": 4294919236,
+                "align": "center"
+              }
+            ]
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_youtube_subscribe",
+          "title": "Subscribe",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "SUBSCRIBE 🔔",
+          "animation": {
+            "bounce": 0.28,
+            "shake": 0.03,
+            "scaleFrom": 0.4,
+            "id": "pop",
+            "durationMs": 800
+          },
+          "style": {
+            "id": "tpl_youtube_subscribe",
+            "label": "Subscribe",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "notoSansKr",
+            "lineBackground": {
+              "useAccent": false,
+              "color": 4294901760,
+              "opacity": 1,
+              "padHFactor": 0.55,
+              "padVFactor": 0.32,
+              "radiusFactor": 0.55,
+              "shape": "capsule",
+              "shadowOpacity": 0.35,
+              "shadowBlurFactor": 0.2
+            }
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_coming_soon",
+          "title": "Coming Soon",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "COMING SOON\n12.25",
+          "animation": {
+            "scaleFrom": 1.05,
+            "blurFrom": 0.5,
+            "id": "focus",
+            "durationMs": 1500
+          },
+          "style": {
+            "id": "tpl_coming_soon",
+            "label": "Coming Soon",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "roboto"
+          },
+          "composition": {
+            "align": "center",
+            "gapFactor": 0.2,
+            "slots": [
+              {
+                "id": "soon",
+                "role": "title",
+                "defaultText": "COMING SOON",
+                "fontSizeFactor": 0.75,
+                "fontWeight": 700,
+                "letterSpacingEm": 0.28,
+                "fillColor": 4294967295,
+                "align": "center"
+              },
+              {
+                "id": "date",
+                "role": "subtitle",
+                "defaultText": "12.25",
+                "fontSizeFactor": 0.5,
+                "fontWeight": 400,
+                "fillColor": 4291941851,
+                "align": "center"
+              }
+            ]
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_countdown",
+          "title": "Countdown",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "3\n2\n1\nGO",
+          "animation": {
+            "punch": 0.2,
+            "shake": 0.1,
+            "bounce": 0.1,
+            "scaleFrom": 0.5,
+            "id": "impact",
+            "durationMs": 1600
+          },
+          "style": {
+            "id": "tpl_countdown",
+            "label": "Countdown",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "blackHanSans",
+            "strokes": [
+              {
+                "widthFactor": 0.12,
+                "useAccent": false,
+                "color": 4279308561
+              }
+            ]
+          },
+          "composition": {
+            "align": "center",
+            "gapFactor": 0.05,
+            "slots": [
+              {
+                "id": "n3",
+                "role": "title",
+                "defaultText": "3",
+                "fontSizeFactor": 1.4,
+                "fontWeight": 900,
+                "fillColor": 4294967295,
+                "align": "center"
+              },
+              {
+                "id": "n2",
+                "role": "title",
+                "defaultText": "2",
+                "fontSizeFactor": 1.4,
+                "fontWeight": 900,
+                "fillColor": 4294967295,
+                "align": "center"
+              },
+              {
+                "id": "n1",
+                "role": "title",
+                "defaultText": "1",
+                "fontSizeFactor": 1.4,
+                "fontWeight": 900,
+                "fillColor": 4294967295,
+                "align": "center"
+              },
+              {
+                "id": "go",
+                "role": "title",
+                "defaultText": "GO",
+                "fontSizeFactor": 1.2,
+                "fontWeight": 900,
+                "fillColor": 4280468830,
+                "align": "center"
+              }
+            ]
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_logo_intro",
+          "title": "Logo Intro",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "◆\nBRAND",
+          "animation": {
+            "slotStagger": 0.65,
+            "id": "staged",
+            "durationMs": 1100
+          },
+          "style": {
+            "id": "tpl_logo_intro",
+            "label": "Logo Intro",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "notoSansKr"
+          },
+          "composition": {
+            "align": "center",
+            "gapFactor": 0.18,
+            "slots": [
+              {
+                "id": "mark",
+                "role": "title",
+                "defaultText": "◆",
+                "fontSizeFactor": 1.1,
+                "fontWeight": 700,
+                "fillColor": 4281908728,
+                "align": "center"
+              },
+              {
+                "id": "brand",
+                "role": "subtitle",
+                "defaultText": "BRAND",
+                "fontSizeFactor": 0.7,
+                "fontWeight": 800,
+                "letterSpacingEm": 0.35,
+                "fillColor": 4294967295,
+                "align": "center"
+              }
+            ]
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_watermark",
+          "title": "Watermark",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "@yourbrand",
+          "animation": {
+            "id": "fade",
+            "durationMs": 600
+          },
+          "layout": {
+            "align": "end"
+          },
+          "style": {
+            "id": "tpl_watermark",
+            "label": "Watermark",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "gothicA1",
+            "shadow": {
+              "dxFactor": 0.04,
+              "dyFactor": 0.06,
+              "blurFactor": 0.2,
+              "useAccent": false,
+              "color": 4278190080,
+              "opacity": 0.25
+            }
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_quote",
+          "title": "Quote",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "Be still.\nAnd know.",
+          "animation": {
+            "slotStagger": 0.8,
+            "id": "staged",
+            "durationMs": 1400
+          },
+          "style": {
+            "id": "tpl_quote",
+            "label": "Quote",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "gaegu",
+            "shadow": {
+              "dxFactor": 0.04,
+              "dyFactor": 0.06,
+              "blurFactor": 0.3,
+              "useAccent": false,
+              "color": 4278190080,
+              "opacity": 0.5
+            }
+          },
+          "composition": {
+            "align": "center",
+            "gapFactor": 0.2,
+            "slots": [
+              {
+                "id": "l1",
+                "role": "title",
+                "defaultText": "Be still.",
+                "fontSizeFactor": 0.85,
+                "fontWeight": 600,
+                "fillColor": 4294967295,
+                "align": "center"
+              },
+              {
+                "id": "l2",
+                "role": "body",
+                "defaultText": "And know.",
+                "fontSizeFactor": 0.65,
+                "fontWeight": 400,
+                "italic": true,
+                "fillColor": 4293257195,
+                "align": "center"
+              }
+            ]
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_motivation",
+          "title": "Motivation",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "NEVER\nGIVE UP",
+          "animation": {
+            "staggerOverlap": 0.3,
+            "kineticAmp": 0.85,
+            "kineticRotDeg": 8,
+            "id": "kinetic",
+            "durationMs": 1000
+          },
+          "style": {
+            "id": "tpl_motivation",
+            "label": "Motivation",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "doHyeon",
+            "strokes": [
+              {
+                "widthFactor": 0.14,
+                "useAccent": false,
+                "color": 4279308561
+              }
+            ],
+            "glow": {
+              "blurFactor": 0.3,
+              "widthFactor": 0.06,
+              "useAccent": true,
+              "opacity": 0.6
+            }
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_sad_story",
+          "title": "Sad Story",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "it rains again",
+          "animation": {
+            "scaleFrom": 0.95,
+            "blurFrom": 0.4,
+            "id": "focus",
+            "durationMs": 1800
+          },
+          "style": {
+            "id": "tpl_sad_story",
+            "label": "Sad Story",
+            "fillColor": 4291285758,
+            "fillUseAccent": false,
+            "preferredFontId": "gaegu",
+            "shadow": {
+              "dxFactor": 0.04,
+              "dyFactor": 0.06,
+              "blurFactor": 0.45,
+              "useAccent": false,
+              "color": 4278190080,
+              "opacity": 0.35
+            }
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_note_to_self",
+          "title": "Note To Self",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "breathe.\nyou're doing fine.",
+          "animation": {
+            "staggerOverlap": 0.55,
+            "staggerBy": "line",
+            "cursor": true,
+            "cursorBlinkHz": 1.6,
+            "id": "typewriter",
+            "durationMs": 1600
+          },
+          "layout": {
+            "perLine": true,
+            "lineGapFactor": 0.18,
+            "align": "start"
+          },
+          "style": {
+            "id": "tpl_note_to_self",
+            "label": "Note To Self",
+            "fillColor": 4282001936,
+            "fillUseAccent": false,
+            "preferredFontId": "gaegu",
+            "lineBackground": {
+              "useAccent": false,
+              "color": 4294965206,
+              "opacity": 1,
+              "padHFactor": 0.4,
+              "padVFactor": 0.3,
+              "radiusFactor": 0.15,
+              "shape": "brush",
+              "shadowOpacity": 0.3,
+              "shadowBlurFactor": 0.18
+            }
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_coffee_chat",
+          "title": "Coffee Chat POV",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "POV\nfirst date nerves",
+          "animation": {
+            "slotStagger": 0.7,
+            "id": "staged",
+            "durationMs": 1100
+          },
+          "style": {
+            "id": "tpl_coffee_chat",
+            "label": "Coffee Chat POV",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "gothicA1"
+          },
+          "composition": {
+            "align": "center",
+            "gapFactor": 0.35,
+            "slots": [
+              {
+                "id": "pov",
+                "role": "eyebrow",
+                "defaultText": "POV",
+                "fontSizeFactor": 0.4,
+                "fontWeight": 700,
+                "letterSpacingEm": 0.25,
+                "fillColor": 4294967295,
+                "align": "center"
+              },
+              {
+                "id": "line",
+                "role": "body",
+                "defaultText": "first date nerves",
+                "fontSizeFactor": 0.55,
+                "fontWeight": 600,
+                "fillColor": 4279308561,
+                "align": "center",
+                "boxFillColor": 4294967295,
+                "boxPadHFactor": 0.4,
+                "boxPadVFactor": 0.28
+              }
+            ]
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_life_emphasis",
+          "title": "Life Emphasis",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "life is not easy\nbut it is\nWORTH IT",
+          "animation": {
+            "slotStagger": 0.9,
+            "id": "staged",
+            "durationMs": 1600
+          },
+          "style": {
+            "id": "tpl_life_emphasis",
+            "label": "Life Emphasis",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "notoSansKr"
+          },
+          "composition": {
+            "align": "center",
+            "gapFactor": 0.12,
+            "slots": [
+              {
+                "id": "a",
+                "role": "body",
+                "defaultText": "life is not easy",
+                "fontSizeFactor": 0.45,
+                "fontWeight": 400,
+                "fillColor": 4291941851,
+                "align": "center"
+              },
+              {
+                "id": "b",
+                "role": "body",
+                "defaultText": "but it is",
+                "fontSizeFactor": 0.55,
+                "fontWeight": 500,
+                "fillColor": 4294967295,
+                "align": "center"
+              },
+              {
+                "id": "c",
+                "role": "title",
+                "defaultText": "WORTH IT",
+                "fontSizeFactor": 1,
+                "fontWeight": 900,
+                "fillColor": 4294688548,
+                "align": "center"
+              }
+            ]
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_aesthetic",
+          "title": "Aesthetic",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "slow mornings",
+          "animation": {
+            "scaleFrom": 0.98,
+            "blurFrom": 0.15,
+            "id": "focus",
+            "durationMs": 1400
+          },
+          "style": {
+            "id": "tpl_aesthetic",
+            "label": "Aesthetic",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "roboto"
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_breaking_news",
+          "title": "Breaking News",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "BREAKING\nMarkets surge overnight",
+          "animation": {
+            "punch": 0.15,
+            "shake": 0.12,
+            "bounce": 0.1,
+            "scaleFrom": 0.85,
+            "id": "impact",
+            "durationMs": 900
+          },
+          "style": {
+            "id": "tpl_breaking_news",
+            "label": "Breaking News",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "blackHanSans"
+          },
+          "composition": {
+            "align": "start",
+            "gapFactor": 0.08,
+            "slots": [
+              {
+                "id": "tag",
+                "role": "eyebrow",
+                "defaultText": "BREAKING",
+                "fontSizeFactor": 0.4,
+                "fontWeight": 900,
+                "letterSpacingEm": 0.12,
+                "fillColor": 4294967295,
+                "align": "start",
+                "boxFillColor": 4292617766,
+                "boxPadHFactor": 0.35,
+                "boxPadVFactor": 0.2
+              },
+              {
+                "id": "headline",
+                "role": "title",
+                "defaultText": "Markets surge overnight",
+                "fontSizeFactor": 0.7,
+                "fontWeight": 800,
+                "fillColor": 4294967295,
+                "align": "start",
+                "boxFillColor": 4279308561,
+                "boxPadHFactor": 0.35,
+                "boxPadVFactor": 0.25
+              }
+            ]
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_meme",
+          "title": "Meme Text",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "WHEN YOU\nSEE IT",
+          "animation": {
+            "bounce": 0.12,
+            "shake": 0.04,
+            "scaleFrom": 0.85,
+            "id": "pop",
+            "durationMs": 500
+          },
+          "style": {
+            "id": "tpl_meme",
+            "label": "Meme Text",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "blackHanSans",
+            "strokes": [
+              {
+                "widthFactor": 0.22,
+                "useAccent": false,
+                "color": 4278190080
+              },
+              {
+                "widthFactor": 0.1,
+                "useAccent": false,
+                "color": 4278190080
+              }
+            ]
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_shocked",
+          "title": "Shocked",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "OMG",
+          "animation": {
+            "bounce": 0.35,
+            "shake": 0.1,
+            "scaleFrom": 0.15,
+            "id": "pop",
+            "durationMs": 650
+          },
+          "style": {
+            "id": "tpl_shocked",
+            "label": "Shocked",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "blackHanSans",
+            "strokes": [
+              {
+                "widthFactor": 0.16,
+                "useAccent": false,
+                "color": 4279308561
+              }
+            ],
+            "glow": {
+              "blurFactor": 0.4,
+              "widthFactor": 0.1,
+              "useAccent": true,
+              "opacity": 0.8
+            }
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_calculating",
+          "title": "Calculating",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "???\n42",
+          "animation": {
+            "slotStagger": 0.75,
+            "id": "staged",
+            "durationMs": 1300
+          },
+          "style": {
+            "id": "tpl_calculating",
+            "label": "Calculating",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "roboto"
+          },
+          "composition": {
+            "align": "center",
+            "gapFactor": 0.25,
+            "slots": [
+              {
+                "id": "q",
+                "role": "title",
+                "defaultText": "???",
+                "fontSizeFactor": 0.9,
+                "fontWeight": 700,
+                "fillColor": 4289170426,
+                "align": "center"
+              },
+              {
+                "id": "a",
+                "role": "title",
+                "defaultText": "42",
+                "fontSizeFactor": 1.15,
+                "fontWeight": 900,
+                "fillColor": 4281652121,
+                "align": "center"
+              }
+            ]
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_notification",
+          "title": "Notification",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "Messages\nNew reply\nSee what they said →",
+          "animation": {
+            "slotStagger": 0.55,
+            "id": "staged",
+            "durationMs": 900
+          },
+          "style": {
+            "id": "tpl_notification",
+            "label": "Notification",
+            "fillColor": 4279308561,
+            "fillUseAccent": false,
+            "preferredFontId": "gothicA1"
+          },
+          "composition": {
+            "align": "start",
+            "gapFactor": 0.06,
+            "slots": [
+              {
+                "id": "app",
+                "role": "eyebrow",
+                "defaultText": "Messages",
+                "fontSizeFactor": 0.35,
+                "fontWeight": 700,
+                "fillColor": 4285231744,
+                "align": "start"
+              },
+              {
+                "id": "title",
+                "role": "title",
+                "defaultText": "New reply",
+                "fontSizeFactor": 0.55,
+                "fontWeight": 700,
+                "fillColor": 4279308561,
+                "align": "start"
+              },
+              {
+                "id": "body",
+                "role": "body",
+                "defaultText": "See what they said →",
+                "fontSizeFactor": 0.4,
+                "fontWeight": 400,
+                "fillColor": 4283127139,
+                "align": "start"
+              }
+            ]
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_status",
+          "title": "Status",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "✈ AIRPLANE MODE ON",
+          "animation": {
+            "id": "fade",
+            "durationMs": 500
+          },
+          "style": {
+            "id": "tpl_status",
+            "label": "Status",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "roboto",
+            "lineBackground": {
+              "useAccent": false,
+              "color": 3424594231,
+              "opacity": 1,
+              "padHFactor": 0.5,
+              "padVFactor": 0.3,
+              "radiusFactor": 0.5,
+              "shape": "capsule",
+              "shadowOpacity": 0.2,
+              "shadowBlurFactor": 0.15
+            }
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_glitch",
+          "title": "Glitch",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "ERROR",
+          "animation": {
+            "glitchAmp": 0.12,
+            "id": "glitch",
+            "durationMs": 1000
+          },
+          "style": {
+            "id": "tpl_glitch",
+            "label": "Glitch",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "blackHanSans",
+            "strokes": [
+              {
+                "widthFactor": 0.06,
+                "useAccent": false,
+                "color": 4294902015
+              }
+            ]
+          },
+          "accessTier": "plus",
+          "premium": true
+        },
+        {
+          "id": "tpl_neon",
+          "title": "Neon",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "OPEN",
+          "animation": {
+            "neonFlicker": 0.45,
+            "id": "neon",
+            "durationMs": 1200
+          },
+          "style": {
+            "id": "tpl_neon",
+            "label": "Neon",
+            "fillColor": 4294928076,
+            "fillUseAccent": false,
+            "preferredFontId": "doHyeon",
+            "glow": {
+              "blurFactor": 0.7,
+              "widthFactor": 0.22,
+              "useAccent": false,
+              "color": 4294928076,
+              "opacity": 0.95
+            },
+            "strokes": [
+              {
+                "widthFactor": 0.04,
+                "useAccent": false,
+                "color": 4294967295
+              }
+            ]
+          },
+          "accessTier": "plus",
+          "premium": true
+        },
+        {
+          "id": "tpl_typewriter",
+          "title": "Typewriter",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "Once upon a time…",
+          "animation": {
+            "staggerOverlap": 0.35,
+            "staggerBy": "glyph",
+            "cursor": true,
+            "cursorBlinkHz": 2.2,
+            "id": "typewriter",
+            "durationMs": 1800
+          },
+          "style": {
+            "id": "tpl_typewriter",
+            "label": "Typewriter",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "roboto",
+            "shadow": {
+              "dxFactor": 0.04,
+              "dyFactor": 0.06,
+              "blurFactor": 0.2,
+              "useAccent": false,
+              "color": 4278190080,
+              "opacity": 0.4
+            }
+          },
+          "accessTier": "free",
+          "premium": false
         }
       ]
     }

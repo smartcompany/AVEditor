@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -6,7 +7,9 @@ import 'package:aveditor/models/text_entrance_animation.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/text_overlay_style.dart';
 import 'package:aveditor/models/text_style_template.dart';
+import 'package:aveditor/services/text_pack_image_cache.dart';
 import 'package:aveditor/services/text_template_pack_service.dart';
+import 'package:aveditor/widgets/nine_slice_image.dart';
 import 'package:aveditor/widgets/overlay_fonts.dart';
 import 'package:aveditor/widgets/overlay_geometry.dart';
 import 'package:aveditor/widgets/text_composition_paint.dart';
@@ -118,9 +121,12 @@ void paintOverlayLineBackgrounds({
   TextStyleLineShape shape = TextStyleLineShape.capsule,
   double shadowOpacity = 0,
   double shadowBlurFactor = 0.12,
+  TextStyleLineBackground? lineBackground,
   Set<int>? visibleLineIndexes,
 }) {
-  if (background.a <= 0) return;
+  if (background.a <= 0 && !(lineBackground?.hasUnderlayImage ?? false)) {
+    return;
+  }
 
   final padH = fontSize * padHFactor;
   final padV = fontSize * padVFactor;
@@ -153,6 +159,8 @@ void paintOverlayLineBackgrounds({
         fontSize: fontSize,
         shadowOpacity: shadowOpacity,
         shadowBlurFactor: shadowBlurFactor,
+        lineBackground: lineBackground,
+        lineIndex: index,
       );
     } else {
       final radius = Radius.circular((fontSize * radiusFactor).clamp(4.0, 12.0));
@@ -176,7 +184,7 @@ void paintOverlayLineBackgrounds({
   }
 }
 
-/// CapCut journal strip: wavy torn edges + soft outer glow.
+/// CapCut journal strip: asset nine-slice when available, else procedural path.
 void _paintBrushLineBackground({
   required Canvas canvas,
   required Rect rect,
@@ -184,7 +192,38 @@ void _paintBrushLineBackground({
   required double fontSize,
   required double shadowOpacity,
   required double shadowBlurFactor,
+  TextStyleLineBackground? lineBackground,
+  int lineIndex = 0,
 }) {
+  final key = lineBackground?.underlayKeyForLine(lineIndex);
+  if (key != null) {
+    // Kick decode; when ready cache notifies listeners → preview repaints.
+    unawaited(TextPackImageCache.instance.ensure(key));
+    final grainKey = lineBackground?.grainAsset;
+    if (grainKey != null && grainKey.isNotEmpty) {
+      unawaited(TextPackImageCache.instance.ensure(grainKey));
+    }
+    final image = TextPackImageCache.instance[key];
+    if (image != null) {
+      _paintUnderlayStrip(
+        canvas: canvas,
+        rect: rect,
+        image: image,
+        fontSize: fontSize,
+        shadowOpacity: shadowOpacity,
+        shadowBlurFactor: shadowBlurFactor,
+        nineSlice: NineSliceInsets.fromJson(
+          lineBackground?.nineSlice == null
+              ? null
+              : Map<String, dynamic>.from(lineBackground!.nineSlice!),
+        ),
+        grainKey: grainKey,
+        opacity: color.a.clamp(0.0, 1.0),
+      );
+      return;
+    }
+  }
+
   final path = _tornPaperPath(rect);
   if (shadowOpacity > 0) {
     final shadowPaint = Paint()
@@ -208,6 +247,65 @@ void _paintBrushLineBackground({
     );
   canvas.drawPath(path, fringe);
   canvas.drawPath(path, Paint()..color = color);
+}
+
+void _paintUnderlayStrip({
+  required Canvas canvas,
+  required Rect rect,
+  required ui.Image image,
+  required double fontSize,
+  required double shadowOpacity,
+  required double shadowBlurFactor,
+  required NineSliceInsets nineSlice,
+  String? grainKey,
+  double opacity = 1,
+}) {
+  if (shadowOpacity > 0) {
+    final shadowPaint = Paint()
+      ..color = const Color(0xFF000000).withValues(alpha: shadowOpacity * 0.85)
+      ..maskFilter = MaskFilter.blur(
+        BlurStyle.normal,
+        (fontSize * shadowBlurFactor).clamp(2.0, 28.0),
+      );
+    // Approximate paper silhouette for soft drop (image alpha is expensive).
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        rect.translate(0, fontSize * 0.045).inflate(-fontSize * 0.04),
+        Radius.circular(fontSize * 0.12),
+      ),
+      shadowPaint,
+    );
+  }
+  paintNineSliceImage(
+    canvas: canvas,
+    image: image,
+    dst: rect,
+    insets: nineSlice,
+    opacity: opacity,
+  );
+  final grain = grainKey == null ? null : TextPackImageCache.instance[grainKey];
+  if (grain != null) {
+    final paint = Paint()
+      ..isAntiAlias = true
+      ..filterQuality = FilterQuality.medium
+      ..blendMode = BlendMode.softLight
+      ..color = const Color.fromRGBO(255, 255, 255, 0.35);
+    // Tile grain lightly over the strip.
+    const tile = 96.0;
+    for (var x = rect.left; x < rect.right; x += tile) {
+      for (var y = rect.top; y < rect.bottom; y += tile) {
+        final w = (rect.right - x).clamp(0.0, tile);
+        final h = (rect.bottom - y).clamp(0.0, tile);
+        if (w <= 0 || h <= 0) continue;
+        canvas.drawImageRect(
+          grain,
+          Rect.fromLTWH(0, 0, w, h),
+          Rect.fromLTWH(x, y, w, h),
+          paint,
+        );
+      }
+    }
+  }
 }
 
 /// Deterministic irregular strip path (stable across frames / export).
@@ -661,8 +759,13 @@ void paintTextStyleTemplate({
   if (state.isInvisible) return;
 
   final crawl = state.hasCrawlTransform;
-  if (crawl) {
+  final layerXform = state.hasLayerTransform ||
+      (state.layerScale - 1).abs() > 0.001 ||
+      state.glowPulse != 1.0;
+  if (crawl || layerXform) {
     canvas.save();
+  }
+  if (crawl) {
     // Keep perspective on an identity matrix (setEntry after translate skews
     // the vanishing point sideways — crawl looked yawed left). Pivot at the
     // top-center so scroll goes bottom → top into the distance.
@@ -674,6 +777,13 @@ void paintTextStyleTemplate({
       ..rotateX(state.layerTilt);
     canvas.transform(matrix.storage);
     canvas.translate(-pivotX, -pivotY + state.layerScroll);
+  }
+  if (layerXform && !crawl) {
+    final pivotX = origin.dx + maxWidth / 2;
+    final pivotY = origin.dy + fontSize * 0.5;
+    canvas.translate(pivotX + state.layerDx, pivotY + state.layerDy);
+    canvas.scale(state.layerScale);
+    canvas.translate(-pivotX, -pivotY);
   }
 
   void paintStatic({required double opacity, required Offset paintOrigin}) {
@@ -708,12 +818,14 @@ void paintTextStyleTemplate({
         shape: lineBg.shape,
         shadowOpacity: lineBg.shadowOpacity * opacity,
         shadowBlurFactor: lineBg.shadowBlurFactor,
+        lineBackground: lineBg,
       );
     }
 
     final glow = template.glow;
     if (glow != null) {
       final glowColor = glow.resolveColor(accent);
+      final pulse = state.glowPulse.clamp(0.15, 1.6);
       _paintStrokeLayer(
         canvas: canvas,
         text: text,
@@ -721,12 +833,12 @@ void paintTextStyleTemplate({
         maxWidth: maxWidth,
         origin: paintOrigin,
         color: glowColor.withValues(
-          alpha: (glowColor.a * opacity).clamp(0.0, 1.0),
+          alpha: (glowColor.a * opacity * pulse).clamp(0.0, 1.0),
         ),
-        width: (fontSize * glow.widthFactor).clamp(1.0, 40.0),
+        width: (fontSize * glow.widthFactor * pulse).clamp(1.0, 48.0),
         fontFamily: fontFamily,
         textAlign: textAlign,
-        blur: (fontSize * glow.blurFactor).clamp(1.0, 48.0),
+        blur: (fontSize * glow.blurFactor * pulse).clamp(1.0, 64.0),
       );
     }
 
@@ -807,11 +919,40 @@ void paintTextStyleTemplate({
   }
 
   if (!state.perGlyph || state.glyphs.isEmpty) {
-    paintStatic(
-      opacity: state.layerOpacity,
-      paintOrigin: origin + Offset(0, state.layerDy),
-    );
-    if (crawl) canvas.restore();
+    final dy = (layerXform && !crawl) ? 0.0 : state.layerDy;
+    final dx = (layerXform && !crawl) ? 0.0 : state.layerDx;
+    void paintOnce({required Offset shift, required double op}) {
+      if (state.layerBlur > 0.5) {
+        canvas.saveLayer(
+          Rect.fromLTWH(
+            origin.dx - fontSize,
+            origin.dy - fontSize,
+            maxWidth + fontSize * 2,
+            fontSize * 8,
+          ),
+          Paint()
+            ..imageFilter = ui.ImageFilter.blur(
+              sigmaX: state.layerBlur,
+              sigmaY: state.layerBlur,
+            ),
+        );
+      }
+      paintStatic(
+        opacity: op,
+        paintOrigin: origin + Offset(dx, dy) + shift,
+      );
+      if (state.layerBlur > 0.5) canvas.restore();
+    }
+
+    if (state.rgbOffset.abs() > 0.5) {
+      final o = state.rgbOffset;
+      paintOnce(shift: Offset(-o, 0), op: state.layerOpacity * 0.55);
+      paintOnce(shift: Offset(o, 0), op: state.layerOpacity * 0.55);
+      paintOnce(shift: Offset.zero, op: state.layerOpacity);
+    } else {
+      paintOnce(shift: Offset.zero, op: state.layerOpacity);
+    }
+    if (crawl || layerXform) canvas.restore();
     return;
   }
 
@@ -882,6 +1023,7 @@ void paintTextStyleTemplate({
       shape: lineBg.shape,
       shadowOpacity: lineBg.shadowOpacity,
       shadowBlurFactor: lineBg.shadowBlurFactor,
+      lineBackground: lineBg,
     );
   }
 
@@ -897,7 +1039,17 @@ void paintTextStyleTemplate({
         TextPosition(offset: utf16),
         Rect.zero,
       );
-      final charOrigin = origin + caret + Offset(0, glyph.dy);
+      final charOrigin =
+          origin + caret + Offset(glyph.dx, glyph.dy);
+      final needsGlyphXform =
+          (glyph.scale - 1).abs() > 0.01 || glyph.rotation.abs() > 0.01;
+      if (needsGlyphXform) {
+        canvas.save();
+        canvas.translate(charOrigin.dx, charOrigin.dy + fontSize * 0.5);
+        canvas.rotate(glyph.rotation);
+        canvas.scale(glyph.scale);
+        canvas.translate(-charOrigin.dx, -(charOrigin.dy + fontSize * 0.5));
+      }
       _paintStyledGrapheme(
         canvas: canvas,
         grapheme: g,
@@ -908,12 +1060,34 @@ void paintTextStyleTemplate({
         fontFamily: fontFamily,
         opacity: glyph.opacity,
       );
+      if (needsGlyphXform) canvas.restore();
     }
     utf16 = nextUtf;
   }
 
+  if (state.cursorVisible) {
+    // Caret after the last visible glyph.
+    var caretUtf = 0;
+    var lastVisibleUtf = 0;
+    for (var i = 0; i < graphemes.length; i++) {
+      final op = i < state.glyphs.length ? state.glyphs[i].opacity : 1.0;
+      caretUtf += graphemes[i].length;
+      if (op > 0.01) lastVisibleUtf = caretUtf;
+    }
+    final caret = metricsPainter.getOffsetForCaret(
+      TextPosition(offset: lastVisibleUtf),
+      Rect.zero,
+    );
+    final cx = origin.dx + caret.dx;
+    final cy = origin.dy + caret.dy;
+    canvas.drawRect(
+      Rect.fromLTWH(cx, cy, math.max(2.0, fontSize * 0.06), fontSize * 0.9),
+      Paint()..color = fillColor,
+    );
+  }
+
   metricsPainter.dispose();
-  if (crawl) canvas.restore();
+  if (crawl || layerXform) canvas.restore();
 }
 
 int _lineIndexForY(List<ui.LineMetrics> lines, double y) {
@@ -953,6 +1127,7 @@ void _paintGrowingLineBackgrounds({
   required TextStyleLineShape shape,
   required double shadowOpacity,
   required double shadowBlurFactor,
+  TextStyleLineBackground? lineBackground,
 }) {
   if (background.a <= 0) return;
   final padH = fontSize * padHFactor;
@@ -1007,6 +1182,8 @@ void _paintGrowingLineBackgrounds({
         fontSize: fontSize,
         shadowOpacity: shadowOpacity,
         shadowBlurFactor: shadowBlurFactor,
+        lineBackground: lineBackground,
+        lineIndex: i,
       );
       if (clipped) canvas.restore();
     } else {
@@ -1306,7 +1483,7 @@ class _OverlayTextDisplayPainter extends CustomPainter {
     this.hintColor,
     this.entrance,
     this.composition,
-  });
+  }) : super(repaint: TextPackImageCache.instance);
 
   final String text;
   final Color color;
@@ -1367,6 +1544,8 @@ class _OverlayTextDisplayPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _OverlayTextDisplayPainter oldDelegate) {
+    final a = oldDelegate.entrance;
+    final b = entrance;
     return oldDelegate.text != text ||
         oldDelegate.color != color ||
         oldDelegate.fontSize != fontSize ||
@@ -1376,10 +1555,48 @@ class _OverlayTextDisplayPainter extends CustomPainter {
         oldDelegate.textAlign != textAlign ||
         oldDelegate.hintColor != hintColor ||
         oldDelegate.composition != composition ||
-        oldDelegate.entrance?.progress != entrance?.progress ||
-        oldDelegate.entrance?.animationId != entrance?.animationId ||
-        oldDelegate.entrance?.layerScroll != entrance?.layerScroll ||
-        oldDelegate.entrance?.layerTilt != entrance?.layerTilt ||
-        oldDelegate.entrance?.layerPerspective != entrance?.layerPerspective;
+        a?.progress != b?.progress ||
+        a?.animationId != b?.animationId ||
+        a?.layerOpacity != b?.layerOpacity ||
+        a?.layerDy != b?.layerDy ||
+        a?.layerDx != b?.layerDx ||
+        a?.layerScale != b?.layerScale ||
+        a?.layerBlur != b?.layerBlur ||
+        a?.layerScroll != b?.layerScroll ||
+        a?.layerTilt != b?.layerTilt ||
+        a?.layerPerspective != b?.layerPerspective ||
+        a?.rgbOffset != b?.rgbOffset ||
+        a?.glowPulse != b?.glowPulse ||
+        a?.cursorVisible != b?.cursorVisible ||
+        a?.perGlyph != b?.perGlyph ||
+        !_listEquals(a?.slotOpacity, b?.slotOpacity) ||
+        !_listEquals(a?.slotDy, b?.slotDy) ||
+        !_glyphsEqual(a?.glyphs, b?.glyphs);
   }
+}
+
+bool _listEquals(List<double>? a, List<double>? b) {
+  if (identical(a, b)) return true;
+  if (a == null || b == null || a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+}
+
+bool _glyphsEqual(List<TextEntranceGlyph>? a, List<TextEntranceGlyph>? b) {
+  if (identical(a, b)) return true;
+  if (a == null || b == null || a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    final x = a[i];
+    final y = b[i];
+    if (x.opacity != y.opacity ||
+        x.dx != y.dx ||
+        x.dy != y.dy ||
+        x.scale != y.scale ||
+        x.rotation != y.rotation) {
+      return false;
+    }
+  }
+  return true;
 }

@@ -78,6 +78,7 @@ flutter:
     - assets/icons/
     - assets/text_packs/catalog.json
     - assets/text_packs/lottie/
+    - assets/text_packs/journal/
     - assets/transitions/catalog.json
     - assets/backgrounds/
   fonts:

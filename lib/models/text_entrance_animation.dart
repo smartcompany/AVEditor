@@ -9,10 +9,28 @@ abstract final class TextEntranceIds {
   static const typewriter = 'typewriter';
   static const fade = 'fade';
   static const slideUp = 'slide_up';
-  /// Perspective scroll over the full overlay span (Star Wars-style crawl).
   static const crawl = 'crawl';
+  static const pop = 'pop';
+  static const kinetic = 'kinetic';
+  static const focus = 'focus';
+  static const staged = 'staged';
+  static const impact = 'impact';
+  static const glitch = 'glitch';
+  static const neon = 'neon';
 
-  static const all = [typewriter, fade, slideUp, crawl];
+  static const all = [
+    typewriter,
+    fade,
+    slideUp,
+    crawl,
+    pop,
+    kinetic,
+    focus,
+    staged,
+    impact,
+    glitch,
+    neon,
+  ];
 
   static bool isKnown(String? id) =>
       id != null && id.isNotEmpty && all.contains(id);
@@ -33,51 +51,83 @@ class TextEntranceAnimation {
     this.perspective = defaultPerspective,
     this.scrollStartFactor = defaultScrollStartFactor,
     this.scrollEndFactor = defaultScrollEndFactor,
+    this.bounce = defaultBounce,
+    this.shake = defaultShake,
+    this.scaleFrom = defaultScaleFrom,
+    this.blurFrom = defaultBlurFrom,
+    this.cursor = false,
+    this.cursorBlinkHz = defaultCursorBlinkHz,
+    this.kineticAmp = defaultKineticAmp,
+    this.kineticRotDeg = defaultKineticRotDeg,
+    this.slotStagger = defaultSlotStagger,
+    this.glitchAmp = defaultGlitchAmp,
+    this.neonFlicker = defaultNeonFlicker,
+    this.punch = defaultPunch,
   });
 
   static const defaultDurationMs = 800;
-
-  /// Suggested crawl / entrance length when the overlay span is unknown.
   static const maxContinuousMs = 30000;
-
-  /// Typewriter glyph-window overlap (matches server default).
   static const defaultStaggerOverlap = 0.55;
-
-  /// `glyph` | `line` | `auto` (line when text has a newline).
   static const defaultStaggerBy = 'auto';
-
-  /// Classic crawl tilt magnitude in degrees (bottom nearer). Flutter applies
-  /// the Y-down sign in [flutterCrawlTiltRadians].
   static const defaultTiltDeg = 54.0;
   static const defaultPerspective = 0.0012;
   static const defaultScrollStartFactor = 14.0;
   static const defaultScrollEndFactor = -32.0;
+  static const defaultBounce = 0.18;
+  static const defaultShake = 0.0;
+  static const defaultScaleFrom = 0.25;
+  static const defaultBlurFrom = 0.35;
+  static const defaultCursorBlinkHz = 2.0;
+  static const defaultKineticAmp = 0.55;
+  static const defaultKineticRotDeg = 12.0;
+  static const defaultSlotStagger = 0.22;
+  static const defaultGlitchAmp = 0.08;
+  static const defaultNeonFlicker = 0.35;
+  static const defaultPunch = 0.12;
 
   final String id;
   final int durationMs;
-
-  /// Typewriter: neighbouring glyph reveal windows overlap (0…0.95).
   final double staggerOverlap;
-
-  /// Typewriter stagger scope from the server catalog.
   final String staggerBy;
-
-  /// Server-driven crawl tilt in degrees (positive = Star Wars direction).
   final double tiltDeg;
-
-  /// Server-driven perspective strength for [Matrix4.setEntry] / CSS.
   final double perspective;
-
-  /// Start translateY as a multiple of font size (positive = below frame).
   final double scrollStartFactor;
-
-  /// End translateY as a multiple of font size (negative = into distance).
   final double scrollEndFactor;
 
-  double get typewriterStaggerOverlap =>
-      staggerOverlap.clamp(0.0, 0.95);
+  /// Pop / impact overshoot past 1.0 before settling.
+  final double bounce;
 
-  /// Whether typewriter should finish each line before starting the next.
+  /// Shake amplitude as × fontSize during punch window.
+  final double shake;
+
+  /// Starting scale for pop / focus (0…1).
+  final double scaleFrom;
+
+  /// Starting blur as × fontSize for focus.
+  final double blurFrom;
+
+  /// Typewriter blinking caret after the last visible glyph.
+  final bool cursor;
+  final double cursorBlinkHz;
+
+  /// Kinetic per-glyph scale excursion and rotation degrees.
+  final double kineticAmp;
+  final double kineticRotDeg;
+
+  /// Staged: fraction of timeline each slot waits before the next (0…0.8).
+  final double slotStagger;
+
+  /// Glitch RGB / jitter amplitude as × fontSize.
+  final double glitchAmp;
+
+  /// Neon flicker strength during entrance (0…1).
+  final double neonFlicker;
+
+  /// Impact punch scale peak above 1.0.
+  final double punch;
+
+  double get typewriterStaggerOverlap => staggerOverlap.clamp(0.0, 0.95);
+
   bool typewriterStaggerByLine(String text) {
     switch (staggerBy) {
       case 'line':
@@ -100,30 +150,55 @@ class TextEntranceAnimation {
 
   bool get isContinuous => TextEntranceIds.isContinuous(id);
 
-  /// Flutter canvas is Y-down: negate so positive [tiltDeg] matches CSS/dashboard.
-  /// 0° is a flat credits scroll; clamp only the magnitude when non-zero.
   double get flutterCrawlTiltRadians {
     final deg = tiltDeg.abs() < 0.01 ? 0.0 : tiltDeg.clamp(-80.0, 80.0);
     return -deg * math.pi / 180.0;
   }
 
-  double get crawlPerspective =>
-      perspective.clamp(0.0002, 0.005);
+  double get crawlPerspective => perspective.clamp(0.0002, 0.005);
 
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'durationMs': durationMs,
-        if (id == TextEntranceIds.typewriter) ...{
-          'staggerOverlap': staggerOverlap,
-          'staggerBy': staggerBy,
-        },
-        if (TextEntranceIds.isContinuous(id)) ...{
-          'tiltDeg': tiltDeg,
-          'perspective': perspective,
-          'scrollStartFactor': scrollStartFactor,
-          'scrollEndFactor': scrollEndFactor,
-        },
-      };
+  Map<String, dynamic> toJson() {
+    final out = <String, dynamic>{
+      'id': id,
+      'durationMs': durationMs,
+    };
+    switch (id) {
+      case TextEntranceIds.typewriter:
+        out['staggerOverlap'] = staggerOverlap;
+        out['staggerBy'] = staggerBy;
+        if (cursor) {
+          out['cursor'] = true;
+          out['cursorBlinkHz'] = cursorBlinkHz;
+        }
+      case TextEntranceIds.crawl:
+        out['tiltDeg'] = tiltDeg;
+        out['perspective'] = perspective;
+        out['scrollStartFactor'] = scrollStartFactor;
+        out['scrollEndFactor'] = scrollEndFactor;
+      case TextEntranceIds.pop:
+        out['bounce'] = bounce;
+        out['shake'] = shake;
+        out['scaleFrom'] = scaleFrom;
+      case TextEntranceIds.kinetic:
+        out['staggerOverlap'] = staggerOverlap;
+        out['kineticAmp'] = kineticAmp;
+        out['kineticRotDeg'] = kineticRotDeg;
+      case TextEntranceIds.focus:
+        out['scaleFrom'] = scaleFrom;
+        out['blurFrom'] = blurFrom;
+      case TextEntranceIds.staged:
+        out['slotStagger'] = slotStagger;
+      case TextEntranceIds.impact:
+        out['punch'] = punch;
+        out['shake'] = shake;
+        out['bounce'] = bounce;
+      case TextEntranceIds.glitch:
+        out['glitchAmp'] = glitchAmp;
+      case TextEntranceIds.neon:
+        out['neonFlicker'] = neonFlicker;
+    }
+    return out;
+  }
 
   factory TextEntranceAnimation.fromJson(Map<String, dynamic>? json) {
     if (json == null) {
@@ -142,6 +217,23 @@ class TextEntranceAnimation {
           defaultScrollStartFactor,
       scrollEndFactor: (json['scrollEndFactor'] as num?)?.toDouble() ??
           defaultScrollEndFactor,
+      bounce: (json['bounce'] as num?)?.toDouble() ?? defaultBounce,
+      shake: (json['shake'] as num?)?.toDouble() ?? defaultShake,
+      scaleFrom: (json['scaleFrom'] as num?)?.toDouble() ?? defaultScaleFrom,
+      blurFrom: (json['blurFrom'] as num?)?.toDouble() ?? defaultBlurFrom,
+      cursor: json['cursor'] as bool? ?? false,
+      cursorBlinkHz:
+          (json['cursorBlinkHz'] as num?)?.toDouble() ?? defaultCursorBlinkHz,
+      kineticAmp:
+          (json['kineticAmp'] as num?)?.toDouble() ?? defaultKineticAmp,
+      kineticRotDeg:
+          (json['kineticRotDeg'] as num?)?.toDouble() ?? defaultKineticRotDeg,
+      slotStagger:
+          (json['slotStagger'] as num?)?.toDouble() ?? defaultSlotStagger,
+      glitchAmp: (json['glitchAmp'] as num?)?.toDouble() ?? defaultGlitchAmp,
+      neonFlicker:
+          (json['neonFlicker'] as num?)?.toDouble() ?? defaultNeonFlicker,
+      punch: (json['punch'] as num?)?.toDouble() ?? defaultPunch,
     );
   }
 
@@ -154,6 +246,18 @@ class TextEntranceAnimation {
     double? perspective,
     double? scrollStartFactor,
     double? scrollEndFactor,
+    double? bounce,
+    double? shake,
+    double? scaleFrom,
+    double? blurFrom,
+    bool? cursor,
+    double? cursorBlinkHz,
+    double? kineticAmp,
+    double? kineticRotDeg,
+    double? slotStagger,
+    double? glitchAmp,
+    double? neonFlicker,
+    double? punch,
   }) {
     return TextEntranceAnimation(
       id: id ?? this.id,
@@ -164,6 +268,18 @@ class TextEntranceAnimation {
       perspective: perspective ?? this.perspective,
       scrollStartFactor: scrollStartFactor ?? this.scrollStartFactor,
       scrollEndFactor: scrollEndFactor ?? this.scrollEndFactor,
+      bounce: bounce ?? this.bounce,
+      shake: shake ?? this.shake,
+      scaleFrom: scaleFrom ?? this.scaleFrom,
+      blurFrom: blurFrom ?? this.blurFrom,
+      cursor: cursor ?? this.cursor,
+      cursorBlinkHz: cursorBlinkHz ?? this.cursorBlinkHz,
+      kineticAmp: kineticAmp ?? this.kineticAmp,
+      kineticRotDeg: kineticRotDeg ?? this.kineticRotDeg,
+      slotStagger: slotStagger ?? this.slotStagger,
+      glitchAmp: glitchAmp ?? this.glitchAmp,
+      neonFlicker: neonFlicker ?? this.neonFlicker,
+      punch: punch ?? this.punch,
     );
   }
 
@@ -177,14 +293,12 @@ TextEntranceAnimation resolveOverlayAnimation(TextOverlay overlay) {
     if (overrideId.isEmpty) return TextEntranceAnimation.none;
     final pack = TextTemplatePackService.instance.itemById(overlay.packItemId);
     final packAnim = pack?.animation;
-    // Keep crawl geometry from the pack when only id/duration are overridden.
+    // Keep pack geometry/params when only id/duration are overridden.
     if (packAnim != null &&
         !packAnim.isNone &&
-        packAnim.id == overrideId &&
-        TextEntranceIds.isContinuous(overrideId)) {
+        packAnim.id == overrideId) {
       return packAnim.copyWith(
-        durationMs:
-            overlay.animationDurationMs ?? packAnim.durationMs,
+        durationMs: overlay.animationDurationMs ?? packAnim.durationMs,
       );
     }
     return TextEntranceAnimation(
@@ -205,10 +319,6 @@ TextEntranceAnimation resolveOverlayAnimation(TextOverlay overlay) {
   return TextEntranceAnimation.none;
 }
 
-/// How long the motion plays before the finished look holds.
-///
-/// Continuous crawl uses the overlay span (capped). Short entrances use
-/// pack/catalog [TextEntranceAnimation.durationMs] (or an override).
 Duration resolvedEntranceDuration({
   required TextOverlay overlay,
   required TextEntranceAnimation animation,
@@ -236,10 +346,6 @@ Duration resolvedEntranceDuration({
   return Duration(milliseconds: animation.durationMs.clamp(100, 30000));
 }
 
-/// Progress 0..1 from playhead relative to overlay start.
-///
-/// Clamps at 1 so short entrances hold the finished look; crawl stays at the
-/// end pose for any remainder past the capped span.
 double entranceProgressAt({
   required TextOverlay overlay,
   required Duration position,
@@ -255,13 +361,6 @@ double entranceProgressAt({
   return (elapsed.inMilliseconds / totalMs).clamp(0.0, 1.0);
 }
 
-/// PNG index for [elapsedMs] since the overlay's own start.
-///
-/// Same clock as [entranceProgressAt]: 0 is the first entrance frame, and
-/// once the entrance ends the last frame holds. Clip boundaries do not reset it.
-///
-/// When [loop] is true (sticker GIFs), frames cycle for the whole span using
-/// [durationMs] as one loop length.
 int entranceFrameIndex({
   required int elapsedMs,
   required int durationMs,

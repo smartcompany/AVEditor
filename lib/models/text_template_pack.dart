@@ -4,6 +4,45 @@ import 'package:aveditor/models/text_entrance_animation.dart';
 import 'package:aveditor/models/text_style_template.dart';
 import 'package:flutter/foundation.dart';
 
+/// Line / block placement from the server catalog (spec §6).
+@immutable
+class TextPackLayout {
+  const TextPackLayout({
+    this.perLine = false,
+    this.lineGapFactor = 0,
+    this.maxLines,
+    this.align = 'center',
+  });
+
+  /// One underlay strip per line (Journal). false = single block.
+  final bool perLine;
+
+  /// Extra gap between lines as a multiple of fontSize.
+  final double lineGapFactor;
+
+  final int? maxLines;
+
+  /// `start` | `center` | `end`.
+  final String align;
+
+  Map<String, dynamic> toJson() => {
+        if (perLine) 'perLine': true,
+        if (lineGapFactor != 0) 'lineGapFactor': lineGapFactor,
+        if (maxLines != null) 'maxLines': maxLines,
+        if (align != 'center') 'align': align,
+      };
+
+  factory TextPackLayout.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return const TextPackLayout();
+    return TextPackLayout(
+      perLine: json['perLine'] as bool? ?? false,
+      lineGapFactor: (json['lineGapFactor'] as num?)?.toDouble() ?? 0,
+      maxLines: (json['maxLines'] as num?)?.toInt(),
+      align: json['align'] as String? ?? 'center',
+    );
+  }
+}
+
 /// One downloadable / bundled text template (CapCut-style pack item).
 @immutable
 class TextTemplatePackItem {
@@ -18,6 +57,7 @@ class TextTemplatePackItem {
     this.previewUrl,
     this.downloadSizeBytes = 0,
     this.animation = TextEntranceAnimation.none,
+    this.layout = const TextPackLayout(),
     this.sampleText,
     this.composition,
   });
@@ -46,6 +86,9 @@ class TextTemplatePackItem {
 
   /// Default entrance animation when this pack is applied.
   final TextEntranceAnimation animation;
+
+  /// Server-driven line geometry (per-line strips, gap, align).
+  final TextPackLayout layout;
 
   /// Dashboard-editable body shown on app tiles and applied for crawl packs.
   final String? sampleText;
@@ -90,6 +133,11 @@ class TextTemplatePackItem {
     if (previewUrl != null) 'previewUrl': previewUrl,
     'downloadSizeBytes': downloadSizeBytes,
     if (!animation.isNone) 'animation': animation.toJson(),
+    if (layout.perLine ||
+        layout.lineGapFactor != 0 ||
+        layout.maxLines != null ||
+        layout.align != 'center')
+      'layout': layout.toJson(),
     if (sampleText != null && sampleText!.isNotEmpty) 'sampleText': sampleText,
     if (composition != null) 'composition': composition!.toJson(),
   };
@@ -122,6 +170,9 @@ class TextTemplatePackItem {
       downloadSizeBytes: json['downloadSizeBytes'] as int? ?? 0,
       animation: TextEntranceAnimation.fromJson(
         json['animation'] as Map<String, dynamic>?,
+      ),
+      layout: TextPackLayout.fromJson(
+        json['layout'] as Map<String, dynamic>?,
       ),
       composition: composition,
       sampleText: (sample != null && sample.isNotEmpty)

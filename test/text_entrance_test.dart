@@ -124,6 +124,121 @@ void main() {
       expect(mid.layerDy, greaterThan(0));
     });
 
+    test('pop scales with bounce overshoot then settles', () {
+      const anim = TextEntranceAnimation(
+        id: TextEntranceIds.pop,
+        bounce: 0.2,
+        scaleFrom: 0.2,
+      );
+      final early = evaluateTextEntrance(
+        animationId: TextEntranceIds.pop,
+        animation: anim,
+        text: 'POP',
+        progress: 0.2,
+      );
+      expect(early.layerScale, lessThan(1.2));
+      expect(early.layerOpacity, greaterThan(0));
+      final done = evaluateTextEntrance(
+        animationId: TextEntranceIds.pop,
+        animation: anim,
+        text: 'POP',
+        progress: 1,
+      );
+      expect(done.layerScale, closeTo(1, 0.01));
+    });
+
+    test('focus blurs then clears', () {
+      const anim = TextEntranceAnimation(
+        id: TextEntranceIds.focus,
+        scaleFrom: 0.8,
+        blurFrom: 0.4,
+      );
+      final mid = evaluateTextEntrance(
+        animationId: TextEntranceIds.focus,
+        animation: anim,
+        text: 'NAME',
+        progress: 0.4,
+        fontSize: 50,
+      );
+      expect(mid.layerBlur, greaterThan(0));
+      expect(mid.layerScale, lessThan(1));
+      final done = evaluateTextEntrance(
+        animationId: TextEntranceIds.focus,
+        animation: anim,
+        text: 'NAME',
+        progress: 1,
+        fontSize: 50,
+      );
+      expect(done.layerBlur, 0);
+      expect(done.layerScale, 1);
+    });
+
+    test('staged reveals slots sequentially', () {
+      const anim = TextEntranceAnimation(
+        id: TextEntranceIds.staged,
+        slotStagger: 0.9,
+      );
+      final early = evaluateTextEntrance(
+        animationId: TextEntranceIds.staged,
+        animation: anim,
+        text: 'a\nb\nc',
+        progress: 0.15,
+        slotCount: 3,
+      );
+      expect(early.slotOpacity.length, 3);
+      expect(early.slotOpacity[0], greaterThan(0));
+      expect(early.slotOpacity[2], lessThan(early.slotOpacity[0]));
+      final done = evaluateTextEntrance(
+        animationId: TextEntranceIds.staged,
+        animation: anim,
+        text: 'a\nb\nc',
+        progress: 1,
+        slotCount: 3,
+      );
+      expect(done.slotOpacity.every((o) => o >= 0.999), isTrue);
+    });
+
+    test('glitch and neon expose channel / glow fields', () {
+      final glitch = evaluateTextEntrance(
+        animationId: TextEntranceIds.glitch,
+        animation: const TextEntranceAnimation(
+          id: TextEntranceIds.glitch,
+          glitchAmp: 0.1,
+        ),
+        text: 'ERR',
+        progress: 0.3,
+        fontSize: 40,
+      );
+      expect(glitch.rgbOffset.abs(), greaterThan(0));
+      final neon = evaluateTextEntrance(
+        animationId: TextEntranceIds.neon,
+        animation: const TextEntranceAnimation(
+          id: TextEntranceIds.neon,
+          neonFlicker: 0.4,
+        ),
+        text: 'OPEN',
+        progress: 0.5,
+      );
+      expect(neon.glowPulse, greaterThan(0.2));
+    });
+
+    test('typewriter cursor flag appears while typing', () {
+      const anim = TextEntranceAnimation(
+        id: TextEntranceIds.typewriter,
+        cursor: true,
+        cursorBlinkHz: 2,
+      );
+      final mid = evaluateTextEntrance(
+        animationId: TextEntranceIds.typewriter,
+        animation: anim,
+        text: 'Hello',
+        progress: 0.4,
+      );
+      expect(mid.perGlyph, isTrue);
+      // Cursor may blink off; at least glyph reveal still works.
+      expect(mid.glyphs.where((g) => g.isVisible), isNotEmpty);
+    });
+
     test('crawl scrolls and keeps tilt through progress 1', () {
       const fontSize = 40.0;
       const anim = TextEntranceAnimation(

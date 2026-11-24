@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:aveditor/models/text_entrance_animation.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/services/sticker_storage_service.dart';
+import 'package:aveditor/services/text_template_pack_service.dart';
 import 'package:aveditor/widgets/overlay_geometry.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/widgets/text_entrance.dart';
@@ -212,6 +213,11 @@ class OverlayRasterService {
           overlay,
           frameWidth: width.toDouble(),
         ).fontSize,
+        slotCount: TextTemplatePackService.instance
+            .itemById(overlay.packItemId)
+            ?.composition
+            ?.slots
+            .length,
       );
       final bytes = await renderToPng(
         overlay,

@@ -14,6 +14,7 @@ import 'package:aveditor/widgets/overlay_geometry.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/widgets/overflow_hit_stack.dart';
 import 'package:aveditor/widgets/text_entrance.dart';
+import 'package:aveditor/services/text_template_pack_service.dart';
 import 'package:aveditor/widgets/text_template_pack_browser.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -88,8 +89,8 @@ class VideoPreviewWithOverlays extends StatefulWidget {
   final List<TextOverlay> overlays;
   final Duration position;
 
-  /// When false (paused / scrubbing), entrance animations show the finished look
-  /// so template styles stay visible while editing.
+  /// Playback flag. Short entrances also sample the playhead while scrubbing
+  /// mid-entrance; crawl always tracks the playhead.
   final bool isPlaying;
   final List<ClipSegment> segments;
 
@@ -1308,10 +1309,21 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
     }
     final template = resolveOverlayTemplate(widget.overlay);
     final anim = resolveOverlayAnimation(widget.overlay);
-    // Short entrances: paused / scrubbing / editing show the finished look.
-    // Continuous crawl always follows the playhead so scrubbing stays useful.
+    final entranceProgress = entranceProgressAt(
+      overlay: widget.overlay,
+      position: widget.playhead,
+      animation: anim,
+    );
+    // Dashboard always samples the playhead. In the editor:
+    // - playing / crawl → live sample
+    // - scrubbing mid-entrance (0 < t < 1) → live sample
+    // - paused at start/end → finished look so overlays stay readable
+    // - text editing → finished look
     final liveEntrance = !anim.isNone &&
-        (anim.isContinuous || (widget.isPlaying && !widget.editing));
+        !widget.editing &&
+        (anim.isContinuous ||
+            widget.isPlaying ||
+            (entranceProgress > 0 && entranceProgress < 1));
     final entrance = liveEntrance
         ? evaluateTextEntrance(
             animationId: anim.id,
@@ -1319,12 +1331,13 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
             text: widget.overlay.text.isEmpty
                 ? (widget.textHint ?? '')
                 : widget.overlay.text,
-            progress: entranceProgressAt(
-              overlay: widget.overlay,
-              position: widget.playhead,
-              animation: anim,
-            ),
+            progress: entranceProgress,
             fontSize: widget.box.fontSize,
+            slotCount: TextTemplatePackService.instance
+                .itemById(widget.overlay.packItemId)
+                ?.composition
+                ?.slots
+                .length,
           )
         : TextEntranceState.fullyVisible;
 
@@ -1369,6 +1382,10 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
       );
     }
 
+    final packComposition = TextTemplatePackService.instance
+        .itemById(widget.overlay.packItemId)
+        ?.composition;
+
     if (widget.editing) {
       final live = _controller.text;
       // Once the keyboard is up, hide the "tap to enter text" placeholder —
@@ -1388,6 +1405,7 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
           textAlign: widget.overlay.textAlign,
           hintColor: null,
           entrance: TextEntranceState.fullyVisible,
+          composition: packComposition,
         ),
       );
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1503,6 +1521,8 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
       // stays readable on bright video.
       hintColor: null,
       entrance: entrance,
+      // CapCut multi-slot packs (Chat Message, etc.) — same path as export.
+      composition: packComposition,
     );
 
     final packId = widget.overlay.packItemId;

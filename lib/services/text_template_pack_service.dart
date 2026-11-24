@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:aveditor/models/text_style_template.dart';
 import 'package:aveditor/models/text_template_pack.dart';
+import 'package:aveditor/services/text_pack_image_cache.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -79,6 +81,7 @@ class TextTemplatePackService extends ChangeNotifier {
       _catalog = catalog;
       _ready = true;
       notifyListeners();
+      unawaited(_warmUnderlayImages(catalog));
     } catch (error) {
       _lastError = error.toString();
       _catalog = TextTemplatePackCatalog.empty();
@@ -86,6 +89,22 @@ class TextTemplatePackService extends ChangeNotifier {
       notifyListeners();
       rethrow;
     }
+  }
+
+  Future<void> _warmUnderlayImages(TextTemplatePackCatalog catalog) async {
+    final keys = <String>{};
+    for (final item in catalog.allItems) {
+      final bg = item.style.lineBackground;
+      if (bg == null) continue;
+      final asset = bg.underlayAsset?.trim();
+      if (asset != null && asset.isNotEmpty) keys.add(asset);
+      keys.addAll(bg.underlayVariants);
+      final grain = bg.grainAsset?.trim();
+      if (grain != null && grain.isNotEmpty) keys.add(grain);
+    }
+    if (keys.isEmpty) return;
+    await TextPackImageCache.instance.warmKeys(keys);
+    notifyListeners();
   }
 
   Future<void> setRemoteBaseUrl(String url) async {
