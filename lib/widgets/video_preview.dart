@@ -26,12 +26,16 @@ export 'overlay_geometry.dart' show OverlayGeometry, OverlayBox;
 
 /// Metrics for the hidden edit field when a composition pack paints per-slot
 /// sizes (e.g. Chat Message bubbles at ~0.55× overlay fontSize).
-({double fontSize, double lineHeight, double padV}) _editMetricsForComposition(
+({double fontSize, double? lineHeight, double padV}) _editMetricsForComposition(
   TextComposition? composition,
   double baseFontSize,
 ) {
   if (composition == null || composition.slots.isEmpty) {
-    return (fontSize: baseFontSize, lineHeight: 1.0, padV: 0);
+    return (
+      fontSize: baseFontSize,
+      lineHeight: null,
+      padV: 0,
+    );
   }
   var maxFactor = 0.0;
   var padVSum = 0.0;
@@ -1421,10 +1425,10 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
           ? widget.overlay.style
           : TextOverlayStyle.plain,
       fontFamily: widget.overlay.fontFamily,
+      template: template,
     ).copyWith(
       color: template.resolveFill(widget.overlay.color),
       fontWeight: FontWeight.w700,
-      height: 1.0,
     );
   }
 
@@ -1655,13 +1659,18 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
         widget.box.fontSize,
       );
       final editFontSize = editMetrics.fontSize;
+      // Non-composition: same leading as paint (null = font metrics).
+      // Composition: slot metrics size the caret / per-bubble fields.
+      final editLineHeight = packComposition == null
+          ? _fillStyle.height
+          : editMetrics.lineHeight;
       final editStyle = _fillStyle.copyWith(
         fontSize: editFontSize,
         color: Colors.transparent,
         shadows: const [],
         letterSpacing: _fillStyle.letterSpacing ?? 0,
         wordSpacing: _fillStyle.wordSpacing ?? 0,
-        height: editMetrics.lineHeight,
+        height: editLineHeight,
       );
       final maxW = layoutMaxWidth(
         live.isEmpty ? (widget.textHint ?? '') : live,
@@ -1700,13 +1709,19 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
           cursorHeight: caretHeight,
           cursorRadius: Radius.circular((1.5 / _screenScale).clamp(1.0, 8.0)),
           cursorOpacityAnimates: false,
-          strutStyle: StrutStyle(
-            fontSize: editFontSize,
-            height: editMetrics.lineHeight,
-            fontWeight: editStyle.fontWeight,
-            forceStrutHeight: true,
-            leadingDistribution: TextLeadingDistribution.even,
-          ),
+          strutStyle: editLineHeight == null
+              ? StrutStyle(
+                  fontSize: editFontSize,
+                  fontWeight: editStyle.fontWeight,
+                  forceStrutHeight: false,
+                )
+              : StrutStyle(
+                  fontSize: editFontSize,
+                  height: editLineHeight,
+                  fontWeight: editStyle.fontWeight,
+                  forceStrutHeight: true,
+                  leadingDistribution: TextLeadingDistribution.even,
+                ),
           onTapOutside: (_) {},
           decoration: const InputDecoration(
             isDense: true,

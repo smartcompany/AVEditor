@@ -193,7 +193,54 @@ EdgeInsets overlayTextBackgroundPadding(double fontSize) {
   );
 }
 
-/// Paints one background strip per line (capsule or CapCut-like brush paper).
+/// YouTube Shorts-style: similar line widths → one block; big gap → per line.
+/// Ratio of shortest/longest ink width; at or above this → unified rectangle.
+const double kOverlayBlockBackgroundMinWidthRatio = 0.78;
+
+bool overlayLineWidthsPreferBlock(Iterable<double> widths) {
+  var minW = double.infinity;
+  var maxW = 0.0;
+  var count = 0;
+  for (final w in widths) {
+    if (w <= 0) continue;
+    count++;
+    if (w < minW) minW = w;
+    if (w > maxW) maxW = w;
+  }
+  if (count <= 1) return true;
+  if (maxW <= 0) return true;
+  return (minW / maxW) >= kOverlayBlockBackgroundMinWidthRatio;
+}
+
+void _paintCapsuleBackgroundRect({
+  required Canvas canvas,
+  required Rect rect,
+  required Color background,
+  required double fontSize,
+  required double radiusFactor,
+  required double shadowOpacity,
+  required double shadowBlurFactor,
+}) {
+  final radius = Radius.circular((fontSize * radiusFactor).clamp(4.0, 12.0));
+  if (shadowOpacity > 0) {
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect.translate(0, fontSize * 0.04), radius),
+      Paint()
+        ..color = const Color(0xFF000000).withValues(alpha: shadowOpacity)
+        ..maskFilter = MaskFilter.blur(
+          BlurStyle.normal,
+          (fontSize * shadowBlurFactor).clamp(1.0, 24.0),
+        ),
+    );
+  }
+  canvas.drawRRect(
+    RRect.fromRectAndRadius(rect, radius),
+    Paint()..color = background,
+  );
+}
+
+/// Capsule / brush strip behind glyphs. Capsule uses Shorts-like adaptive
+/// block vs per-line; brush (journal) always stays one strip per line.
 void paintOverlayLineBackgrounds({
   required Canvas canvas,
   required TextPainter painter,
@@ -216,30 +263,34 @@ void paintOverlayLineBackgrounds({
   final padH = fontSize * padHFactor;
   final padV = fontSize * padVFactor;
   final lines = painter.computeLineMetrics();
-  var lineIndex = 0;
+  final indexes = <int>[];
+  for (var i = 0; i < lines.length; i++) {
+    if (visibleLineIndexes == null || visibleLineIndexes.contains(i)) {
+      indexes.add(i);
+    }
+  }
+  if (indexes.isEmpty) return;
 
-  for (final line in lines) {
-    final include =
-        visibleLineIndexes == null || visibleLineIndexes.contains(lineIndex);
-    final index = lineIndex;
-    lineIndex++;
-    if (!include) continue;
-
+  Rect lineRect(int index) {
+    final line = lines[index];
     final ink = overlayLineInkY(
       painter: painter,
       lines: lines,
       lineIndex: index,
     );
-    final rect = Rect.fromLTWH(
+    return Rect.fromLTWH(
       origin.dx + line.left - padH,
       origin.dy + ink.top - padV,
       line.width + padH * 2,
       (ink.bottom - ink.top) + padV * 2,
     );
-    if (shape == TextStyleLineShape.brush) {
+  }
+
+  if (shape == TextStyleLineShape.brush) {
+    for (final index in indexes) {
       _paintBrushLineBackground(
         canvas: canvas,
-        rect: rect,
+        rect: lineRect(index),
         color: background,
         fontSize: fontSize,
         shadowOpacity: shadowOpacity,
@@ -247,25 +298,40 @@ void paintOverlayLineBackgrounds({
         lineBackground: lineBackground,
         lineIndex: index,
       );
-    } else {
-      final radius = Radius.circular((fontSize * radiusFactor).clamp(4.0, 12.0));
-      if (shadowOpacity > 0) {
-        final shadowPaint = Paint()
-          ..color = const Color(0xFF000000).withValues(alpha: shadowOpacity)
-          ..maskFilter = MaskFilter.blur(
-            BlurStyle.normal,
-            (fontSize * shadowBlurFactor).clamp(1.0, 24.0),
-          );
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(rect.translate(0, fontSize * 0.04), radius),
-          shadowPaint,
-        );
-      }
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(rect, radius),
-        Paint()..color = background,
-      );
     }
+    return;
+  }
+
+  final useBlock = overlayLineWidthsPreferBlock(
+    indexes.map((i) => lines[i].width),
+  );
+  if (useBlock) {
+    var union = lineRect(indexes.first);
+    for (var i = 1; i < indexes.length; i++) {
+      union = union.expandToInclude(lineRect(indexes[i]));
+    }
+    _paintCapsuleBackgroundRect(
+      canvas: canvas,
+      rect: union,
+      background: background,
+      fontSize: fontSize,
+      radiusFactor: radiusFactor,
+      shadowOpacity: shadowOpacity,
+      shadowBlurFactor: shadowBlurFactor,
+    );
+    return;
+  }
+
+  for (final index in indexes) {
+    _paintCapsuleBackgroundRect(
+      canvas: canvas,
+      rect: lineRect(index),
+      background: background,
+      fontSize: fontSize,
+      radiusFactor: radiusFactor,
+      shadowOpacity: shadowOpacity,
+      shadowBlurFactor: shadowBlurFactor,
+    );
   }
 }
 
@@ -470,9 +536,6 @@ TextStyle _baseTextStyle({
     color: foreground == null ? color : null,
     fontSize: fontSize,
     fontWeight: FontWeight.w700,
-    // 1.0 keeps ascent/descent tight. 1.15 added leading mostly under the
-    // baseline, so line backgrounds looked bottom-heavy around the glyphs.
-    height: 1.0,
     foreground: foreground,
     shadows: shadows,
   );
@@ -495,6 +558,7 @@ TextStyle overlayTextFillStyle({
   required double fontSize,
   TextOverlayStyle style = TextOverlayStyle.plain,
   String? fontFamily,
+  TextStyleTemplate? template,
 }) {
   final fill = overlayTextFillColor(style: style, accent: color);
   if (style == TextOverlayStyle.plain) {
@@ -1383,12 +1447,57 @@ void _paintGrowingLineBackgrounds({
   final padH = fontSize * padHFactor;
   final padV = fontSize * padVFactor;
 
-  for (final entry in lineRight.entries) {
-    final i = entry.key;
-    if (i < 0 || i >= lines.length) continue;
+  final active = lineRight.keys
+      .where((i) => i >= 0 && i < lines.length)
+      .toList()
+    ..sort();
+  if (active.isEmpty) return;
+
+  // Finished (full-line) widths decide block vs strips — same as settled paint.
+  final preferBlock = shape != TextStyleLineShape.brush &&
+      overlayLineWidthsPreferBlock(active.map((i) => lines[i].width));
+
+  if (preferBlock) {
+    var left = double.infinity;
+    var right = -double.infinity;
+    var top = double.infinity;
+    var bottom = -double.infinity;
+    for (final i in active) {
+      final line = lines[i];
+      final l = lineLeft[i] ?? line.left;
+      final r = lineRight[i]!;
+      final ink = overlayLineInkY(
+        painter: painter,
+        lines: lines,
+        lineIndex: i,
+      );
+      left = math.min(left, l);
+      right = math.max(right, r);
+      top = math.min(top, ink.top);
+      bottom = math.max(bottom, ink.bottom);
+    }
+    final width = (right - left).clamp(fontSize * 0.2, double.infinity);
+    _paintCapsuleBackgroundRect(
+      canvas: canvas,
+      rect: Rect.fromLTWH(
+        origin.dx + left - padH,
+        origin.dy + top - padV,
+        width + padH * 2,
+        (bottom - top) + padV * 2,
+      ),
+      background: background,
+      fontSize: fontSize,
+      radiusFactor: radiusFactor,
+      shadowOpacity: shadowOpacity,
+      shadowBlurFactor: shadowBlurFactor,
+    );
+    return;
+  }
+
+  for (final i in active) {
     final line = lines[i];
     final left = lineLeft[i] ?? line.left;
-    final right = entry.value;
+    final right = lineRight[i]!;
     final width = (right - left).clamp(fontSize * 0.2, double.infinity);
     final ink = overlayLineInkY(
       painter: painter,
@@ -1437,21 +1546,14 @@ void _paintGrowingLineBackgrounds({
       );
       if (clipped) canvas.restore();
     } else {
-      final radius = Radius.circular((fontSize * radiusFactor).clamp(4.0, 12.0));
-      if (shadowOpacity > 0) {
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(rect.translate(0, fontSize * 0.04), radius),
-          Paint()
-            ..color = const Color(0xFF000000).withValues(alpha: shadowOpacity)
-            ..maskFilter = MaskFilter.blur(
-              BlurStyle.normal,
-              (fontSize * shadowBlurFactor).clamp(1.0, 24.0),
-            ),
-        );
-      }
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(rect, radius),
-        Paint()..color = background,
+      _paintCapsuleBackgroundRect(
+        canvas: canvas,
+        rect: rect,
+        background: background,
+        fontSize: fontSize,
+        radiusFactor: radiusFactor,
+        shadowOpacity: shadowOpacity,
+        shadowBlurFactor: shadowBlurFactor,
       );
     }
   }
@@ -1579,6 +1681,7 @@ void paintOverlayTextLayer({
 }) {
   final template = resolveOverlayTemplate(overlay);
   final fillColor = template.resolveFill(overlay.color);
+  final pack = TextTemplatePackService.instance.itemById(overlay.packItemId);
   final metricsPainter = createOverlayTextPainter(
     text: overlay.text,
     style: _baseTextStyle(
@@ -1614,7 +1717,6 @@ void paintOverlayTextLayer({
     );
   }
 
-  final pack = TextTemplatePackService.instance.itemById(overlay.packItemId);
   final composition = pack?.composition;
   if (composition != null && composition.slots.isNotEmpty) {
     paintTextComposition(
