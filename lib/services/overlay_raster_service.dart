@@ -213,11 +213,13 @@ class OverlayRasterService {
           overlay,
           frameWidth: width.toDouble(),
         ).fontSize,
-        slotCount: TextTemplatePackService.instance
-            .itemById(overlay.packItemId)
-            ?.composition
-            ?.slots
-            .length,
+        slotCount: () {
+          final composition = TextTemplatePackService.instance
+              .itemById(overlay.packItemId)
+              ?.composition;
+          if (composition == null) return null;
+          return composition.paintedSlotCount(overlay.text);
+        }(),
       );
       final bytes = await renderToPng(
         overlay,

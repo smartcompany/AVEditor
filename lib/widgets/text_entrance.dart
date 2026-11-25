@@ -149,6 +149,7 @@ TextEntranceState evaluateTextEntrance({
     return _holdState(id: id, anim: anim, graphemes: graphemes, slots: slots);
   }
   if (t <= 0) {
+    final rise = fontSize * anim.riseFactor.clamp(0.05, 1.2);
     return TextEntranceState(
       animationId: id,
       progress: 0,
@@ -158,7 +159,7 @@ TextEntranceState evaluateTextEntrance({
       layerScale: anim.scaleFrom.clamp(0.05, 1.0),
       layerBlur: fontSize * anim.blurFrom,
       slotOpacity: List<double>.filled(slots, 0),
-      slotDy: List<double>.filled(slots, fontSize * 0.4),
+      slotDy: List<double>.filled(slots, rise),
       perGlyph: false,
     );
   }
@@ -431,7 +432,9 @@ TextEntranceState _stagedState(
   TextEntranceAnimation anim,
 ) {
   final n = math.max(1, slotCount);
-  final window = 0.32;
+  // Catalog-driven; previously hardcoded 0.32 / 0.4×fontSize (same as dashboard).
+  final window = anim.slotWindow.clamp(0.15, 0.6);
+  final rise = fontSize * anim.riseFactor.clamp(0.05, 1.2);
   // Higher slotStagger → later slots start later (more sequential).
   final span = (1.0 - window) * anim.slotStagger.clamp(0.05, 1.0);
   final opacities = <double>[];
@@ -439,9 +442,10 @@ TextEntranceState _stagedState(
   for (var i = 0; i < n; i++) {
     final start = n == 1 ? 0.0 : (i / (n - 1)) * span;
     final local = ((t - start) / window).clamp(0.0, 1.0);
+    // Ease-out cubic: fast rise, slow settle (dashboard parity).
     final eased = _easeOutCubic(local);
     opacities.add(eased);
-    dys.add((1 - eased) * fontSize * 0.4);
+    dys.add((1 - eased) * rise);
   }
   return TextEntranceState(
     animationId: TextEntranceIds.staged,

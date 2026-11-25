@@ -1,5 +1,5 @@
 {
-  "version": 15,
+  "version": 19,
   "baseUrl": "",
   "categories": [
     {
@@ -831,9 +831,11 @@
           "title": "Chat Message",
           "kind": "template",
           "downloadSizeBytes": 0,
-          "sampleText": "hey!\nyeah I'm free\nlet's go ☕",
+          "sampleText": "hey!\nyeah I'm free",
           "animation": {
             "slotStagger": 0.9,
+            "slotWindow": 0.38,
+            "riseFactor": 0.65,
             "id": "staged",
             "durationMs": 1400
           },
@@ -847,6 +849,7 @@
           "composition": {
             "align": "start",
             "gapFactor": 0.28,
+            "repeatSlots": true,
             "slots": [
               {
                 "id": "m1",
@@ -872,18 +875,6 @@
                 "boxFillColor": 4293257195,
                 "boxPadHFactor": 0.45,
                 "boxPadVFactor": 0.28
-              },
-              {
-                "id": "m3",
-                "role": "body",
-                "defaultText": "let's go ☕",
-                "fontSizeFactor": 0.55,
-                "fontWeight": 500,
-                "fillColor": 4294967295,
-                "align": "start",
-                "boxFillColor": 4282090230,
-                "boxPadHFactor": 0.45,
-                "boxPadVFactor": 0.28
               }
             ]
           },
@@ -898,6 +889,8 @@
           "sampleText": "EXTRA\nCity awakens\nMorning edition",
           "animation": {
             "slotStagger": 0.75,
+            "slotWindow": 0.32,
+            "riseFactor": 0.4,
             "id": "staged",
             "durationMs": 1200
           },
@@ -1029,6 +1022,8 @@
           "sampleText": "Mina Park\n@mina\ncreating daily",
           "animation": {
             "slotStagger": 0.85,
+            "slotWindow": 0.32,
+            "riseFactor": 0.4,
             "id": "staged",
             "durationMs": 1300
           },
@@ -1083,6 +1078,8 @@
           "sampleText": "CHANNEL\nNAME",
           "animation": {
             "slotStagger": 0.7,
+            "slotWindow": 0.32,
+            "riseFactor": 0.4,
             "id": "staged",
             "durationMs": 1400
           },
@@ -1290,6 +1287,8 @@
           "sampleText": "◆\nBRAND",
           "animation": {
             "slotStagger": 0.65,
+            "slotWindow": 0.32,
+            "riseFactor": 0.4,
             "id": "staged",
             "durationMs": 1100
           },
@@ -1367,6 +1366,8 @@
           "sampleText": "Be still.\nAnd know.",
           "animation": {
             "slotStagger": 0.8,
+            "slotWindow": 0.32,
+            "riseFactor": 0.4,
             "id": "staged",
             "durationMs": 1400
           },
@@ -1527,6 +1528,8 @@
           "sampleText": "POV\nfirst date nerves",
           "animation": {
             "slotStagger": 0.7,
+            "slotWindow": 0.32,
+            "riseFactor": 0.4,
             "id": "staged",
             "durationMs": 1100
           },
@@ -1576,6 +1579,8 @@
           "sampleText": "life is not easy\nbut it is\nWORTH IT",
           "animation": {
             "slotStagger": 0.9,
+            "slotWindow": 0.32,
+            "riseFactor": 0.4,
             "id": "staged",
             "durationMs": 1600
           },
@@ -1778,6 +1783,8 @@
           "sampleText": "???\n42",
           "animation": {
             "slotStagger": 0.75,
+            "slotWindow": 0.32,
+            "riseFactor": 0.4,
             "id": "staged",
             "durationMs": 1300
           },
@@ -1823,6 +1830,8 @@
           "sampleText": "Messages\nNew reply\nSee what they said →",
           "animation": {
             "slotStagger": 0.55,
+            "slotWindow": 0.32,
+            "riseFactor": 0.4,
             "id": "staged",
             "durationMs": 900
           },

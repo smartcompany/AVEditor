@@ -4487,14 +4487,12 @@ class _EditorScreenState extends State<EditorScreen>
     if (controller != null && controller.value.isPlaying) {
       unawaited(controller.pause());
     }
-    // Empty overlays may still be one-glyph wide from older fits — expand so
-    // the placeholder stays horizontal under effects like Torn.
-    final fitted = overlay.text.trim().isEmpty
-        ? fitOverlayBoxToText(
-            overlay,
-            emptyPlaceholder: context.l10n.textOverlayHint,
-          )
-        : overlay;
+    // Always re-fit: composition packs (Chat Message) need chrome that hugs
+    // bubbles, not a full-font multiline measure from an older fit.
+    final fitted = fitOverlayBoxToText(
+      overlay,
+      emptyPlaceholder: context.l10n.textOverlayHint,
+    );
     if (fitted.boxWidth != overlay.boxWidth ||
         fitted.boxHeight != overlay.boxHeight) {
       _updateOverlay(fitted);

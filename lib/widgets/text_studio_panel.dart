@@ -41,18 +41,41 @@ class TextStudioPanel extends StatefulWidget {
 }
 
 class _TextStudioPanelState extends State<TextStudioPanel> {
-  TextStudioTab _tab = TextStudioTab.templates;
+  late TextStudioTab _tab;
 
   final _packService = TextTemplatePackService.instance;
   final _tabBarKey = GlobalKey();
 
+  static TextStudioTab tabForOverlay(TextOverlay overlay) {
+    final pack = TextTemplatePackService.instance.itemById(overlay.packItemId);
+    if (pack != null && pack.kind == 'template') {
+      return TextStudioTab.textTemplates;
+    }
+    return TextStudioTab.templates;
+  }
+
   @override
   void initState() {
     super.initState();
+    _tab = tabForOverlay(widget.overlay);
     _packService.addListener(_onPackService);
     _packService.ensureInitialized().then((_) {
-      if (mounted) _prefetchPackFonts();
+      if (!mounted) return;
+      // Pack catalog may load after first frame — re-resolve tab then.
+      final next = tabForOverlay(widget.overlay);
+      if (next != _tab) setState(() => _tab = next);
+      _prefetchPackFonts();
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant TextStudioPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.overlay.packItemId != widget.overlay.packItemId ||
+        oldWidget.overlay.id != widget.overlay.id) {
+      final next = tabForOverlay(widget.overlay);
+      if (next != _tab) _tab = next;
+    }
   }
 
   void _prefetchPackFonts() {
@@ -526,7 +549,7 @@ class _PackAaPreviewState extends State<_PackAaPreview>
       text: widget.text,
       progress: progress,
       fontSize: 14,
-      slotCount: widget.composition?.slots.length,
+      slotCount: widget.composition?.paintedSlotCount(widget.text),
     );
   }
 

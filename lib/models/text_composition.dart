@@ -146,6 +146,15 @@ class TextCompDecoration {
   }
 }
 
+/// One painted row: style slot + body line.
+@immutable
+class TextCompEntry {
+  const TextCompEntry({required this.slot, required this.text});
+
+  final TextCompSlot slot;
+  final String text;
+}
+
 /// Declarative multi-slot template layout (server-driven).
 @immutable
 class TextComposition {
@@ -154,6 +163,7 @@ class TextComposition {
     this.align = TextCompAlign.center,
     this.gapFactor = 0.16,
     this.decorations = const [],
+    this.repeatSlots = false,
   });
 
   final TextCompAlign align;
@@ -161,13 +171,33 @@ class TextComposition {
   final List<TextCompSlot> slots;
   final List<TextCompDecoration> decorations;
 
+  /// When true (e.g. Chat Message), each newline is a new bubble and styles
+  /// cycle through [slots]. When false, extra lines fold into the last slot.
+  final bool repeatSlots;
+
   String get sampleText => slots.map((s) => s.defaultText).join('\n');
 
-  /// Split overlay body into per-slot strings (extra lines fold into last).
+  List<String> _linesOf(String overlayText) =>
+      overlayText.replaceAll('\r\n', '\n').split('\n');
+
+  /// How many bubbles / rows to paint for [overlayText].
+  int paintedSlotCount(String overlayText) {
+    if (slots.isEmpty) return 0;
+    if (!repeatSlots) return slots.length;
+    return _linesOf(overlayText).length.clamp(1, 999);
+  }
+
+  /// Split overlay body into per-slot strings.
+  ///
+  /// Default: extra lines fold into the last slot.
+  /// [repeatSlots]: one string per line (styles applied via [entriesFor]).
   List<String> textsFor(String overlayText) {
     final n = slots.length;
     if (n <= 0) return const [];
-    final lines = overlayText.replaceAll('\r\n', '\n').split('\n');
+    final lines = _linesOf(overlayText);
+    if (repeatSlots) {
+      return lines.isEmpty ? const [''] : lines;
+    }
     if (n == 1) return [lines.join('\n')];
     return [
       for (var i = 0; i < n; i++)
@@ -176,9 +206,31 @@ class TextComposition {
     ];
   }
 
+  /// Style + text pairs actually painted (expands when [repeatSlots]).
+  List<TextCompEntry> entriesFor(String overlayText) {
+    if (slots.isEmpty) return const [];
+    if (!repeatSlots) {
+      final texts = textsFor(overlayText);
+      return [
+        for (var i = 0; i < slots.length; i++)
+          TextCompEntry(
+            slot: slots[i],
+            text: i < texts.length ? texts[i] : '',
+          ),
+      ];
+    }
+    final lines = _linesOf(overlayText);
+    final rows = lines.isEmpty ? const [''] : lines;
+    return [
+      for (var i = 0; i < rows.length; i++)
+        TextCompEntry(slot: slots[i % slots.length], text: rows[i]),
+    ];
+  }
+
   Map<String, dynamic> toJson() => {
         'align': align.name,
         'gapFactor': gapFactor,
+        if (repeatSlots) 'repeatSlots': true,
         'slots': slots.map((s) => s.toJson()).toList(),
         if (decorations.isNotEmpty)
           'decorations': decorations.map((d) => d.toJson()).toList(),
@@ -188,6 +240,7 @@ class TextComposition {
     return TextComposition(
       align: _alignFrom(json['align'] as String?),
       gapFactor: (json['gapFactor'] as num?)?.toDouble() ?? 0.16,
+      repeatSlots: json['repeatSlots'] as bool? ?? false,
       slots: (json['slots'] as List<dynamic>? ?? const [])
           .map((e) => TextCompSlot.fromJson(e as Map<String, dynamic>))
           .toList(),

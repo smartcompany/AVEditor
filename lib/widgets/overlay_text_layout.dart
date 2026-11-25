@@ -549,6 +549,7 @@ OverlayBox overlayBoxForFrame(
     fontFamily: overlay.fontFamily,
     textAlign: overlay.textAlign,
     template: resolveOverlayTemplate(overlay),
+    packItemId: overlay.packItemId,
   );
   return OverlayBox(
     width: fitted.width * scale,
@@ -593,6 +594,7 @@ double overlayTextPadV({
 ///
 /// Empty text uses a short horizontal placeholder so the selection box stays
 /// wide enough for the on-canvas hint (not one glyph stacked vertically).
+/// Multi-slot packs use [measureTextCompositionSize] so chrome hugs bubbles.
 Size measureFittedOverlayBox({
   required String text,
   required double fontSize,
@@ -601,6 +603,7 @@ Size measureFittedOverlayBox({
   double maxWidth = maxOverlayBoxWidth,
   TextStyleTemplate? template,
   String? emptyPlaceholder,
+  String? packItemId,
 }) {
   final trimmed = text.trim();
   final sample = trimmed.isEmpty
@@ -608,6 +611,27 @@ Size measureFittedOverlayBox({
             ? emptyPlaceholder!.trim()
             : kEmptyOverlayLayoutSample)
       : text;
+
+  final pack = TextTemplatePackService.instance.itemById(packItemId);
+  final composition = pack?.composition;
+  if (composition != null && composition.slots.isNotEmpty) {
+    final size = measureTextCompositionSize(
+      composition: composition,
+      text: sample,
+      fontSize: fontSize,
+      maxWidth: maxWidth,
+      fallbackStyle: template ?? pack!.style,
+      fontFamily: fontFamily,
+    );
+    // Small chrome pad so magenta handles clear bubble edges.
+    const chromePad = 8.0;
+    return Size(
+      (size.width + chromePad * 2).clamp(minOverlayBoxWidth, maxOverlayBoxWidth),
+      (size.height + chromePad * 2)
+          .clamp(minOverlayBoxHeight, maxOverlayBoxHeight),
+    );
+  }
+
   final padH = overlayTextPadH(fontSize: fontSize, template: template);
   final padV = overlayTextPadV(fontSize: fontSize, template: template);
   final innerMax = (maxWidth - padH * 2).clamp(fontSize, maxWidth);
@@ -648,6 +672,7 @@ TextOverlay fitOverlayBoxToText(
     textAlign: overlay.textAlign,
     template: resolveOverlayTemplate(overlay),
     emptyPlaceholder: emptyPlaceholder,
+    packItemId: overlay.packItemId,
   );
   if ((overlay.boxWidth - size.width).abs() < 0.5 &&
       (overlay.boxHeight - size.height).abs() < 0.5) {
@@ -1427,31 +1452,44 @@ class OverlayTextDisplay extends StatelessWidget {
   Widget build(BuildContext context) {
     final fill = hintColor ?? template.resolveFill(color);
     final hasComp = composition != null && composition!.slots.isNotEmpty;
-    // Composition size is estimated from stacked slot factors.
-    final size = hasComp
-        ? Size(
-            maxWidth,
-            fontSize *
-                composition!.slots.fold<double>(
-                  0,
-                  (sum, s) => sum + s.fontSizeFactor * 1.2,
-                ),
-          )
-        : () {
-            final probe = createOverlayTextPainter(
-              text: text,
-              style: _baseTextStyle(
-                fontSize: fontSize,
-                fontFamily: fontFamily,
-                color: fill,
-              ),
-              maxWidth: maxWidth,
-              textAlign: textAlign,
-            );
-            final s = Size(probe.width, probe.height);
-            probe.dispose();
-            return s;
-          }();
+    // Tight size must match paint — a crude slot-factor estimate was shorter
+    // / used full maxWidth, so OverflowBox centering left empty chrome gaps.
+    final Size size;
+    final double paintMaxWidth;
+    if (hasComp) {
+      final measured = measureTextCompositionSize(
+        composition: composition!,
+        text: text.isEmpty ? ' ' : text,
+        fontSize: fontSize,
+        maxWidth: maxWidth,
+        fallbackStyle: template,
+        fontFamily: fontFamily,
+      );
+      // Include staged rise so ease-out settle isn't clipped by paint bounds.
+      final rise = entrance?.slotDy.fold<double>(
+            0,
+            (m, v) => v > m ? v : m,
+          ) ??
+          0;
+      size = Size(measured.width, measured.height + rise);
+      // Lay out bubbles against their own width so start-align packs don't
+      // leave a hollow strip on the right inside a wider constraint.
+      paintMaxWidth = measured.width.clamp(1.0, maxWidth);
+    } else {
+      final probe = createOverlayTextPainter(
+        text: text,
+        style: _baseTextStyle(
+          fontSize: fontSize,
+          fontFamily: fontFamily,
+          color: fill,
+        ),
+        maxWidth: maxWidth,
+        textAlign: textAlign,
+      );
+      size = Size(probe.width, probe.height);
+      paintMaxWidth = maxWidth;
+      probe.dispose();
+    }
 
     return CustomPaint(
       size: size,
@@ -1459,7 +1497,7 @@ class OverlayTextDisplay extends StatelessWidget {
         text: text,
         color: color,
         fontSize: fontSize,
-        maxWidth: maxWidth,
+        maxWidth: paintMaxWidth,
         template: template,
         fontFamily: fontFamily,
         textAlign: textAlign,

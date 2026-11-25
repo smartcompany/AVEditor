@@ -7,6 +7,30 @@ import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/widgets/text_entrance.dart';
 import 'package:flutter/material.dart';
 
+/// Tight size of a composition stack (slots + decorations), matching paint.
+Size measureTextCompositionSize({
+  required TextComposition composition,
+  required String text,
+  required double fontSize,
+  required double maxWidth,
+  required TextStyleTemplate fallbackStyle,
+  String? fontFamily,
+}) {
+  final laid = _layoutCompositionSlots(
+    composition: composition,
+    text: text,
+    fontSize: fontSize,
+    maxWidth: maxWidth,
+    fallbackStyle: fallbackStyle,
+    fontFamily: fontFamily,
+    layerOpacity: 1,
+    slotOpacity: const [],
+    slotDy: const [],
+    disposePainters: true,
+  );
+  return Size(laid.totalW, laid.totalH);
+}
+
 /// Paints a server-driven [TextComposition] (slots + decorations).
 Size paintTextComposition({
   required Canvas canvas,
@@ -23,113 +47,44 @@ Size paintTextComposition({
   final state = entrance ?? TextEntranceState.fullyVisible;
   if (state.isInvisible) return Size.zero;
 
-  final slotTexts = composition.textsFor(text);
-  final gap = fontSize * composition.gapFactor;
-  final laid = <_SlotLayout>[];
-  var contentW = 0.0;
-  var contentH = 0.0;
-
-  for (var i = 0; i < composition.slots.length; i++) {
-    final slot = composition.slots[i];
-    final body = i < slotTexts.length ? slotTexts[i] : slot.defaultText;
-    final slotFs = (fontSize * slot.fontSizeFactor).clamp(6.0, 400.0);
-    final slotOp = i < state.slotOpacity.length
-        ? state.slotOpacity[i]
-        : state.layerOpacity;
-    if (slotOp <= 0.01 && state.slotOpacity.isNotEmpty) {
-      // Reserve layout height for staged slots that have not appeared yet.
-    }
-    final fillBase = slot.fillArgb != null
-        ? Color(slot.fillArgb!)
-        : (fallbackStyle.fillArgb != null
-              ? Color(fallbackStyle.fillArgb!)
-              : accent);
-    final fill = fillBase.withValues(
-      alpha: (state.layerOpacity * slotOp).clamp(0.0, 1.0),
-    );
-    final base = TextStyle(
-      fontSize: slotFs,
-      fontWeight: _fontWeight(slot.fontWeight),
-      fontStyle: slot.italic ? FontStyle.italic : FontStyle.normal,
-      letterSpacing: slot.letterSpacingEm * slotFs,
-      color: fill,
-      height: 1.05,
-    );
-    final styled = OverlayFonts.resolve(
-      slot.preferredFontId ?? fontFamily ?? fallbackStyle.preferredFontId,
-      base,
-    );
-    final painter = createOverlayTextPainter(
-      text: body.isEmpty ? ' ' : body,
-      style: styled,
-      maxWidth: maxWidth,
-      textAlign: _toAlign(slot.align),
-    );
-    final padH = slot.boxFillArgb != null ? slotFs * slot.boxPadHFactor : 0.0;
-    final padV = slot.boxFillArgb != null ? slotFs * slot.boxPadVFactor : 0.0;
-    final w = painter.width + padH * 2;
-    final h = painter.height + padV * 2;
-    final dx = fontSize * slot.dxFactor;
-    final slotDy =
-        i < state.slotDy.length ? state.slotDy[i] : 0.0;
-    laid.add(
-      _SlotLayout(
-        slot: slot,
-        painter: painter,
-        slotFontSize: slotFs,
-        width: w,
-        height: h,
-        padH: padH,
-        padV: padV,
-        dx: dx,
-        top: contentH,
-        opacity: slotOp,
-        dy: slotDy,
-      ),
-    );
-    contentW = math.max(contentW, w + dx.abs());
-    contentH += h;
-    if (i < composition.slots.length - 1) contentH += gap;
-  }
-
-  var leftInset = 0.0;
-  var rightInset = 0.0;
-  var topInset = 0.0;
-  for (final d in composition.decorations) {
-    final thick = fontSize * d.thicknessFactor;
-    final gapD = fontSize * d.gapFactor;
-    switch (d.kind) {
-      case TextCompDecorationKind.barV:
-        if (d.attach == 'left') leftInset = math.max(leftInset, thick + gapD);
-        if (d.attach == 'right') {
-          rightInset = math.max(rightInset, thick + gapD);
-        }
-      case TextCompDecorationKind.chevronDown:
-        if (d.attach == 'above') {
-          topInset = math.max(topInset, fontSize * d.heightFactor + gapD);
-        }
-      default:
-        break;
-    }
-  }
-
-  final totalW = contentW + leftInset + rightInset;
-  final totalH = contentH + topInset;
+  final laid = _layoutCompositionSlots(
+    composition: composition,
+    text: text,
+    fontSize: fontSize,
+    maxWidth: maxWidth,
+    fallbackStyle: fallbackStyle,
+    fontFamily: fontFamily,
+    layerOpacity: state.layerOpacity,
+    slotOpacity: state.slotOpacity,
+    slotDy: state.slotDy,
+    accent: accent,
+  );
+  final totalW = laid.totalW;
+  final totalH = laid.totalH;
+  final contentW = laid.contentW;
+  final contentH = laid.contentH;
+  final leftInset = laid.leftInset;
+  final topInset = laid.topInset;
   final stackLeft = origin.dx + leftInset;
   final stackTop = origin.dy + topInset + state.layerDy;
 
-  for (final s in laid) {
+  for (final s in laid.slots) {
     final x =
         stackLeft + s.dx + _alignOffset(composition.align, contentW, s.width);
     s.origin = Offset(x, stackTop + s.top + s.dy);
   }
 
-  final slotById = {for (final s in laid) s.slot.id: s};
+  final slotById = {for (final s in laid.slots) s.slot.id: s};
 
   canvas.save();
   if (state.layerOpacity < 0.999) {
     canvas.saveLayer(
-      Rect.fromLTWH(origin.dx - 4, stackTop - topInset - 4, totalW + 8, totalH + 8),
+      Rect.fromLTWH(
+        origin.dx - 4,
+        stackTop - topInset - 4,
+        totalW + 8,
+        totalH + 8,
+      ),
       Paint()..color = Color.fromRGBO(255, 255, 255, state.layerOpacity),
     );
   }
@@ -148,7 +103,7 @@ Size paintTextComposition({
     );
   }
 
-  for (final s in laid) {
+  for (final s in laid.slots) {
     if (s.opacity <= 0.01) {
       s.painter.dispose();
       continue;
@@ -188,6 +143,141 @@ Size paintTextComposition({
   canvas.restore();
 
   return Size(totalW, totalH);
+}
+
+class _CompositionLayout {
+  const _CompositionLayout({
+    required this.slots,
+    required this.contentW,
+    required this.contentH,
+    required this.leftInset,
+    required this.rightInset,
+    required this.topInset,
+  });
+
+  final List<_SlotLayout> slots;
+  final double contentW;
+  final double contentH;
+  final double leftInset;
+  final double rightInset;
+  final double topInset;
+
+  double get totalW => contentW + leftInset + rightInset;
+  double get totalH => contentH + topInset;
+}
+
+_CompositionLayout _layoutCompositionSlots({
+  required TextComposition composition,
+  required String text,
+  required double fontSize,
+  required double maxWidth,
+  required TextStyleTemplate fallbackStyle,
+  String? fontFamily,
+  required double layerOpacity,
+  required List<double> slotOpacity,
+  required List<double> slotDy,
+  Color accent = Colors.white,
+  bool disposePainters = false,
+}) {
+  final entries = composition.entriesFor(text);
+  final gap = fontSize * composition.gapFactor;
+  final laid = <_SlotLayout>[];
+  var contentW = 0.0;
+  var contentH = 0.0;
+
+  for (var i = 0; i < entries.length; i++) {
+    final slot = entries[i].slot;
+    final body = entries[i].text;
+    final slotFs = (fontSize * slot.fontSizeFactor).clamp(6.0, 400.0);
+    final slotOp =
+        i < slotOpacity.length ? slotOpacity[i] : layerOpacity;
+    final fillBase = slot.fillArgb != null
+        ? Color(slot.fillArgb!)
+        : (fallbackStyle.fillArgb != null
+              ? Color(fallbackStyle.fillArgb!)
+              : accent);
+    final fill = fillBase.withValues(
+      alpha: (layerOpacity * slotOp).clamp(0.0, 1.0),
+    );
+    final base = TextStyle(
+      fontSize: slotFs,
+      fontWeight: _fontWeight(slot.fontWeight),
+      fontStyle: slot.italic ? FontStyle.italic : FontStyle.normal,
+      letterSpacing: slot.letterSpacingEm * slotFs,
+      color: fill,
+      height: 1.05,
+    );
+    final styled = OverlayFonts.resolve(
+      slot.preferredFontId ?? fontFamily ?? fallbackStyle.preferredFontId,
+      base,
+    );
+    final painter = createOverlayTextPainter(
+      text: body.isEmpty ? ' ' : body,
+      style: styled,
+      maxWidth: maxWidth,
+      textAlign: _toAlign(slot.align),
+    );
+    final padH = slot.boxFillArgb != null ? slotFs * slot.boxPadHFactor : 0.0;
+    final padV = slot.boxFillArgb != null ? slotFs * slot.boxPadVFactor : 0.0;
+    final w = painter.width + padH * 2;
+    final h = painter.height + padV * 2;
+    final dx = fontSize * slot.dxFactor;
+    final dy = i < slotDy.length ? slotDy[i] : 0.0;
+    laid.add(
+      _SlotLayout(
+        slot: slot,
+        painter: painter,
+        slotFontSize: slotFs,
+        width: w,
+        height: h,
+        padH: padH,
+        padV: padV,
+        dx: dx,
+        top: contentH,
+        opacity: slotOp,
+        dy: dy,
+      ),
+    );
+    contentW = math.max(contentW, w + dx.abs());
+    contentH += h;
+    if (i < entries.length - 1) contentH += gap;
+  }
+
+  var leftInset = 0.0;
+  var rightInset = 0.0;
+  var topInset = 0.0;
+  for (final d in composition.decorations) {
+    final thick = fontSize * d.thicknessFactor;
+    final gapD = fontSize * d.gapFactor;
+    switch (d.kind) {
+      case TextCompDecorationKind.barV:
+        if (d.attach == 'left') leftInset = math.max(leftInset, thick + gapD);
+        if (d.attach == 'right') {
+          rightInset = math.max(rightInset, thick + gapD);
+        }
+      case TextCompDecorationKind.chevronDown:
+        if (d.attach == 'above') {
+          topInset = math.max(topInset, fontSize * d.heightFactor + gapD);
+        }
+      default:
+        break;
+    }
+  }
+
+  if (disposePainters) {
+    for (final s in laid) {
+      s.painter.dispose();
+    }
+  }
+
+  return _CompositionLayout(
+    slots: laid,
+    contentW: contentW,
+    contentH: contentH,
+    leftInset: leftInset,
+    rightInset: rightInset,
+    topInset: topInset,
+  );
 }
 
 FontWeight _fontWeight(int w) {

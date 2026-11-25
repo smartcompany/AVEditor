@@ -60,6 +60,8 @@ class TextEntranceAnimation {
     this.kineticAmp = defaultKineticAmp,
     this.kineticRotDeg = defaultKineticRotDeg,
     this.slotStagger = defaultSlotStagger,
+    this.slotWindow = defaultSlotWindow,
+    this.riseFactor = defaultRiseFactor,
     this.glitchAmp = defaultGlitchAmp,
     this.neonFlicker = defaultNeonFlicker,
     this.punch = defaultPunch,
@@ -81,6 +83,10 @@ class TextEntranceAnimation {
   static const defaultKineticAmp = 0.55;
   static const defaultKineticRotDeg = 12.0;
   static const defaultSlotStagger = 0.22;
+  /// Staged: each slot's local entrance length as a fraction of 0…1 progress.
+  static const defaultSlotWindow = 0.32;
+  /// Staged: how far each slot rises (× fontSize), ease-out into place.
+  static const defaultRiseFactor = 0.4;
   static const defaultGlitchAmp = 0.08;
   static const defaultNeonFlicker = 0.35;
   static const defaultPunch = 0.12;
@@ -116,6 +122,12 @@ class TextEntranceAnimation {
 
   /// Staged: fraction of timeline each slot waits before the next (0…0.8).
   final double slotStagger;
+
+  /// Staged: local progress window per slot (0.15…0.6).
+  final double slotWindow;
+
+  /// Staged: rise distance as × fontSize (ease-out cubic into place).
+  final double riseFactor;
 
   /// Glitch RGB / jitter amplitude as × fontSize.
   final double glitchAmp;
@@ -188,6 +200,8 @@ class TextEntranceAnimation {
         out['blurFrom'] = blurFrom;
       case TextEntranceIds.staged:
         out['slotStagger'] = slotStagger;
+        out['slotWindow'] = slotWindow;
+        out['riseFactor'] = riseFactor;
       case TextEntranceIds.impact:
         out['punch'] = punch;
         out['shake'] = shake;
@@ -230,6 +244,10 @@ class TextEntranceAnimation {
           (json['kineticRotDeg'] as num?)?.toDouble() ?? defaultKineticRotDeg,
       slotStagger:
           (json['slotStagger'] as num?)?.toDouble() ?? defaultSlotStagger,
+      slotWindow:
+          (json['slotWindow'] as num?)?.toDouble() ?? defaultSlotWindow,
+      riseFactor:
+          (json['riseFactor'] as num?)?.toDouble() ?? defaultRiseFactor,
       glitchAmp: (json['glitchAmp'] as num?)?.toDouble() ?? defaultGlitchAmp,
       neonFlicker:
           (json['neonFlicker'] as num?)?.toDouble() ?? defaultNeonFlicker,
@@ -255,6 +273,8 @@ class TextEntranceAnimation {
     double? kineticAmp,
     double? kineticRotDeg,
     double? slotStagger,
+    double? slotWindow,
+    double? riseFactor,
     double? glitchAmp,
     double? neonFlicker,
     double? punch,
@@ -277,6 +297,8 @@ class TextEntranceAnimation {
       kineticAmp: kineticAmp ?? this.kineticAmp,
       kineticRotDeg: kineticRotDeg ?? this.kineticRotDeg,
       slotStagger: slotStagger ?? this.slotStagger,
+      slotWindow: slotWindow ?? this.slotWindow,
+      riseFactor: riseFactor ?? this.riseFactor,
       glitchAmp: glitchAmp ?? this.glitchAmp,
       neonFlicker: neonFlicker ?? this.neonFlicker,
       punch: punch ?? this.punch,

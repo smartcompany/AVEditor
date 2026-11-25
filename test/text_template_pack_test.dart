@@ -21,7 +21,7 @@ void main() {
       jsonDecode(raw) as Map<String, dynamic>,
     );
 
-    expect(catalog.version, 15);
+    expect(catalog.version, 19);
     final effects = catalog.allItems.where((e) => e.kind == 'effect').toList();
     final templates =
         catalog.allItems.where((e) => e.kind == 'template').toList();
@@ -99,6 +99,14 @@ void main() {
 
     final crawl = catalog.itemById('tpl_star_wars_crawl')!;
     expect(crawl.animation.id, 'crawl');
+
+    final chat = catalog.itemById('tpl_chat_message')!;
+    expect(chat.composition?.repeatSlots, isTrue);
+    expect(chat.composition!.slots, hasLength(2));
+    expect(
+      chat.composition!.entriesFor('a\nb\nc\nd').map((e) => e.slot.id),
+      ['m1', 'm2', 'm1', 'm2'],
+    );
   });
 
   test('pack service loads bundled effect and template catalog', () async {

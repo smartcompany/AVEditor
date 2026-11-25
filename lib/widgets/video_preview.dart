@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:aveditor/models/clip_segment.dart';
+import 'package:aveditor/models/text_composition.dart';
 import 'package:aveditor/models/text_entrance_animation.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/text_overlay_style.dart';
@@ -13,6 +14,7 @@ import 'package:aveditor/widgets/basic_text_edit_toolbar.dart';
 import 'package:aveditor/widgets/overlay_geometry.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/widgets/overflow_hit_stack.dart';
+import 'package:aveditor/widgets/text_composition_paint.dart';
 import 'package:aveditor/widgets/text_entrance.dart';
 import 'package:aveditor/services/text_template_pack_service.dart';
 import 'package:aveditor/widgets/text_template_pack_browser.dart';
@@ -21,6 +23,36 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
 export 'overlay_geometry.dart' show OverlayGeometry, OverlayBox;
+
+/// Metrics for the hidden edit field when a composition pack paints per-slot
+/// sizes (e.g. Chat Message bubbles at ~0.55× overlay fontSize).
+({double fontSize, double lineHeight, double padV}) _editMetricsForComposition(
+  TextComposition? composition,
+  double baseFontSize,
+) {
+  if (composition == null || composition.slots.isEmpty) {
+    return (fontSize: baseFontSize, lineHeight: 1.0, padV: 0);
+  }
+  var maxFactor = 0.0;
+  var padVSum = 0.0;
+  var padVCount = 0;
+  for (final s in composition.slots) {
+    if (s.fontSizeFactor > maxFactor) maxFactor = s.fontSizeFactor;
+    if (s.boxFillArgb != null) {
+      padVSum += s.boxPadVFactor;
+      padVCount++;
+    }
+  }
+  if (maxFactor <= 0) maxFactor = 1;
+  final fontSize = (baseFontSize * maxFactor).clamp(10.0, baseFontSize);
+  final padVFactor = padVCount > 0 ? padVSum / padVCount : 0.0;
+  final padV = fontSize * padVFactor;
+  // Match composition row advance: glyph + bubble pads + inter-slot gap.
+  final slotH = fontSize * 1.05 + padV * 2;
+  final gap = baseFontSize * composition.gapFactor;
+  final lineHeight = ((slotH + gap) / fontSize).clamp(1.0, 4.0);
+  return (fontSize: fontSize, lineHeight: lineHeight, padV: padV);
+}
 
 /// Limits in frame pixels — see [kOverlayFrameWidth].
 const double minOverlayFontSize = 24;
@@ -1333,11 +1365,16 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
                 : widget.overlay.text,
             progress: entranceProgress,
             fontSize: widget.box.fontSize,
-            slotCount: TextTemplatePackService.instance
-                .itemById(widget.overlay.packItemId)
-                ?.composition
-                ?.slots
-                .length,
+            slotCount: () {
+              final composition = TextTemplatePackService.instance
+                  .itemById(widget.overlay.packItemId)
+                  ?.composition;
+              if (composition == null) return null;
+              final body = widget.overlay.text.isEmpty
+                  ? (widget.textHint ?? '')
+                  : widget.overlay.text;
+              return composition.paintedSlotCount(body);
+            }(),
           )
         : TextEntranceState.fullyVisible;
 
@@ -1351,7 +1388,31 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
       widget.box.width,
     );
 
+    final packComposition = TextTemplatePackService.instance
+        .itemById(widget.overlay.packItemId)
+        ?.composition;
+
+    // Staged rise paints below the settled glyph box — pin top so ease-out
+    // isn't vertically recentered (and clipped) each frame.
+    final previewAlign =
+        liveEntrance &&
+            anim.id == TextEntranceIds.staged &&
+            packComposition != null
+        ? Alignment.topCenter
+        : Alignment.center;
+
     double layoutMaxWidth(String displayText) {
+      if (packComposition != null) {
+        return measureTextCompositionSize(
+          composition: packComposition,
+          text: displayText.isEmpty ? ' ' : displayText,
+          fontSize: widget.box.fontSize,
+          maxWidth: maxOverlayBoxWidth,
+          fallbackStyle: template,
+          fontFamily: widget.overlay.fontFamily,
+        ).width
+            .clamp(1.0, maxOverlayBoxWidth);
+      }
       if (displayText.isEmpty) {
         return math.max(contentMaxWidth, widget.box.fontSize);
       }
@@ -1371,9 +1432,10 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
 
     Widget wrapPreview(Widget child) {
       return MediaQuery.withNoTextScaling(
-        child: Center(
+        child: Align(
+          alignment: previewAlign,
           child: OverflowBox(
-            alignment: Alignment.center,
+            alignment: previewAlign,
             maxWidth: double.infinity,
             maxHeight: double.infinity,
             child: child,
@@ -1382,18 +1444,39 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
       );
     }
 
-    final packComposition = TextTemplatePackService.instance
-        .itemById(widget.overlay.packItemId)
-        ?.composition;
-
     if (widget.editing) {
       final live = _controller.text;
       // Once the keyboard is up, hide the "tap to enter text" placeholder —
       // show only real typed characters (empty → caret only).
       final displayText = live;
-      final maxW = layoutMaxWidth(
-        live.isEmpty ? (widget.textHint ?? '') : live,
+      // Multi-slot packs paint smaller than overlay.fontSize — size the hidden
+      // field + caret to the dominant slot so the cursor is not box-tall.
+      final editMetrics = _editMetricsForComposition(
+        packComposition,
+        widget.box.fontSize,
       );
+      final editFontSize = editMetrics.fontSize;
+      final editStyle = _fillStyle.copyWith(
+        fontSize: editFontSize,
+        color: Colors.transparent,
+        shadows: const [],
+        letterSpacing: _fillStyle.letterSpacing ?? 0,
+        wordSpacing: _fillStyle.wordSpacing ?? 0,
+        height: editMetrics.lineHeight,
+      );
+      final maxW = packComposition != null
+          ? measureTextCompositionSize(
+              composition: packComposition,
+              text: live.isEmpty ? (widget.textHint ?? ' ') : live,
+              fontSize: widget.box.fontSize,
+              maxWidth: maxOverlayBoxWidth,
+              fallbackStyle: template,
+              fontFamily: widget.overlay.fontFamily,
+            ).width
+              .clamp(1.0, maxOverlayBoxWidth)
+          : layoutMaxWidth(
+              live.isEmpty ? (widget.textHint ?? '') : live,
+            );
       final painted = IgnorePointer(
         child: OverlayTextDisplay(
           text: displayText,
@@ -1411,6 +1494,10 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _syncScreenScale();
       });
+      // Glyph-tall caret (not chrome / full stack height).
+      final caretHeight = packComposition != null
+          ? editFontSize * 1.1
+          : math.min(widget.box.height, editFontSize * 1.35);
       final field = MediaQuery.withNoTextScaling(
         child: TextField(
           key: _fieldKey,
@@ -1423,30 +1510,26 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
           // bodyLarge carries letterSpacing 0.5. Pin spacing to the painted
           // style or the hidden field runs wider than the visible text and
           // taps / caret land on the wrong letter.
-          style: _fillStyle.copyWith(
-            color: Colors.transparent,
-            shadows: const [],
-            letterSpacing: _fillStyle.letterSpacing ?? 0,
-            wordSpacing: _fillStyle.wordSpacing ?? 0,
-          ),
+          style: editStyle,
           cursorColor: AppTheme.accent,
           cursorWidth: _cursorWidth,
-          // Match the chrome rect so the caret spans the full edit box, not
-          // just the font strut (pads made it look half-height and top-stuck).
-          cursorHeight: widget.box.height,
+          cursorHeight: caretHeight,
           cursorRadius: Radius.circular((1.5 / _screenScale).clamp(1.0, 8.0)),
           cursorOpacityAnimates: false,
           strutStyle: StrutStyle(
-            fontSize: _fillStyle.fontSize,
-            height: _fillStyle.height,
-            fontWeight: _fillStyle.fontWeight,
+            fontSize: editFontSize,
+            height: editMetrics.lineHeight,
+            fontWeight: editStyle.fontWeight,
             forceStrutHeight: true,
+            leadingDistribution: TextLeadingDistribution.even,
           ),
           onTapOutside: (_) {},
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             isDense: true,
             border: InputBorder.none,
-            contentPadding: EdgeInsets.zero,
+            // Nudge into the bubble pad so the caret sits on the glyph, not
+            // on the top edge of the chat bubble chrome.
+            contentPadding: EdgeInsets.only(top: editMetrics.padV),
             isCollapsed: true,
           ),
           onChanged: widget.onTextChanged,
@@ -1456,10 +1539,8 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
               widget.onEditingComplete?.call('textfield_submit'),
         ),
       );
-      // Same OverflowBox centering as the idle preview — do not force the
-      // paint into SizedBox(box) or content shifts right under pad constraints.
-      // Field height follows the glyphs (not the chrome) so the caret, which
-      // is centered on the line metrics, lines up with the painted text.
+      // Field height follows glyphs; composition paint is sized tightly so
+      // centering inside the chrome pad does not leave hollow strips.
       final stack = Stack(
         alignment: Alignment.center,
         clipBehavior: Clip.none,
