@@ -10,12 +10,15 @@ import 'package:aveditor/models/text_overlay_style.dart';
 import 'package:aveditor/models/text_style_template.dart';
 import 'package:aveditor/models/text_template_pack.dart';
 import 'package:aveditor/services/text_template_pack_service.dart';
+import 'package:aveditor/theme/app_theme.dart';
+import 'package:aveditor/widgets/editor_dock_chrome.dart';
 import 'package:aveditor/widgets/overlay_fonts.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/widgets/text_entrance.dart';
 import 'package:aveditor/utils/logged_snackbar.dart';
 import 'package:aveditor/widgets/text_template_pack_browser.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 enum TextStudioTab { templates, textTemplates }
 
@@ -247,12 +250,7 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
 
-    return Material(
-      color: const Color(0xFF12141A),
-      elevation: 8,
-      shadowColor: Colors.black54,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-      clipBehavior: Clip.antiAlias,
+    return EditorDockChrome.shell(
       child: LayoutBuilder(
         builder: (context, constraints) {
           final maxH = constraints.maxHeight;
@@ -290,35 +288,10 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
                 height: TextStudioPanel.headerHeight,
                 child: header,
               ),
-              if (applyingUpdate)
-                const LinearProgressIndicator(
-                  minHeight: 2,
-                  backgroundColor: Color(0xFF1C1F28),
-                  color: Color(0xFF4CC9F0),
-                ),
+              if (applyingUpdate) EditorDockChrome.progressBar(),
               Expanded(
-                child: !showCache
-                    ? const Center(
-                        child: SizedBox(
-                          width: 28,
-                          height: 28,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            color: Color(0xFF4CC9F0),
-                          ),
-                        ),
-                      )
-                    : applyingUpdate
-                    ? const Center(
-                        child: SizedBox(
-                          width: 28,
-                          height: 28,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            color: Color(0xFF4CC9F0),
-                          ),
-                        ),
-                      )
+                child: !showCache || applyingUpdate
+                    ? EditorDockChrome.loadingSpinner()
                     : _buildTabBody(l10n),
               ),
             ],
@@ -332,10 +305,9 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
     return Row(
       children: [
         Expanded(child: _buildTabBar(l10n)),
-        IconButton(
+        EditorDockChrome.closeButton(
           onPressed: widget.onConfirm,
           tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
-          icon: const Icon(Icons.close, color: Colors.white70),
         ),
         const SizedBox(width: 4),
       ],
@@ -355,39 +327,10 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
       separatorBuilder: (_, _) => const SizedBox(width: 4),
       itemBuilder: (context, index) {
         final (tab, label) = labeled[index];
-        final selected = _tab == tab;
-        return InkWell(
+        return EditorDockTabLabel(
+          label: label,
+          selected: _tab == tab,
           onTap: () => setState(() => _tab = tab),
-          borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 13,
-                    height: 1.2,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                    color: selected ? Colors.white : Colors.white60,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Container(
-                  height: 2,
-                  width: 22,
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? const Color(0xFF4CC9F0)
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(1),
-                  ),
-                ),
-              ],
-            ),
-          ),
         );
       },
     );
@@ -438,25 +381,25 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
                 ? 'No catalog items'
                 : 'Catalog unavailable\n$err',
             textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.white54, fontSize: 13),
+            style: GoogleFonts.dmSans(color: AppTheme.muted, fontSize: 13),
           ),
         ),
       );
     }
 
     return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 4,
-        mainAxisSpacing: 8,
-        crossAxisSpacing: 8,
+        mainAxisSpacing: 10,
+        crossAxisSpacing: 10,
         childAspectRatio: 0.85,
       ),
       itemCount: packItems.length + defaultOffset,
       itemBuilder: (context, index) {
         if (includeDefault && index == 0) {
           final selected = widget.overlay.packItemId == null;
-          return _TemplateTile(
+          return EditorDockTile(
             selected: selected,
             label: l10n.textStudioDefault,
             onTap: _selectDefaultLook,
@@ -464,7 +407,7 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
               text: defaultTileText,
               // Fixed catalog look — do not bind to the live overlay color/font
               // or every tile jumps when another pack is selected.
-              color: Colors.white,
+              color: AppTheme.ink,
               fontSize: 22,
               maxWidth: 64,
               template: templateForBasicStyle(TextOverlayStyle.plain),
@@ -477,28 +420,35 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
         final installed = _packService.isInstalled(pack);
         final tileText = pack.tilePreviewText;
         final loopTile = loopSelectedAnimation && selected;
-        return _TemplateTile(
+        return EditorDockTile(
           selected: selected,
           label: pack.title,
           badge: pack.accessTier.isPaid
               ? Text(
                   pack.accessTier.badgeLabel,
-                  style: TextStyle(
+                  style: GoogleFonts.dmSans(
                     fontSize: 9,
                     fontWeight: FontWeight.w700,
                     color: pack.accessTier == EffectAccessTier.pro
-                        ? const Color(0xFFB388FF)
-                        : const Color(0xFF60A5FA),
+                        ? AppTheme.gradientPurple
+                        : AppTheme.accentCyan,
                   ),
                 )
               : downloading
               ? const SizedBox(
                   width: 12,
                   height: 12,
-                  child: CircularProgressIndicator(strokeWidth: 1.5),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 1.5,
+                    color: AppTheme.accent,
+                  ),
                 )
               : !installed
-              ? const Icon(Icons.download, size: 12, color: Colors.white54)
+              ? Icon(
+                  Icons.download_rounded,
+                  size: 12,
+                  color: AppTheme.muted.withValues(alpha: 0.85),
+                )
               : null,
           onTap: downloading ? null : () => _selectPack(pack),
           child: Stack(
@@ -688,64 +638,3 @@ class _PackAaPreviewState extends State<_PackAaPreview>
   }
 }
 
-class _TemplateTile extends StatelessWidget {
-  const _TemplateTile({
-    required this.selected,
-    required this.label,
-    required this.child,
-    required this.onTap,
-    this.badge,
-  });
-
-  final bool selected;
-  final String label;
-  final Widget child;
-  final VoidCallback? onTap;
-  final Widget? badge;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: const Color(0xFF1C1F28),
-      borderRadius: BorderRadius.circular(10),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: selected ? Colors.white : Colors.white12,
-              width: selected ? 2.5 : 1,
-            ),
-          ),
-          child: Stack(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(6, 8, 6, 6),
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: Center(child: ClipRect(child: child)),
-                    ),
-                    Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 10,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (badge != null) Positioned(right: 4, top: 4, child: badge!),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}

@@ -5,7 +5,9 @@ import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/services/giphy_service.dart';
 import 'package:aveditor/services/sticker_storage_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
+import 'package:aveditor/widgets/editor_dock_chrome.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 /// Result of picking a Giphy sticker and caching it under the project.
 class GiphyStickerPick {
@@ -32,7 +34,7 @@ enum _StickerTab {
   final String? query;
 }
 
-/// Docked sticker browser (same shell as [TransitionPickerPanel] / text studio).
+/// Docked sticker browser (same shell as text / transition studios).
 ///
 /// Height is owned by the editor dock; close with the header X ([onConfirm]).
 /// Tapping a sticker downloads it and calls [onPicked] (panel stays open for
@@ -45,7 +47,7 @@ class GiphyStickerPickerPanel extends StatefulWidget {
     required this.onConfirm,
   });
 
-  static const headerHeight = 48.0;
+  static const headerHeight = EditorDockChrome.headerHeight;
 
   final String projectDir;
   final ValueChanged<GiphyStickerPick> onPicked;
@@ -168,58 +170,58 @@ class _GiphyStickerPickerPanelState extends State<GiphyStickerPickerPanel> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final theme = Theme.of(context);
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final maxH = constraints.maxHeight;
-        final header = _buildHeader();
+    return EditorDockChrome.shell(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxH = constraints.maxHeight;
+          final header = _buildHeader();
 
-        if (maxH < GiphyStickerPickerPanel.headerHeight) {
-          return ClipRect(
-            child: Align(
-              alignment: Alignment.topCenter,
-              heightFactor: maxH / GiphyStickerPickerPanel.headerHeight,
-              child: SizedBox(
-                height: GiphyStickerPickerPanel.headerHeight,
-                width: constraints.maxWidth,
-                child: header,
-              ),
-            ),
-          );
-        }
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 4, 8),
-              child: header,
-            ),
-            SizedBox(
-              height: 36,
-              child: _buildTabBar(),
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: _buildBody(l10n),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-              child: Text(
-                l10n.stickerPoweredByGiphy,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: AppTheme.muted,
+          if (maxH < GiphyStickerPickerPanel.headerHeight) {
+            return ClipRect(
+              child: Align(
+                alignment: Alignment.topCenter,
+                heightFactor: maxH / GiphyStickerPickerPanel.headerHeight,
+                child: SizedBox(
+                  height: GiphyStickerPickerPanel.headerHeight,
+                  width: constraints.maxWidth,
+                  child: header,
                 ),
               ),
-            ),
-          ],
-        );
-      },
+            );
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                height: GiphyStickerPickerPanel.headerHeight,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 12, right: 4),
+                  child: header,
+                ),
+              ),
+              SizedBox(
+                height: 40,
+                child: _buildTabBar(),
+              ),
+              if (_loading && _items.isNotEmpty) EditorDockChrome.progressBar(),
+              Expanded(child: _buildBody(l10n)),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 2, 16, 10),
+                child: Text(
+                  l10n.stickerPoweredByGiphy,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 11,
+                    color: AppTheme.muted.withValues(alpha: 0.85),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 
@@ -233,23 +235,47 @@ class _GiphyStickerPickerPanelState extends State<GiphyStickerPickerPanel> {
             controller: _search,
             onChanged: _onQueryChanged,
             textInputAction: TextInputAction.search,
+            style: GoogleFonts.dmSans(color: AppTheme.ink, fontSize: 14),
+            cursorColor: AppTheme.accent,
             decoration: InputDecoration(
               hintText: l10n.stickerSearchHint,
-              prefixIcon: const Icon(Icons.search),
+              hintStyle: GoogleFonts.dmSans(
+                color: AppTheme.muted.withValues(alpha: 0.8),
+                fontSize: 14,
+              ),
+              prefixIcon: Icon(
+                Icons.search_rounded,
+                color: AppTheme.muted.withValues(alpha: 0.9),
+              ),
               isDense: true,
               filled: true,
               fillColor: AppTheme.surfaceElevated,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
+                borderSide: BorderSide(
+                  color: AppTheme.muted.withValues(alpha: 0.22),
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: AppTheme.muted.withValues(alpha: 0.22),
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: AppTheme.accent, width: 1.4),
               ),
             ),
           ),
         ),
-        IconButton(
+        EditorDockChrome.closeButton(
           onPressed: widget.onConfirm,
           tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
-          icon: const Icon(Icons.close, color: Colors.white70),
         ),
       ],
     );
@@ -260,44 +286,16 @@ class _GiphyStickerPickerPanelState extends State<GiphyStickerPickerPanel> {
     final searching = _search.text.trim().isNotEmpty;
     return ListView.separated(
       scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
       itemCount: tabs.length,
-      separatorBuilder: (_, _) => const SizedBox(width: 4),
+      separatorBuilder: (_, _) => const SizedBox(width: 2),
       itemBuilder: (context, index) {
         final tab = tabs[index];
         final selected = !searching && _tab == tab;
-        return InkWell(
+        return EditorDockTabLabel(
+          label: tab.label,
+          selected: selected,
           onTap: () => _selectTab(tab),
-          borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  tab.label,
-                  style: TextStyle(
-                    fontSize: 13,
-                    height: 1.2,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                    color: selected ? Colors.white : Colors.white60,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Container(
-                  height: 2,
-                  width: 22,
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? const Color(0xFF4CC9F0)
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(1),
-                  ),
-                ),
-              ],
-            ),
-          ),
         );
       },
     );
@@ -311,13 +309,13 @@ class _GiphyStickerPickerPanelState extends State<GiphyStickerPickerPanel> {
           child: Text(
             l10n.stickerApiKeyMissing,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: AppTheme.muted),
+            style: GoogleFonts.dmSans(color: AppTheme.muted),
           ),
         ),
       );
     }
     if (_loading && _items.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
+      return EditorDockChrome.loadingSpinner();
     }
     if (_error != null && _items.isEmpty) {
       return Center(
@@ -326,11 +324,12 @@ class _GiphyStickerPickerPanelState extends State<GiphyStickerPickerPanel> {
           children: [
             Text(
               l10n.stickerLoadFailed,
-              style: const TextStyle(color: AppTheme.muted),
+              style: GoogleFonts.dmSans(color: AppTheme.muted),
             ),
             const SizedBox(height: 8),
             TextButton(
               onPressed: () => unawaited(_load()),
+              style: TextButton.styleFrom(foregroundColor: AppTheme.accent),
               child: Text(l10n.retry),
             ),
           ],
@@ -341,51 +340,54 @@ class _GiphyStickerPickerPanelState extends State<GiphyStickerPickerPanel> {
       return Center(
         child: Text(
           l10n.stickerEmpty,
-          style: const TextStyle(color: AppTheme.muted),
+          style: GoogleFonts.dmSans(color: AppTheme.muted),
         ),
       );
     }
 
     return GridView.builder(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 4,
-        mainAxisSpacing: 8,
-        crossAxisSpacing: 8,
+        mainAxisSpacing: 10,
+        crossAxisSpacing: 10,
       ),
       itemCount: _items.length,
       itemBuilder: (context, index) {
         final item = _items[index];
         final busy = _busyId == item.id;
-        return Material(
-          color: AppTheme.surfaceElevated,
-          borderRadius: BorderRadius.circular(10),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: busy ? null : () => unawaited(_pick(item)),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Image.network(
+        return EditorDockTile(
+          selected: busy,
+          onTap: busy ? null : () => unawaited(_pick(item)),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(6),
+                child: Image.network(
                   item.previewUrl,
                   fit: BoxFit.contain,
-                  errorBuilder: (_, _, _) => const Icon(
+                  errorBuilder: (_, _, _) => Icon(
                     Icons.broken_image_outlined,
-                    color: AppTheme.muted,
+                    color: AppTheme.muted.withValues(alpha: 0.85),
                   ),
                 ),
-                if (busy)
-                  const ColoredBox(
-                    color: Color(0x66000000),
-                    child: Center(
-                      child: SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              if (busy)
+                ColoredBox(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  child: const Center(
+                    child: SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppTheme.accent,
                       ),
                     ),
                   ),
-              ],
-            ),
+                ),
+            ],
           ),
         );
       },

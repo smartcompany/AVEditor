@@ -6490,43 +6490,74 @@ class _ExportDockBusyOverlayState extends State<_ExportDockBusyOverlay>
     return AbsorbPointer(
       child: DecoratedBox(
         decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.72)),
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                AnimatedBuilder(
-                  animation: _motion,
-                  builder: (context, _) {
-                    final t = _motion.value;
-                    final bounce = math.sin(t * math.pi * 2) * 7;
-                    final wobble = math.sin(t * math.pi * 4) * 0.18;
-                    return Transform.translate(
-                      offset: Offset(0, bounce),
-                      child: Transform.rotate(
-                        angle: wobble,
-                        child: CustomPaint(
-                          size: const Size(78, 78),
-                          painter: _ScissorsMascotPainter(phase: t),
-                        ),
-                      ),
-                    );
-                  },
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final maxH = constraints.maxHeight;
+            final maxW = constraints.maxWidth;
+            // Compact dock (video maximized) — shrink mascot / drop label.
+            final showLabel = maxH >= 110;
+            final mascot = showLabel
+                ? (maxH * 0.48).clamp(36.0, 78.0)
+                : (maxH * 0.72).clamp(28.0, 56.0);
+            final bounceAmp = showLabel ? 7.0 : 3.0;
+            final gap = showLabel ? 10.0 : 0.0;
+
+            return Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: maxW < 200 ? 12 : 28,
+                  vertical: 4,
                 ),
-                const SizedBox(height: 14),
-                Text(
-                  widget.label,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.dmSans(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.ink,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: maxW,
+                      maxHeight: maxH,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AnimatedBuilder(
+                          animation: _motion,
+                          builder: (context, _) {
+                            final t = _motion.value;
+                            final bounce =
+                                math.sin(t * math.pi * 2) * bounceAmp;
+                            final wobble = math.sin(t * math.pi * 4) * 0.18;
+                            return Transform.translate(
+                              offset: Offset(0, bounce),
+                              child: Transform.rotate(
+                                angle: wobble,
+                                child: CustomPaint(
+                                  size: Size(mascot, mascot),
+                                  painter: _ScissorsMascotPainter(phase: t),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        if (showLabel) ...[
+                          SizedBox(height: gap),
+                          Text(
+                            widget.label,
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.dmSans(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.ink,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
       ),
     );
