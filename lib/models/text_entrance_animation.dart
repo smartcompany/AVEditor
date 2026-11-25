@@ -17,6 +17,11 @@ abstract final class TextEntranceIds {
   static const impact = 'impact';
   static const glitch = 'glitch';
   static const neon = 'neon';
+  static const wave = 'wave';
+  static const blurSlide = 'blur_slide';
+  static const dissolve = 'dissolve';
+  static const marquee = 'marquee';
+  static const karaoke = 'karaoke';
 
   static const all = [
     typewriter,
@@ -30,13 +35,19 @@ abstract final class TextEntranceIds {
     impact,
     glitch,
     neon,
+    wave,
+    blurSlide,
+    dissolve,
+    marquee,
+    karaoke,
   ];
 
   static bool isKnown(String? id) =>
       id != null && id.isNotEmpty && all.contains(id);
 
   /// Runs for the whole overlay duration instead of a short entrance hold.
-  static bool isContinuous(String? id) => id == crawl;
+  static bool isContinuous(String? id) =>
+      id == crawl || id == marquee || id == wave;
 }
 
 /// Pack / overlay entrance descriptor (server-driven).
@@ -210,6 +221,20 @@ class TextEntranceAnimation {
         out['glitchAmp'] = glitchAmp;
       case TextEntranceIds.neon:
         out['neonFlicker'] = neonFlicker;
+      case TextEntranceIds.wave:
+        out['kineticAmp'] = kineticAmp;
+        out['staggerOverlap'] = staggerOverlap;
+      case TextEntranceIds.blurSlide:
+        out['blurFrom'] = blurFrom;
+        out['scrollStartFactor'] = scrollStartFactor;
+      case TextEntranceIds.dissolve:
+        out['staggerOverlap'] = staggerOverlap;
+        out['kineticAmp'] = kineticAmp;
+      case TextEntranceIds.marquee:
+        out['scrollStartFactor'] = scrollStartFactor;
+        out['scrollEndFactor'] = scrollEndFactor;
+      case TextEntranceIds.karaoke:
+        out['staggerOverlap'] = staggerOverlap;
     }
     return out;
   }

@@ -1,12 +1,19 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:aveditor/models/text_entrance_animation.dart';
 import 'package:aveditor/models/text_style_template.dart';
 import 'package:aveditor/models/text_template_pack.dart';
 import 'package:aveditor/services/text_template_pack_service.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+TextTemplatePackCatalog loadFixtureCatalog() {
+  final raw = File('test/fixtures/text_packs_catalog.json').readAsStringSync();
+  return TextTemplatePackCatalog.fromJson(
+    jsonDecode(raw) as Map<String, dynamic>,
+  );
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -15,19 +22,16 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  test('bundled catalog ships effects and CapCut templates', () async {
-    final raw = await rootBundle.loadString('assets/text_packs/catalog.json');
-    final catalog = TextTemplatePackCatalog.fromJson(
-      jsonDecode(raw) as Map<String, dynamic>,
-    );
+  test('seed catalog fixture ships effects and CapCut templates', () {
+    final catalog = loadFixtureCatalog();
 
-    expect(catalog.version, greaterThanOrEqualTo(19));
+    expect(catalog.version, greaterThanOrEqualTo(22));
     final effects = catalog.allItems.where((e) => e.kind == 'effect').toList();
     final templates =
         catalog.allItems.where((e) => e.kind == 'template').toList();
     expect(effects, hasLength(50));
-    // Journal + Star Crawl + Credits + CapCut 30.
-    expect(templates, hasLength(33));
+    // Journal + Star Crawl + Credits + CapCut 47.
+    expect(templates, hasLength(50));
     expect(effects.take(3).map((e) => e.id), [
       'effect_pop_green',
       'effect_pastel',
@@ -44,6 +48,9 @@ void main() {
         'tpl_typewriter',
         'tpl_glitch',
         'tpl_neon',
+        'tpl_wave_text',
+        'tpl_karaoke_highlight',
+        'tpl_marker_highlight',
       ]),
     );
     final ids = catalog.allItems.map((e) => e.id).toList();
@@ -109,15 +116,12 @@ void main() {
     );
   });
 
-  test('pack service loads bundled effect and template catalog', () async {
+  test('pack service stays ready when remote catalog is unavailable', () async {
     final service = TextTemplatePackService();
     await service.ensureInitialized();
 
     expect(service.isReady, isTrue);
-    expect(service.itemById('effect_pop_green')?.title, 'Pop');
-    expect(service.styleFor('effect_pastel')?.fillGradient, isNotNull);
-    expect(service.itemById('pack_journal')?.kind, 'template');
-    expect(service.itemById('tpl_pop_up')?.animation.id, 'pop');
-    expect(service.itemById('tpl_neon')?.animation.id, 'neon');
+    // No bundled catalog — empty until a successful server fetch / disk cache.
+    expect(service.hasItems, isFalse);
   });
 }

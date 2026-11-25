@@ -1,5 +1,5 @@
 {
-  "version": 19,
+  "version": 22,
   "baseUrl": "",
   "categories": [
     {
@@ -402,7 +402,7 @@
           "id": "effect_comic",
           "title": "Comic",
           "kind": "effect",
-          "premium": false,
+          "premium": true,
           "downloadSizeBytes": 0,
           "style": {
             "id": "effect_comic",
@@ -427,7 +427,7 @@
             }
           },
           "sampleText": "Aa",
-          "accessTier": "free"
+          "accessTier": "plus"
         },
         {
           "id": "effect_candy",
@@ -664,7 +664,7 @@
           "id": "effect_neon_orange",
           "title": "Neon Orange",
           "kind": "effect",
-          "premium": false,
+          "premium": true,
           "downloadSizeBytes": 0,
           "style": {
             "id": "effect_neon_orange",
@@ -688,7 +688,7 @@
             }
           },
           "sampleText": "Aa",
-          "accessTier": "free"
+          "accessTier": "plus"
         },
         {
           "id": "effect_bubble",
@@ -1356,7 +1356,7 @@
           "id": "effect_bronze",
           "title": "Bronze",
           "kind": "effect",
-          "premium": false,
+          "premium": true,
           "downloadSizeBytes": 0,
           "style": {
             "id": "effect_bronze",
@@ -1380,7 +1380,7 @@
             ]
           },
           "sampleText": "Aa",
-          "accessTier": "free"
+          "accessTier": "plus"
         },
         {
           "id": "effect_emerald",
@@ -1459,7 +1459,7 @@
           "id": "effect_poster",
           "title": "Poster",
           "kind": "effect",
-          "premium": false,
+          "premium": true,
           "downloadSizeBytes": 0,
           "style": {
             "id": "effect_poster",
@@ -1484,7 +1484,7 @@
             }
           },
           "sampleText": "Aa",
-          "accessTier": "free"
+          "accessTier": "plus"
         }
       ]
     },
@@ -1549,7 +1549,7 @@
           "id": "tpl_star_wars_crawl",
           "title": "Star Crawl",
           "kind": "template",
-          "premium": false,
+          "premium": true,
           "downloadSizeBytes": 0,
           "animation": {
             "tiltDeg": 54,
@@ -1582,13 +1582,13 @@
             }
           },
           "sampleText": "Hello\n\nI am making a short film.\nThis is where the story begins.\n\nThank you for watching.\nSee you next time.",
-          "accessTier": "free"
+          "accessTier": "plus"
         },
         {
           "id": "tpl_credits_scroll",
           "title": "Credits Scroll",
           "kind": "template",
-          "premium": false,
+          "premium": true,
           "downloadSizeBytes": 0,
           "animation": {
             "tiltDeg": 0,
@@ -1614,7 +1614,7 @@
             }
           },
           "sampleText": "Hello\n\nI am making a short film.\nThis is where the story begins.\n\nThank you for watching.\nSee you next time.",
-          "accessTier": "free"
+          "accessTier": "plus"
         },
         {
           "id": "tpl_pop_up",
@@ -1837,8 +1837,8 @@
               }
             ]
           },
-          "accessTier": "free",
-          "premium": false
+          "accessTier": "plus",
+          "premium": true
         },
         {
           "id": "tpl_text_overlay",
@@ -1897,8 +1897,8 @@
               }
             ]
           },
-          "accessTier": "free",
-          "premium": false
+          "accessTier": "plus",
+          "premium": true
         },
         {
           "id": "tpl_social_profile",
@@ -2210,8 +2210,8 @@
               }
             ]
           },
-          "accessTier": "free",
-          "premium": false
+          "accessTier": "plus",
+          "premium": true
         },
         {
           "id": "tpl_watermark",
@@ -2587,8 +2587,8 @@
               }
             ]
           },
-          "accessTier": "free",
-          "premium": false
+          "accessTier": "plus",
+          "premium": true
         },
         {
           "id": "tpl_meme",
@@ -2885,6 +2885,726 @@
               "useAccent": false,
               "color": 4278190080,
               "opacity": 0.4
+            }
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_text_behind",
+          "title": "Text Behind",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "BEHIND",
+          "animation": {
+            "scaleFrom": 0.82,
+            "blurFrom": 0.2,
+            "id": "focus",
+            "durationMs": 1400
+          },
+          "style": {
+            "id": "tpl_text_behind",
+            "label": "Text Behind",
+            "fillColor": 1728053247,
+            "fillUseAccent": false,
+            "preferredFontId": "blackHanSans",
+            "strokes": [
+              {
+                "widthFactor": 0.04,
+                "useAccent": false,
+                "color": 855638016
+              }
+            ]
+          },
+          "accessTier": "plus",
+          "premium": true
+        },
+        {
+          "id": "tpl_mirror_text",
+          "title": "Mirror Text",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "REFLECT",
+          "animation": {
+            "bounce": 0.12,
+            "shake": 0,
+            "scaleFrom": 0.55,
+            "id": "pop",
+            "durationMs": 900
+          },
+          "style": {
+            "id": "tpl_mirror_text",
+            "label": "Mirror Text",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "doHyeon",
+            "mirrorReflection": true,
+            "mirrorGapFactor": 0.14,
+            "shadow": {
+              "dxFactor": 0.04,
+              "dyFactor": 0.06,
+              "blurFactor": 0.22,
+              "useAccent": false,
+              "color": 4278190080,
+              "opacity": 0.35
+            }
+          },
+          "accessTier": "plus",
+          "premium": true
+        },
+        {
+          "id": "tpl_wave_text",
+          "title": "Wave Text",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "WAVE",
+          "animation": {
+            "staggerOverlap": 0.55,
+            "kineticAmp": 0.38,
+            "id": "wave",
+            "durationMs": 2200
+          },
+          "style": {
+            "id": "tpl_wave_text",
+            "label": "Wave Text",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "blackHanSans",
+            "strokes": [
+              {
+                "widthFactor": 0.1,
+                "useAccent": false,
+                "color": 4279308561
+              }
+            ]
+          },
+          "accessTier": "plus",
+          "premium": true
+        },
+        {
+          "id": "tpl_blur_slide",
+          "title": "Blur Slide",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "SLIDE IN",
+          "animation": {
+            "scrollStartFactor": 3.6,
+            "blurFrom": 0.65,
+            "id": "blur_slide",
+            "durationMs": 750
+          },
+          "style": {
+            "id": "tpl_blur_slide",
+            "label": "Blur Slide",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "doHyeon",
+            "strokes": [
+              {
+                "widthFactor": 0.08,
+                "useAccent": false,
+                "color": 4279308561
+              }
+            ],
+            "shadow": {
+              "dxFactor": 0.04,
+              "dyFactor": 0.06,
+              "blurFactor": 0.3,
+              "useAccent": false,
+              "color": 4278190080,
+              "opacity": 0.5
+            }
+          },
+          "accessTier": "plus",
+          "premium": true
+        },
+        {
+          "id": "tpl_dissolve_text",
+          "title": "Dissolve Text",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "DISSOLVE",
+          "animation": {
+            "staggerOverlap": 0.5,
+            "kineticAmp": 0.7,
+            "id": "dissolve",
+            "durationMs": 1400
+          },
+          "style": {
+            "id": "tpl_dissolve_text",
+            "label": "Dissolve Text",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "notoSansKr",
+            "shadow": {
+              "dxFactor": 0.04,
+              "dyFactor": 0.06,
+              "blurFactor": 0.35,
+              "useAccent": false,
+              "color": 4278190080,
+              "opacity": 0.45
+            }
+          },
+          "accessTier": "plus",
+          "premium": true
+        },
+        {
+          "id": "tpl_3d_extruded",
+          "title": "3D Extruded",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "DEPTH",
+          "animation": {
+            "punch": 0.16,
+            "shake": 0.04,
+            "bounce": 0.1,
+            "scaleFrom": 0.55,
+            "id": "impact",
+            "durationMs": 900
+          },
+          "style": {
+            "id": "tpl_3d_extruded",
+            "label": "3D Extruded",
+            "fillColor": 4294960486,
+            "fillUseAccent": false,
+            "preferredFontId": "blackHanSans",
+            "strokes": [
+              {
+                "widthFactor": 0.16,
+                "useAccent": false,
+                "color": 4286328082
+              },
+              {
+                "widthFactor": 0.08,
+                "useAccent": false,
+                "color": 4279308561
+              }
+            ],
+            "shadow": {
+              "dxFactor": 0.12,
+              "dyFactor": 0.14,
+              "blurFactor": 0.05,
+              "useAccent": false,
+              "color": 4288295954,
+              "opacity": 0.95
+            }
+          },
+          "accessTier": "plus",
+          "premium": true
+        },
+        {
+          "id": "tpl_perspective_text",
+          "title": "Perspective",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "APPROACH",
+          "animation": {
+            "bounce": 0.06,
+            "shake": 0,
+            "scaleFrom": 0.08,
+            "id": "pop",
+            "durationMs": 1200
+          },
+          "style": {
+            "id": "tpl_perspective_text",
+            "label": "Perspective",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "doHyeon",
+            "strokes": [
+              {
+                "widthFactor": 0.12,
+                "useAccent": false,
+                "color": 4279308561
+              }
+            ],
+            "shadow": {
+              "dxFactor": 0.04,
+              "dyFactor": 0.06,
+              "blurFactor": 0.4,
+              "useAccent": false,
+              "color": 4278190080,
+              "opacity": 0.7
+            }
+          },
+          "accessTier": "plus",
+          "premium": true
+        },
+        {
+          "id": "tpl_karaoke_highlight",
+          "title": "Karaoke Highlight",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "sing every word",
+          "animation": {
+            "staggerOverlap": 0.35,
+            "id": "karaoke",
+            "durationMs": 2400
+          },
+          "style": {
+            "id": "tpl_karaoke_highlight",
+            "label": "Karaoke Highlight",
+            "fillColor": 4291941851,
+            "fillUseAccent": false,
+            "preferredFontId": "gothicA1",
+            "strokes": [
+              {
+                "widthFactor": 0.06,
+                "useAccent": false,
+                "color": 4279308561
+              }
+            ]
+          },
+          "accessTier": "plus",
+          "premium": true
+        },
+        {
+          "id": "tpl_podcast_captions",
+          "title": "Podcast Captions",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "Alex\nthe key is consistency",
+          "animation": {
+            "slotStagger": 0.7,
+            "slotWindow": 0.36,
+            "riseFactor": 0.35,
+            "id": "staged",
+            "durationMs": 1200
+          },
+          "style": {
+            "id": "tpl_podcast_captions",
+            "label": "Podcast Captions",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "notoSansKr"
+          },
+          "composition": {
+            "align": "center",
+            "gapFactor": 0.18,
+            "slots": [
+              {
+                "id": "speaker",
+                "role": "eyebrow",
+                "defaultText": "Alex",
+                "fontSizeFactor": 0.42,
+                "fontWeight": 700,
+                "fillColor": 4287874557,
+                "align": "center"
+              },
+              {
+                "id": "caption",
+                "role": "body",
+                "defaultText": "the key is consistency",
+                "fontSizeFactor": 0.72,
+                "fontWeight": 700,
+                "fillColor": 4294967295,
+                "align": "center",
+                "boxFillColor": 2566914048,
+                "boxPadHFactor": 0.4,
+                "boxPadVFactor": 0.28
+              }
+            ]
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_news_ticker",
+          "title": "News Ticker",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "BREAKING  ·  Markets open higher  ·  Live updates",
+          "animation": {
+            "scrollStartFactor": 9,
+            "scrollEndFactor": -12,
+            "id": "marquee",
+            "durationMs": 9000
+          },
+          "style": {
+            "id": "tpl_news_ticker",
+            "label": "News Ticker",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "roboto",
+            "lineBackground": {
+              "useAccent": false,
+              "color": 3854113820,
+              "opacity": 1,
+              "padHFactor": 0.55,
+              "padVFactor": 0.32,
+              "radiusFactor": 0.08,
+              "shape": "capsule",
+              "shadowOpacity": 0.25,
+              "shadowBlurFactor": 0.12
+            }
+          },
+          "accessTier": "plus",
+          "premium": true
+        },
+        {
+          "id": "tpl_lower_third",
+          "title": "Lower Third",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "Jordan Lee\nProducer · AV Studio",
+          "animation": {
+            "slotStagger": 0.55,
+            "slotWindow": 0.4,
+            "riseFactor": 0.2,
+            "id": "staged",
+            "durationMs": 1100
+          },
+          "style": {
+            "id": "tpl_lower_third",
+            "label": "Lower Third",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "notoSansKr"
+          },
+          "composition": {
+            "align": "start",
+            "gapFactor": 0.1,
+            "slots": [
+              {
+                "id": "name",
+                "role": "title",
+                "defaultText": "Jordan Lee",
+                "fontSizeFactor": 0.78,
+                "fontWeight": 800,
+                "fillColor": 4294967295,
+                "align": "start",
+                "boxFillColor": 4280640491,
+                "boxPadHFactor": 0.55,
+                "boxPadVFactor": 0.28
+              },
+              {
+                "id": "role",
+                "role": "subtitle",
+                "defaultText": "Producer · AV Studio",
+                "fontSizeFactor": 0.42,
+                "fontWeight": 500,
+                "fillColor": 4294967295,
+                "align": "start",
+                "boxFillColor": 3423672359,
+                "boxPadHFactor": 0.5,
+                "boxPadVFactor": 0.24
+              }
+            ]
+          },
+          "accessTier": "plus",
+          "premium": true
+        },
+        {
+          "id": "tpl_split_compare",
+          "title": "Split Compare",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "BEFORE\nAFTER",
+          "animation": {
+            "slotStagger": 0.65,
+            "slotWindow": 0.38,
+            "riseFactor": 0.25,
+            "id": "staged",
+            "durationMs": 1000
+          },
+          "style": {
+            "id": "tpl_split_compare",
+            "label": "Split Compare",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "blackHanSans"
+          },
+          "composition": {
+            "align": "center",
+            "gapFactor": 0.35,
+            "slots": [
+              {
+                "id": "left",
+                "role": "title",
+                "defaultText": "BEFORE",
+                "fontSizeFactor": 0.7,
+                "fontWeight": 900,
+                "fillColor": 4294472049,
+                "align": "center",
+                "dxFactor": -0.9
+              },
+              {
+                "id": "right",
+                "role": "title",
+                "defaultText": "AFTER",
+                "fontSizeFactor": 0.7,
+                "fontWeight": 900,
+                "fillColor": 4283096704,
+                "align": "center",
+                "dxFactor": 0.9
+              }
+            ],
+            "decorations": [
+              {
+                "id": "divider",
+                "kind": "bar_v",
+                "color": 4294967295,
+                "opacity": 0.85,
+                "thicknessFactor": 0.06,
+                "lengthFactor": 2.2
+              }
+            ]
+          },
+          "accessTier": "plus",
+          "premium": true
+        },
+        {
+          "id": "tpl_be_in_a_book",
+          "title": "Be In A Book",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "Chapter One\nThe road unfurled",
+          "animation": {
+            "id": "fade",
+            "durationMs": 1400
+          },
+          "style": {
+            "id": "tpl_be_in_a_book",
+            "label": "Be In A Book",
+            "fillColor": 4279308561,
+            "fillUseAccent": false,
+            "preferredFontId": "gaegu",
+            "lineBackground": {
+              "useAccent": false,
+              "color": 4294308070,
+              "opacity": 1,
+              "padHFactor": 0.7,
+              "padVFactor": 0.55,
+              "radiusFactor": 0.06,
+              "shape": "capsule",
+              "shadowOpacity": 0.28,
+              "shadowBlurFactor": 0.18
+            }
+          },
+          "composition": {
+            "align": "center",
+            "gapFactor": 0.2,
+            "slots": [
+              {
+                "id": "chapter",
+                "role": "eyebrow",
+                "defaultText": "Chapter One",
+                "fontSizeFactor": 0.4,
+                "fontWeight": 600,
+                "italic": true,
+                "fillColor": 4285231744,
+                "align": "center"
+              },
+              {
+                "id": "line",
+                "role": "title",
+                "defaultText": "The road unfurled",
+                "fontSizeFactor": 0.78,
+                "fontWeight": 700,
+                "fillColor": 4279308561,
+                "align": "center"
+              }
+            ]
+          },
+          "accessTier": "plus",
+          "premium": true
+        },
+        {
+          "id": "tpl_product_launch",
+          "title": "Product Launch",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "NEW ARRIVAL\nNova Buds\nShop now",
+          "animation": {
+            "slotStagger": 0.75,
+            "slotWindow": 0.34,
+            "riseFactor": 0.45,
+            "id": "staged",
+            "durationMs": 1400
+          },
+          "style": {
+            "id": "tpl_product_launch",
+            "label": "Product Launch",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "doHyeon"
+          },
+          "composition": {
+            "align": "center",
+            "gapFactor": 0.16,
+            "slots": [
+              {
+                "id": "badge",
+                "role": "eyebrow",
+                "defaultText": "NEW ARRIVAL",
+                "fontSizeFactor": 0.38,
+                "fontWeight": 800,
+                "letterSpacingEm": 0.18,
+                "fillColor": 4294688548,
+                "align": "center"
+              },
+              {
+                "id": "product",
+                "role": "title",
+                "defaultText": "Nova Buds",
+                "fontSizeFactor": 1.05,
+                "fontWeight": 900,
+                "fillColor": 4294967295,
+                "align": "center"
+              },
+              {
+                "id": "cta",
+                "role": "caption",
+                "defaultText": "Shop now",
+                "fontSizeFactor": 0.42,
+                "fontWeight": 700,
+                "fillColor": 4279308561,
+                "align": "center",
+                "boxFillColor": 4294688548,
+                "boxPadHFactor": 0.55,
+                "boxPadVFactor": 0.28
+              }
+            ]
+          },
+          "accessTier": "plus",
+          "premium": true
+        },
+        {
+          "id": "tpl_sale_price",
+          "title": "Sale Price",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "$89\n$49\n-45% SALE",
+          "animation": {
+            "bounce": 0.28,
+            "shake": 0.03,
+            "scaleFrom": 0.3,
+            "id": "pop",
+            "durationMs": 850
+          },
+          "style": {
+            "id": "tpl_sale_price",
+            "label": "Sale Price",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "blackHanSans"
+          },
+          "composition": {
+            "align": "center",
+            "gapFactor": 0.08,
+            "slots": [
+              {
+                "id": "was",
+                "role": "eyebrow",
+                "defaultText": "$89",
+                "fontSizeFactor": 0.4,
+                "fontWeight": 500,
+                "fillColor": 4288455599,
+                "align": "center"
+              },
+              {
+                "id": "now",
+                "role": "title",
+                "defaultText": "$49",
+                "fontSizeFactor": 1.15,
+                "fontWeight": 900,
+                "fillColor": 4293870660,
+                "align": "center"
+              },
+              {
+                "id": "sale",
+                "role": "caption",
+                "defaultText": "-45% SALE",
+                "fontSizeFactor": 0.42,
+                "fontWeight": 800,
+                "fillColor": 4294967295,
+                "align": "center",
+                "boxFillColor": 4293870660,
+                "boxPadHFactor": 0.45,
+                "boxPadVFactor": 0.22
+              }
+            ]
+          },
+          "accessTier": "free",
+          "premium": false
+        },
+        {
+          "id": "tpl_yearly_timeline",
+          "title": "Yearly Timeline",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "2019\nFirst launch",
+          "animation": {
+            "slotStagger": 0.6,
+            "slotWindow": 0.4,
+            "riseFactor": 0.5,
+            "id": "staged",
+            "durationMs": 1100
+          },
+          "style": {
+            "id": "tpl_yearly_timeline",
+            "label": "Yearly Timeline",
+            "fillColor": 4294967295,
+            "fillUseAccent": false,
+            "preferredFontId": "doHyeon"
+          },
+          "composition": {
+            "align": "center",
+            "gapFactor": 0.12,
+            "slots": [
+              {
+                "id": "year",
+                "role": "title",
+                "defaultText": "2019",
+                "fontSizeFactor": 1.2,
+                "fontWeight": 900,
+                "fillColor": 4281908728,
+                "align": "center"
+              },
+              {
+                "id": "moment",
+                "role": "subtitle",
+                "defaultText": "First launch",
+                "fontSizeFactor": 0.48,
+                "fontWeight": 500,
+                "fillColor": 4294967295,
+                "align": "center"
+              }
+            ]
+          },
+          "accessTier": "plus",
+          "premium": true
+        },
+        {
+          "id": "tpl_marker_highlight",
+          "title": "Marker Highlight",
+          "kind": "template",
+          "downloadSizeBytes": 0,
+          "sampleText": "key takeaway",
+          "animation": {
+            "staggerOverlap": 0.55,
+            "staggerBy": "glyph",
+            "cursor": false,
+            "cursorBlinkHz": 2,
+            "id": "typewriter",
+            "durationMs": 1100
+          },
+          "style": {
+            "id": "tpl_marker_highlight",
+            "label": "Marker Highlight",
+            "fillColor": 4279308561,
+            "fillUseAccent": false,
+            "preferredFontId": "gothicA1",
+            "lineBackground": {
+              "useAccent": false,
+              "color": 3439190087,
+              "opacity": 1,
+              "padHFactor": 0.28,
+              "padVFactor": 0.18,
+              "radiusFactor": 0.12,
+              "shape": "capsule",
+              "shadowOpacity": 0.1,
+              "shadowBlurFactor": 0.08
             }
           },
           "accessTier": "free",

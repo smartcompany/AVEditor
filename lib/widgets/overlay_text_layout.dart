@@ -1049,29 +1049,112 @@ void paintTextStyleTemplate({
       );
     }
 
-    _paintFillLayer(
-      canvas: canvas,
-      text: text,
-      fontSize: fontSize,
-      maxWidth: maxWidth,
-      origin: textOrigin,
-      color: fillColor,
-      fontFamily: fontFamily,
-      textAlign: textAlign,
-      fillShader: () {
-        final gradient = template.fillGradient;
-        if (gradient == null) return null;
-        return gradient.createShader(
+    final isKaraoke = state.animationId == TextEntranceIds.karaoke;
+    final karaokeProgress = state.highlightProgress.clamp(0.0, 1.0);
+    if (isKaraoke) {
+      _paintFillLayer(
+        canvas: canvas,
+        text: text,
+        fontSize: fontSize,
+        maxWidth: maxWidth,
+        origin: textOrigin,
+        color: fillColor,
+        fontFamily: fontFamily,
+        textAlign: textAlign,
+      );
+      if (karaokeProgress > 0.01) {
+        final highlight = accent.withValues(
+          alpha: (accent.a * opacity).clamp(0.0, 1.0),
+        );
+        canvas.save();
+        canvas.clipRect(
           Rect.fromLTWH(
             textOrigin.dx,
-            textOrigin.dy,
-            metricsPainter.width,
-            metricsPainter.height,
+            textOrigin.dy - fontSize * 0.25,
+            metricsPainter.width * karaokeProgress,
+            metricsPainter.height + fontSize * 0.5,
           ),
-          accent: fillColor,
         );
-      }(),
-    );
+        _paintFillLayer(
+          canvas: canvas,
+          text: text,
+          fontSize: fontSize,
+          maxWidth: maxWidth,
+          origin: textOrigin,
+          color: highlight,
+          fontFamily: fontFamily,
+          textAlign: textAlign,
+        );
+        canvas.restore();
+      }
+    } else {
+      _paintFillLayer(
+        canvas: canvas,
+        text: text,
+        fontSize: fontSize,
+        maxWidth: maxWidth,
+        origin: textOrigin,
+        color: fillColor,
+        fontFamily: fontFamily,
+        textAlign: textAlign,
+        fillShader: () {
+          final gradient = template.fillGradient;
+          if (gradient == null) return null;
+          return gradient.createShader(
+            Rect.fromLTWH(
+              textOrigin.dx,
+              textOrigin.dy,
+              metricsPainter.width,
+              metricsPainter.height,
+            ),
+            accent: fillColor,
+          );
+        }(),
+      );
+    }
+
+    if (template.mirrorReflection) {
+      final mirrorH = math.max(fontSize * 0.35, metricsPainter.height);
+      final gap = fontSize * template.mirrorGapFactor;
+      final mirrorTop = textOrigin.dy + metricsPainter.height + gap;
+      canvas.save();
+      canvas.translate(0, mirrorTop);
+      canvas.scale(1.0, -1.0);
+      final mirrorBounds = Rect.fromLTWH(
+        textOrigin.dx - fontSize * 0.2,
+        0,
+        metricsPainter.width + fontSize * 0.4,
+        mirrorH,
+      );
+      canvas.saveLayer(mirrorBounds, Paint());
+      _paintFillLayer(
+        canvas: canvas,
+        text: text,
+        fontSize: fontSize,
+        maxWidth: maxWidth,
+        origin: Offset(textOrigin.dx, 0),
+        color: fillColor.withValues(
+          alpha: (fillColor.a * opacity).clamp(0.0, 1.0),
+        ),
+        fontFamily: fontFamily,
+        textAlign: textAlign,
+      );
+      canvas.drawRect(
+        mirrorBounds,
+        Paint()
+          ..blendMode = BlendMode.dstIn
+          ..shader = ui.Gradient.linear(
+            Offset(mirrorBounds.left, mirrorBounds.top),
+            Offset(mirrorBounds.left, mirrorBounds.bottom),
+            [
+              const Color(0x73000000),
+              const Color(0x00000000),
+            ],
+          ),
+      );
+      canvas.restore();
+      canvas.restore();
+    }
 
     metricsPainter.dispose();
   }

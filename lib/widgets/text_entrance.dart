@@ -42,12 +42,16 @@ class TextEntranceState {
     this.cursorVisible = false,
     this.slotOpacity = const [],
     this.slotDy = const [],
+    this.highlightProgress = 1,
     this.perGlyph = true,
   });
 
   final String animationId;
   final double progress;
   final List<TextEntranceGlyph> glyphs;
+
+  /// Karaoke: 0…1 portion of the line that uses the accent/highlight fill.
+  final double highlightProgress;
 
   final double layerOpacity;
   final double layerDy;
@@ -137,6 +141,9 @@ TextEntranceState evaluateTextEntrance({
   if (id == TextEntranceIds.crawl) {
     return _crawlState(t, fontSize, animation);
   }
+  if (id == TextEntranceIds.marquee) {
+    return _marqueeState(t, fontSize, animation);
+  }
 
   final anim = animation ?? TextEntranceAnimation(id: id);
   final graphemes = text.characters.toList(growable: false);
@@ -146,7 +153,13 @@ TextEntranceState evaluateTextEntrance({
           : text.split('\n').where((l) => l.trim().isNotEmpty).length);
 
   if (t >= 1) {
-    return _holdState(id: id, anim: anim, graphemes: graphemes, slots: slots);
+    return _holdState(
+      id: id,
+      anim: anim,
+      graphemes: graphemes,
+      slots: slots,
+      fontSize: fontSize,
+    );
   }
   if (t <= 0) {
     final rise = fontSize * anim.riseFactor.clamp(0.05, 1.2);
@@ -209,6 +222,21 @@ TextEntranceState evaluateTextEntrance({
       return _glitchState(t, fontSize, anim);
     case TextEntranceIds.neon:
       return _neonState(t, anim);
+    case TextEntranceIds.wave:
+      return _waveState(t, graphemes, fontSize, anim);
+    case TextEntranceIds.blurSlide:
+      return _blurSlideState(t, fontSize, anim);
+    case TextEntranceIds.dissolve:
+      return _dissolveState(t, graphemes, fontSize, anim);
+    case TextEntranceIds.karaoke:
+      return TextEntranceState(
+        animationId: id,
+        progress: t,
+        glyphs: const [],
+        layerOpacity: 1,
+        highlightProgress: _easeInOutCubic(t),
+        perGlyph: false,
+      );
     default:
       return TextEntranceState(
         animationId: id,
@@ -224,6 +252,7 @@ TextEntranceState _holdState({
   required TextEntranceAnimation anim,
   required List<String> graphemes,
   required int slots,
+  double fontSize = 24,
 }) {
   final cursorOn = anim.cursor &&
       (math.sin(math.pi * 2 * anim.cursorBlinkHz * 1.0) > 0);
@@ -265,6 +294,17 @@ TextEntranceState _holdState({
         cursorVisible: cursorOn,
         perGlyph: false,
       );
+    case TextEntranceIds.karaoke:
+      return const TextEntranceState(
+        animationId: TextEntranceIds.karaoke,
+        progress: 1,
+        glyphs: [],
+        layerOpacity: 1,
+        highlightProgress: 1,
+        perGlyph: false,
+      );
+    case TextEntranceIds.wave:
+      return _waveState(1, graphemes, fontSize, anim);
     default:
       return TextEntranceState(
         animationId: id,
@@ -300,6 +340,113 @@ TextEntranceState _crawlState(
     layerScroll: scroll,
     layerPerspective: anim.crawlPerspective,
     perGlyph: false,
+  );
+}
+
+TextEntranceState _marqueeState(
+  double t,
+  double fontSize,
+  TextEntranceAnimation? animation,
+) {
+  final anim = animation ??
+      const TextEntranceAnimation(
+        id: TextEntranceIds.marquee,
+        durationMs: 8000,
+        scrollStartFactor: 8,
+        scrollEndFactor: -10,
+      );
+  final startX = fontSize * anim.scrollStartFactor;
+  final endX = fontSize * anim.scrollEndFactor;
+  return TextEntranceState(
+    animationId: TextEntranceIds.marquee,
+    progress: t,
+    glyphs: const [],
+    layerOpacity: 1,
+    layerDx: startX + (endX - startX) * t,
+    perGlyph: false,
+  );
+}
+
+TextEntranceState _waveState(
+  double t,
+  List<String> graphemes,
+  double fontSize,
+  TextEntranceAnimation anim,
+) {
+  final amp = fontSize * anim.kineticAmp.clamp(0.05, 0.8);
+  final phaseStep = 0.55 + anim.staggerOverlap.clamp(0.0, 0.9);
+  final glyphs = <TextEntranceGlyph>[];
+  for (var i = 0; i < graphemes.length; i++) {
+    if (graphemes[i] == '\n') {
+      glyphs.add(const TextEntranceGlyph(opacity: 1));
+      continue;
+    }
+    final dy = math.sin((t * math.pi * 2) + i * phaseStep) * amp;
+    glyphs.add(TextEntranceGlyph(opacity: 1, dy: dy));
+  }
+  return TextEntranceState(
+    animationId: TextEntranceIds.wave,
+    progress: t,
+    glyphs: glyphs,
+    layerOpacity: 1,
+    perGlyph: true,
+  );
+}
+
+TextEntranceState _blurSlideState(
+  double t,
+  double fontSize,
+  TextEntranceAnimation anim,
+) {
+  final eased = _easeOutCubic(t);
+  final travel = fontSize * anim.scrollStartFactor.clamp(0.8, 6.0);
+  return TextEntranceState(
+    animationId: TextEntranceIds.blurSlide,
+    progress: t,
+    glyphs: const [],
+    layerOpacity: eased,
+    layerDx: (1 - eased) * -travel,
+    layerBlur: (1 - eased) * fontSize * anim.blurFrom.clamp(0.05, 1.2),
+    perGlyph: false,
+  );
+}
+
+TextEntranceState _dissolveState(
+  double t,
+  List<String> graphemes,
+  double fontSize,
+  TextEntranceAnimation anim,
+) {
+  final overlap = anim.staggerOverlap.clamp(0.0, 0.9);
+  final amp = fontSize * anim.kineticAmp.clamp(0.1, 1.2);
+  final n = graphemes.where((g) => g != '\n').length;
+  final glyphs = <TextEntranceGlyph>[];
+  var gi = 0;
+  for (final g in graphemes) {
+    if (g == '\n') {
+      glyphs.add(const TextEntranceGlyph(opacity: 1));
+      continue;
+    }
+    final start = n <= 1 ? 0.0 : (gi / (n - 1)) * (1 - overlap);
+    final local = ((t - start) / (overlap + 0.2)).clamp(0.0, 1.0);
+    final scatter = 1 - _easeOutCubic(local);
+    final dir = gi.isEven ? 1.0 : -1.0;
+    glyphs.add(
+      TextEntranceGlyph(
+        opacity: local,
+        dx: dir * scatter * amp,
+        dy: -scatter * amp * 0.7,
+        scale: 0.85 + 0.15 * local,
+      ),
+    );
+    gi++;
+  }
+  return TextEntranceState(
+    animationId: TextEntranceIds.dissolve,
+    progress: t,
+    glyphs: glyphs,
+    layerOpacity: 1,
+    perGlyph: true,
   );
 }
 

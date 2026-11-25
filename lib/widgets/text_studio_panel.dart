@@ -69,27 +69,21 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
   Future<void> _syncCatalogOnOpen() async {
     await _packService.ensureInitialized();
     if (!mounted) return;
-    final next = tabForOverlay(widget.overlay);
-    setState(() {
-      _cacheVisible = _packService.hasItems;
-      if (next != _tab) _tab = next;
-    });
+    // Never reset [_tab] here — catalog reload must not undo the user's tab.
+    setState(() => _cacheVisible = _packService.hasItems);
     _prefetchPackFonts();
     await _packService.syncOnPanelOpen();
     if (!mounted) return;
-    final after = tabForOverlay(widget.overlay);
-    setState(() {
-      _cacheVisible = _packService.hasItems;
-      if (after != _tab) _tab = after;
-    });
+    setState(() => _cacheVisible = _packService.hasItems);
     _prefetchPackFonts();
   }
 
   @override
   void didUpdateWidget(covariant TextStudioPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.overlay.packItemId != widget.overlay.packItemId ||
-        oldWidget.overlay.id != widget.overlay.id) {
+    // Only follow overlay when the selection changes — not on pack apply /
+    // catalog refresh, which would yank the tab out from under the user.
+    if (oldWidget.overlay.id != widget.overlay.id) {
       final next = tabForOverlay(widget.overlay);
       if (next != _tab) _tab = next;
     }

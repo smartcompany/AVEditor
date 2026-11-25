@@ -76,7 +76,6 @@ flutter:
     - assets/fonts/DMSans-Regular.ttf
     - assets/fonts/DMSans-SemiBold.ttf
     - assets/icons/
-    - assets/text_packs/catalog.json
     - assets/text_packs/lottie/
     - assets/text_packs/journal/
     - assets/transitions/catalog.json

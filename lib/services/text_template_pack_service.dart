@@ -6,24 +6,25 @@ import 'package:aveditor/models/text_style_template.dart';
 import 'package:aveditor/models/text_template_pack.dart';
 import 'package:aveditor/services/text_pack_image_cache.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Loads Word Art catalogs from bundled assets and an optional remote base URL.
+/// Server-driven Word Art catalog.
 ///
-/// Lottie files are cached under the app documents directory so packs work
-/// offline after the first download (Giphy-style install flow).
+/// Flow:
+/// 1. Show disk cache immediately (if any).
+/// 2. Always fetch remote catalog.
+/// 3. If remote [version] differs from disk cache → replace + save disk.
+/// No bundled catalog — offline with empty disk shows an empty grid.
 class TextTemplatePackService extends ChangeNotifier {
-  TextTemplatePackService({
-    http.Client? httpClient,
-    this.bundledCatalogAsset = 'assets/text_packs/catalog.json',
-  }) : _http = httpClient ?? http.Client();
+  TextTemplatePackService({http.Client? httpClient})
+    : _http = httpClient ?? http.Client();
 
   static const remoteBaseUrlKey = 'text_template_pack_base_url';
   static const installedKey = 'text_template_pack_installed';
+  static const _diskCatalogFile = 'catalog.json';
 
   /// Production pack API on Vercel.
   static const defaultRemoteBaseUrl = 'https://aveditorserver.vercel.app/';
@@ -31,7 +32,6 @@ class TextTemplatePackService extends ChangeNotifier {
   static final TextTemplatePackService instance = TextTemplatePackService();
 
   final http.Client _http;
-  final String bundledCatalogAsset;
 
   TextTemplatePackCatalog _catalog = TextTemplatePackCatalog.empty();
   final Set<String> _installed = {};
@@ -66,21 +66,16 @@ class TextTemplatePackService extends ChangeNotifier {
     final run = refresh();
     _initFuture = run;
     try {
-      await run.timeout(const Duration(seconds: 6));
+      await run.timeout(const Duration(seconds: 8));
     } on TimeoutException {
       debugPrint('TextTemplatePackService: init timed out');
       _lastError = 'timeout';
-      if (!hasItems) {
-        await _loadBundledIntoState();
-      } else if (!_ready) {
-        _ready = true;
-        notifyListeners();
-      }
+      _ready = true;
+      notifyListeners();
     } catch (error) {
       debugPrint('TextTemplatePackService: init failed: $error');
-      if (!hasItems) {
-        await _loadBundledIntoState();
-      }
+      _ready = true;
+      notifyListeners();
     } finally {
       _initFuture = null;
     }
@@ -93,13 +88,20 @@ class TextTemplatePackService extends ChangeNotifier {
     await refresh(awaitRemote: true);
   }
 
-  /// Panel open: keep showing cache, silently fetch remote. Only when
-  /// [version] differs set [isSyncing] and replace the catalog (loading bar).
+  /// Test-only: install a catalog without hitting the network or disk.
+  @visibleForTesting
+  void debugSetCatalogForTest(TextTemplatePackCatalog catalog) {
+    _catalog = catalog;
+    _ready = true;
+    _lastError = null;
+    _syncing = false;
+  }
+
+  /// Panel open: show disk cache, then always fetch remote and replace when
+  /// the remote catalog [version] differs from the disk cache version.
   Future<void> syncOnPanelOpen() async {
     await ensureInitialized();
-    final base = _remoteBaseUrl.trim().isNotEmpty
-        ? _remoteBaseUrl.trim()
-        : defaultRemoteBaseUrl;
+    final base = _resolvedBaseUrl();
     if (base.isEmpty) return;
 
     final existing = _syncFuture;
@@ -108,7 +110,7 @@ class TextTemplatePackService extends ChangeNotifier {
       return;
     }
 
-    final run = _syncRemoteVersion(base);
+    final run = _fetchAndApplyRemote(base, showSyncing: true);
     _syncFuture = run;
     try {
       await run;
@@ -117,41 +119,7 @@ class TextTemplatePackService extends ChangeNotifier {
     }
   }
 
-  Future<void> _syncRemoteVersion(String base) async {
-    try {
-      final remote = await _fetchRemoteCatalog(base);
-      if (remote.allItems.isEmpty) return;
-      if (remote.version == _catalog.version) return;
-
-      // Newer catalog → loading bar while we swap (avoids a silent flash).
-      _syncing = true;
-      notifyListeners();
-      try {
-        _catalog = remote.baseUrl.isNotEmpty
-            ? remote
-            : TextTemplatePackCatalog(
-                version: remote.version,
-                baseUrl: _catalog.baseUrl,
-                categories: remote.categories,
-              );
-        notifyListeners();
-        await _warmUnderlayImages(_catalog);
-      } finally {
-        _syncing = false;
-        notifyListeners();
-      }
-    } catch (error) {
-      _lastError = error.toString();
-      debugPrint('TextTemplatePackService: panel sync failed: $error');
-      if (_syncing) {
-        _syncing = false;
-        notifyListeners();
-      }
-    }
-  }
-
-  /// Load bundled immediately so the text studio is never blocked on network.
-  /// Remote merges in the background unless [awaitRemote] is true.
+  /// Show disk cache first, then fetch remote (awaited or background).
   Future<void> refresh({bool awaitRemote = false}) async {
     _lastError = null;
     final prefs = await SharedPreferences.getInstance();
@@ -167,71 +135,94 @@ class TextTemplatePackService extends ChangeNotifier {
       ..clear()
       ..addAll(prefs.getStringList(installedKey) ?? const []);
 
-    try {
-      final bundled = await _loadBundledCatalog().timeout(
-        const Duration(seconds: 3),
-      );
-      _catalog = bundled;
+    final disk = await _loadDiskCatalog();
+    if (disk != null && disk.allItems.isNotEmpty) {
+      _catalog = disk;
       _ready = true;
       notifyListeners();
-      unawaited(_warmUnderlayImages(bundled));
-
-      final base = _remoteBaseUrl.trim();
-      if (base.isEmpty) return;
-
-      if (awaitRemote) {
-        await _mergeRemote(base, bundled);
-      } else {
-        unawaited(_mergeRemote(base, bundled));
-      }
-    } catch (error) {
-      _lastError = error.toString();
-      debugPrint('TextTemplatePackService: refresh failed: $error');
-      await _loadBundledIntoState();
-    }
-  }
-
-  Future<void> _loadBundledIntoState() async {
-    try {
-      final bundled = await _loadBundledCatalog().timeout(
-        const Duration(seconds: 2),
-      );
-      _catalog = bundled;
-      _ready = true;
-      notifyListeners();
-      unawaited(_warmUnderlayImages(bundled));
-    } catch (bundledError) {
+      unawaited(_warmUnderlayImages(disk));
       debugPrint(
-        'TextTemplatePackService: bundled load failed: $bundledError',
+        'TextTemplatePackService: disk cache '
+        'v${disk.version}/${disk.allItems.length}',
       );
-      _lastError = bundledError.toString();
-      // Keep any non-empty catalog already on screen.
+    }
+
+    final base = _resolvedBaseUrl();
+    if (base.isEmpty) {
+      _ready = true;
+      notifyListeners();
+      return;
+    }
+
+    if (awaitRemote || !hasItems) {
       if (!hasItems) {
-        _catalog = TextTemplatePackCatalog.empty();
+        _syncing = true;
+        notifyListeners();
+      }
+      try {
+        await _fetchAndApplyRemote(base, showSyncing: false);
+      } finally {
+        if (_syncing) {
+          _syncing = false;
+        }
       }
       _ready = true;
       notifyListeners();
+    } else {
+      _ready = true;
+      notifyListeners();
+      unawaited(_fetchAndApplyRemote(base, showSyncing: true));
     }
   }
 
-  Future<void> _mergeRemote(String base, TextTemplatePackCatalog bundled) async {
+  Future<void> _fetchAndApplyRemote(
+    String base, {
+    required bool showSyncing,
+  }) async {
     try {
-      final remote = await _fetchRemoteCatalog(base);
+      final fetched = await _fetchRemoteCatalog(base);
+      final remote = fetched.catalog;
       if (remote.allItems.isEmpty) return;
-      if (remote.version == _catalog.version) return;
-      final next = remote.baseUrl.isNotEmpty
-          ? remote
-          : TextTemplatePackCatalog(
-              version: remote.version,
-              baseUrl: bundled.baseUrl,
-              categories: remote.categories,
-            );
-      _catalog = next;
-      notifyListeners();
-      unawaited(_warmUnderlayImages(next));
+
+      final diskVersion = (await _loadDiskCatalog())?.version;
+      final localVersion = diskVersion ?? _catalog.version;
+      debugPrint(
+        'TextTemplatePackService: remote v${remote.version}/'
+        '${remote.allItems.length} vs disk v$localVersion/'
+        '${_catalog.allItems.length}',
+      );
+
+      if (remote.version == localVersion && hasItems) {
+        return;
+      }
+
+      if (showSyncing) {
+        _syncing = true;
+        notifyListeners();
+      }
+      try {
+        _catalog = remote;
+        _ready = true;
+        notifyListeners();
+        await _saveDiskCatalogBytes(fetched.rawBytes);
+        await _warmUnderlayImages(remote);
+        debugPrint(
+          'TextTemplatePackService: applied remote '
+          'v${remote.version}/${remote.allItems.length}',
+        );
+      } finally {
+        if (showSyncing) {
+          _syncing = false;
+          notifyListeners();
+        }
+      }
     } catch (error) {
       _lastError = error.toString();
-      debugPrint('TextTemplatePackService: remote merge failed: $error');
+      debugPrint('TextTemplatePackService: remote fetch failed: $error');
+      if (_syncing) {
+        _syncing = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -259,7 +250,7 @@ class TextTemplatePackService extends ChangeNotifier {
     } else {
       await prefs.setString(remoteBaseUrlKey, trimmed);
     }
-    await refresh();
+    await refresh(awaitRemote: true);
   }
 
   TextTemplatePackItem? itemById(String? id) => _catalog.itemById(id);
@@ -322,39 +313,90 @@ class TextTemplatePackService extends ChangeNotifier {
     }
   }
 
-  Future<TextTemplatePackCatalog> _loadBundledCatalog() async {
-    final raw = await rootBundle.loadString(bundledCatalogAsset);
-    return TextTemplatePackCatalog.fromJson(
-      jsonDecode(raw) as Map<String, dynamic>,
-    );
+  String _resolvedBaseUrl() {
+    final trimmed = _remoteBaseUrl.trim();
+    if (trimmed.isNotEmpty) return trimmed;
+    return defaultRemoteBaseUrl;
   }
 
-  Future<TextTemplatePackCatalog> _fetchRemoteCatalog(String baseUrl) async {
-    final uri = Uri.parse(
-      baseUrl.endsWith('.json')
-          ? baseUrl
-          : '${baseUrl.endsWith('/') ? baseUrl : '$baseUrl/'}catalog.json',
+  String _normalizedRoot(String baseUrl) {
+    if (baseUrl.endsWith('.json')) {
+      return baseUrl.substring(0, baseUrl.lastIndexOf('/') + 1);
+    }
+    return baseUrl.endsWith('/') ? baseUrl : '$baseUrl/';
+  }
+
+  Future<File> _diskCatalogFileHandle() async {
+    final dir = await _cacheDir();
+    return File(p.join(dir.path, _diskCatalogFile));
+  }
+
+  Future<TextTemplatePackCatalog?> _loadDiskCatalog() async {
+    try {
+      final file = await _diskCatalogFileHandle();
+      if (!await file.exists()) return null;
+      final raw = await file.readAsString();
+      if (raw.trim().isEmpty) return null;
+      var catalog = TextTemplatePackCatalog.fromJson(
+        jsonDecode(raw) as Map<String, dynamic>,
+      );
+      if (catalog.allItems.isEmpty) return null;
+      if (catalog.baseUrl.isEmpty) {
+        catalog = TextTemplatePackCatalog(
+          version: catalog.version,
+          baseUrl: _normalizedRoot(_resolvedBaseUrl()),
+          categories: catalog.categories,
+        );
+      }
+      return catalog;
+    } catch (error) {
+      debugPrint('TextTemplatePackService: disk read failed: $error');
+      return null;
+    }
+  }
+
+  Future<void> _saveDiskCatalogBytes(List<int> bytes) async {
+    try {
+      final file = await _diskCatalogFileHandle();
+      await file.writeAsBytes(bytes, flush: true);
+    } catch (error) {
+      debugPrint('TextTemplatePackService: disk write failed: $error');
+    }
+  }
+
+  Future<({TextTemplatePackCatalog catalog, List<int> rawBytes})>
+  _fetchRemoteCatalog(String baseUrl) async {
+    final root = _normalizedRoot(baseUrl);
+    final uri = Uri.parse('${root}catalog.json').replace(
+      queryParameters: {'cb': '${DateTime.now().millisecondsSinceEpoch}'},
     );
     final response = await _http
-        .get(uri)
+        .get(
+          uri,
+          headers: const {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+          },
+        )
         .timeout(const Duration(seconds: 12));
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw StateError('catalog_fetch_failed:${response.statusCode}');
     }
+    final rawBytes = response.bodyBytes;
     final catalog = TextTemplatePackCatalog.fromJson(
-      jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>,
+      jsonDecode(utf8.decode(rawBytes)) as Map<String, dynamic>,
     );
     if (catalog.baseUrl.isEmpty) {
-      final root = baseUrl.endsWith('.json')
-          ? baseUrl.substring(0, baseUrl.lastIndexOf('/') + 1)
-          : (baseUrl.endsWith('/') ? baseUrl : '$baseUrl/');
-      return TextTemplatePackCatalog(
-        version: catalog.version,
-        baseUrl: root,
-        categories: catalog.categories,
+      return (
+        catalog: TextTemplatePackCatalog(
+          version: catalog.version,
+          baseUrl: root,
+          categories: catalog.categories,
+        ),
+        rawBytes: rawBytes,
       );
     }
-    return catalog;
+    return (catalog: catalog, rawBytes: rawBytes);
   }
 
   Uri _resolveUrl(String pathOrUrl) {
@@ -364,8 +406,7 @@ class TextTemplatePackService extends ChangeNotifier {
     if (base.isEmpty) {
       throw StateError('pack_base_url_missing');
     }
-    final root = base.endsWith('/') ? base : '$base/';
-    return Uri.parse(root).resolve(pathOrUrl);
+    return Uri.parse(_normalizedRoot(base)).resolve(pathOrUrl);
   }
 
   Future<Directory> _cacheDir() async {

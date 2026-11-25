@@ -1,5 +1,5 @@
 {
-  "version": 0,
+  "version": 2,
   "baseUrl": "",
   "categories": [
     {
@@ -1734,8 +1734,8 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#C084FC",
-          "accessTier": "free",
-          "premium": false,
+          "accessTier": "plus",
+          "premium": true,
           "thumbnailUrl": "transitions/thumbs/whipleft.webp",
           "layers": [
             {
@@ -1822,8 +1822,8 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#A855F7",
-          "accessTier": "free",
-          "premium": false,
+          "accessTier": "plus",
+          "premium": true,
           "thumbnailUrl": "transitions/thumbs/whipright.webp",
           "layers": [
             {
@@ -1910,8 +1910,8 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#F472B6",
-          "accessTier": "free",
-          "premium": false,
+          "accessTier": "plus",
+          "premium": true,
           "thumbnailUrl": "transitions/thumbs/squeezeh.webp",
           "layers": [
             {
@@ -1988,8 +1988,8 @@
           "minDurationMs": 100,
           "maxDurationMs": 3000,
           "accent": "#E879F9",
-          "accessTier": "free",
-          "premium": false,
+          "accessTier": "plus",
+          "premium": true,
           "thumbnailUrl": "transitions/thumbs/squeezev.webp",
           "layers": [
             {
@@ -4765,8 +4765,8 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#C084FC",
-      "accessTier": "free",
-      "premium": false,
+      "accessTier": "plus",
+      "premium": true,
       "thumbnailUrl": "transitions/thumbs/whipleft.webp",
       "layers": [
         {
@@ -4853,8 +4853,8 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#A855F7",
-      "accessTier": "free",
-      "premium": false,
+      "accessTier": "plus",
+      "premium": true,
       "thumbnailUrl": "transitions/thumbs/whipright.webp",
       "layers": [
         {
@@ -4941,8 +4941,8 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#F472B6",
-      "accessTier": "free",
-      "premium": false,
+      "accessTier": "plus",
+      "premium": true,
       "thumbnailUrl": "transitions/thumbs/squeezeh.webp",
       "layers": [
         {
@@ -5019,8 +5019,8 @@
       "minDurationMs": 100,
       "maxDurationMs": 3000,
       "accent": "#E879F9",
-      "accessTier": "free",
-      "premium": false,
+      "accessTier": "plus",
+      "premium": true,
       "thumbnailUrl": "transitions/thumbs/squeezev.webp",
       "layers": [
         {

@@ -330,6 +330,8 @@ class TextStyleTemplate {
     this.shadow,
     this.lineBackground,
     this.preferredFontId,
+    this.mirrorReflection = false,
+    this.mirrorGapFactor = 0.18,
   });
 
   final String id;
@@ -353,6 +355,12 @@ class TextStyleTemplate {
   /// Optional [OverlayFonts] id applied when the user picks this template.
   final String? preferredFontId;
 
+  /// Paint a faded vertical flip of the glyphs below the baseline (Mirror Text).
+  final bool mirrorReflection;
+
+  /// Gap between baseline and mirrored copy as × fontSize.
+  final double mirrorGapFactor;
+
   Color resolveFill(Color accent) {
     if (fillContrastOnAccent) {
       return accent.computeLuminance() > 0.55 ? Colors.black : Colors.white;
@@ -374,6 +382,9 @@ class TextStyleTemplate {
     if (shadow != null) 'shadow': shadow!.toJson(),
     if (lineBackground != null) 'lineBackground': lineBackground!.toJson(),
     if (preferredFontId != null) 'preferredFontId': preferredFontId,
+    if (mirrorReflection) 'mirrorReflection': true,
+    if (mirrorReflection && mirrorGapFactor != 0.18)
+      'mirrorGapFactor': mirrorGapFactor,
   };
 
   factory TextStyleTemplate.fromJson(Map<String, dynamic> json) {
@@ -403,6 +414,9 @@ class TextStyleTemplate {
               json['lineBackground'] as Map<String, dynamic>,
             ),
       preferredFontId: json['preferredFontId'] as String?,
+      mirrorReflection: json['mirrorReflection'] as bool? ?? false,
+      mirrorGapFactor:
+          (json['mirrorGapFactor'] as num?)?.toDouble() ?? 0.18,
     );
   }
 }

@@ -8,6 +8,7 @@ import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/text_style_template.dart';
 import 'package:aveditor/models/text_template_pack.dart';
 import 'package:aveditor/services/overlay_raster_service.dart';
+import 'package:aveditor/services/text_pack_image_cache.dart';
 import 'package:aveditor/services/text_template_pack_service.dart';
 import 'package:aveditor/widgets/text_entrance.dart';
 import 'package:flutter/services.dart';
@@ -222,6 +223,73 @@ void main() {
       expect(neon.glowPulse, greaterThan(0.2));
     });
 
+    test('wave offsets glyphs with phase; karaoke advances highlight', () {
+      final wave = evaluateTextEntrance(
+        animationId: TextEntranceIds.wave,
+        animation: const TextEntranceAnimation(
+          id: TextEntranceIds.wave,
+          kineticAmp: 0.4,
+        ),
+        text: 'WAVE',
+        progress: 0.25,
+        fontSize: 40,
+      );
+      expect(wave.perGlyph, isTrue);
+      expect(wave.glyphs.any((g) => g.dy.abs() > 0.5), isTrue);
+
+      final karaoke = evaluateTextEntrance(
+        animationId: TextEntranceIds.karaoke,
+        animation: const TextEntranceAnimation(id: TextEntranceIds.karaoke),
+        text: 'sing',
+        progress: 0.5,
+      );
+      expect(karaoke.perGlyph, isFalse);
+      expect(karaoke.highlightProgress, greaterThan(0.2));
+      expect(karaoke.highlightProgress, lessThan(0.9));
+    });
+
+    test('blur_slide and marquee use layer dx; dissolve scatters glyphs', () {
+      final blur = evaluateTextEntrance(
+        animationId: TextEntranceIds.blurSlide,
+        animation: const TextEntranceAnimation(
+          id: TextEntranceIds.blurSlide,
+          scrollStartFactor: 3,
+          blurFrom: 0.5,
+        ),
+        text: 'SLIDE',
+        progress: 0.2,
+        fontSize: 40,
+      );
+      expect(blur.layerDx.abs(), greaterThan(1));
+      expect(blur.layerBlur, greaterThan(1));
+
+      final marquee = evaluateTextEntrance(
+        animationId: TextEntranceIds.marquee,
+        animation: const TextEntranceAnimation(
+          id: TextEntranceIds.marquee,
+          scrollStartFactor: 4,
+          scrollEndFactor: -4,
+        ),
+        text: 'NEWS',
+        progress: 0.0,
+        fontSize: 20,
+      );
+      expect(marquee.layerDx, closeTo(80, 0.1));
+
+      final dissolve = evaluateTextEntrance(
+        animationId: TextEntranceIds.dissolve,
+        animation: const TextEntranceAnimation(
+          id: TextEntranceIds.dissolve,
+          kineticAmp: 0.6,
+        ),
+        text: 'GO',
+        progress: 0.15,
+        fontSize: 40,
+      );
+      expect(dissolve.perGlyph, isTrue);
+      expect(dissolve.glyphs.any((g) => g.opacity < 1), isTrue);
+    });
+
     test('typewriter cursor flag appears while typing', () {
       const anim = TextEntranceAnimation(
         id: TextEntranceIds.typewriter,
@@ -347,8 +415,9 @@ void main() {
   });
 
   group('catalog animation', () {
-    test('bundled packs include entrance animations', () async {
-      final raw = await rootBundle.loadString('assets/text_packs/catalog.json');
+    test('seed catalog packs include entrance animations', () {
+      final raw =
+          File('test/fixtures/text_packs_catalog.json').readAsStringSync();
       final catalog = TextTemplatePackCatalog.fromJson(
         jsonDecode(raw) as Map<String, dynamic>,
       );
@@ -450,8 +519,7 @@ void main() {
 
     test(
       'pack catalog durationMs is used when overlay has no override',
-      () async {
-        await TextTemplatePackService.instance.ensureInitialized();
+      () {
         final overlay = TextOverlay(
           text: 'Hi',
           start: Duration.zero,
@@ -468,11 +536,14 @@ void main() {
       },
     );
 
-    test('resolveOverlayAnimation prefers overlay override', () async {
-      final service = TextTemplatePackService();
-      await service.ensureInitialized();
-      // Warm singleton used by resolveOverlayAnimation.
-      await TextTemplatePackService.instance.ensureInitialized();
+    test('resolveOverlayAnimation prefers overlay override', () {
+      final raw =
+          File('test/fixtures/text_packs_catalog.json').readAsStringSync();
+      TextTemplatePackService.instance.debugSetCatalogForTest(
+        TextTemplatePackCatalog.fromJson(
+          jsonDecode(raw) as Map<String, dynamic>,
+        ),
+      );
 
       final fromPack = TextOverlay(
         text: 'hi',
@@ -505,7 +576,18 @@ void main() {
     test(
       'revealed paper keeps the finished shape (it does not stretch)',
       () async {
-        await TextTemplatePackService.instance.ensureInitialized();
+        final raw =
+            File('test/fixtures/text_packs_catalog.json').readAsStringSync();
+        final catalog = TextTemplatePackCatalog.fromJson(
+          jsonDecode(raw) as Map<String, dynamic>,
+        );
+        TextTemplatePackService.instance.debugSetCatalogForTest(catalog);
+        final journalBg = catalog.itemById('pack_journal')!.style.lineBackground!;
+        await TextPackImageCache.instance.warmKeys({
+          if (journalBg.underlayAsset != null) journalBg.underlayAsset!,
+          ...journalBg.underlayVariants,
+          if (journalBg.grainAsset != null) journalBg.grainAsset!,
+        });
         const width = 360;
         const height = 640;
         final overlay = TextOverlay(
@@ -612,8 +694,12 @@ void main() {
       id: 'x',
       label: 'X',
       preferredFontId: 'gaegu',
+      mirrorReflection: true,
+      mirrorGapFactor: 0.22,
     );
     final restored = TextStyleTemplate.fromJson(original.toJson());
     expect(restored.preferredFontId, 'gaegu');
+    expect(restored.mirrorReflection, isTrue);
+    expect(restored.mirrorGapFactor, 0.22);
   });
 }
