@@ -978,6 +978,9 @@ bool isOverlayVisibleAt(
 ) {
   if (!overlay.isVisibleAt(position)) return false;
   if (segments.isEmpty) return true;
+  // Packed / multi-source: overlay + playhead share the sequence clock.
+  // Source-space [isInKeptRegion] treats t=0 as a gap and hides front text.
+  if (segments.any((s) => s.mediaId != null)) return true;
   if (isInKeptRegion(segments, position)) return true;
   // The player often parks on the closed end of the last frame (`t == end`),
   // and music/text may continue past video EOF. Still show overlays timed there.

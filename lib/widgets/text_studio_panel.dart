@@ -46,6 +46,9 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
   final _packService = TextTemplatePackService.instance;
   final _tabBarKey = GlobalKey();
 
+  /// True once bundled/cache is ready to paint (before silent version check).
+  var _cacheVisible = false;
+
   static TextStudioTab tabForOverlay(TextOverlay overlay) {
     final pack = TextTemplatePackService.instance.itemById(overlay.packItemId);
     if (pack != null && pack.kind == 'template') {
@@ -59,13 +62,27 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
     super.initState();
     _tab = tabForOverlay(widget.overlay);
     _packService.addListener(_onPackService);
-    _packService.ensureInitialized().then((_) {
-      if (!mounted) return;
-      // Pack catalog may load after first frame — re-resolve tab then.
-      final next = tabForOverlay(widget.overlay);
-      if (next != _tab) setState(() => _tab = next);
-      _prefetchPackFonts();
+    // Cache first → silent version check → loading bar only if replacing.
+    unawaited(_syncCatalogOnOpen());
+  }
+
+  Future<void> _syncCatalogOnOpen() async {
+    await _packService.ensureInitialized();
+    if (!mounted) return;
+    final next = tabForOverlay(widget.overlay);
+    setState(() {
+      _cacheVisible = _packService.hasItems;
+      if (next != _tab) _tab = next;
     });
+    _prefetchPackFonts();
+    await _packService.syncOnPanelOpen();
+    if (!mounted) return;
+    final after = tabForOverlay(widget.overlay);
+    setState(() {
+      _cacheVisible = _packService.hasItems;
+      if (after != _tab) _tab = after;
+    });
+    _prefetchPackFonts();
   }
 
   @override
@@ -173,8 +190,6 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
       }
     }
     final current = widget.overlay;
-    // sampleText is tile-preview only — never overwrite the overlay body.
-    // Empty / placeholder text stays until the user types.
     var nextEnd = current.end;
     if (item.animation.isContinuous) {
       final spanMs = item.animation.durationMs.clamp(1000, 30000);
@@ -183,19 +198,29 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
         nextEnd = current.start + const Duration(seconds: 18);
       }
     }
-    // Composition templates need slot-shaped sample text (e.g. Chat Message
-    // bubbles). Replace empty/placeholder bodies; keep user edits otherwise.
+    // Text templates: seed sampleText when body is unset, or still equals the
+    // previous pack's sample (user hasn't edited). Keep real user edits.
+    // Effects stay as-typed. Multi-slot compositions also reseed single-line.
     final seededText = () {
-      if (!item.hasComposition) return null;
+      if (item.kind != 'template') return null;
+      final seed = _packSampleBody(item);
       final t = current.text.trim();
-      if (t.isEmpty || t == kEmptyOverlayLayoutSample) {
-        return item.composition!.sampleText;
+      final hint = context.l10n.textOverlayHint.trim();
+      final unset = t.isEmpty ||
+          t == kEmptyOverlayLayoutSample ||
+          t == hint ||
+          t == context.l10n.addText.trim();
+      if (unset) return seed;
+      final prevPack = _packService.itemById(current.packItemId);
+      if (prevPack != null &&
+          prevPack.kind == 'template' &&
+          prevPack.id != item.id &&
+          t == _packSampleBody(prevPack).trim()) {
+        return seed;
       }
-      // Switching onto a multi-slot pack from a single-line body → seed so
-      // bubbles / staged slots are visible immediately.
-      final slotCount = item.composition!.slots.length;
-      if (slotCount > 1 && !t.contains('\n')) {
-        return item.composition!.sampleText;
+      if (item.hasComposition) {
+        final slotCount = item.composition!.slots.length;
+        if (slotCount > 1 && !t.contains('\n')) return seed;
       }
       return null;
     }();
@@ -214,6 +239,14 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
         animationDurationMs: null,
       ),
     );
+  }
+
+  /// Server [sampleText], else composition defaults, else template fallback.
+  static String _packSampleBody(TextTemplatePackItem item) {
+    final sample = item.sampleText?.trim();
+    if (sample != null && sample.isNotEmpty) return item.sampleText!;
+    if (item.hasComposition) return item.composition!.sampleText;
+    return TextTemplatePackItem.defaultTemplateSampleText;
   }
 
   @override
@@ -254,6 +287,8 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
             );
           }
 
+          final applyingUpdate = _packService.isSyncing;
+          final showCache = _cacheVisible && _packService.hasItems;
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -261,7 +296,37 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
                 height: TextStudioPanel.headerHeight,
                 child: header,
               ),
-              Expanded(child: _buildTabBody(l10n)),
+              if (applyingUpdate)
+                const LinearProgressIndicator(
+                  minHeight: 2,
+                  backgroundColor: Color(0xFF1C1F28),
+                  color: Color(0xFF4CC9F0),
+                ),
+              Expanded(
+                child: !showCache
+                    ? const Center(
+                        child: SizedBox(
+                          width: 28,
+                          height: 28,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: Color(0xFF4CC9F0),
+                          ),
+                        ),
+                      )
+                    : applyingUpdate
+                    ? const Center(
+                        child: SizedBox(
+                          width: 28,
+                          height: 28,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: Color(0xFF4CC9F0),
+                          ),
+                        ),
+                      )
+                    : _buildTabBody(l10n),
+              ),
             ],
           );
         },
@@ -357,15 +422,33 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
     bool loopSelectedAnimation = false,
     bool includeDefault = false,
   }) {
+    // Category id matches the dashboard split; kind is coerced on parse.
+    final wantTemplates = kind == 'template';
     final packItems = <TextTemplatePackItem>[
       for (final category in _packService.catalog.categories)
-        for (final item in category.items)
-          if (item.kind == kind) item,
+        if (wantTemplates == (category.id == 'templates'))
+          ...category.items,
     ];
     final defaultOffset = includeDefault ? 1 : 0;
     final defaultTileText = kind == 'template'
         ? TextTemplatePackItem.defaultTemplateSampleText
         : TextTemplatePackItem.defaultEffectSampleText;
+
+    if (packItems.isEmpty && !includeDefault) {
+      final err = _packService.lastError;
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            err == null || err.isEmpty
+                ? 'No catalog items'
+                : 'Catalog unavailable\n$err',
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.white54, fontSize: 13),
+          ),
+        ),
+      );
+    }
 
     return GridView.builder(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
@@ -399,6 +482,11 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
         final downloading = _packService.isDownloading(pack.id);
         final installed = _packService.isInstalled(pack);
         final tileText = pack.tilePreviewText;
+        // Crawl / continuous motions start off-screen or invisible — keep the
+        // grid tile settled so selection doesn't blank the preview.
+        final loopTile = loopSelectedAnimation &&
+            selected &&
+            !pack.animation.isContinuous;
         return _TemplateTile(
           selected: selected,
           label: pack.title,
@@ -440,7 +528,7 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
                 template: pack.style,
                 composition: pack.composition,
                 animation: pack.animation,
-                loopAnimation: loopSelectedAnimation && selected,
+                loopAnimation: loopTile,
               ),
             ],
           ),

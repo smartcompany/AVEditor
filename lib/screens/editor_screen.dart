@@ -4464,11 +4464,23 @@ class _EditorScreenState extends State<EditorScreen>
     });
   }
 
-  /// Source time for a newly placed text clip — never a deleted video gap.
+  /// Placement time for a newly placed text/sticker clip.
+  ///
+  /// Packed projects use the sequence clock for overlays (same as music). Do
+  /// not run source-space [isInKeptRegion] there — at t=0 it looks like a gap
+  /// and snaps to `segments.first.start`, seeking the timeline away from the
+  /// front. Legacy single-source still snaps out of deleted gaps.
   Duration _textPlacementSourceTime(VideoProject project) {
     final t = _playhead;
     final segments = project.segments;
     if (segments.isEmpty) return t;
+
+    if (_usesPackedPlayhead) {
+      final seqEnd = _sequenceDuration;
+      if (seqEnd <= Duration.zero) return t;
+      return clampDuration(t, Duration.zero, seqEnd);
+    }
+
     if (isInKeptRegion(segments, t)) return t;
     // At / past the last frame (common when paused at EOF, or scrubbing music).
     if (t >= segments.last.end) return t;

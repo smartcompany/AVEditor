@@ -467,6 +467,30 @@ TextPainter createOverlayTextPainter({
   )..layout(maxWidth: maxWidth);
 }
 
+/// Upward text nudge so glyphs sit nearer the visual center of a metrics-sized
+/// line background. Ascent ≫ descent leaves empty space above letterforms;
+/// shifting text up by half that imbalance counters the bottom-heavy look.
+///
+/// [opticalOffsetFactor]: null = auto from metrics; otherwise × [fontSize]
+/// (0 disables).
+double overlayOpticalTextNudgeY({
+  required List<ui.LineMetrics> lines,
+  required double fontSize,
+  double? opticalOffsetFactor,
+}) {
+  if (opticalOffsetFactor != null) {
+    return (fontSize * opticalOffsetFactor).clamp(0.0, fontSize * 0.2);
+  }
+  if (lines.isEmpty || fontSize <= 0) return 0;
+  var maxNudge = 0.0;
+  final cap = fontSize * 0.15;
+  for (final line in lines) {
+    final n = ((line.ascent - line.descent) / 2).clamp(0.0, cap);
+    if (n > maxNudge) maxNudge = n;
+  }
+  return maxNudge;
+}
+
 /// Prefer tight glyph ink over font ascent/descent so equal [padV] reads as
 /// equal margin above/below the letters (many faces leave empty descent).
 ({double top, double bottom}) overlayLineInkY({
@@ -847,6 +871,18 @@ void paintTextStyleTemplate({
       );
     }
 
+    // Background stays on metrics; glyphs shift up for optical centering.
+    final textOrigin = lineBg == null
+        ? paintOrigin
+        : paintOrigin.translate(
+            0,
+            -overlayOpticalTextNudgeY(
+              lines: metricsPainter.computeLineMetrics(),
+              fontSize: fontSize,
+              opticalOffsetFactor: lineBg.opticalOffsetFactor,
+            ),
+          );
+
     final glow = template.glow;
     if (glow != null) {
       final glowColor = glow.resolveColor(accent);
@@ -856,7 +892,7 @@ void paintTextStyleTemplate({
         text: text,
         fontSize: fontSize,
         maxWidth: maxWidth,
-        origin: paintOrigin,
+        origin: textOrigin,
         color: glowColor.withValues(
           alpha: (glowColor.a * opacity * pulse).clamp(0.0, 1.0),
         ),
@@ -878,7 +914,7 @@ void paintTextStyleTemplate({
         text: text,
         fontSize: fontSize,
         maxWidth: maxWidth,
-        origin: paintOrigin + Offset(dx, dy),
+        origin: textOrigin + Offset(dx, dy),
         color: shadowColor.withValues(
           alpha: (shadowColor.a * opacity).clamp(0.0, 1.0),
         ),
@@ -906,7 +942,7 @@ void paintTextStyleTemplate({
         text: text,
         fontSize: fontSize,
         maxWidth: maxWidth,
-        origin: paintOrigin,
+        origin: textOrigin,
         color: strokeColor.withValues(
           alpha: (strokeColor.a * opacity).clamp(0.0, 1.0),
         ),
@@ -921,7 +957,7 @@ void paintTextStyleTemplate({
       text: text,
       fontSize: fontSize,
       maxWidth: maxWidth,
-      origin: paintOrigin,
+      origin: textOrigin,
       color: fillColor,
       fontFamily: fontFamily,
       textAlign: textAlign,
@@ -930,8 +966,8 @@ void paintTextStyleTemplate({
         if (gradient == null) return null;
         return gradient.createShader(
           Rect.fromLTWH(
-            paintOrigin.dx,
-            paintOrigin.dy,
+            textOrigin.dx,
+            textOrigin.dy,
             metricsPainter.width,
             metricsPainter.height,
           ),
@@ -1052,6 +1088,14 @@ void paintTextStyleTemplate({
     );
   }
 
+  final glyphNudgeY = lineBg == null
+      ? 0.0
+      : overlayOpticalTextNudgeY(
+          lines: lines,
+          fontSize: fontSize,
+          opticalOffsetFactor: lineBg.opticalOffsetFactor,
+        );
+
   utf16 = 0;
   for (var i = 0; i < graphemes.length; i++) {
     final g = graphemes[i];
@@ -1064,8 +1108,9 @@ void paintTextStyleTemplate({
         TextPosition(offset: utf16),
         Rect.zero,
       );
-      final charOrigin =
-          origin + caret + Offset(glyph.dx, glyph.dy);
+      final charOrigin = origin +
+          caret +
+          Offset(glyph.dx, glyph.dy - glyphNudgeY);
       final needsGlyphXform =
           (glyph.scale - 1).abs() > 0.01 || glyph.rotation.abs() > 0.01;
       if (needsGlyphXform) {
@@ -1104,7 +1149,7 @@ void paintTextStyleTemplate({
       Rect.zero,
     );
     final cx = origin.dx + caret.dx;
-    final cy = origin.dy + caret.dy;
+    final cy = origin.dy + caret.dy - glyphNudgeY;
     canvas.drawRect(
       Rect.fromLTWH(cx, cy, math.max(2.0, fontSize * 0.06), fontSize * 0.9),
       Paint()..color = fillColor,

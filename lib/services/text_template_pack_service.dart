@@ -38,19 +38,121 @@ class TextTemplatePackService extends ChangeNotifier {
   final Set<String> _downloading = {};
   String _remoteBaseUrl = '';
   var _ready = false;
+  var _syncing = false;
   String? _lastError;
+  Future<void>? _initFuture;
+  Future<void>? _syncFuture;
 
   TextTemplatePackCatalog get catalog => _catalog;
   bool get isReady => _ready;
+  bool get isSyncing => _syncing;
   String? get lastError => _lastError;
   String get remoteBaseUrl => _remoteBaseUrl;
+  bool get hasItems => _catalog.allItems.isNotEmpty;
 
   Future<void> ensureInitialized() async {
-    if (_ready) return;
-    await refresh();
+    if (_ready && hasItems) return;
+
+    final existing = _initFuture;
+    if (existing != null) {
+      try {
+        await existing;
+      } catch (_) {
+        // Fall through and retry below.
+      }
+      if (_ready && hasItems) return;
+    }
+
+    final run = refresh();
+    _initFuture = run;
+    try {
+      await run.timeout(const Duration(seconds: 6));
+    } on TimeoutException {
+      debugPrint('TextTemplatePackService: init timed out');
+      _lastError = 'timeout';
+      if (!hasItems) {
+        await _loadBundledIntoState();
+      } else if (!_ready) {
+        _ready = true;
+        notifyListeners();
+      }
+    } catch (error) {
+      debugPrint('TextTemplatePackService: init failed: $error');
+      if (!hasItems) {
+        await _loadBundledIntoState();
+      }
+    } finally {
+      _initFuture = null;
+    }
   }
 
-  Future<void> refresh() async {
+  /// Force a reload (settings retry / after hot reload empty state).
+  Future<void> reload() async {
+    _ready = false;
+    _initFuture = null;
+    await refresh(awaitRemote: true);
+  }
+
+  /// Panel open: keep showing cache, silently fetch remote. Only when
+  /// [version] differs set [isSyncing] and replace the catalog (loading bar).
+  Future<void> syncOnPanelOpen() async {
+    await ensureInitialized();
+    final base = _remoteBaseUrl.trim().isNotEmpty
+        ? _remoteBaseUrl.trim()
+        : defaultRemoteBaseUrl;
+    if (base.isEmpty) return;
+
+    final existing = _syncFuture;
+    if (existing != null) {
+      await existing;
+      return;
+    }
+
+    final run = _syncRemoteVersion(base);
+    _syncFuture = run;
+    try {
+      await run;
+    } finally {
+      if (identical(_syncFuture, run)) _syncFuture = null;
+    }
+  }
+
+  Future<void> _syncRemoteVersion(String base) async {
+    try {
+      final remote = await _fetchRemoteCatalog(base);
+      if (remote.allItems.isEmpty) return;
+      if (remote.version == _catalog.version) return;
+
+      // Newer catalog → loading bar while we swap (avoids a silent flash).
+      _syncing = true;
+      notifyListeners();
+      try {
+        _catalog = remote.baseUrl.isNotEmpty
+            ? remote
+            : TextTemplatePackCatalog(
+                version: remote.version,
+                baseUrl: _catalog.baseUrl,
+                categories: remote.categories,
+              );
+        notifyListeners();
+        await _warmUnderlayImages(_catalog);
+      } finally {
+        _syncing = false;
+        notifyListeners();
+      }
+    } catch (error) {
+      _lastError = error.toString();
+      debugPrint('TextTemplatePackService: panel sync failed: $error');
+      if (_syncing) {
+        _syncing = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  /// Load bundled immediately so the text studio is never blocked on network.
+  /// Remote merges in the background unless [awaitRemote] is true.
+  Future<void> refresh({bool awaitRemote = false}) async {
     _lastError = null;
     final prefs = await SharedPreferences.getInstance();
     final stored = prefs.getString(remoteBaseUrlKey);
@@ -66,28 +168,70 @@ class TextTemplatePackService extends ChangeNotifier {
       ..addAll(prefs.getStringList(installedKey) ?? const []);
 
     try {
-      final bundled = await _loadBundledCatalog();
-      var catalog = bundled;
-
-      if (_remoteBaseUrl.trim().isNotEmpty) {
-        try {
-          final remote = await _fetchRemoteCatalog(_remoteBaseUrl.trim());
-          catalog = _mergeCatalogs(bundled, remote);
-        } catch (error) {
-          _lastError = error.toString();
-        }
-      }
-
-      _catalog = catalog;
+      final bundled = await _loadBundledCatalog().timeout(
+        const Duration(seconds: 3),
+      );
+      _catalog = bundled;
       _ready = true;
       notifyListeners();
-      unawaited(_warmUnderlayImages(catalog));
+      unawaited(_warmUnderlayImages(bundled));
+
+      final base = _remoteBaseUrl.trim();
+      if (base.isEmpty) return;
+
+      if (awaitRemote) {
+        await _mergeRemote(base, bundled);
+      } else {
+        unawaited(_mergeRemote(base, bundled));
+      }
     } catch (error) {
       _lastError = error.toString();
-      _catalog = TextTemplatePackCatalog.empty();
+      debugPrint('TextTemplatePackService: refresh failed: $error');
+      await _loadBundledIntoState();
+    }
+  }
+
+  Future<void> _loadBundledIntoState() async {
+    try {
+      final bundled = await _loadBundledCatalog().timeout(
+        const Duration(seconds: 2),
+      );
+      _catalog = bundled;
       _ready = true;
       notifyListeners();
-      rethrow;
+      unawaited(_warmUnderlayImages(bundled));
+    } catch (bundledError) {
+      debugPrint(
+        'TextTemplatePackService: bundled load failed: $bundledError',
+      );
+      _lastError = bundledError.toString();
+      // Keep any non-empty catalog already on screen.
+      if (!hasItems) {
+        _catalog = TextTemplatePackCatalog.empty();
+      }
+      _ready = true;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _mergeRemote(String base, TextTemplatePackCatalog bundled) async {
+    try {
+      final remote = await _fetchRemoteCatalog(base);
+      if (remote.allItems.isEmpty) return;
+      if (remote.version == _catalog.version) return;
+      final next = remote.baseUrl.isNotEmpty
+          ? remote
+          : TextTemplatePackCatalog(
+              version: remote.version,
+              baseUrl: bundled.baseUrl,
+              categories: remote.categories,
+            );
+      _catalog = next;
+      notifyListeners();
+      unawaited(_warmUnderlayImages(next));
+    } catch (error) {
+      _lastError = error.toString();
+      debugPrint('TextTemplatePackService: remote merge failed: $error');
     }
   }
 
@@ -191,7 +335,9 @@ class TextTemplatePackService extends ChangeNotifier {
           ? baseUrl
           : '${baseUrl.endsWith('/') ? baseUrl : '$baseUrl/'}catalog.json',
     );
-    final response = await _http.get(uri);
+    final response = await _http
+        .get(uri)
+        .timeout(const Duration(seconds: 12));
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw StateError('catalog_fetch_failed:${response.statusCode}');
     }
@@ -209,54 +355,6 @@ class TextTemplatePackService extends ChangeNotifier {
       );
     }
     return catalog;
-  }
-
-  TextTemplatePackCatalog _mergeCatalogs(
-    TextTemplatePackCatalog bundled,
-    TextTemplatePackCatalog remote,
-  ) {
-    // An older server copy (not yet redeployed) must not roll back items the
-    // newer bundled catalog already has (e.g. new premium flags); it may
-    // still add items that only exist on the server.
-    final remoteIsOlder = remote.version < bundled.version;
-
-    final seen = <String>{};
-    final categories = <TextTemplatePackCategory>[];
-
-    void addCategory(TextTemplatePackCategory category) {
-      final items = <TextTemplatePackItem>[];
-      for (final item in category.items) {
-        if (seen.add(item.id)) items.add(item);
-      }
-      if (items.isNotEmpty) {
-        categories.add(
-          TextTemplatePackCategory(
-            id: category.id,
-            title: category.title,
-            items: items,
-          ),
-        );
-      }
-    }
-
-    // Remote first so catalog updates ship without an app release.
-    // Bundled fills gaps when the network is unavailable or incomplete.
-    final first = remoteIsOlder ? bundled : remote;
-    final second = remoteIsOlder ? remote : bundled;
-    for (final category in first.categories) {
-      addCategory(category);
-    }
-    for (final category in second.categories) {
-      addCategory(category);
-    }
-
-    return TextTemplatePackCatalog(
-      version: remote.version >= bundled.version
-          ? remote.version
-          : bundled.version,
-      baseUrl: remote.baseUrl.isNotEmpty ? remote.baseUrl : bundled.baseUrl,
-      categories: categories,
-    );
   }
 
   Uri _resolveUrl(String pathOrUrl) {

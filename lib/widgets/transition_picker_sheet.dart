@@ -102,17 +102,9 @@ class _TransitionPickerPanelState extends State<TransitionPickerPanel> {
 
   Future<void> _bootstrap() async {
     try {
-      // Already warm (main post-frame init) — paint tiles immediately.
-      if (_service.isReady && _service.hasItems) {
-        _applyCatalogToState();
-        if (mounted) setState(() => _loading = false);
-        unawaited(_assets.ensureScanned());
-        return;
-      }
-      // Catalog first so tiles can paint; asset scan is optional chrome.
+      // Cache first → silent version check → loading only if catalog replaces.
       await _service.ensureInitialized().timeout(const Duration(seconds: 8));
       if (!mounted) return;
-      // Empty after init (timeout race) — force one more bundled reload.
       if (!_service.hasItems) {
         await _service.reload().timeout(const Duration(seconds: 5));
       }
@@ -120,6 +112,10 @@ class _TransitionPickerPanelState extends State<TransitionPickerPanel> {
       _applyCatalogToState();
       setState(() => _loading = false);
       unawaited(_assets.ensureScanned());
+      await _service.syncOnPanelOpen();
+      if (!mounted) return;
+      _applyCatalogToState();
+      setState(() {});
     } catch (error, stack) {
       debugPrint('TransitionPickerPanel bootstrap failed: $error\n$stack');
       if (mounted) {
@@ -133,6 +129,7 @@ class _TransitionPickerPanelState extends State<TransitionPickerPanel> {
     setState(() => _loading = true);
     try {
       await _service.reload().timeout(const Duration(seconds: 8));
+      await _service.syncOnPanelOpen();
     } catch (error, stack) {
       debugPrint('TransitionPickerPanel retry failed: $error\n$stack');
     }
@@ -208,20 +205,13 @@ class _TransitionPickerPanelState extends State<TransitionPickerPanel> {
     };
 
     setState(() {
-      final sameItem = item.id == _selectedId;
       _selectedId = item.id;
       _parameters = nextParams;
       _previewToken++;
       if (!item.isNone) {
-        // Re-tapping the selected effect must NOT wipe a user-adjusted length.
-        if (sameItem) {
-          _duration = _clampDuration(_duration, item);
-        } else {
-          _duration = _clampDuration(
-            Duration(milliseconds: item.defaultDurationMs),
-            item,
-          );
-        }
+        // Keep the panel session duration across item changes; clamp to the
+        // new item's range. Reset only when the panel is reopened (initState).
+        _duration = _clampDuration(_duration, item);
       }
     });
 
@@ -269,6 +259,9 @@ class _TransitionPickerPanelState extends State<TransitionPickerPanel> {
     // Recover if catalog became ready while this State was stuck mid-bootstrap
     // (common after hot reload).
     final loading = _loading && !(_service.isReady && _service.hasItems);
+    // Only while applying a newer catalog (silent check does not set this).
+    final applyingUpdate = _service.isSyncing;
+    final showSpinner = loading || applyingUpdate;
     TransitionCategory? category;
     if (categories.isNotEmpty) {
       category = categories.firstWhere(
@@ -285,7 +278,7 @@ class _TransitionPickerPanelState extends State<TransitionPickerPanel> {
     final (minMsInt, maxMsInt) = _boundsFor(_selectedItem);
     final minMs = minMsInt.toDouble();
     final maxMs = maxMsInt.toDouble();
-    final showDuration = _hasEffect && !loading && items.length > 1;
+    final showDuration = _hasEffect && !showSpinner && items.length > 1;
 
     return Material(
       color: const Color(0xFF12141A),
@@ -328,6 +321,12 @@ class _TransitionPickerPanelState extends State<TransitionPickerPanel> {
                 height: TransitionPickerPanel.headerHeight,
                 child: header,
               ),
+              if (applyingUpdate)
+                const LinearProgressIndicator(
+                  minHeight: 2,
+                  backgroundColor: Color(0xFF1C1F28),
+                  color: Color(0xFF4CC9F0),
+                ),
               if (showChips)
                 SizedBox(
                   height: 40,
@@ -381,7 +380,7 @@ class _TransitionPickerPanelState extends State<TransitionPickerPanel> {
                 ),
               if (showGrid)
                 Expanded(
-                  child: loading
+                  child: showSpinner
                       ? const Center(
                           child: SizedBox(
                             width: 28,

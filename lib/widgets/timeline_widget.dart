@@ -4639,14 +4639,28 @@ class _TimelinePainter extends CustomPainter {
       peaks,
     ).inMilliseconds.clamp(1, 1 << 31);
 
-    final startF = (segment.start.inMilliseconds / totalMs).clamp(0.0, 1.0);
-    final endF = (segment.end.inMilliseconds / totalMs).clamp(
-      startF + 0.001,
-      1.0,
-    );
+    // After split/delete, start can sit at/near the source end — never call
+    // clamp(lower, upper) with lower > upper (e.g. startF+0.001 > 1.0).
+    var startF = (segment.start.inMilliseconds / totalMs).clamp(0.0, 1.0);
+    var endF = (segment.end.inMilliseconds / totalMs).clamp(0.0, 1.0);
+    if (endF < startF) {
+      final swap = startF;
+      startF = endF;
+      endF = swap;
+    }
+    if (endF - startF < 0.001) {
+      if (startF >= 0.999) {
+        startF = 0.999;
+        endF = 1.0;
+      } else {
+        endF = (startF + 0.001).clamp(0.0, 1.0);
+      }
+    }
 
-    final i0 = (startF * (peaks.length - 1)).floor().clamp(0, peaks.length - 1);
-    final i1 = (endF * (peaks.length - 1)).ceil().clamp(i0 + 1, peaks.length);
+    final lastPeak = peaks.length - 1;
+    final i0 = (startF * lastPeak).floor().clamp(0, lastPeak);
+    final i1Lower = (i0 + 1).clamp(0, peaks.length);
+    final i1 = (endF * lastPeak).ceil().clamp(i1Lower, peaks.length);
     final clipMs = segment.duration.inMilliseconds.clamp(1, 1 << 31);
     _paintCapCutWaveform(
       canvas,

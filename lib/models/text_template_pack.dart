@@ -167,7 +167,7 @@ class TextTemplatePackItem {
       lottieAsset: json['lottieAsset'] as String?,
       lottieUrl: json['lottieUrl'] as String?,
       previewUrl: json['previewUrl'] as String?,
-      downloadSizeBytes: json['downloadSizeBytes'] as int? ?? 0,
+      downloadSizeBytes: (json['downloadSizeBytes'] as num?)?.toInt() ?? 0,
       animation: TextEntranceAnimation.fromJson(
         json['animation'] as Map<String, dynamic>?,
       ),
@@ -199,12 +199,16 @@ class TextTemplatePackCategory {
   final List<TextTemplatePackItem> items;
 
   factory TextTemplatePackCategory.fromJson(Map<String, dynamic> json) {
+    final id = json['id'] as String;
+    final defaultKind = id == 'templates' ? 'template' : 'effect';
     return TextTemplatePackCategory(
-      id: json['id'] as String,
-      title: json['title'] as String? ?? json['id'] as String,
-      items: (json['items'] as List<dynamic>? ?? const [])
-          .map((e) => TextTemplatePackItem.fromJson(e as Map<String, dynamic>))
-          .toList(),
+      id: id,
+      title: json['title'] as String? ?? id,
+      items: (json['items'] as List<dynamic>? ?? const []).map((e) {
+        final map = Map<String, dynamic>.from(e as Map);
+        map['kind'] ??= defaultKind;
+        return TextTemplatePackItem.fromJson(map);
+      }).toList(),
     );
   }
 }
@@ -236,7 +240,7 @@ class TextTemplatePackCatalog {
 
   factory TextTemplatePackCatalog.fromJson(Map<String, dynamic> json) {
     return TextTemplatePackCatalog(
-      version: json['version'] as int? ?? 1,
+      version: (json['version'] as num?)?.toInt() ?? 1,
       baseUrl: json['baseUrl'] as String? ?? '',
       categories: (json['categories'] as List<dynamic>? ?? const [])
           .map(

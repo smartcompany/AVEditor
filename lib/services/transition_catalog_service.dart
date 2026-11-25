@@ -25,11 +25,14 @@ class TransitionCatalogService extends ChangeNotifier {
 
   TransitionCatalog _catalog = const TransitionCatalog(version: 0, items: []);
   var _ready = false;
+  var _syncing = false;
   String? _lastError;
   Future<void>? _initFuture;
+  Future<void>? _syncFuture;
 
   TransitionCatalog get catalog => _catalog;
   bool get isReady => _ready;
+  bool get isSyncing => _syncing;
   String? get lastError => _lastError;
 
   /// True when the picker has something to show (flat list or categories).
@@ -91,6 +94,62 @@ class TransitionCatalogService extends ChangeNotifier {
     await refresh(awaitRemote: true);
   }
 
+  /// Panel open: keep showing cache, silently fetch remote. Only when
+  /// [version] differs set [isSyncing] and replace (loading bar).
+  Future<void> syncOnPanelOpen() async {
+    await ensureInitialized();
+    final base =
+        TextTemplatePackService.instance.remoteBaseUrl.trim().isNotEmpty
+        ? TextTemplatePackService.instance.remoteBaseUrl.trim()
+        : TextTemplatePackService.defaultRemoteBaseUrl;
+    if (base.isEmpty) return;
+
+    final existing = _syncFuture;
+    if (existing != null) {
+      await existing;
+      return;
+    }
+
+    final run = _syncRemoteVersion(base);
+    _syncFuture = run;
+    try {
+      await run;
+    } finally {
+      if (identical(_syncFuture, run)) _syncFuture = null;
+    }
+  }
+
+  Future<void> _syncRemoteVersion(String base) async {
+    try {
+      final remote = await repository.fetchCatalog(base);
+      if (_itemCount(remote) == 0) return;
+      if (remote.version == _catalog.version) return;
+
+      _syncing = true;
+      notifyListeners();
+      try {
+        _catalog = TransitionCatalog(
+          version: remote.version,
+          baseUrl:
+              remote.baseUrl.isNotEmpty ? remote.baseUrl : _catalog.baseUrl,
+          items: remote.items.isNotEmpty ? remote.items : _allItems(remote),
+          categories: remote.categories,
+        );
+        notifyListeners();
+      } finally {
+        _syncing = false;
+        notifyListeners();
+      }
+    } catch (error) {
+      _lastError = error.toString();
+      debugPrint('TransitionCatalogService: panel sync failed: $error');
+      if (_syncing) {
+        _syncing = false;
+        notifyListeners();
+      }
+    }
+  }
+
   Future<void> refresh({bool awaitRemote = false}) async {
     _lastError = null;
     try {
@@ -136,23 +195,19 @@ class TransitionCatalogService extends ChangeNotifier {
   Future<void> _mergeRemote(String base, TransitionCatalog bundled) async {
     try {
       final remote = await repository.fetchCatalog(base);
-      final merged = _merge(bundled, remote);
-      if (!_catalogEquals(_catalog, merged)) {
-        _catalog = merged;
-        notifyListeners();
-      }
+      if (_itemCount(remote) == 0) return;
+      if (remote.version == _catalog.version) return;
+      _catalog = TransitionCatalog(
+        version: remote.version,
+        baseUrl: remote.baseUrl.isNotEmpty ? remote.baseUrl : bundled.baseUrl,
+        items: remote.items.isNotEmpty ? remote.items : _allItems(remote),
+        categories: remote.categories,
+      );
+      notifyListeners();
     } catch (error) {
       _lastError = error.toString();
       debugPrint('TransitionCatalogService: remote refresh failed: $error');
     }
-  }
-
-  static bool _catalogEquals(TransitionCatalog a, TransitionCatalog b) {
-    return identical(a, b) ||
-        (a.version == b.version &&
-            a.items.length == b.items.length &&
-            a.categories.length == b.categories.length &&
-            a.baseUrl == b.baseUrl);
   }
 
   TransitionItem? itemById(String? id) => _catalog.byId(id);
@@ -199,87 +254,6 @@ class TransitionCatalogService extends ChangeNotifier {
   Future<TransitionCatalog> _loadBundled() async {
     final raw = await rootBundle.loadString(bundledCatalogAsset);
     return TransitionCatalog.fromJson(jsonDecode(raw) as Map<String, dynamic>);
-  }
-
-  /// Remote ids win; remote category order preferred when present.
-  TransitionCatalog _merge(
-    TransitionCatalog bundled,
-    TransitionCatalog remote,
-  ) {
-    if (remote.items.isEmpty && remote.categories.isEmpty) return bundled;
-    final remoteIsOlder = remote.version < bundled.version;
-    final byId = <String, TransitionItem>{
-      for (final item in bundled.items) item.id: item,
-    };
-    for (final item in _allItems(remote)) {
-      if (remoteIsOlder) {
-        byId.putIfAbsent(item.id, () => item);
-      } else {
-        byId[item.id] = item;
-      }
-    }
-
-    final categories = <TransitionCategory>[];
-    final seenCategoryIds = <String>{};
-
-    void addCategory(TransitionCategory category, {required bool remoteFirst}) {
-      if (!seenCategoryIds.add(category.id)) {
-        final index = categories.indexWhere((c) => c.id == category.id);
-        if (index < 0) return;
-        final existing = categories[index];
-        final itemIds = <String>{for (final i in existing.items) i.id};
-        final merged = [
-          ...existing.items,
-          for (final item in category.items)
-            if (itemIds.add(item.id)) byId[item.id] ?? item,
-        ];
-        categories[index] = TransitionCategory(
-          id: existing.id,
-          title: remoteFirst ? existing.title : category.title,
-          titles: remoteFirst ? existing.titles : category.titles,
-          items: [for (final item in merged) byId[item.id] ?? item],
-        );
-        return;
-      }
-
-      categories.add(
-        TransitionCategory(
-          id: category.id,
-          title: category.title,
-          titles: category.titles,
-          items: [for (final item in category.items) byId[item.id] ?? item],
-        ),
-      );
-    }
-
-    for (final cat in remote.displayCategories) {
-      addCategory(cat, remoteFirst: true);
-    }
-    for (final cat in bundled.displayCategories) {
-      addCategory(cat, remoteFirst: false);
-    }
-
-    final ordered = <TransitionItem>[];
-    final seen = <String>{};
-    for (final item in _allItems(remote)) {
-      ordered.add(byId[item.id]!);
-      seen.add(item.id);
-    }
-    for (final item in bundled.items) {
-      if (seen.add(item.id)) ordered.add(byId[item.id]!);
-    }
-
-    // Guard: never publish an empty merge over a non-empty bundled catalog.
-    if (ordered.isEmpty && bundled.items.isNotEmpty) return bundled;
-
-    return TransitionCatalog(
-      version: remote.version >= bundled.version
-          ? remote.version
-          : bundled.version,
-      baseUrl: remote.baseUrl.isNotEmpty ? remote.baseUrl : bundled.baseUrl,
-      items: ordered,
-      categories: categories,
-    );
   }
 
   static List<TransitionItem> _allItems(TransitionCatalog catalog) {

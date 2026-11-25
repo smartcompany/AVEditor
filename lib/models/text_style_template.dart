@@ -31,7 +31,7 @@ class TextStyleStroke {
     return TextStyleStroke(
       widthFactor: (json['widthFactor'] as num).toDouble(),
       useAccent: json['useAccent'] as bool? ?? true,
-      colorArgb: json['color'] as int?,
+      colorArgb: (json['color'] as num?)?.toInt(),
     );
   }
 }
@@ -71,7 +71,7 @@ class TextStyleGlow {
       blurFactor: (json['blurFactor'] as num).toDouble(),
       widthFactor: (json['widthFactor'] as num?)?.toDouble() ?? 0.12,
       useAccent: json['useAccent'] as bool? ?? true,
-      colorArgb: json['color'] as int?,
+      colorArgb: (json['color'] as num?)?.toInt(),
       opacity: (json['opacity'] as num?)?.toDouble() ?? 0.85,
     );
   }
@@ -116,7 +116,7 @@ class TextStyleShadow {
       dyFactor: (json['dyFactor'] as num).toDouble(),
       blurFactor: (json['blurFactor'] as num?)?.toDouble() ?? 0,
       useAccent: json['useAccent'] as bool? ?? false,
-      colorArgb: json['color'] as int?,
+      colorArgb: (json['color'] as num?)?.toInt(),
       opacity: (json['opacity'] as num?)?.toDouble() ?? 0.7,
     );
   }
@@ -143,6 +143,7 @@ class TextStyleLineBackground {
     this.shape = TextStyleLineShape.capsule,
     this.shadowOpacity = 0,
     this.shadowBlurFactor = 0.12,
+    this.opticalOffsetFactor,
     this.underlayAsset,
     this.underlayUrl,
     this.underlayVariants = const [],
@@ -161,6 +162,10 @@ class TextStyleLineBackground {
   /// Soft drop under the strip (journal paper depth).
   final double shadowOpacity;
   final double shadowBlurFactor;
+
+  /// Manual upward text nudge as × fontSize inside the strip.
+  /// Null = auto from ascent/descent asymmetry.
+  final double? opticalOffsetFactor;
 
   /// Bundled underlay image (`assets/…` or `text_packs/journal/paper_a.png`).
   /// When set with [shape] brush, paints nine-slice paper instead of procedural.
@@ -211,6 +216,8 @@ class TextStyleLineBackground {
     'shape': shape.name,
     'shadowOpacity': shadowOpacity,
     'shadowBlurFactor': shadowBlurFactor,
+    if (opticalOffsetFactor != null)
+      'opticalOffsetFactor': opticalOffsetFactor,
     if (colorArgb != null) 'color': colorArgb,
     if (underlayAsset != null) 'underlayAsset': underlayAsset,
     if (underlayUrl != null) 'underlayUrl': underlayUrl,
@@ -228,7 +235,7 @@ class TextStyleLineBackground {
     final nineRaw = json['nineSlice'] as Map<String, dynamic>?;
     return TextStyleLineBackground(
       useAccent: json['useAccent'] as bool? ?? true,
-      colorArgb: json['color'] as int?,
+      colorArgb: (json['color'] as num?)?.toInt(),
       opacity: (json['opacity'] as num?)?.toDouble() ?? 1,
       padHFactor: (json['padHFactor'] as num?)?.toDouble() ?? 0.22,
       padVFactor: (json['padVFactor'] as num?)?.toDouble() ?? 0.14,
@@ -236,6 +243,7 @@ class TextStyleLineBackground {
       shape: shape,
       shadowOpacity: (json['shadowOpacity'] as num?)?.toDouble() ?? 0,
       shadowBlurFactor: (json['shadowBlurFactor'] as num?)?.toDouble() ?? 0.12,
+      opticalOffsetFactor: (json['opticalOffsetFactor'] as num?)?.toDouble(),
       underlayAsset: json['underlayAsset'] as String?,
       underlayUrl: json['underlayUrl'] as String?,
       underlayVariants: variantsRaw
@@ -373,7 +381,7 @@ class TextStyleTemplate {
       id: json['id'] as String,
       label: json['label'] as String? ?? json['id'] as String,
       fillUseAccent: json['fillUseAccent'] as bool? ?? true,
-      fillArgb: json['fillColor'] as int?,
+      fillArgb: (json['fillColor'] as num?)?.toInt(),
       fillContrastOnAccent: json['fillContrastOnAccent'] as bool? ?? false,
       fillGradient: json['fillGradient'] == null
           ? null

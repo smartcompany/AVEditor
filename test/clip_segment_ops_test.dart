@@ -417,6 +417,27 @@ void main() {
     );
   });
 
+  test('isOverlayVisibleAt uses sequence clock for packed media segments', () {
+    final overlay = TextOverlay(
+      text: 'hello',
+      start: Duration.zero,
+      end: const Duration(seconds: 3),
+    );
+    // Local media clocks often start far past 0 in source space.
+    final segments = [
+      ClipSegment(
+        start: const Duration(seconds: 4),
+        end: const Duration(seconds: 10),
+        mediaId: 'a',
+      ),
+    ];
+
+    expect(
+      isOverlayVisibleAt(overlay, segments, Duration.zero),
+      isTrue,
+    );
+  });
+
   test('overlayExportSpans emits separate export windows across deleted gaps', () {
     final overlay = TextOverlay(
       text: 'hello',

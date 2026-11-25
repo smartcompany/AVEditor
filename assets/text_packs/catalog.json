@@ -599,6 +599,892 @@
           },
           "sampleText": "Aa",
           "accessTier": "plus"
+        },
+        {
+          "id": "effect_neon_purple",
+          "title": "Neon Purple",
+          "kind": "effect",
+          "premium": true,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_neon_purple",
+            "label": "Neon Purple",
+            "fillUseAccent": false,
+            "fillColor": 4294967295,
+            "preferredFontId": "blackHanSans",
+            "strokes": [
+              {
+                "widthFactor": 0.1,
+                "useAccent": false,
+                "color": 4290006271
+              }
+            ],
+            "glow": {
+              "blurFactor": 0.65,
+              "widthFactor": 0.26,
+              "useAccent": false,
+              "color": 4290006271,
+              "opacity": 0.95
+            }
+          },
+          "sampleText": "Aa",
+          "accessTier": "plus"
+        },
+        {
+          "id": "effect_neon_green",
+          "title": "Neon Green",
+          "kind": "effect",
+          "premium": true,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_neon_green",
+            "label": "Neon Green",
+            "fillUseAccent": false,
+            "fillColor": 4294967295,
+            "preferredFontId": "blackHanSans",
+            "strokes": [
+              {
+                "widthFactor": 0.1,
+                "useAccent": false,
+                "color": 4281990932
+              }
+            ],
+            "glow": {
+              "blurFactor": 0.55,
+              "widthFactor": 0.22,
+              "useAccent": false,
+              "color": 4281990932,
+              "opacity": 0.9
+            }
+          },
+          "sampleText": "Aa",
+          "accessTier": "plus"
+        },
+        {
+          "id": "effect_neon_orange",
+          "title": "Neon Orange",
+          "kind": "effect",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_neon_orange",
+            "label": "Neon Orange",
+            "fillUseAccent": false,
+            "fillColor": 4294967295,
+            "preferredFontId": "blackHanSans",
+            "strokes": [
+              {
+                "widthFactor": 0.1,
+                "useAccent": false,
+                "color": 4294929196
+              }
+            ],
+            "glow": {
+              "blurFactor": 0.55,
+              "widthFactor": 0.22,
+              "useAccent": false,
+              "color": 4294929196,
+              "opacity": 0.9
+            }
+          },
+          "sampleText": "Aa",
+          "accessTier": "free"
+        },
+        {
+          "id": "effect_bubble",
+          "title": "Bubble",
+          "kind": "effect",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_bubble",
+            "label": "Bubble",
+            "fillUseAccent": false,
+            "fillColor": 4294922147,
+            "preferredFontId": "gothicA1",
+            "lineBackground": {
+              "useAccent": false,
+              "color": 4294967295,
+              "opacity": 0.95,
+              "padHFactor": 0.28,
+              "padVFactor": 0.16,
+              "radiusFactor": 0.5,
+              "shape": "capsule"
+            },
+            "strokes": [
+              {
+                "widthFactor": 0.06,
+                "useAccent": false,
+                "color": 4294922147
+              }
+            ]
+          },
+          "sampleText": "Aa",
+          "accessTier": "free"
+        },
+        {
+          "id": "effect_marker",
+          "title": "Marker",
+          "kind": "effect",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_marker",
+            "label": "Marker",
+            "fillUseAccent": false,
+            "fillColor": 4279308561,
+            "preferredFontId": "doHyeon",
+            "lineBackground": {
+              "useAccent": false,
+              "color": 4294963574,
+              "opacity": 0.92,
+              "padHFactor": 0.28,
+              "padVFactor": 0.16,
+              "radiusFactor": 0.06,
+              "shape": "capsule"
+            }
+          },
+          "sampleText": "Aa",
+          "accessTier": "free"
+        },
+        {
+          "id": "effect_chalk",
+          "title": "Chalk",
+          "kind": "effect",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_chalk",
+            "label": "Chalk",
+            "fillUseAccent": false,
+            "fillColor": 4294309360,
+            "preferredFontId": "gaegu",
+            "lineBackground": {
+              "useAccent": false,
+              "color": 4281089616,
+              "opacity": 0.88,
+              "padHFactor": 0.28,
+              "padVFactor": 0.16,
+              "radiusFactor": 0.1,
+              "shape": "capsule"
+            },
+            "shadow": {
+              "dxFactor": 0,
+              "dyFactor": 0.05,
+              "blurFactor": 0.12,
+              "useAccent": false,
+              "color": 4278190080,
+              "opacity": 0.35
+            }
+          },
+          "sampleText": "Aa",
+          "accessTier": "free"
+        },
+        {
+          "id": "effect_graffiti",
+          "title": "Graffiti",
+          "kind": "effect",
+          "premium": true,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_graffiti",
+            "label": "Graffiti",
+            "fillUseAccent": false,
+            "fillColor": 4294959437,
+            "preferredFontId": "blackHanSans",
+            "strokes": [
+              {
+                "widthFactor": 0.26,
+                "useAccent": false,
+                "color": 4279308561
+              },
+              {
+                "widthFactor": 0.1,
+                "useAccent": false,
+                "color": 4293212469
+              }
+            ],
+            "shadow": {
+              "dxFactor": 0.1,
+              "dyFactor": 0.12,
+              "blurFactor": 0,
+              "useAccent": false,
+              "color": 4279308561,
+              "opacity": 1
+            }
+          },
+          "sampleText": "Aa",
+          "accessTier": "plus"
+        },
+        {
+          "id": "effect_sticker",
+          "title": "Sticker",
+          "kind": "effect",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_sticker",
+            "label": "Sticker",
+            "fillUseAccent": false,
+            "fillColor": 4294924922,
+            "preferredFontId": "blackHanSans",
+            "strokes": [
+              {
+                "widthFactor": 0.32,
+                "useAccent": false,
+                "color": 4294967295
+              },
+              {
+                "widthFactor": 0.12,
+                "useAccent": false,
+                "color": 4279308561
+              }
+            ],
+            "shadow": {
+              "dxFactor": 0.05,
+              "dyFactor": 0.07,
+              "blurFactor": 0,
+              "useAccent": false,
+              "color": 4279308561,
+              "opacity": 0.85
+            }
+          },
+          "sampleText": "Aa",
+          "accessTier": "free"
+        },
+        {
+          "id": "effect_minimal",
+          "title": "Minimal",
+          "kind": "effect",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_minimal",
+            "label": "Minimal",
+            "fillUseAccent": false,
+            "fillColor": 4294967295,
+            "preferredFontId": "notoSansKr",
+            "shadow": {
+              "dxFactor": 0,
+              "dyFactor": 0.05,
+              "blurFactor": 0.18,
+              "useAccent": false,
+              "color": 4278190080,
+              "opacity": 0.4
+            }
+          },
+          "sampleText": "Aa",
+          "accessTier": "free"
+        },
+        {
+          "id": "effect_cyber",
+          "title": "Cyber",
+          "kind": "effect",
+          "premium": true,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_cyber",
+            "label": "Cyber",
+            "fillUseAccent": false,
+            "fillColor": 4278251775,
+            "preferredFontId": "blackHanSans",
+            "strokes": [
+              {
+                "widthFactor": 0.12,
+                "useAccent": false,
+                "color": 4294901930
+              }
+            ],
+            "glow": {
+              "blurFactor": 0.45,
+              "widthFactor": 0.16,
+              "useAccent": false,
+              "color": 4278251775,
+              "opacity": 0.85
+            }
+          },
+          "sampleText": "Aa",
+          "accessTier": "plus"
+        },
+        {
+          "id": "effect_vintage",
+          "title": "Vintage",
+          "kind": "effect",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_vintage",
+            "label": "Vintage",
+            "fillUseAccent": false,
+            "fillColor": 4293449143,
+            "preferredFontId": "gaegu",
+            "strokes": [
+              {
+                "widthFactor": 0.08,
+                "useAccent": false,
+                "color": 4284235827
+              }
+            ],
+            "shadow": {
+              "dxFactor": 0,
+              "dyFactor": 0.05,
+              "blurFactor": 0.18,
+              "useAccent": false,
+              "color": 4278190080,
+              "opacity": 0.5
+            }
+          },
+          "sampleText": "Aa",
+          "accessTier": "free"
+        },
+        {
+          "id": "effect_rainbow",
+          "title": "Rainbow",
+          "kind": "effect",
+          "premium": true,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_rainbow",
+            "label": "Rainbow",
+            "fillUseAccent": false,
+            "fillColor": 4294929259,
+            "preferredFontId": "blackHanSans",
+            "fillGradient": {
+              "colors": [
+                4294929259,
+                4294959206,
+                4283551590,
+                4281572080,
+                4291583464
+              ]
+            },
+            "strokes": [
+              {
+                "widthFactor": 0.1,
+                "useAccent": false,
+                "color": 4294967295
+              }
+            ]
+          },
+          "sampleText": "Aa",
+          "accessTier": "plus"
+        },
+        {
+          "id": "effect_mint",
+          "title": "Mint",
+          "kind": "effect",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_mint",
+            "label": "Mint",
+            "fillUseAccent": false,
+            "fillColor": 4293328117,
+            "preferredFontId": "gothicA1",
+            "lineBackground": {
+              "useAccent": false,
+              "color": 4279416966,
+              "opacity": 0.92,
+              "padHFactor": 0.28,
+              "padVFactor": 0.16,
+              "radiusFactor": 0.16,
+              "shape": "capsule"
+            }
+          },
+          "sampleText": "Aa",
+          "accessTier": "free"
+        },
+        {
+          "id": "effect_berry",
+          "title": "Berry",
+          "kind": "effect",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_berry",
+            "label": "Berry",
+            "fillUseAccent": false,
+            "fillColor": 4294967295,
+            "preferredFontId": "blackHanSans",
+            "lineBackground": {
+              "useAccent": false,
+              "color": 4288359531,
+              "opacity": 0.95,
+              "padHFactor": 0.28,
+              "padVFactor": 0.16,
+              "radiusFactor": 0.14,
+              "shape": "capsule"
+            }
+          },
+          "sampleText": "Aa",
+          "accessTier": "free"
+        },
+        {
+          "id": "effect_sky",
+          "title": "Sky",
+          "kind": "effect",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_sky",
+            "label": "Sky",
+            "fillUseAccent": false,
+            "fillColor": 4278940293,
+            "preferredFontId": "notoSansKr",
+            "fillGradient": {
+              "colors": [
+                4289059071,
+                4285841660,
+                4283280375
+              ]
+            },
+            "strokes": [
+              {
+                "widthFactor": 0.08,
+                "useAccent": false,
+                "color": 4294967295
+              }
+            ]
+          },
+          "sampleText": "Aa",
+          "accessTier": "free"
+        },
+        {
+          "id": "effect_forest",
+          "title": "Forest",
+          "kind": "effect",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_forest",
+            "label": "Forest",
+            "fillUseAccent": false,
+            "fillColor": 4293655534,
+            "preferredFontId": "doHyeon",
+            "lineBackground": {
+              "useAccent": false,
+              "color": 4281043518,
+              "opacity": 0.95,
+              "padHFactor": 0.28,
+              "padVFactor": 0.16,
+              "radiusFactor": 0.1,
+              "shape": "capsule"
+            }
+          },
+          "sampleText": "Aa",
+          "accessTier": "free"
+        },
+        {
+          "id": "effect_hot_pink",
+          "title": "Hot Pink",
+          "kind": "effect",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_hot_pink",
+            "label": "Hot Pink",
+            "fillUseAccent": false,
+            "fillColor": 4294913429,
+            "preferredFontId": "blackHanSans",
+            "strokes": [
+              {
+                "widthFactor": 0.18,
+                "useAccent": false,
+                "color": 4294967295
+              },
+              {
+                "widthFactor": 0.08,
+                "useAccent": false,
+                "color": 4288348237
+              }
+            ]
+          },
+          "sampleText": "Aa",
+          "accessTier": "free"
+        },
+        {
+          "id": "effect_lilac",
+          "title": "Lilac",
+          "kind": "effect",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_lilac",
+            "label": "Lilac",
+            "fillUseAccent": false,
+            "fillColor": 4284431812,
+            "preferredFontId": "gothicA1",
+            "fillGradient": {
+              "colors": [
+                4293254143,
+                4291870719,
+                4289828860
+              ]
+            }
+          },
+          "sampleText": "Aa",
+          "accessTier": "free"
+        },
+        {
+          "id": "effect_mono_black",
+          "title": "Mono Black",
+          "kind": "effect",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_mono_black",
+            "label": "Mono Black",
+            "fillUseAccent": false,
+            "fillColor": 4278190080,
+            "preferredFontId": "blackHanSans",
+            "strokes": [
+              {
+                "widthFactor": 0.14,
+                "useAccent": false,
+                "color": 4294967295
+              }
+            ]
+          },
+          "sampleText": "Aa",
+          "accessTier": "free"
+        },
+        {
+          "id": "effect_mono_white",
+          "title": "Mono White",
+          "kind": "effect",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_mono_white",
+            "label": "Mono White",
+            "fillUseAccent": false,
+            "fillColor": 4294967295,
+            "preferredFontId": "blackHanSans",
+            "strokes": [
+              {
+                "widthFactor": 0.2,
+                "useAccent": false,
+                "color": 4278190080
+              }
+            ]
+          },
+          "sampleText": "Aa",
+          "accessTier": "free"
+        },
+        {
+          "id": "effect_info_bar",
+          "title": "Info Bar",
+          "kind": "effect",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_info_bar",
+            "label": "Info Bar",
+            "fillUseAccent": false,
+            "fillColor": 4294967295,
+            "preferredFontId": "notoSansKr",
+            "lineBackground": {
+              "useAccent": false,
+              "color": 4280057558,
+              "opacity": 0.92,
+              "padHFactor": 0.28,
+              "padVFactor": 0.16,
+              "radiusFactor": 0.08,
+              "shape": "capsule"
+            }
+          },
+          "sampleText": "Aa",
+          "accessTier": "free"
+        },
+        {
+          "id": "effect_warning_bar",
+          "title": "Warning Bar",
+          "kind": "effect",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_warning_bar",
+            "label": "Warning Bar",
+            "fillUseAccent": false,
+            "fillColor": 4279308561,
+            "preferredFontId": "doHyeon",
+            "lineBackground": {
+              "useAccent": false,
+              "color": 4294939179,
+              "opacity": 0.95,
+              "padHFactor": 0.28,
+              "padVFactor": 0.16,
+              "radiusFactor": 0.08,
+              "shape": "capsule"
+            }
+          },
+          "sampleText": "Aa",
+          "accessTier": "free"
+        },
+        {
+          "id": "effect_success_bar",
+          "title": "Success Bar",
+          "kind": "effect",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_success_bar",
+            "label": "Success Bar",
+            "fillUseAccent": false,
+            "fillColor": 4294967295,
+            "preferredFontId": "notoSansKr",
+            "lineBackground": {
+              "useAccent": false,
+              "color": 4281840205,
+              "opacity": 0.95,
+              "padHFactor": 0.28,
+              "padVFactor": 0.16,
+              "radiusFactor": 0.08,
+              "shape": "capsule"
+            }
+          },
+          "sampleText": "Aa",
+          "accessTier": "free"
+        },
+        {
+          "id": "effect_karaoke",
+          "title": "Karaoke",
+          "kind": "effect",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_karaoke",
+            "label": "Karaoke",
+            "fillUseAccent": false,
+            "fillColor": 4294959206,
+            "preferredFontId": "blackHanSans",
+            "strokes": [
+              {
+                "widthFactor": 0.14,
+                "useAccent": false,
+                "color": 4279308561
+              }
+            ],
+            "shadow": {
+              "dxFactor": 0.04,
+              "dyFactor": 0.05,
+              "blurFactor": 0,
+              "useAccent": false,
+              "color": 4293293824,
+              "opacity": 0.9
+            }
+          },
+          "sampleText": "Aa",
+          "accessTier": "free"
+        },
+        {
+          "id": "effect_bubblegum",
+          "title": "Bubblegum",
+          "kind": "effect",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_bubblegum",
+            "label": "Bubblegum",
+            "fillUseAccent": false,
+            "fillColor": 4294937800,
+            "preferredFontId": "gothicA1",
+            "strokes": [
+              {
+                "widthFactor": 0.22,
+                "useAccent": false,
+                "color": 4294967295
+              },
+              {
+                "widthFactor": 0.08,
+                "useAccent": false,
+                "color": 4294921581
+              }
+            ],
+            "shadow": {
+              "dxFactor": 0,
+              "dyFactor": 0.05,
+              "blurFactor": 0.15,
+              "useAccent": false,
+              "color": 4278190080,
+              "opacity": 0.3
+            }
+          },
+          "sampleText": "Aa",
+          "accessTier": "free"
+        },
+        {
+          "id": "effect_chrome",
+          "title": "Chrome",
+          "kind": "effect",
+          "premium": true,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_chrome",
+            "label": "Chrome",
+            "fillUseAccent": false,
+            "fillColor": 4291744986,
+            "preferredFontId": "blackHanSans",
+            "fillGradient": {
+              "colors": [
+                4294507002,
+                4289574333,
+                4287008406,
+                4294046709
+              ]
+            },
+            "strokes": [
+              {
+                "widthFactor": 0.08,
+                "useAccent": false,
+                "color": 4281612864
+              }
+            ],
+            "shadow": {
+              "dxFactor": 0,
+              "dyFactor": 0.05,
+              "blurFactor": 0.18,
+              "useAccent": false,
+              "color": 4278190080,
+              "opacity": 0.55
+            }
+          },
+          "sampleText": "Aa",
+          "accessTier": "plus"
+        },
+        {
+          "id": "effect_bronze",
+          "title": "Bronze",
+          "kind": "effect",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_bronze",
+            "label": "Bronze",
+            "fillUseAccent": false,
+            "fillColor": 4292429839,
+            "preferredFontId": "blackHanSans",
+            "fillGradient": {
+              "colors": [
+                4294951032,
+                4293417228,
+                4288424718
+              ]
+            },
+            "strokes": [
+              {
+                "widthFactor": 0.08,
+                "useAccent": false,
+                "color": 4284226054
+              }
+            ]
+          },
+          "sampleText": "Aa",
+          "accessTier": "free"
+        },
+        {
+          "id": "effect_emerald",
+          "title": "Emerald",
+          "kind": "effect",
+          "premium": true,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_emerald",
+            "label": "Emerald",
+            "fillUseAccent": false,
+            "fillColor": 4281915817,
+            "preferredFontId": "blackHanSans",
+            "fillGradient": {
+              "colors": [
+                4288082647,
+                4280338839,
+                4278817384
+              ]
+            },
+            "strokes": [
+              {
+                "widthFactor": 0.08,
+                "useAccent": false,
+                "color": 4278746971
+              }
+            ],
+            "glow": {
+              "blurFactor": 0.35,
+              "widthFactor": 0.12,
+              "useAccent": false,
+              "color": 4281915817,
+              "opacity": 0.55
+            }
+          },
+          "sampleText": "Aa",
+          "accessTier": "plus"
+        },
+        {
+          "id": "effect_magenta_pop",
+          "title": "Magenta Pop",
+          "kind": "effect",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_magenta_pop",
+            "label": "Magenta Pop",
+            "fillUseAccent": false,
+            "fillColor": 4294901930,
+            "preferredFontId": "doHyeon",
+            "strokes": [
+              {
+                "widthFactor": 0.24,
+                "useAccent": false,
+                "color": 4294967295
+              },
+              {
+                "widthFactor": 0.1,
+                "useAccent": false,
+                "color": 4279308561
+              }
+            ],
+            "shadow": {
+              "dxFactor": 0.07,
+              "dyFactor": 0.09,
+              "blurFactor": 0,
+              "useAccent": false,
+              "color": 4279308561,
+              "opacity": 1
+            }
+          },
+          "sampleText": "Aa",
+          "accessTier": "free"
+        },
+        {
+          "id": "effect_poster",
+          "title": "Poster",
+          "kind": "effect",
+          "premium": false,
+          "downloadSizeBytes": 0,
+          "style": {
+            "id": "effect_poster",
+            "label": "Poster",
+            "fillUseAccent": false,
+            "fillColor": 4294959206,
+            "preferredFontId": "blackHanSans",
+            "strokes": [
+              {
+                "widthFactor": 0.28,
+                "useAccent": false,
+                "color": 4279308561
+              }
+            ],
+            "shadow": {
+              "dxFactor": 0.09,
+              "dyFactor": 0.1,
+              "blurFactor": 0,
+              "useAccent": false,
+              "color": 4292882737,
+              "opacity": 1
+            }
+          },
+          "sampleText": "Aa",
+          "accessTier": "free"
         }
       ]
     },

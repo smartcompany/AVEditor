@@ -21,11 +21,11 @@ void main() {
       jsonDecode(raw) as Map<String, dynamic>,
     );
 
-    expect(catalog.version, 19);
+    expect(catalog.version, greaterThanOrEqualTo(19));
     final effects = catalog.allItems.where((e) => e.kind == 'effect').toList();
     final templates =
         catalog.allItems.where((e) => e.kind == 'template').toList();
-    expect(effects, hasLength(20));
+    expect(effects, hasLength(50));
     // Journal + Star Crawl + Credits + CapCut 30.
     expect(templates, hasLength(33));
     expect(effects.take(3).map((e) => e.id), [
