@@ -482,11 +482,7 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
         final downloading = _packService.isDownloading(pack.id);
         final installed = _packService.isInstalled(pack);
         final tileText = pack.tilePreviewText;
-        // Crawl / continuous motions start off-screen or invisible — keep the
-        // grid tile settled so selection doesn't blank the preview.
-        final loopTile = loopSelectedAnimation &&
-            selected &&
-            !pack.animation.isContinuous;
+        final loopTile = loopSelectedAnimation && selected;
         return _TemplateTile(
           selected: selected,
           label: pack.title,
@@ -567,6 +563,8 @@ class _PackAaPreviewState extends State<_PackAaPreview>
   late final AnimationController _loop;
 
   static const _holdMs = 700;
+  /// Star Crawl / Credits are ~16–18s on the canvas; compress for the tile.
+  static const _continuousTileMs = 4200;
 
   @override
   void initState() {
@@ -606,37 +604,56 @@ class _PackAaPreviewState extends State<_PackAaPreview>
     if (mounted) setState(() => _fontReady = true);
   }
 
+  int get _loopMs {
+    final anim = widget.animation;
+    if (anim.isContinuous) return _continuousTileMs;
+    return anim.durationMs.clamp(100, 10000) + _holdMs;
+  }
+
+  /// Full crawl factors throw text far outside a ~70px tile; shrink for preview.
+  TextEntranceAnimation get _tileAnimation {
+    final anim = widget.animation;
+    if (!anim.isContinuous) return anim;
+    return anim.copyWith(
+      durationMs: _continuousTileMs,
+      scrollStartFactor: 2.8,
+      scrollEndFactor: -3.6,
+    );
+  }
+
   void _syncLoop() {
     final anim = widget.animation;
     if (widget.loopAnimation && !anim.isNone) {
-      final maxMs = anim.isContinuous ? 30000 : 10000;
-      final totalMs = anim.durationMs.clamp(100, maxMs) + _holdMs;
-      _loop.duration = Duration(milliseconds: totalMs);
-      if (!_loop.isAnimating) {
-        _loop.repeat();
-      }
+      _loop.duration = Duration(milliseconds: _loopMs);
+      // Restart from 0 so selecting Star Crawl / Credits immediately scrolls.
+      _loop
+        ..stop()
+        ..repeat();
     } else {
       _loop.stop();
       _loop.value = 1;
     }
   }
 
-  TextEntranceState _entranceAt(double controllerValue) {
+  TextEntranceState _entranceAt(double controllerValue, double fontSize) {
     final anim = widget.animation;
     if (!widget.loopAnimation || anim.isNone) {
       return TextEntranceState.fullyVisible;
     }
-    final maxMs = anim.isContinuous ? 30000 : 10000;
-    final entranceMs = anim.durationMs.clamp(100, maxMs).toDouble();
-    final totalMs = entranceMs + _holdMs;
+    final preview = _tileAnimation;
+    final entranceMs = anim.isContinuous
+        ? _continuousTileMs.toDouble()
+        : anim.durationMs.clamp(100, 10000).toDouble();
+    final totalMs =
+        anim.isContinuous ? entranceMs : entranceMs + _holdMs;
     final elapsed = controllerValue * totalMs;
     final progress = (elapsed / entranceMs).clamp(0.0, 1.0);
     return evaluateTextEntrance(
-      animationId: anim.id,
-      animation: anim,
+      animationId: preview.id,
+      animation: preview,
       text: widget.text,
       progress: progress,
-      fontSize: 14,
+      fontSize: fontSize,
       slotCount: widget.composition?.paintedSlotCount(widget.text),
     );
   }
@@ -672,7 +689,7 @@ class _PackAaPreviewState extends State<_PackAaPreview>
 
     return AnimatedBuilder(
       animation: _loop,
-      builder: (context, _) => preview(_entranceAt(_loop.value)),
+      builder: (context, _) => preview(_entranceAt(_loop.value, fontSize)),
     );
   }
 }

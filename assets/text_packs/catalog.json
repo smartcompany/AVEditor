@@ -2769,7 +2769,7 @@
           "title": "Status",
           "kind": "template",
           "downloadSizeBytes": 0,
-          "sampleText": "✈ AIRPLANE MODE ON",
+          "sampleText": "✈️ AIRPLANE MODE ON",
           "animation": {
             "id": "fade",
             "durationMs": 500

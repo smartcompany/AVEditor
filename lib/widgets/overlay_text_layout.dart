@@ -33,6 +33,91 @@ const String kEmptyOverlayLayoutSample = '탭 해서 텍스트 입력';
 /// silently change line breaking.
 const String overlayFontFamily = 'OverlayText';
 
+/// System emoji faces — pack fonts (Noto Sans KR, Gaegu, …) have no emoji
+/// glyphs, so without these Flutter often paints `?` (locale-independent).
+const List<String> overlayEmojiFontFallback = [
+  'Apple Color Emoji',
+  'Noto Color Emoji',
+  'Segoe UI Emoji',
+];
+
+/// True for runs that should use the system emoji face (not the pack font).
+///
+/// Includes emoji blocks and dingbats like ✈ (U+2708) that packs use as icons;
+/// those default to text presentation and show as `?` in Roboto / Noto Sans KR.
+bool overlayRuneNeedsEmojiFont(int rune) {
+  if (rune == 0xFE0F || rune == 0x200D || rune == 0x20E3) return true;
+  if (rune >= 0x1F000 && rune <= 0x1FAFF) return true; // emoji & symbols
+  if (rune >= 0x2600 && rune <= 0x27BF) return true; // misc + dingbats (✈)
+  if (rune >= 0x2300 && rune <= 0x23FF) return true; // misc technical
+  if (rune >= 0x2B00 && rune <= 0x2BFF) return true; // arrows etc.
+  if (rune >= 0x1F1E6 && rune <= 0x1F1FF) return true; // flags
+  return false;
+}
+
+/// Append U+FE0F after dingbats that have an emoji presentation (✈ → ✈️).
+String overlayPromoteEmojiPresentation(String text) {
+  const vs16 = 0xFE0F;
+  final out = StringBuffer();
+  final runes = text.runes.toList(growable: false);
+  for (var i = 0; i < runes.length; i++) {
+    final r = runes[i];
+    out.writeCharCode(r);
+    if (r >= 0x2600 && r <= 0x27BF) {
+      final next = i + 1 < runes.length ? runes[i + 1] : null;
+      if (next != vs16) out.writeCharCode(vs16);
+    }
+  }
+  return out.toString();
+}
+
+/// Pack face for letters + system emoji face for icon/emoji runs.
+TextSpan buildOverlayTextSpan({
+  required String text,
+  required TextStyle style,
+}) {
+  final normalized = overlayPromoteEmojiPresentation(text);
+  final emojiStyle = style.copyWith(
+    fontFamily: overlayEmojiFontFallback.first,
+    fontFamilyFallback: overlayEmojiFontFallback.sublist(1),
+  );
+
+  final children = <InlineSpan>[];
+  final buffer = StringBuffer();
+  var inEmoji = false;
+
+  void flush() {
+    if (buffer.isEmpty) return;
+    children.add(
+      TextSpan(
+        text: buffer.toString(),
+        style: inEmoji ? emojiStyle : style,
+      ),
+    );
+    buffer.clear();
+  }
+
+  for (final rune in normalized.runes) {
+    final emoji = overlayRuneNeedsEmojiFont(rune);
+    if (buffer.isEmpty) {
+      inEmoji = emoji;
+    } else if (emoji != inEmoji) {
+      flush();
+      inEmoji = emoji;
+    }
+    buffer.writeCharCode(rune);
+  }
+  flush();
+
+  if (children.isEmpty) {
+    return TextSpan(text: '', style: style);
+  }
+  if (children.length == 1) {
+    return children.first as TextSpan;
+  }
+  return TextSpan(style: style, children: children);
+}
+
 Color overlayTextFillColor({
   required TextOverlayStyle style,
   required Color accent,
@@ -391,7 +476,17 @@ TextStyle _baseTextStyle({
     foreground: foreground,
     shadows: shadows,
   );
-  return OverlayFonts.resolve(fontFamily, base);
+  final resolved = OverlayFonts.resolve(fontFamily, base);
+  // Always append emoji fallbacks after the pack face so 🔔 etc. never become
+  // `?` when the locale / Google Font lacks color emoji.
+  final fallback = <String>[
+    ...?resolved.fontFamilyFallback,
+    for (final face in overlayEmojiFontFallback)
+      if (face != resolved.fontFamily &&
+          !(resolved.fontFamilyFallback?.contains(face) ?? false))
+        face,
+  ];
+  return resolved.copyWith(fontFamilyFallback: fallback);
 }
 
 /// Fill layer for overlay text (basic style path / editing field).
@@ -456,7 +551,7 @@ TextPainter createOverlayTextPainter({
   TextAlign textAlign = TextAlign.center,
 }) {
   return TextPainter(
-    text: TextSpan(text: text, style: style),
+    text: buildOverlayTextSpan(text: text, style: style),
     textAlign: textAlign,
     textDirection: TextDirection.ltr,
     textScaler: TextScaler.noScaling,
@@ -804,6 +899,8 @@ void paintTextStyleTemplate({
   TextAlign textAlign = TextAlign.center,
   TextEntranceState? entrance,
 }) {
+  // Dingbats like ✈ must match the TextPainter (emoji presentation + face).
+  text = overlayPromoteEmojiPresentation(text);
   final state = entrance ?? TextEntranceState.fullyVisible;
   if (state.isInvisible) return;
 
