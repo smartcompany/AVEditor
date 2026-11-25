@@ -82,19 +82,69 @@ void main() {
       image.dispose();
     });
 
-    test('text wraps against the box width, not the frame', () {
+    test('layoutOverlayText soft-wraps when given a narrow maxWidth', () {
       final overlay = overlayWith(text: 'wrap me across several lines please');
       final box = overlayBoxForFrame(overlay, frameWidth: frameWidth * 1.0);
+      // Low-level API: an explicit narrow budget still wraps.
       final painter = layoutOverlayText(
         text: overlay.text,
         color: overlay.color,
         fontSize: box.fontSize,
-        maxWidth: box.width,
+        maxWidth: box.width * 0.35,
       );
 
-      expect(painter.width, lessThanOrEqualTo(box.width + 0.001));
+      expect(painter.width, lessThanOrEqualTo(box.width * 0.35 + 0.001));
       expect(painter.computeLineMetrics().length, greaterThan(1));
       painter.dispose();
+    });
+
+    test('long single-line text stays one line; frame clips overflow', () {
+      // Long Hangul / titles that extend past the video edges must match the
+      // editor preview: one line, not soft-wrapped back into the frame.
+      const long =
+          '가나다라마바사아자차카타파하가나다라마바사아자차카타파하가나다라마바사';
+      final overlay = overlayWith(
+        text: long,
+        fontSize: 120,
+        boxWidth: maxOverlayBoxWidth,
+        boxHeight: 200,
+      );
+      final box = overlayBoxForFrame(overlay, frameWidth: frameWidth * 1.0);
+      final template = resolveOverlayTemplate(overlay);
+      final padH = overlayTextPadH(fontSize: box.fontSize, template: template);
+      final contentMaxWidth = (box.width - padH * 2).clamp(1.0, box.width);
+      final style = overlayTextFillStyle(
+        color: overlay.color,
+        fontSize: box.fontSize,
+        style: overlay.style,
+        fontFamily: overlay.fontFamily,
+      );
+      final paintMaxWidth = overlayPaintMaxWidth(
+        text: overlay.text,
+        style: style,
+        contentMaxWidth: contentMaxWidth,
+        textAlign: overlay.textAlign,
+        fallbackFontSize: box.fontSize,
+      );
+      final painter = layoutOverlayText(
+        text: overlay.text,
+        color: overlay.color,
+        fontSize: box.fontSize,
+        maxWidth: paintMaxWidth,
+        style: overlay.style,
+      );
+
+      expect(painter.computeLineMetrics().length, 1);
+      expect(painter.width, greaterThan(frameWidth.toDouble()));
+      painter.dispose();
+
+      final fitted = measureFittedOverlayBox(
+        text: long,
+        fontSize: 120,
+        template: template,
+      );
+      // Chrome may clamp width, but height must stay single-line (not reflow).
+      expect(fitted.height, lessThan(120 * 2.5));
     });
   });
 }

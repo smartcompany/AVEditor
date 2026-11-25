@@ -626,6 +626,49 @@ TextPainter createOverlayTextPainter({
   )..layout(maxWidth: maxWidth);
 }
 
+/// Unconstrained single-line width (explicit `\n` still breaks).
+///
+/// Preview and export must share this so a long line that overflows the video
+/// frame is clipped at the edges — not reflowed into the frame on export.
+double overlayNaturalLineWidth({
+  required String text,
+  required TextStyle style,
+  TextAlign textAlign = TextAlign.center,
+}) {
+  if (text.isEmpty) return 0;
+  final painter = createOverlayTextPainter(
+    text: text,
+    style: style,
+    maxWidth: double.infinity,
+    textAlign: textAlign,
+  );
+  final width = painter.width;
+  painter.dispose();
+  return width;
+}
+
+/// Layout width for painting overlay text: never tighter than the natural
+/// single-line width, so Hangul / long titles do not stack one glyph per line
+/// when the selection chrome is capped at [maxOverlayBoxWidth].
+double overlayPaintMaxWidth({
+  required String text,
+  required TextStyle style,
+  required double contentMaxWidth,
+  TextAlign textAlign = TextAlign.center,
+  double? fallbackFontSize,
+}) {
+  if (text.isEmpty) {
+    final floor = fallbackFontSize ?? style.fontSize ?? 14;
+    return math.max(contentMaxWidth, floor);
+  }
+  final natural = overlayNaturalLineWidth(
+    text: text,
+    style: style,
+    textAlign: textAlign,
+  );
+  return math.max(contentMaxWidth, natural);
+}
+
 /// Upward text nudge so glyphs sit nearer the visual center of a metrics-sized
 /// line background. Ascent ≫ descent leaves empty space above letterforms;
 /// shifting text up by half that imbalance counters the bottom-heavy look.
@@ -817,9 +860,12 @@ Size measureFittedOverlayBox({
 
   final padH = overlayTextPadH(fontSize: fontSize, template: template);
   final padV = overlayTextPadV(fontSize: fontSize, template: template);
-  final innerMax = (maxWidth - padH * 2).clamp(fontSize, maxWidth);
+  final chromeMaxW =
+      maxWidth.clamp(minOverlayBoxWidth, maxOverlayBoxWidth).toDouble();
 
-  // Prefer a single horizontal line; only wrap if we exceed the frame budget.
+  // Single horizontal line (explicit `\n` still wraps). Chrome width may clamp
+  // to [chromeMaxW]; paint uses [overlayPaintMaxWidth] so glyphs that spill
+  // past the frame are clipped on export — same as the editor preview.
   final painter = createOverlayTextPainter(
     text: sample,
     style: _baseTextStyle(
@@ -827,14 +873,11 @@ Size measureFittedOverlayBox({
       fontFamily: fontFamily,
       color: const Color(0xFFFFFFFF),
     ),
-    maxWidth: maxOverlayBoxWidth,
+    maxWidth: double.infinity,
     textAlign: textAlign,
   );
-  if (painter.width > innerMax) {
-    painter.layout(maxWidth: innerMax);
-  }
   final width =
-      (painter.width + padH * 2).clamp(minOverlayBoxWidth, maxOverlayBoxWidth);
+      (painter.width + padH * 2).clamp(minOverlayBoxWidth, chromeMaxW);
   final height =
       (painter.height + padV * 2).clamp(minOverlayBoxHeight, maxOverlayBoxHeight);
   painter.dispose();
@@ -1682,14 +1725,26 @@ void paintOverlayTextLayer({
   final template = resolveOverlayTemplate(overlay);
   final fillColor = template.resolveFill(overlay.color);
   final pack = TextTemplatePackService.instance.itemById(overlay.packItemId);
+  final metricsStyle = _baseTextStyle(
+    fontSize: box.fontSize,
+    fontFamily: overlay.fontFamily,
+    color: fillColor,
+  );
+  final padH = overlayTextPadH(fontSize: box.fontSize, template: template);
+  final contentMaxWidth = (box.width - padH * 2).clamp(1.0, box.width);
+  // Match preview [layoutMaxWidth]: never reflow a long single line into the
+  // frame. Overflow past the video edges is clipped by the export canvas.
+  final paintMaxWidth = overlayPaintMaxWidth(
+    text: overlay.text,
+    style: metricsStyle,
+    contentMaxWidth: contentMaxWidth,
+    textAlign: overlay.textAlign,
+    fallbackFontSize: box.fontSize,
+  );
   final metricsPainter = createOverlayTextPainter(
     text: overlay.text,
-    style: _baseTextStyle(
-      fontSize: box.fontSize,
-      fontFamily: overlay.fontFamily,
-      color: fillColor,
-    ),
-    maxWidth: box.width,
+    style: metricsStyle,
+    maxWidth: paintMaxWidth,
     textAlign: overlay.textAlign,
   );
   final origin = overlayTextOrigin(
@@ -1725,7 +1780,7 @@ void paintOverlayTextLayer({
       text: overlay.text,
       accent: overlay.color,
       fontSize: box.fontSize,
-      maxWidth: box.width,
+      maxWidth: paintMaxWidth,
       origin: origin,
       fallbackStyle: template,
       fontFamily: overlay.fontFamily,
@@ -1739,7 +1794,7 @@ void paintOverlayTextLayer({
     text: overlay.text,
     accent: overlay.color,
     fontSize: box.fontSize,
-    maxWidth: box.width,
+    maxWidth: paintMaxWidth,
     origin: origin,
     template: template,
     fontFamily: overlay.fontFamily,
@@ -1800,18 +1855,28 @@ class OverlayTextDisplay extends StatelessWidget {
       // leave a hollow strip on the right inside a wider constraint.
       paintMaxWidth = measured.width.clamp(1.0, maxWidth);
     } else {
+      final style = _baseTextStyle(
+        fontSize: fontSize,
+        fontFamily: fontFamily,
+        color: fill,
+      );
+      // Prefer natural single-line width when [maxWidth] is a capped chrome
+      // budget — same rule as export [paintOverlayTextLayer].
+      final resolvedMax = overlayPaintMaxWidth(
+        text: text,
+        style: style,
+        contentMaxWidth: maxWidth,
+        textAlign: textAlign,
+        fallbackFontSize: fontSize,
+      );
       final probe = createOverlayTextPainter(
         text: text,
-        style: _baseTextStyle(
-          fontSize: fontSize,
-          fontFamily: fontFamily,
-          color: fill,
-        ),
-        maxWidth: maxWidth,
+        style: style,
+        maxWidth: resolvedMax,
         textAlign: textAlign,
       );
       size = Size(probe.width, probe.height);
-      paintMaxWidth = maxWidth;
+      paintMaxWidth = resolvedMax;
       probe.dispose();
     }
 

@@ -1538,21 +1538,15 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
         ).width
             .clamp(1.0, maxOverlayBoxWidth);
       }
-      if (displayText.isEmpty) {
-        return math.max(contentMaxWidth, widget.box.fontSize);
-      }
-      // Never lay out tighter than the natural single-line width — a too-small
-      // box (or brush pads eating the inner width) used to stack Hangul
-      // vertically one glyph per line.
-      final probe = createOverlayTextPainter(
+      // Shared with export ([overlayPaintMaxWidth]): long single lines overflow
+      // and clip at the frame — they must not soft-wrap into the video.
+      return overlayPaintMaxWidth(
         text: displayText,
         style: _fillStyle,
-        maxWidth: maxOverlayBoxWidth,
+        contentMaxWidth: contentMaxWidth,
         textAlign: widget.overlay.textAlign,
+        fallbackFontSize: widget.box.fontSize,
       );
-      final natural = probe.width;
-      probe.dispose();
-      return math.max(contentMaxWidth, natural);
     }
 
     Widget wrapPreview(Widget child) {

@@ -240,12 +240,30 @@ class OverlayRasterService {
     required int height,
   }) {
     final box = overlayBoxForFrame(overlay, frameWidth: width.toDouble());
+    final template = resolveOverlayTemplate(overlay);
+    final padH = overlayTextPadH(fontSize: box.fontSize, template: template);
+    final contentMaxWidth = (box.width - padH * 2).clamp(1.0, box.width);
+    final style = overlayTextFillStyle(
+      color: overlay.color,
+      fontSize: box.fontSize,
+      style: overlay.style,
+      fontFamily: overlay.fontFamily,
+    );
+    final paintMaxWidth = overlayPaintMaxWidth(
+      text: overlay.text,
+      style: style,
+      contentMaxWidth: contentMaxWidth,
+      textAlign: overlay.textAlign,
+      fallbackFontSize: box.fontSize,
+    );
     final painter = layoutOverlayText(
       text: overlay.text,
       color: overlay.color,
       fontSize: box.fontSize,
-      maxWidth: box.width,
+      maxWidth: paintMaxWidth,
       style: overlay.style,
+      fontFamily: overlay.fontFamily,
+      textAlign: overlay.textAlign,
     );
     final origin = overlayTextOrigin(
       painter: painter,
