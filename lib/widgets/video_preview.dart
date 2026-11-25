@@ -1117,6 +1117,9 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
   late final TextEditingController _controller;
   late final FocusNode _focusNode;
 
+  /// Per-bubble editors for composition packs (Chat Message). Indexed by line.
+  final List<FocusNode> _lineFocusNodes = [];
+
   /// Wraps the inline [TextField] so caret drags can reach its editable.
   final GlobalKey _fieldKey = GlobalKey();
 
@@ -1133,6 +1136,103 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
   int? _caretPointer;
   Offset? _caretDownGlobal;
   bool _caretDragging = false;
+  int _focusedLine = 0;
+
+  FocusNode _lineFocusNode(int index) {
+    while (_lineFocusNodes.length <= index) {
+      _lineFocusNodes.add(FocusNode(debugLabel: 'compLine${_lineFocusNodes.length}'));
+    }
+    return _lineFocusNodes[index];
+  }
+
+  void _disposeExtraLineFocus(int keepCount) {
+    while (_lineFocusNodes.length > keepCount) {
+      _lineFocusNodes.removeLast().dispose();
+    }
+  }
+
+  List<String> _compositionLines() {
+    final raw = _controller.text.replaceAll('\r\n', '\n');
+    final lines = raw.split('\n');
+    return lines.isEmpty ? [''] : lines;
+  }
+
+  void _commitCompositionLines(List<String> lines, {int? focusLine}) {
+    final next = lines.isEmpty ? '' : lines.join('\n');
+    if (next != _controller.text) {
+      _controller.value = TextEditingValue(
+        text: next,
+        selection: TextSelection.collapsed(offset: next.length),
+      );
+      widget.onTextChanged(next);
+    }
+    if (focusLine != null) {
+      _focusedLine = focusLine;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _lineFocusNode(focusLine).requestFocus();
+      });
+    }
+  }
+
+  Widget _compositionLineField({
+    required int index,
+    required TextCompositionSlotFrame frame,
+    required String text,
+  }) {
+    final caretShift = (_cursorWidth + 1) / 2;
+    final focus = _lineFocusNode(index);
+    return Positioned(
+      left: frame.textOrigin.dx + caretShift,
+      top: frame.textOrigin.dy,
+      width: frame.textWidth + _cursorWidth + 1,
+      height: math.max(frame.textHeight, frame.fontSize * 1.2),
+      child: MediaQuery.withNoTextScaling(
+        child: _CompositionBubbleField(
+          key: ValueKey('comp-line-$index'),
+          fieldKey: index == _focusedLine ? _fieldKey : null,
+          text: text,
+          focusNode: focus,
+          autofocus: widget.editing && index == _focusedLine,
+          fontSize: frame.fontSize,
+          cursorWidth: _cursorWidth,
+          cursorHeight: frame.fontSize * 1.1,
+          screenScale: _screenScale,
+          onFocused: () => _focusedLine = index,
+          onChanged: (value) {
+            final lines = _compositionLines();
+            while (lines.length <= index) {
+              lines.add('');
+            }
+            lines[index] = value;
+            _commitCompositionLines(lines);
+          },
+          onEnter: () {
+            final lines = _compositionLines();
+            while (lines.length <= index) {
+              lines.add('');
+            }
+            lines.insert(index + 1, '');
+            _commitCompositionLines(lines, focusLine: index + 1);
+          },
+          onEmptyBackspace: index == 0
+              ? null
+              : () {
+                  final lines = _compositionLines();
+                  if (index >= lines.length) return;
+                  lines.removeAt(index);
+                  _commitCompositionLines(
+                    lines.isEmpty ? [''] : lines,
+                    focusLine: index - 1,
+                  );
+                },
+          onCaretPointerDown: _onCaretPointerDown,
+          onCaretPointerMove: _onCaretPointerMove,
+          onCaretPointerEnd: _onCaretPointerEnd,
+        ),
+      ),
+    );
+  }
 
   EditableTextState? _editableState() {
     EditableTextState? found;
@@ -1254,8 +1354,17 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
     }
     if (widget.editing && !oldWidget.editing) {
       _controller.text = widget.overlay.text;
+      final lines = _compositionLines();
+      _focusedLine = math.max(0, lines.length - 1);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
+        final pack = TextTemplatePackService.instance
+            .itemById(widget.overlay.packItemId)
+            ?.composition;
+        if (pack != null) {
+          _lineFocusNode(_focusedLine).requestFocus();
+          return;
+        }
         _focusNode.requestFocus();
         final text = _controller.text;
         if (widget.selectAllOnEdit && text.isNotEmpty) {
@@ -1277,6 +1386,14 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
       // Do not call TextInput.show while the keyboard is already up (toggles off).
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !widget.editing) return;
+        final pack = TextTemplatePackService.instance
+            .itemById(widget.overlay.packItemId)
+            ?.composition;
+        if (pack != null) {
+          final node = _lineFocusNode(_focusedLine);
+          if (!node.hasFocus) node.requestFocus();
+          return;
+        }
         if (!_focusNode.hasFocus) _focusNode.requestFocus();
       });
     }
@@ -1287,6 +1404,10 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
     _focusNode.removeListener(_onFocusChangedForRebuild);
     _controller.dispose();
     _focusNode.dispose();
+    for (final node in _lineFocusNodes) {
+      node.dispose();
+    }
+    _lineFocusNodes.clear();
     super.dispose();
   }
 
@@ -1449,6 +1570,84 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
       // Once the keyboard is up, hide the "tap to enter text" placeholder —
       // show only real typed characters (empty → caret only).
       final displayText = live;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _syncScreenScale();
+      });
+
+      // Chat Message etc.: each bubble has its own x (dx / align). One centered
+      // multiline field cannot match odd (blue/start) and even (grey/dx) rows —
+      // place a transparent field on every bubble frame instead.
+      if (packComposition != null) {
+        final measureText = live.isEmpty ? (widget.textHint ?? ' ') : live;
+        final frames = layoutTextCompositionFrames(
+          composition: packComposition,
+          text: measureText,
+          fontSize: widget.box.fontSize,
+          maxWidth: maxOverlayBoxWidth,
+          fallbackStyle: template,
+          fontFamily: widget.overlay.fontFamily,
+        );
+        final size = measureTextCompositionSize(
+          composition: packComposition,
+          text: measureText,
+          fontSize: widget.box.fontSize,
+          maxWidth: maxOverlayBoxWidth,
+          fallbackStyle: template,
+          fontFamily: widget.overlay.fontFamily,
+        );
+        final painted = IgnorePointer(
+          child: OverlayTextDisplay(
+            text: displayText,
+            color: widget.overlay.color,
+            fontSize: widget.box.fontSize,
+            maxWidth: size.width.clamp(1.0, maxOverlayBoxWidth),
+            template: template,
+            fontFamily: widget.overlay.fontFamily,
+            textAlign: widget.overlay.textAlign,
+            hintColor: null,
+            entrance: TextEntranceState.fullyVisible,
+            composition: packComposition,
+          ),
+        );
+        final lines = live.replaceAll('\r\n', '\n').split('\n');
+        final lineCount = math.max(frames.length, math.max(1, lines.length));
+        _disposeExtraLineFocus(lineCount);
+        final stack = SizedBox(
+          width: size.width,
+          height: size.height,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              painted,
+              for (var i = 0; i < frames.length; i++)
+                _compositionLineField(
+                  index: i,
+                  frame: frames[i],
+                  text: i < lines.length ? lines[i] : '',
+                ),
+            ],
+          ),
+        );
+        final packId = widget.overlay.packItemId;
+        if (packId == null) return wrapPreview(stack);
+        return wrapPreview(
+          Stack(
+            alignment: Alignment.center,
+            clipBehavior: Clip.none,
+            children: [
+              IgnorePointer(
+                child: PackLottieDecoration(
+                  packItemId: packId,
+                  width: widget.box.width * 1.15,
+                  height: widget.box.height * 1.4,
+                ),
+              ),
+              stack,
+            ],
+          ),
+        );
+      }
+
       // Multi-slot packs paint smaller than overlay.fontSize — size the hidden
       // field + caret to the dominant slot so the cursor is not box-tall.
       final editMetrics = _editMetricsForComposition(
@@ -1464,19 +1663,9 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
         wordSpacing: _fillStyle.wordSpacing ?? 0,
         height: editMetrics.lineHeight,
       );
-      final maxW = packComposition != null
-          ? measureTextCompositionSize(
-              composition: packComposition,
-              text: live.isEmpty ? (widget.textHint ?? ' ') : live,
-              fontSize: widget.box.fontSize,
-              maxWidth: maxOverlayBoxWidth,
-              fallbackStyle: template,
-              fontFamily: widget.overlay.fontFamily,
-            ).width
-              .clamp(1.0, maxOverlayBoxWidth)
-          : layoutMaxWidth(
-              live.isEmpty ? (widget.textHint ?? '') : live,
-            );
+      final maxW = layoutMaxWidth(
+        live.isEmpty ? (widget.textHint ?? '') : live,
+      );
       final painted = IgnorePointer(
         child: OverlayTextDisplay(
           text: displayText,
@@ -1491,13 +1680,8 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
           composition: packComposition,
         ),
       );
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _syncScreenScale();
-      });
       // Glyph-tall caret (not chrome / full stack height).
-      final caretHeight = packComposition != null
-          ? editFontSize * 1.1
-          : math.min(widget.box.height, editFontSize * 1.35);
+      final caretHeight = math.min(widget.box.height, editFontSize * 1.35);
       final field = MediaQuery.withNoTextScaling(
         child: TextField(
           key: _fieldKey,
@@ -1524,12 +1708,10 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
             leadingDistribution: TextLeadingDistribution.even,
           ),
           onTapOutside: (_) {},
-          decoration: InputDecoration(
+          decoration: const InputDecoration(
             isDense: true,
             border: InputBorder.none,
-            // Nudge into the bubble pad so the caret sits on the glyph, not
-            // on the top edge of the chat bubble chrome.
-            contentPadding: EdgeInsets.only(top: editMetrics.padV),
+            contentPadding: EdgeInsets.zero,
             isCollapsed: true,
           ),
           onChanged: widget.onTextChanged,
@@ -1567,24 +1749,7 @@ class _DraggableOverlayLabelState extends State<_DraggableOverlayLabel> {
           ),
         ],
       );
-      final packId = widget.overlay.packItemId;
-      if (packId == null) return wrapPreview(stack);
-      return wrapPreview(
-        Stack(
-          alignment: Alignment.center,
-          clipBehavior: Clip.none,
-          children: [
-            IgnorePointer(
-              child: PackLottieDecoration(
-                packItemId: packId,
-                width: widget.box.width * 1.15,
-                height: widget.box.height * 1.4,
-              ),
-            ),
-            stack,
-          ],
-        ),
-      );
+      return wrapPreview(stack);
     }
 
     final isHint = widget.overlay.text.isEmpty;
@@ -1819,6 +1984,167 @@ class _VideoCanvasBackground extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: video,
+    );
+  }
+}
+
+/// Transparent single-line editor pinned to one composition bubble.
+class _CompositionBubbleField extends StatefulWidget {
+  const _CompositionBubbleField({
+    super.key,
+    this.fieldKey,
+    required this.text,
+    required this.focusNode,
+    required this.autofocus,
+    required this.fontSize,
+    required this.cursorWidth,
+    required this.cursorHeight,
+    required this.screenScale,
+    required this.onChanged,
+    required this.onEnter,
+    required this.onFocused,
+    required this.onCaretPointerDown,
+    required this.onCaretPointerMove,
+    required this.onCaretPointerEnd,
+    this.onEmptyBackspace,
+  });
+
+  final Key? fieldKey;
+  final String text;
+  final FocusNode focusNode;
+  final bool autofocus;
+  final double fontSize;
+  final double cursorWidth;
+  final double cursorHeight;
+  final double screenScale;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onEnter;
+  final VoidCallback onFocused;
+  final VoidCallback? onEmptyBackspace;
+  final ValueChanged<PointerDownEvent> onCaretPointerDown;
+  final ValueChanged<PointerMoveEvent> onCaretPointerMove;
+  final ValueChanged<PointerEvent> onCaretPointerEnd;
+
+  @override
+  State<_CompositionBubbleField> createState() =>
+      _CompositionBubbleFieldState();
+}
+
+class _CompositionBubbleFieldState extends State<_CompositionBubbleField> {
+  late final TextEditingController _controller;
+  var _syncing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.text);
+    widget.focusNode.addListener(_onFocus);
+    if (widget.autofocus) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.focusNode.requestFocus();
+      });
+    }
+  }
+
+  void _onFocus() {
+    if (widget.focusNode.hasFocus) widget.onFocused();
+  }
+
+  @override
+  void didUpdateWidget(covariant _CompositionBubbleField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.focusNode != widget.focusNode) {
+      oldWidget.focusNode.removeListener(_onFocus);
+      widget.focusNode.addListener(_onFocus);
+    }
+    if (!_syncing &&
+        widget.text != _controller.text &&
+        !widget.focusNode.hasFocus) {
+      _controller.value = TextEditingValue(
+        text: widget.text,
+        selection: TextSelection.collapsed(offset: widget.text.length),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.focusNode.removeListener(_onFocus);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (event.logicalKey == LogicalKeyboardKey.enter ||
+        event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+      widget.onEnter();
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.backspace &&
+        _controller.text.isEmpty &&
+        widget.onEmptyBackspace != null) {
+      widget.onEmptyBackspace!();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final style = TextStyle(
+      inherit: false,
+      fontSize: widget.fontSize,
+      height: 1.05,
+      fontWeight: FontWeight.w500,
+      textBaseline: TextBaseline.alphabetic,
+      color: const Color(0x00000000),
+      letterSpacing: 0,
+      wordSpacing: 0,
+    );
+    return Listener(
+      onPointerDown: widget.onCaretPointerDown,
+      onPointerMove: widget.onCaretPointerMove,
+      onPointerUp: widget.onCaretPointerEnd,
+      onPointerCancel: widget.onCaretPointerEnd,
+      child: Focus(
+        onKeyEvent: _onKey,
+        child: TextField(
+          key: widget.fieldKey,
+          controller: _controller,
+          focusNode: widget.focusNode,
+          autofocus: widget.autofocus,
+          maxLines: 1,
+          textAlign: TextAlign.left,
+          style: style,
+          cursorColor: AppTheme.accent,
+          cursorWidth: widget.cursorWidth,
+          cursorHeight: widget.cursorHeight,
+          cursorRadius:
+              Radius.circular((1.5 / widget.screenScale).clamp(1.0, 8.0)),
+          cursorOpacityAnimates: false,
+          strutStyle: StrutStyle(
+            fontSize: widget.fontSize,
+            height: 1.05,
+            fontWeight: FontWeight.w500,
+            forceStrutHeight: true,
+          ),
+          onTapOutside: (_) {},
+          decoration: const InputDecoration(
+            isDense: true,
+            border: InputBorder.none,
+            contentPadding: EdgeInsets.zero,
+            isCollapsed: true,
+          ),
+          onChanged: (value) {
+            _syncing = true;
+            widget.onChanged(value);
+            _syncing = false;
+          },
+          textInputAction: TextInputAction.next,
+          onSubmitted: (_) => widget.onEnter(),
+        ),
+      ),
     );
   }
 }

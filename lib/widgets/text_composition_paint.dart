@@ -7,6 +7,36 @@ import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/widgets/text_entrance.dart';
 import 'package:flutter/material.dart';
 
+/// One laid-out bubble/row for hit-testing / inline edit caret alignment.
+@immutable
+class TextCompositionSlotFrame {
+  const TextCompositionSlotFrame({
+    required this.left,
+    required this.top,
+    required this.width,
+    required this.height,
+    required this.padH,
+    required this.padV,
+    required this.fontSize,
+    required this.textAlign,
+  });
+
+  final double left;
+  final double top;
+  final double width;
+  final double height;
+  final double padH;
+  final double padV;
+  final double fontSize;
+  final TextAlign textAlign;
+
+  /// Glyph origin inside the bubble (matches paint).
+  Offset get textOrigin => Offset(left + padH, top + padV);
+
+  double get textWidth => math.max(1.0, width - padH * 2);
+  double get textHeight => math.max(1.0, height - padV * 2);
+}
+
 /// Tight size of a composition stack (slots + decorations), matching paint.
 Size measureTextCompositionSize({
   required TextComposition composition,
@@ -29,6 +59,47 @@ Size measureTextCompositionSize({
     disposePainters: true,
   );
   return Size(laid.totalW, laid.totalH);
+}
+
+/// Per-bubble frames in composition-local coordinates (origin top-left).
+List<TextCompositionSlotFrame> layoutTextCompositionFrames({
+  required TextComposition composition,
+  required String text,
+  required double fontSize,
+  required double maxWidth,
+  required TextStyleTemplate fallbackStyle,
+  String? fontFamily,
+}) {
+  final laid = _layoutCompositionSlots(
+    composition: composition,
+    text: text,
+    fontSize: fontSize,
+    maxWidth: maxWidth,
+    fallbackStyle: fallbackStyle,
+    fontFamily: fontFamily,
+    layerOpacity: 1,
+    slotOpacity: const [],
+    slotDy: const [],
+    disposePainters: true,
+  );
+  final stackLeft = laid.leftInset;
+  final stackTop = laid.topInset;
+  return [
+    for (final s in laid.slots)
+      TextCompositionSlotFrame(
+        left:
+            stackLeft +
+            s.dx +
+            _alignOffset(composition.align, laid.contentW, s.width),
+        top: stackTop + s.top,
+        width: s.width,
+        height: s.height,
+        padH: s.padH,
+        padV: s.padV,
+        fontSize: s.slotFontSize,
+        textAlign: _toAlign(s.slot.align),
+      ),
+  ];
 }
 
 /// Paints a server-driven [TextComposition] (slots + decorations).
