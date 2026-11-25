@@ -1465,13 +1465,10 @@ class OverlayTextDisplay extends StatelessWidget {
         fallbackStyle: template,
         fontFamily: fontFamily,
       );
-      // Include staged rise so ease-out settle isn't clipped by paint bounds.
-      final rise = entrance?.slotDy.fold<double>(
-            0,
-            (m, v) => v > m ? v : m,
-          ) ??
-          0;
-      size = Size(measured.width, measured.height + rise);
+      // Keep settled layout size fixed (dashboard parity). Staged slotDy is a
+      // paint-only offset — expanding height by rise made earlier lines drop
+      // as the last bubble eased into place.
+      size = measured;
       // Lay out bubbles against their own width so start-align packs don't
       // leave a hollow strip on the right inside a wider constraint.
       paintMaxWidth = measured.width.clamp(1.0, maxWidth);
