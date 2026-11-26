@@ -2,6 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Required for FCM → APNs. Xcode rewrites to production on App Store/TestFlight export. -->
+	<key>aps-environment</key>
+	<string>development</string>
 	<!-- TikTok Login/Share return via https://easyclip.coinpang.org/tiktok/callback -->
 	<key>com.apple.developer.associated-domains</key>
 	<array>
