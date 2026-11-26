@@ -11,6 +11,7 @@ import 'package:aveditor/services/analytics_service.dart';
 import 'package:aveditor/services/background_catalog_service.dart';
 import 'package:aveditor/services/credit_service.dart';
 import 'package:aveditor/services/pro_service.dart';
+import 'package:aveditor/services/fcm_push_service.dart';
 import 'package:aveditor/services/retention_notification_service.dart';
 import 'package:aveditor/services/text_template_pack_service.dart';
 import 'package:aveditor/services/transition_catalog_service.dart';
@@ -102,6 +103,7 @@ Future<void> _initRetentionPush() async {
     });
   }
   unawaited(_watchCatalogDrops());
+  unawaited(FcmPushService.instance.ensureInitialized());
 }
 
 Future<void> _watchCatalogDrops() async {

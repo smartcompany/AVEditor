@@ -2,12 +2,14 @@ import 'package:aveditor/app_auth_provider.dart';
 import 'package:aveditor/l10n/app_localizations.dart';
 import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/models/export_quality_profile.dart';
+import 'package:aveditor/models/push_notification_category.dart';
 import 'package:aveditor/screens/paywall_screen.dart';
 import 'package:aveditor/services/app_settings_service.dart';
 import 'package:aveditor/services/credit_service.dart';
 import 'package:aveditor/services/pro_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/utils/auth_helper.dart';
+import 'package:aveditor/widgets/notification_preference_sheet.dart';
 import 'package:flutter/material.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -20,6 +22,10 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final _settings = const AppSettingsService();
   ExportQualityProfile? _selected;
+  var _notifMaster = true;
+  var _notifDraft = true;
+  var _notifShare = true;
+  var _notifCatalog = true;
   bool _loading = true;
 
   @override
@@ -43,9 +49,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _load() async {
     final profile = await _settings.getExportQualityProfile();
+    final master = await _settings.getNotificationMasterEnabled();
+    final draft = await _settings.getNotificationDraftEnabled();
+    final share = await _settings.getNotificationShareEnabled();
+    final catalog = await _settings.getNotificationCatalogEnabled();
     if (!mounted) return;
     setState(() {
       _selected = profile;
+      _notifMaster = master;
+      _notifDraft = draft;
+      _notifShare = share;
+      _notifCatalog = catalog;
       _loading = false;
     });
   }
@@ -54,6 +68,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _settings.setExportQualityProfile(profile);
     if (!mounted) return;
     setState(() => _selected = profile);
+  }
+
+  Future<void> _setNotifMaster(bool enabled) async {
+    await _settings.setNotificationMasterEnabled(enabled);
+    await syncNotificationPreferenceFromSettings(
+      enabling: enabled,
+      requestOsIfEnabling: enabled,
+      cancelledCategory: null,
+    );
+    if (!mounted) return;
+    setState(() => _notifMaster = enabled);
+  }
+
+  Future<void> _setNotifCategory(
+    PushNotificationCategory category,
+    bool enabled,
+  ) async {
+    switch (category) {
+      case PushNotificationCategory.draft:
+        await _settings.setNotificationDraftEnabled(enabled);
+      case PushNotificationCategory.share:
+        await _settings.setNotificationShareEnabled(enabled);
+      case PushNotificationCategory.catalog:
+        await _settings.setNotificationCatalogEnabled(enabled);
+    }
+    await syncNotificationPreferenceFromSettings(
+      enabling: enabled,
+      requestOsIfEnabling: enabled && _notifMaster,
+      cancelledCategory: enabled ? null : category,
+    );
+    if (!mounted) return;
+    setState(() {
+      switch (category) {
+        case PushNotificationCategory.draft:
+          _notifDraft = enabled;
+        case PushNotificationCategory.share:
+          _notifShare = enabled;
+        case PushNotificationCategory.catalog:
+          _notifCatalog = enabled;
+      }
+    });
   }
 
   Future<void> _signIn() async {
@@ -228,6 +283,82 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     },
                   ),
                   const SizedBox(height: 22),
+                  _SectionLabel(l10n.settingsNotificationsSection),
+                  const SizedBox(height: 10),
+                  _SettingsCard(
+                    child: Column(
+                      children: [
+                        _SettingsRow(
+                          leading: const _LeadingGlyph(
+                            icon: Icons.notifications_outlined,
+                            gradient: true,
+                          ),
+                          title: l10n.settingsNotificationsMasterTitle,
+                          subtitle: Text(
+                            l10n.settingsNotificationsMasterBody,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: AppTheme.muted),
+                          ),
+                          trailing: Switch.adaptive(
+                            value: _notifMaster,
+                            activeThumbColor: AppTheme.accent,
+                            onChanged: _setNotifMaster,
+                          ),
+                        ),
+                        Divider(
+                          height: 1,
+                          indent: 68,
+                          color: AppTheme.muted.withValues(alpha: 0.2),
+                        ),
+                        _NotificationToggleRow(
+                          enabled: _notifMaster,
+                          icon: Icons.edit_note_rounded,
+                          title: l10n.settingsNotificationsDraftTitle,
+                          body: l10n.settingsNotificationsDraftBody,
+                          value: _notifDraft,
+                          onChanged: (v) => _setNotifCategory(
+                            PushNotificationCategory.draft,
+                            v,
+                          ),
+                        ),
+                        Divider(
+                          height: 1,
+                          indent: 68,
+                          color: AppTheme.muted.withValues(alpha: 0.2),
+                        ),
+                        _NotificationToggleRow(
+                          enabled: _notifMaster,
+                          icon: Icons.ios_share_rounded,
+                          title: l10n.settingsNotificationsShareTitle,
+                          body: l10n.settingsNotificationsShareBody,
+                          value: _notifShare,
+                          onChanged: (v) => _setNotifCategory(
+                            PushNotificationCategory.share,
+                            v,
+                          ),
+                        ),
+                        Divider(
+                          height: 1,
+                          indent: 68,
+                          color: AppTheme.muted.withValues(alpha: 0.2),
+                        ),
+                        _NotificationToggleRow(
+                          enabled: _notifMaster,
+                          icon: Icons.auto_awesome_outlined,
+                          title: l10n.settingsNotificationsCatalogTitle,
+                          body: l10n.settingsNotificationsCatalogBody,
+                          value: _notifCatalog,
+                          onChanged: (v) => _setNotifCategory(
+                            PushNotificationCategory.catalog,
+                            v,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 22),
                   _SectionLabel(l10n.exportQualitySection),
                   const SizedBox(height: 10),
                   ...ExportQualityProfile.values.map(
@@ -351,6 +482,45 @@ class _SettingsCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(1.2),
         child: card,
+      ),
+    );
+  }
+}
+
+class _NotificationToggleRow extends StatelessWidget {
+  const _NotificationToggleRow({
+    required this.enabled,
+    required this.icon,
+    required this.title,
+    required this.body,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final bool enabled;
+  final IconData icon;
+  final String title;
+  final String body;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = AppTheme.muted.withValues(alpha: enabled ? 1 : 0.45);
+    return Opacity(
+      opacity: enabled ? 1 : 0.55,
+      child: _SettingsRow(
+        leading: _LeadingGlyph(icon: icon),
+        title: title,
+        subtitle: Text(
+          body,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: muted),
+        ),
+        trailing: Switch.adaptive(
+          value: value,
+          activeThumbColor: AppTheme.accent,
+          onChanged: enabled ? onChanged : null,
+        ),
       ),
     );
   }

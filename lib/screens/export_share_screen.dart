@@ -14,6 +14,7 @@ import 'package:aveditor/services/export_share_service.dart';
 import 'package:aveditor/services/native_video_engine.dart';
 import 'package:aveditor/services/project_storage_service.dart';
 import 'package:aveditor/services/retention_notification_service.dart';
+import 'package:aveditor/services/review_prompt_service.dart';
 import 'package:aveditor/services/share_catalog_service.dart';
 import 'package:aveditor/services/video_frame_grab.dart';
 import 'package:aveditor/services/video_import_service.dart';
@@ -239,6 +240,7 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
       // Gallery save belongs with the share screen so the status line is true.
       if (!_fromAlbumPick) {
         unawaited(_saveToAlbumIfNeeded());
+        unawaited(_maybeAskForReview());
       }
     } catch (error, stack) {
       debugPrint('[ExportShare] prepared open failed: $error\n$stack');
@@ -365,6 +367,7 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
         _progress = 1;
       });
       unawaited(_saveToAlbumIfNeeded());
+      unawaited(_maybeAskForReview());
     } catch (error, stack) {
       final cancelled =
           _cancelled ||
@@ -379,6 +382,24 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
       if (!mounted) return;
       setState(() => _error = error.toString());
     }
+  }
+
+  /// Soft “enjoying?” then store review — only after a real export share screen.
+  Future<void> _maybeAskForReview() async {
+    if (_fromAlbumPick) return;
+    await ReviewPromptService.instance.recordExportSuccess();
+    if (!mounted) return;
+    // Let the share UI settle so the prompt does not cover the progress stage.
+    await Future<void>.delayed(const Duration(milliseconds: 900));
+    if (!mounted || _error != null || _exportedPath == null) return;
+    final l10n = context.l10n;
+    await ReviewPromptService.instance.maybeAsk(
+      context,
+      title: l10n.reviewPromptTitle,
+      body: l10n.reviewPromptBody,
+      positiveLabel: l10n.reviewPromptYes,
+      negativeLabel: l10n.reviewPromptNo,
+    );
   }
 
   Future<void> _togglePlay() async {

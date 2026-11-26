@@ -335,6 +335,18 @@ class AppLocalizationsJa extends AppLocalizations {
   String get exportSuccess => 'ライブラリに保存しました。';
 
   @override
+  String get reviewPromptTitle => 'EasyClipは気に入っていますか？';
+
+  @override
+  String get reviewPromptBody => '短い評価が、もっと多くのクリエイターにアプリを届ける助けになります。';
+
+  @override
+  String get reviewPromptYes => '評価する';
+
+  @override
+  String get reviewPromptNo => 'あとで';
+
+  @override
   String get exportFailed => '書き出しに失敗しました。';
 
   @override
@@ -438,6 +450,46 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get settingsTitle => '設定';
+
+  @override
+  String get settingsNotificationsSection => '通知';
+
+  @override
+  String get settingsNotificationsMasterTitle => '通知を受け取る';
+
+  @override
+  String get settingsNotificationsMasterBody =>
+      'EasyClipからのリマインダーです。オフにするとすべて止まります。';
+
+  @override
+  String get settingsNotificationsDraftTitle => '未完成の下書き';
+
+  @override
+  String get settingsNotificationsDraftBody => '編集途中のクリップを続けるようお知らせします。';
+
+  @override
+  String get settingsNotificationsShareTitle => '共有リマインダー';
+
+  @override
+  String get settingsNotificationsShareBody => '書き出し後、投稿するよう促します。';
+
+  @override
+  String get settingsNotificationsCatalogTitle => '新しいコンテンツ';
+
+  @override
+  String get settingsNotificationsCatalogBody => '新しいトランジションやテキストスタイルを知らせます。';
+
+  @override
+  String get notificationPrefSheetTitle => 'リマインダーで編集を続けよう';
+
+  @override
+  String get notificationPrefSheetBody => '受け取りたい通知を選んでください。設定からいつでも変更できます。';
+
+  @override
+  String get notificationPrefSheetAllow => '通知を受け取る';
+
+  @override
+  String get notificationPrefSheetLater => 'あとで';
 
   @override
   String get exportQualitySection => '書き出し品質';
@@ -656,6 +708,93 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get splitFailed => 'クリップを分割できませんでした。';
+
+  @override
+  String get onboardingSkip => 'スキップ';
+
+  @override
+  String get onboardingNext => '次へ';
+
+  @override
+  String get onboardingDone => 'わかった';
+
+  @override
+  String get onboardingSplitTitle => '再生位置で分割';
+
+  @override
+  String get onboardingSplitBody => '切りたい位置にスクラブしてから分割をタップすると、クリップが分かれます。';
+
+  @override
+  String get onboardingTransitionTitle => 'トランジションはクリップの間';
+
+  @override
+  String get onboardingTransitionBody =>
+      '分割後、タイムラインのクリップ間マーカーをタップするとトランジションを追加できます。';
+
+  @override
+  String get onboardingTextTitle => 'テキストはプレビューで動かす';
+
+  @override
+  String get onboardingTextBody =>
+      'テキスト追加後、プレビュー上でドラッグ。ピンチで拡大縮小。表示タイミングはタイムラインで調整します。';
+
+  @override
+  String get onboardingDockTitle => 'ハンドルでプレビューを拡大';
+
+  @override
+  String get onboardingDockBody =>
+      '動画とタイムラインの間のバーを上下にドラッグすると、ツールを隠したりプレビューを大きくできます。';
+
+  @override
+  String get onboardingReorderTitle => '長押しで並べ替え';
+
+  @override
+  String get onboardingReorderBody =>
+      '分割したクリップをタイムラインで長押ししてドラッグすると、再生順を変えられます。';
+
+  @override
+  String get onboardingCutTransitionTitle => 'トランジションを追加してみよう';
+
+  @override
+  String get onboardingCutTransitionBody =>
+      'タイムラインのトランジションボタンをタップして、クリップの間に効果を追加してみてください。';
+
+  @override
+  String get onboardingTextDeleteTitle => '削除';
+
+  @override
+  String get onboardingTextDeleteBody => '赤い ✕ でこのテキストを動画から削除します。';
+
+  @override
+  String get onboardingTextEditTitle => 'スタイル編集';
+
+  @override
+  String get onboardingTextEditBody => '鉛筆ボタンでテンプレート・色・効果を変更できます。';
+
+  @override
+  String get onboardingTextDuplicateTitle => '複製';
+
+  @override
+  String get onboardingTextDuplicateBody => '同じテキストをもう1つ作って素早く配置できます。';
+
+  @override
+  String get onboardingTextResizeTitle => '拡大・回転';
+
+  @override
+  String get onboardingTextResizeBody => '角のハンドルをドラッグしてサイズと角度を調整します。';
+
+  @override
+  String get onboardingTextStudioTextTitle => 'テキスト';
+
+  @override
+  String get onboardingTextStudioTextBody => 'シンプルな文字やスタイル効果を選んで適用します。';
+
+  @override
+  String get onboardingTextStudioTemplatesTitle => 'テキストテンプレート';
+
+  @override
+  String get onboardingTextStudioTemplatesBody =>
+      'レイアウトとアニメーション付きのデザインをワンタップで適用できます。';
 
   @override
   String splitSuccess(String time) {

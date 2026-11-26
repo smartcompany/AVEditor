@@ -6,6 +6,7 @@ import 'package:aveditor/models/text_entrance_animation.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/services/sticker_storage_service.dart';
 import 'package:aveditor/services/text_template_pack_service.dart';
+import 'package:aveditor/widgets/overlay_fonts.dart';
 import 'package:aveditor/widgets/overlay_geometry.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/widgets/text_entrance.dart';
@@ -64,6 +65,14 @@ class OverlayRasterService {
     required Directory outputDir,
     String? projectDir,
   }) async {
+    // Warm faces (incl. Basic → Noto KR fallback) before measuring / painting.
+    final fontIds = <String>{};
+    for (final o in overlays) {
+      if (o.isSticker || o.text.trim().isEmpty) continue;
+      fontIds.add(o.fontFamily ?? OverlayFonts.defaultId);
+    }
+    await Future.wait(fontIds.map(OverlayFonts.ensureLoaded));
+
     final rendered = <OverlayRaster>[];
     for (var i = 0; i < overlays.length; i++) {
       final overlay = overlays[i];

@@ -714,6 +714,30 @@ abstract class AppLocalizations {
   /// **'Saved to your library.'**
   String get exportSuccess;
 
+  /// No description provided for @reviewPromptTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Enjoying EasyClip?'**
+  String get reviewPromptTitle;
+
+  /// No description provided for @reviewPromptBody.
+  ///
+  /// In en, this message translates to:
+  /// **'A quick rating helps more creators find the app. It only takes a moment.'**
+  String get reviewPromptBody;
+
+  /// No description provided for @reviewPromptYes.
+  ///
+  /// In en, this message translates to:
+  /// **'Rate EasyClip'**
+  String get reviewPromptYes;
+
+  /// No description provided for @reviewPromptNo.
+  ///
+  /// In en, this message translates to:
+  /// **'Not now'**
+  String get reviewPromptNo;
+
   /// No description provided for @exportFailed.
   ///
   /// In en, this message translates to:
@@ -881,6 +905,84 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Settings'**
   String get settingsTitle;
+
+  /// No description provided for @settingsNotificationsSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications'**
+  String get settingsNotificationsSection;
+
+  /// No description provided for @settingsNotificationsMasterTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow notifications'**
+  String get settingsNotificationsMasterTitle;
+
+  /// No description provided for @settingsNotificationsMasterBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Reminders from EasyClip. Turn off to stop all of them.'**
+  String get settingsNotificationsMasterBody;
+
+  /// No description provided for @settingsNotificationsDraftTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Unfinished drafts'**
+  String get settingsNotificationsDraftTitle;
+
+  /// No description provided for @settingsNotificationsDraftBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Remind you to finish a clip you left mid-edit.'**
+  String get settingsNotificationsDraftBody;
+
+  /// No description provided for @settingsNotificationsShareTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Share reminders'**
+  String get settingsNotificationsShareTitle;
+
+  /// No description provided for @settingsNotificationsShareBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Nudge you to post after you export a video.'**
+  String get settingsNotificationsShareBody;
+
+  /// No description provided for @settingsNotificationsCatalogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'New content'**
+  String get settingsNotificationsCatalogTitle;
+
+  /// No description provided for @settingsNotificationsCatalogBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Let you know when new transitions or text styles arrive.'**
+  String get settingsNotificationsCatalogBody;
+
+  /// No description provided for @notificationPrefSheetTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Stay on track with reminders'**
+  String get notificationPrefSheetTitle;
+
+  /// No description provided for @notificationPrefSheetBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose what you’d like to hear about. You can change this anytime in Settings.'**
+  String get notificationPrefSheetBody;
+
+  /// No description provided for @notificationPrefSheetAllow.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow notifications'**
+  String get notificationPrefSheetAllow;
+
+  /// No description provided for @notificationPrefSheetLater.
+  ///
+  /// In en, this message translates to:
+  /// **'Not now'**
+  String get notificationPrefSheetLater;
 
   /// No description provided for @exportQualitySection.
   ///
@@ -1307,6 +1409,168 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Could not split the clip.'**
   String get splitFailed;
+
+  /// No description provided for @onboardingSkip.
+  ///
+  /// In en, this message translates to:
+  /// **'Skip'**
+  String get onboardingSkip;
+
+  /// No description provided for @onboardingNext.
+  ///
+  /// In en, this message translates to:
+  /// **'Next'**
+  String get onboardingNext;
+
+  /// No description provided for @onboardingDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Got it'**
+  String get onboardingDone;
+
+  /// No description provided for @onboardingSplitTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Split at the playhead'**
+  String get onboardingSplitTitle;
+
+  /// No description provided for @onboardingSplitBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Scrub to the moment you want, then tap Split to divide the clip.'**
+  String get onboardingSplitBody;
+
+  /// No description provided for @onboardingTransitionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Transitions live between clips'**
+  String get onboardingTransitionTitle;
+
+  /// No description provided for @onboardingTransitionBody.
+  ///
+  /// In en, this message translates to:
+  /// **'After a split, tap the marker between clips on the timeline to add a transition.'**
+  String get onboardingTransitionBody;
+
+  /// No description provided for @onboardingTextTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Move text on the video'**
+  String get onboardingTextTitle;
+
+  /// No description provided for @onboardingTextBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Add text, then drag it on the preview. Pinch to resize — timing is edited on the timeline strip.'**
+  String get onboardingTextBody;
+
+  /// No description provided for @onboardingDockTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Pull the handle for a bigger preview'**
+  String get onboardingDockTitle;
+
+  /// No description provided for @onboardingDockBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Drag the bar between the video and timeline up or down to hide tools or make the preview full-screen.'**
+  String get onboardingDockBody;
+
+  /// No description provided for @onboardingReorderTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Long-press to rearrange'**
+  String get onboardingReorderTitle;
+
+  /// No description provided for @onboardingReorderBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Hold a cut clip on the timeline, then drag to change its order in the video.'**
+  String get onboardingReorderBody;
+
+  /// No description provided for @onboardingCutTransitionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Try a transition'**
+  String get onboardingCutTransitionTitle;
+
+  /// No description provided for @onboardingCutTransitionBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap the transition button on the timeline to add an effect between your clips.'**
+  String get onboardingCutTransitionBody;
+
+  /// No description provided for @onboardingTextDeleteTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get onboardingTextDeleteTitle;
+
+  /// No description provided for @onboardingTextDeleteBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The red ✕ removes this text from the video.'**
+  String get onboardingTextDeleteBody;
+
+  /// No description provided for @onboardingTextEditTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit style'**
+  String get onboardingTextEditTitle;
+
+  /// No description provided for @onboardingTextEditBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The pencil opens templates, colors, and effects for this text.'**
+  String get onboardingTextEditBody;
+
+  /// No description provided for @onboardingTextDuplicateTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Duplicate'**
+  String get onboardingTextDuplicateTitle;
+
+  /// No description provided for @onboardingTextDuplicateBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Copies this text so you can place another one quickly.'**
+  String get onboardingTextDuplicateBody;
+
+  /// No description provided for @onboardingTextResizeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Resize & rotate'**
+  String get onboardingTextResizeTitle;
+
+  /// No description provided for @onboardingTextResizeBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Drag the corner handle to scale and rotate the text.'**
+  String get onboardingTextResizeBody;
+
+  /// No description provided for @onboardingTextStudioTextTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Text'**
+  String get onboardingTextStudioTextTitle;
+
+  /// No description provided for @onboardingTextStudioTextBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a plain look or a styled effect for your text.'**
+  String get onboardingTextStudioTextBody;
+
+  /// No description provided for @onboardingTextStudioTemplatesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Text templates'**
+  String get onboardingTextStudioTemplatesTitle;
+
+  /// No description provided for @onboardingTextStudioTemplatesBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Apply a ready-made layout with design and animation in one tap.'**
+  String get onboardingTextStudioTemplatesBody;
 
   /// No description provided for @splitSuccess.
   ///

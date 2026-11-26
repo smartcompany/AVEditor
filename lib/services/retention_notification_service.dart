@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:aveditor/models/push_notification_category.dart';
 import 'package:aveditor/services/analytics_service.dart';
+import 'package:aveditor/services/app_settings_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -42,6 +44,7 @@ class RetentionNotificationService {
   static const shareNudgeDelay = Duration(hours: 4);
 
   final _plugin = FlutterLocalNotificationsPlugin();
+  final _settings = const AppSettingsService();
   var _ready = false;
   void Function(String payload)? onNotificationTap;
 
@@ -159,6 +162,34 @@ class RetentionNotificationService {
 
   Future<void> cancel(int id) => _plugin.cancel(id: id);
 
+  Future<bool> _categoryAllowed(PushNotificationCategory category) {
+    return _settings.isNotificationCategoryEnabled(category);
+  }
+
+  /// Cancel pending notifications after a Settings preference change.
+  ///
+  /// Pass [category] to cancel one kind, or omit to cancel everything
+  /// (master off).
+  Future<void> applyPreferenceChange({
+    PushNotificationCategory? category,
+  }) async {
+    if (!_ready) await ensureInitialized();
+    if (category == null) {
+      await cancelDraftAbandon();
+      await cancelShareNudge();
+      await cancel(idCatalogDrop);
+      return;
+    }
+    switch (category) {
+      case PushNotificationCategory.draft:
+        await cancelDraftAbandon();
+      case PushNotificationCategory.share:
+        await cancelShareNudge();
+      case PushNotificationCategory.catalog:
+        await cancel(idCatalogDrop);
+    }
+  }
+
   /// Priority 1 — leaving the editor with an unfinished draft.
   Future<void> scheduleDraftAbandon({
     required String projectId,
@@ -166,6 +197,10 @@ class RetentionNotificationService {
     required String body24,
     required String body72,
   }) async {
+    if (!await _categoryAllowed(PushNotificationCategory.draft)) {
+      await cancelDraftAbandon();
+      return;
+    }
     await requestPermissionIfNeeded();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefsDraftProject, projectId);
@@ -202,6 +237,10 @@ class RetentionNotificationService {
     required String title,
     required String body,
   }) async {
+    if (!await _categoryAllowed(PushNotificationCategory.share)) {
+      await cancelShareNudge();
+      return;
+    }
     await requestPermissionIfNeeded();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefsShareProject, projectId);
@@ -246,6 +285,11 @@ class RetentionNotificationService {
 
     await prefs.setInt(_prefsTransitionVer, transitionVersion);
     await prefs.setInt(_prefsTextVer, textPackVersion);
+
+    if (!await _categoryAllowed(PushNotificationCategory.catalog)) {
+      await cancel(idCatalogDrop);
+      return;
+    }
 
     await requestPermissionIfNeeded();
     await cancel(idCatalogDrop);

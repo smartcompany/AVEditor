@@ -419,6 +419,9 @@ class TimelineWidgetState extends State<TimelineWidget>
   Timer? _segmentLongPressTimer;
   ClipSegment? _longPressCandidate;
 
+  /// Filmstrip + audio paint surface (cut-marker coords are local to this).
+  final _trackSurfaceKey = GlobalKey();
+
   double? _videoAudioAnchorVolume;
   Duration? _videoAudioAnchorFadeIn;
   Duration? _videoAudioAnchorFadeOut;
@@ -748,6 +751,24 @@ class TimelineWidgetState extends State<TimelineWidget>
       width: _cutMarkerWidth + _cutMarkerHitSlop * 2,
       height: _cutMarkerHeight + _cutMarkerHitSlop * 2,
     );
+  }
+
+  /// First visible cut chip in [ancestor]'s coordinates (for coach marks).
+  Rect? firstCutMarkerRectIn(RenderBox ancestor) {
+    final end = _cutMarkerExclusiveEnd;
+    if (end <= 0) return null;
+    for (var i = 0; i < end; i++) {
+      if (_cutMarkerHiddenBySegmentFocus(i)) continue;
+      final local = _cutMarkerViewportRect(i).inflate(8);
+      final box =
+          _trackSurfaceKey.currentContext?.findRenderObject() as RenderBox?;
+      if (box == null || !box.hasSize) return null;
+      final topLeft = box.localToGlobal(local.topLeft, ancestor: ancestor);
+      final bottomRight =
+          box.localToGlobal(local.bottomRight, ancestor: ancestor);
+      return Rect.fromPoints(topLeft, bottomRight);
+    }
+    return null;
   }
 
   bool _cutMarkerHiddenBySegmentFocus(int afterIndex) {
@@ -3446,6 +3467,7 @@ class TimelineWidgetState extends State<TimelineWidget>
             children: [
               Positioned.fill(
                 child: Listener(
+                  key: _trackSurfaceKey,
                   behavior: HitTestBehavior.opaque,
                   onPointerDown: _onPointerDown,
                   onPointerMove: _onPointerMove,

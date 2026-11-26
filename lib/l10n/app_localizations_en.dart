@@ -339,6 +339,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get exportSuccess => 'Saved to your library.';
 
   @override
+  String get reviewPromptTitle => 'Enjoying EasyClip?';
+
+  @override
+  String get reviewPromptBody =>
+      'A quick rating helps more creators find the app. It only takes a moment.';
+
+  @override
+  String get reviewPromptYes => 'Rate EasyClip';
+
+  @override
+  String get reviewPromptNo => 'Not now';
+
+  @override
   String get exportFailed => 'Export failed.';
 
   @override
@@ -447,6 +460,50 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsTitle => 'Settings';
+
+  @override
+  String get settingsNotificationsSection => 'Notifications';
+
+  @override
+  String get settingsNotificationsMasterTitle => 'Allow notifications';
+
+  @override
+  String get settingsNotificationsMasterBody =>
+      'Reminders from EasyClip. Turn off to stop all of them.';
+
+  @override
+  String get settingsNotificationsDraftTitle => 'Unfinished drafts';
+
+  @override
+  String get settingsNotificationsDraftBody =>
+      'Remind you to finish a clip you left mid-edit.';
+
+  @override
+  String get settingsNotificationsShareTitle => 'Share reminders';
+
+  @override
+  String get settingsNotificationsShareBody =>
+      'Nudge you to post after you export a video.';
+
+  @override
+  String get settingsNotificationsCatalogTitle => 'New content';
+
+  @override
+  String get settingsNotificationsCatalogBody =>
+      'Let you know when new transitions or text styles arrive.';
+
+  @override
+  String get notificationPrefSheetTitle => 'Stay on track with reminders';
+
+  @override
+  String get notificationPrefSheetBody =>
+      'Choose what you’d like to hear about. You can change this anytime in Settings.';
+
+  @override
+  String get notificationPrefSheetAllow => 'Allow notifications';
+
+  @override
+  String get notificationPrefSheetLater => 'Not now';
 
   @override
   String get exportQualitySection => 'Export quality';
@@ -672,6 +729,99 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get splitFailed => 'Could not split the clip.';
+
+  @override
+  String get onboardingSkip => 'Skip';
+
+  @override
+  String get onboardingNext => 'Next';
+
+  @override
+  String get onboardingDone => 'Got it';
+
+  @override
+  String get onboardingSplitTitle => 'Split at the playhead';
+
+  @override
+  String get onboardingSplitBody =>
+      'Scrub to the moment you want, then tap Split to divide the clip.';
+
+  @override
+  String get onboardingTransitionTitle => 'Transitions live between clips';
+
+  @override
+  String get onboardingTransitionBody =>
+      'After a split, tap the marker between clips on the timeline to add a transition.';
+
+  @override
+  String get onboardingTextTitle => 'Move text on the video';
+
+  @override
+  String get onboardingTextBody =>
+      'Add text, then drag it on the preview. Pinch to resize — timing is edited on the timeline strip.';
+
+  @override
+  String get onboardingDockTitle => 'Pull the handle for a bigger preview';
+
+  @override
+  String get onboardingDockBody =>
+      'Drag the bar between the video and timeline up or down to hide tools or make the preview full-screen.';
+
+  @override
+  String get onboardingReorderTitle => 'Long-press to rearrange';
+
+  @override
+  String get onboardingReorderBody =>
+      'Hold a cut clip on the timeline, then drag to change its order in the video.';
+
+  @override
+  String get onboardingCutTransitionTitle => 'Try a transition';
+
+  @override
+  String get onboardingCutTransitionBody =>
+      'Tap the transition button on the timeline to add an effect between your clips.';
+
+  @override
+  String get onboardingTextDeleteTitle => 'Delete';
+
+  @override
+  String get onboardingTextDeleteBody =>
+      'The red ✕ removes this text from the video.';
+
+  @override
+  String get onboardingTextEditTitle => 'Edit style';
+
+  @override
+  String get onboardingTextEditBody =>
+      'The pencil opens templates, colors, and effects for this text.';
+
+  @override
+  String get onboardingTextDuplicateTitle => 'Duplicate';
+
+  @override
+  String get onboardingTextDuplicateBody =>
+      'Copies this text so you can place another one quickly.';
+
+  @override
+  String get onboardingTextResizeTitle => 'Resize & rotate';
+
+  @override
+  String get onboardingTextResizeBody =>
+      'Drag the corner handle to scale and rotate the text.';
+
+  @override
+  String get onboardingTextStudioTextTitle => 'Text';
+
+  @override
+  String get onboardingTextStudioTextBody =>
+      'Choose a plain look or a styled effect for your text.';
+
+  @override
+  String get onboardingTextStudioTemplatesTitle => 'Text templates';
+
+  @override
+  String get onboardingTextStudioTemplatesBody =>
+      'Apply a ready-made layout with design and animation in one tap.';
 
   @override
   String splitSuccess(String time) {

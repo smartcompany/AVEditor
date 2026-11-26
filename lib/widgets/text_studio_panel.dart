@@ -30,6 +30,8 @@ class TextStudioPanel extends StatefulWidget {
     required this.overlay,
     required this.onChanged,
     required this.onConfirm,
+    this.textTabKey,
+    this.textTemplatesTabKey,
   });
 
   /// Tabs + close control.
@@ -39,15 +41,25 @@ class TextStudioPanel extends StatefulWidget {
   final ValueChanged<TextOverlay> onChanged;
   final VoidCallback onConfirm;
 
+  /// Coach-mark targets for the Text / Text Template tab labels.
+  final GlobalKey? textTabKey;
+  final GlobalKey? textTemplatesTabKey;
+
   @override
-  State<TextStudioPanel> createState() => _TextStudioPanelState();
+  State<TextStudioPanel> createState() => TextStudioPanelState();
 }
 
-class _TextStudioPanelState extends State<TextStudioPanel> {
+class TextStudioPanelState extends State<TextStudioPanel> {
   late TextStudioTab _tab;
 
   final _packService = TextTemplatePackService.instance;
   final _tabBarKey = GlobalKey();
+
+  /// Used by editor coach marks to spotlight the matching tab body.
+  void selectTab(TextStudioTab tab) {
+    if (!mounted || _tab == tab) return;
+    setState(() => _tab = tab);
+  }
 
   /// True once bundled/cache is ready to paint (before silent version check).
   var _cacheVisible = false;
@@ -124,6 +136,12 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
   }
 
   void _selectDefaultLook() {
+    // Warm Noto Sans KR so DM Sans Hangul fallbacks resolve on first paint.
+    unawaited(
+      OverlayFonts.ensureLoaded(OverlayFonts.defaultId).then((_) {
+        if (mounted) setState(() {});
+      }),
+    );
     // Intrinsic default look — never keep pack font/color from the last tile.
     _emitOverlay(
       widget.overlay.copyWith(
@@ -327,10 +345,17 @@ class _TextStudioPanelState extends State<TextStudioPanel> {
       separatorBuilder: (_, _) => const SizedBox(width: 4),
       itemBuilder: (context, index) {
         final (tab, label) = labeled[index];
-        return EditorDockTabLabel(
-          label: label,
-          selected: _tab == tab,
-          onTap: () => setState(() => _tab = tab),
+        final key = switch (tab) {
+          TextStudioTab.templates => widget.textTabKey,
+          TextStudioTab.textTemplates => widget.textTemplatesTabKey,
+        };
+        return KeyedSubtree(
+          key: key,
+          child: EditorDockTabLabel(
+            label: label,
+            selected: _tab == tab,
+            onTap: () => setState(() => _tab = tab),
+          ),
         );
       },
     );

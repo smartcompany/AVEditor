@@ -49,7 +49,11 @@ class OverlayFonts {
     OverlayFontOption(
       id: defaultId,
       label: 'Basic',
-      apply: (base) => base.copyWith(fontFamily: overlayFontFamily),
+      // DM Sans for Latin; system/Noto KR fill Hangul so hints are not `????`.
+      apply: (base) => base.copyWith(
+        fontFamily: overlayFontFamily,
+        fontFamilyFallback: overlayCjkFontFallback,
+      ),
     ),
     OverlayFontOption(
       id: 'jua',
@@ -141,8 +145,14 @@ class OverlayFonts {
   /// rest of the style instead of aborting.
   static Future<void> ensureLoaded(String? id) async {
     final option = byId(id);
-    if (option.id == defaultId) return;
     try {
+      if (option.id == defaultId) {
+        // Register Noto Sans KR so the CJK fallback chain resolves in export
+        // when the OS face is missing (some Android / simulator images).
+        GoogleFonts.notoSansKr(textStyle: const TextStyle(fontSize: 16));
+        await GoogleFonts.pendingFonts();
+        return;
+      }
       // Warm the Google Fonts registry so CustomPainter / export match preview.
       option.apply(const TextStyle(fontSize: 16));
       await GoogleFonts.pendingFonts();

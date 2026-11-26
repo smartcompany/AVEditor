@@ -140,7 +140,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
     if (preloaded != null) {
       _applyPlans(preloaded);
     } else {
-      _load();
+    _load();
     }
   }
 
@@ -368,7 +368,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
           );
           return;
         }
-        setState(() => _busy = true);
+    setState(() => _busy = true);
       }
 
       _paywallLog('starting store purchase…');
@@ -467,17 +467,17 @@ class _PaywallScreenState extends State<PaywallScreen> {
         return;
       }
       _paywallLog('restore() call…');
-      final active = await _pro.restore();
-      if (!mounted) return;
+    final active = await _pro.restore();
+    if (!mounted) return;
       _paywallLog(
         'restore done active=$active tier=${_pro.tier.name} '
         'product=${_pro.activeProductId ?? '-'}',
       );
-      if (active) {
-        AnalyticsService.instance.log('restore_success');
-        _close();
-      } else {
-        _snack(context.l10n.proRestoreNone);
+    if (active) {
+      AnalyticsService.instance.log('restore_success');
+      _close();
+    } else {
+      _snack(context.l10n.proRestoreNone);
       }
     } finally {
       if (mounted && _busy) setState(() => _busy = false);
@@ -647,10 +647,10 @@ class _PaywallScreenState extends State<PaywallScreen> {
               : Stack(
                   children: [
                     SafeArea(
-                  top: false,
-                  child: ListView(
+          top: false,
+          child: ListView(
                     padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-                    children: [
+            children: [
                       if (_pro.isPro && _plans.isEmpty)
                         _StatusCard(text: _activeStatusText(context, l10n))
                       else if (_plans.isEmpty) ...[
@@ -662,15 +662,15 @@ class _PaywallScreenState extends State<PaywallScreen> {
                             child: SelectableText(
                               _pro.lastCatalogError!,
                               style: theme.textTheme.bodySmall?.copyWith(
-                                color: AppTheme.muted,
+                  color: AppTheme.muted,
                                 fontFamily: 'monospace',
                               ),
                             ),
                           ),
                       ] else ...[
                         if (_pro.isPro)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
                             child: _StatusCard(
                               text: _activeStatusText(context, l10n),
                             ),
@@ -686,9 +686,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
                           const SizedBox(height: 14),
                         ],
                         for (final plan in visible)
-                          _PlanTile(
-                            plan: plan,
-                            selected: plan == _selected,
+                  _PlanTile(
+                    plan: plan,
+                    selected: plan == _selected,
                             current: _isOwnedDisplay(plan),
                             title: _tierLabel(context, l10n, plan.tier),
                             subtitle:
@@ -718,12 +718,12 @@ class _PaywallScreenState extends State<PaywallScreen> {
                             title: l10n.planCompareTitle,
                           ),
                         ],
-                      ],
-                      const SizedBox(height: 8),
-                      TextButton(
-                        onPressed: _busy ? null : _restore,
-                        child: Text(l10n.proRestore),
-                      ),
+              ],
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: _busy ? null : _restore,
+                child: Text(l10n.proRestore),
+              ),
                       if (kDebugMode) ...[
                         const SizedBox(height: 8),
                         Text(
@@ -754,15 +754,15 @@ class _PaywallScreenState extends State<PaywallScreen> {
                           },
                         ),
                       ],
-                      const SizedBox(height: 8),
-                      Text(
-                        l10n.proLegal,
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: AppTheme.muted,
-                        ),
-                      ),
-                    ],
+              const SizedBox(height: 8),
+              Text(
+                l10n.proLegal,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: AppTheme.muted,
+                ),
+              ),
+            ],
                   ),
                 ),
                     if (_busy) const Positioned.fill(child: _BusyOverlay()),
@@ -956,11 +956,11 @@ class _PlanTile extends StatelessWidget {
               ]
             : null,
       ),
-      child: Padding(
+          child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+              children: [
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -970,8 +970,8 @@ class _PlanTile extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          Expanded(
-                            child: Text(
+                Expanded(
+                  child: Text(
                               title,
                               style: const TextStyle(
                                 fontWeight: FontWeight.w800,
@@ -981,35 +981,35 @@ class _PlanTile extends StatelessWidget {
                             ),
                           ),
                           if (badge != null)
-                            Container(
+                  Container(
                               margin: const EdgeInsets.only(right: 8),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppTheme.accent,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppTheme.accent,
                                 borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                badge!,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          Text(
-                            plan.price,
+                    ),
+                    child: Text(
+                      badge!,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                Text(
+                  plan.price,
                             style: const TextStyle(
                               fontWeight: FontWeight.w800,
                               fontSize: 16,
                               color: AppTheme.ink,
                             ),
-                          ),
-                        ],
-                      ),
+                ),
+              ],
+            ),
                       const SizedBox(height: 2),
                       Text(
                         plan.isAnnual

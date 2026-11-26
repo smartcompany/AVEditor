@@ -23,6 +23,7 @@ import 'package:aveditor/widgets/premium_export_sheet.dart';
 import 'package:aveditor/screens/export_share_screen.dart';
 import 'package:aveditor/screens/music_picker_screen.dart';
 import 'package:aveditor/services/app_settings_service.dart';
+import 'package:aveditor/widgets/editor_onboarding_overlay.dart';
 import 'package:aveditor/services/editor_history.dart';
 import 'package:aveditor/services/audio_waveform_service.dart';
 import 'package:aveditor/services/export_service.dart';
@@ -59,6 +60,8 @@ import 'package:aveditor/services/transition_engine.dart';
 import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/services/composition_segments.dart';
 import 'package:aveditor/services/native_video_engine.dart';
+import 'package:aveditor/widgets/notification_preference_sheet.dart';
+import 'package:aveditor/widgets/overlay_fonts.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/widgets/video_preview.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -257,6 +260,17 @@ class _EditorScreenState extends State<EditorScreen>
   final _previewKey = GlobalKey<VideoPreviewWithOverlaysState>();
   final _timelineKey = GlobalKey<TimelineWidgetState>();
   final _editorBodyKey = GlobalKey();
+  final _onboardSplitKey = GlobalKey();
+  final _onboardTextKey = GlobalKey();
+  final _onboardTimelineKey = GlobalKey();
+  final _onboardDockKey = GlobalKey();
+  final _onboardTextTabKey = GlobalKey();
+  final _onboardTextTemplatesTabKey = GlobalKey();
+  final _textStudioPanelKey = GlobalKey<TextStudioPanelState>();
+  var _coach = _EditorCoachKind.none;
+  var _pendingSplitTransitionTip = false;
+  var _pendingSplitReorderTip = false;
+  var _pendingTextChromeTip = false;
   final _musicPlayer = AudioPlayer();
 
   /// Last music clip loaded into [_musicPlayer]; null when stopped.
@@ -710,6 +724,7 @@ class _EditorScreenState extends State<EditorScreen>
 
         // Painted black region — never grows with dock stage or chevrons.
         final bar = SizedBox(
+          key: _onboardDockKey,
           height: _dockResizeHandleHeight,
           width: double.infinity,
           child: ClipRect(
@@ -931,6 +946,7 @@ class _EditorScreenState extends State<EditorScreen>
         _sourceAudioDurations.clear();
       });
       widget.onReady?.call();
+      unawaited(_maybeStartOnboarding());
       unawaited(_loadMusicWaveforms(project));
       unawaited(_loadSourceAudioWaveforms(project));
 
@@ -1457,6 +1473,7 @@ class _EditorScreenState extends State<EditorScreen>
         'sequenceTime': sequenceTime,
         'newSegmentCount': project.segments.length,
       });
+      unawaited(_requestSplitTransitionTip());
     } on StateError catch (e, st) {
       OverlayEventLog.log('split', 'failed', {
         'code': e.message,
@@ -4416,6 +4433,9 @@ class _EditorScreenState extends State<EditorScreen>
     final controller = _controller;
     if (project == null || (controller == null && !_ffmpegPlayback)) return;
 
+    // Hangul hint uses DM Sans + CJK fallback; warm Noto KR for first paint.
+    unawaited(OverlayFonts.ensureLoaded(OverlayFonts.defaultId));
+
     if (_transportPlaying) {
       if (NativeVideoEngine.instance.isTimelineActive) {
         unawaited(NativeVideoEngine.instance.pause());
@@ -4462,6 +4482,7 @@ class _EditorScreenState extends State<EditorScreen>
         _stickerStudioOpen = false;
       });
     });
+    unawaited(_requestTextChromeTip());
   }
 
   /// Placement time for a newly placed text/sticker clip.
@@ -5086,9 +5107,11 @@ class _EditorScreenState extends State<EditorScreen>
         _namingProject = false;
       }
     }
-    // Priority 1: unfinished draft → local push in 24h / 72h.
+    // Priority 1: unfinished draft → soft pref sheet (once) → OS → 24h/72h.
     final leaving = _project;
     if (leaving != null && leaving.isDraft && mounted) {
+      await NotificationPreferenceSheet.ensurePrompted(context);
+      if (!mounted) return;
       final l10n = context.l10n;
       unawaited(
         RetentionNotificationService.instance.scheduleDraftAbandon(
@@ -5617,6 +5640,16 @@ class _EditorScreenState extends State<EditorScreen>
                       ),
                     ),
                   ),
+                if (_coach != _EditorCoachKind.none)
+                  Positioned.fill(
+                    child: EditorOnboardingOverlay(
+                      skipLabel: l10n.onboardingSkip,
+                      nextLabel: l10n.onboardingNext,
+                      doneLabel: l10n.onboardingDone,
+                      onFinished: () => unawaited(_finishCoach()),
+                      steps: _coachSteps(l10n),
+                    ),
+                  ),
               ],
             );
           },
@@ -5716,9 +5749,12 @@ class _EditorScreenState extends State<EditorScreen>
                 behavior: HitTestBehavior.opaque,
                 onPointerDown: (_) => BasicTextEditDismissGuard.arm(),
                 child: TextStudioPanel(
+                  key: _textStudioPanelKey,
                   overlay: studioOverlay,
                   onChanged: _updateOverlay,
                   onConfirm: () => _closeTextStudio('studio_confirm'),
+                  textTabKey: _onboardTextTabKey,
+                  textTemplatesTabKey: _onboardTextTemplatesTabKey,
                 ),
               ),
             ),
@@ -5863,7 +5899,9 @@ class _EditorScreenState extends State<EditorScreen>
     required VideoPlayerController? controller,
     bool expandToFill = false,
   }) {
-    return TimelineWidget(
+    return KeyedSubtree(
+      key: _onboardTimelineKey,
+      child: TimelineWidget(
       key: _timelineKey,
       duration: project.duration,
       trimStart: project.trim.start,
@@ -5979,7 +6017,217 @@ class _EditorScreenState extends State<EditorScreen>
           _selectedTransitionAfterIndex = null;
         });
       },
+    ),
     );
+  }
+
+  List<EditorOnboardingStep> _coachSteps(AppLocalizations l10n) {
+    return switch (_coach) {
+      _EditorCoachKind.firstRun => [
+          EditorOnboardingStep(
+            targetKey: _onboardSplitKey,
+            title: l10n.onboardingSplitTitle,
+            body: l10n.onboardingSplitBody,
+          ),
+          // Transition tip is shown after the first cut (splitTransition), not here.
+          EditorOnboardingStep(
+            targetKey: _onboardTextKey,
+            title: l10n.onboardingTextTitle,
+            body: l10n.onboardingTextBody,
+          ),
+          EditorOnboardingStep(
+            targetKey: _onboardDockKey,
+            title: l10n.onboardingDockTitle,
+            body: l10n.onboardingDockBody,
+          ),
+        ],
+      _EditorCoachKind.splitTransition => [
+          EditorOnboardingStep(
+            resolveHole: _firstCutMarkerHole,
+            title: l10n.onboardingCutTransitionTitle,
+            body: l10n.onboardingCutTransitionBody,
+          ),
+        ],
+      _EditorCoachKind.splitReorder => [
+          EditorOnboardingStep(
+            targetKey: _onboardTimelineKey,
+            title: l10n.onboardingReorderTitle,
+            body: l10n.onboardingReorderBody,
+          ),
+        ],
+      _EditorCoachKind.textChrome => [
+          EditorOnboardingStep(
+            resolveHole: (box) =>
+                _chromeKnobHole(box, OverlayChromeKnobKind.delete),
+            title: l10n.onboardingTextDeleteTitle,
+            body: l10n.onboardingTextDeleteBody,
+          ),
+          EditorOnboardingStep(
+            resolveHole: (box) =>
+                _chromeKnobHole(box, OverlayChromeKnobKind.edit),
+            title: l10n.onboardingTextEditTitle,
+            body: l10n.onboardingTextEditBody,
+          ),
+          EditorOnboardingStep(
+            resolveHole: (box) =>
+                _chromeKnobHole(box, OverlayChromeKnobKind.duplicate),
+            title: l10n.onboardingTextDuplicateTitle,
+            body: l10n.onboardingTextDuplicateBody,
+          ),
+          EditorOnboardingStep(
+            resolveHole: (box) =>
+                _chromeKnobHole(box, OverlayChromeKnobKind.resizeRotate),
+            title: l10n.onboardingTextResizeTitle,
+            body: l10n.onboardingTextResizeBody,
+          ),
+          EditorOnboardingStep(
+            targetKey: _onboardTextTabKey,
+            onEnter: () =>
+                _textStudioPanelKey.currentState?.selectTab(TextStudioTab.templates),
+            title: l10n.onboardingTextStudioTextTitle,
+            body: l10n.onboardingTextStudioTextBody,
+          ),
+          EditorOnboardingStep(
+            targetKey: _onboardTextTemplatesTabKey,
+            onEnter: () => _textStudioPanelKey.currentState
+                ?.selectTab(TextStudioTab.textTemplates),
+            title: l10n.onboardingTextStudioTemplatesTitle,
+            body: l10n.onboardingTextStudioTemplatesBody,
+          ),
+        ],
+      _EditorCoachKind.none => const [],
+    };
+  }
+
+  Rect? _firstCutMarkerHole(RenderBox overlayBox) {
+    return _timelineKey.currentState?.firstCutMarkerRectIn(overlayBox);
+  }
+
+  Rect? _chromeKnobHole(RenderBox overlayBox, OverlayChromeKnobKind kind) {
+    return _previewKey.currentState?.chromeKnobRectIn(
+      overlayBox,
+      kind: kind,
+    );
+  }
+
+  Future<void> _maybeStartOnboarding() async {
+    if (_errorMessage != null) return;
+    final seen = await const AppSettingsService().hasSeenEditorOnboarding();
+    if (seen || !mounted) return;
+    // Let the dock / tools settle after first layout.
+    await Future<void>.delayed(const Duration(milliseconds: 480));
+    if (!mounted ||
+        _exporting ||
+        _errorMessage != null ||
+        _coach != _EditorCoachKind.none) {
+      return;
+    }
+    setState(() => _coach = _EditorCoachKind.firstRun);
+  }
+
+  Future<void> _requestSplitTransitionTip() async {
+    final settings = const AppSettingsService();
+    if (await settings.hasSeenSplitTransitionTip()) {
+      unawaited(_requestSplitReorderTip());
+      return;
+    }
+    if (!mounted) return;
+    if (_coach == _EditorCoachKind.firstRun ||
+        _coach == _EditorCoachKind.textChrome) {
+      _pendingSplitTransitionTip = true;
+      return;
+    }
+    if (_coach != _EditorCoachKind.none || _exporting) return;
+    await Future<void>.delayed(const Duration(milliseconds: 360));
+    if (!mounted ||
+        _coach != _EditorCoachKind.none ||
+        _exporting ||
+        await settings.hasSeenSplitTransitionTip()) {
+      return;
+    }
+    // Selected clips hide adjacent cut chips — clear so the tip can spotlight.
+    setState(() {
+      _selectedSegmentId = null;
+      _coach = _EditorCoachKind.splitTransition;
+    });
+  }
+
+  Future<void> _requestSplitReorderTip() async {
+    final settings = const AppSettingsService();
+    if (await settings.hasSeenSplitReorderTip()) return;
+    if (!mounted) return;
+    if (_coach == _EditorCoachKind.firstRun ||
+        _coach == _EditorCoachKind.splitTransition ||
+        _coach == _EditorCoachKind.textChrome) {
+      _pendingSplitReorderTip = true;
+      return;
+    }
+    if (_coach != _EditorCoachKind.none || _exporting) return;
+    await Future<void>.delayed(const Duration(milliseconds: 280));
+    if (!mounted ||
+        _coach != _EditorCoachKind.none ||
+        _exporting ||
+        await settings.hasSeenSplitReorderTip()) {
+      return;
+    }
+    setState(() => _coach = _EditorCoachKind.splitReorder);
+  }
+
+  Future<void> _requestTextChromeTip() async {
+    final settings = const AppSettingsService();
+    if (await settings.hasSeenTextChromeTip()) return;
+    if (!mounted) return;
+    if (_coach != _EditorCoachKind.none) {
+      _pendingTextChromeTip = true;
+      return;
+    }
+    if (_exporting) return;
+    // Let the new overlay + chrome layout settle (studio may still be rising).
+    await Future<void>.delayed(const Duration(milliseconds: 520));
+    if (!mounted ||
+        _coach != _EditorCoachKind.none ||
+        _exporting ||
+        await settings.hasSeenTextChromeTip()) {
+      return;
+    }
+    // Corner knobs hide while inline-editing — keep selection only.
+    setState(() {
+      _editingOverlayId = null;
+      _coach = _EditorCoachKind.textChrome;
+    });
+  }
+
+  Future<void> _finishCoach() async {
+    final settings = const AppSettingsService();
+    final kind = _coach;
+    switch (kind) {
+      case _EditorCoachKind.firstRun:
+        await settings.setSeenEditorOnboarding(true);
+      case _EditorCoachKind.splitTransition:
+        await settings.setSeenSplitTransitionTip(true);
+      case _EditorCoachKind.splitReorder:
+        await settings.setSeenSplitReorderTip(true);
+      case _EditorCoachKind.textChrome:
+        await settings.setSeenTextChromeTip(true);
+      case _EditorCoachKind.none:
+        break;
+    }
+    if (!mounted) return;
+    setState(() => _coach = _EditorCoachKind.none);
+    if (_pendingSplitTransitionTip) {
+      _pendingSplitTransitionTip = false;
+      unawaited(_requestSplitTransitionTip());
+      return;
+    }
+    if (kind == _EditorCoachKind.splitTransition || _pendingSplitReorderTip) {
+      _pendingSplitReorderTip = false;
+      unawaited(_requestSplitReorderTip());
+      return;
+    }
+    if (_pendingTextChromeTip) {
+      _pendingTextChromeTip = false;
+      unawaited(_requestTextChromeTip());
+    }
   }
 
   Widget _buildBottomActions(AppLocalizations l10n) {
@@ -5993,10 +6241,13 @@ class _EditorScreenState extends State<EditorScreen>
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                IconButton.outlined(
-                  onPressed: _exporting ? null : _addTextOverlay,
-                  icon: _TextAddIcon(enabled: !_exporting, sparkle: true),
-                  tooltip: l10n.addText,
+                KeyedSubtree(
+                  key: _onboardTextKey,
+                  child: IconButton.outlined(
+                    onPressed: _exporting ? null : _addTextOverlay,
+                    icon: _TextAddIcon(enabled: !_exporting, sparkle: true),
+                    tooltip: l10n.addText,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 IconButton.outlined(
@@ -6013,10 +6264,13 @@ class _EditorScreenState extends State<EditorScreen>
                   tooltip: l10n.editText,
                 ),
                 const SizedBox(width: 8),
-                IconButton.outlined(
-                  onPressed: _exporting ? null : _splitAtPlayhead,
-                  icon: const Icon(Icons.content_cut),
-                  tooltip: l10n.splitVideo,
+                KeyedSubtree(
+                  key: _onboardSplitKey,
+                  child: IconButton.outlined(
+                    onPressed: _exporting ? null : _splitAtPlayhead,
+                    icon: const Icon(Icons.content_cut),
+                    tooltip: l10n.splitVideo,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 IconButton.outlined(
@@ -6149,6 +6403,14 @@ class _EditorScreenState extends State<EditorScreen>
 }
 
 enum _VoiceRecordPhase { idle, armed, countdown, recording }
+
+enum _EditorCoachKind {
+  none,
+  firstRun,
+  splitTransition,
+  splitReorder,
+  textChrome,
+}
 
 class _CanvasRatioButton extends StatelessWidget {
   const _CanvasRatioButton({required this.label, required this.onPressed});

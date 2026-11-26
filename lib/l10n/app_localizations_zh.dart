@@ -332,6 +332,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get exportSuccess => '已保存到相册。';
 
   @override
+  String get reviewPromptTitle => '喜欢 EasyClip 吗？';
+
+  @override
+  String get reviewPromptBody => '简短评价能帮助更多创作者发现这款应用。';
+
+  @override
+  String get reviewPromptYes => '去评分';
+
+  @override
+  String get reviewPromptNo => '以后再说';
+
+  @override
   String get exportFailed => '导出失败。';
 
   @override
@@ -434,6 +446,45 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get settingsTitle => '设置';
+
+  @override
+  String get settingsNotificationsSection => '通知';
+
+  @override
+  String get settingsNotificationsMasterTitle => '接收通知';
+
+  @override
+  String get settingsNotificationsMasterBody => '来自 EasyClip 的提醒。关闭后将停止全部通知。';
+
+  @override
+  String get settingsNotificationsDraftTitle => '未完成草稿';
+
+  @override
+  String get settingsNotificationsDraftBody => '提醒你继续完成中途离开的剪辑。';
+
+  @override
+  String get settingsNotificationsShareTitle => '分享提醒';
+
+  @override
+  String get settingsNotificationsShareBody => '导出后提醒你发布到社交平台。';
+
+  @override
+  String get settingsNotificationsCatalogTitle => '新内容';
+
+  @override
+  String get settingsNotificationsCatalogBody => '有新转场或文字样式时通知你。';
+
+  @override
+  String get notificationPrefSheetTitle => '用提醒继续创作';
+
+  @override
+  String get notificationPrefSheetBody => '选择想收到的通知。可随时在设置中更改。';
+
+  @override
+  String get notificationPrefSheetAllow => '允许通知';
+
+  @override
+  String get notificationPrefSheetLater => '稍后';
 
   @override
   String get exportQualitySection => '导出画质';
@@ -650,6 +701,87 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get splitFailed => '无法分割片段。';
+
+  @override
+  String get onboardingSkip => '跳过';
+
+  @override
+  String get onboardingNext => '下一步';
+
+  @override
+  String get onboardingDone => '知道了';
+
+  @override
+  String get onboardingSplitTitle => '在播放头处分割';
+
+  @override
+  String get onboardingSplitBody => '先拖到想切的位置，再点分割即可分开片段。';
+
+  @override
+  String get onboardingTransitionTitle => '转场在片段之间';
+
+  @override
+  String get onboardingTransitionBody => '分割后，点时间线上片段之间的标记即可添加转场。';
+
+  @override
+  String get onboardingTextTitle => '在画面上移动文字';
+
+  @override
+  String get onboardingTextBody => '添加文字后，在预览区拖动；双指缩放。出现时机在时间线上调整。';
+
+  @override
+  String get onboardingDockTitle => '拖动手柄放大预览';
+
+  @override
+  String get onboardingDockBody => '上下拖动视频与时间线之间的横条，可隐藏工具或放大预览。';
+
+  @override
+  String get onboardingReorderTitle => '长按可调整顺序';
+
+  @override
+  String get onboardingReorderBody => '在时间线上长按已分割的片段并拖动，即可改变播放顺序。';
+
+  @override
+  String get onboardingCutTransitionTitle => '试着添加转场';
+
+  @override
+  String get onboardingCutTransitionBody => '点时间线上的转场按钮，在片段之间加入转场效果。';
+
+  @override
+  String get onboardingTextDeleteTitle => '删除';
+
+  @override
+  String get onboardingTextDeleteBody => '点红色 ✕ 可从视频中移除这段文字。';
+
+  @override
+  String get onboardingTextEditTitle => '编辑样式';
+
+  @override
+  String get onboardingTextEditBody => '点铅笔可更换模板、颜色和效果。';
+
+  @override
+  String get onboardingTextDuplicateTitle => '复制';
+
+  @override
+  String get onboardingTextDuplicateBody => '复制这段文字，方便快速再放一份。';
+
+  @override
+  String get onboardingTextResizeTitle => '缩放与旋转';
+
+  @override
+  String get onboardingTextResizeBody => '拖动角上手柄即可调整大小和角度。';
+
+  @override
+  String get onboardingTextStudioTextTitle => '文字';
+
+  @override
+  String get onboardingTextStudioTextBody => '选择纯文字或带样式的效果应用到文字上。';
+
+  @override
+  String get onboardingTextStudioTemplatesTitle => '文字模板';
+
+  @override
+  String get onboardingTextStudioTemplatesBody => '一键应用带布局和动画的成品设计。';
 
   @override
   String splitSuccess(String time) {

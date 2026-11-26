@@ -41,6 +41,19 @@ const List<String> overlayEmojiFontFallback = [
   'Segoe UI Emoji',
 ];
 
+/// Hangul / CJK faces for [overlayFontFamily] (DM Sans has Latin only).
+///
+/// Without these, empty-overlay hints like `탭 해서 텍스트 입력` paint as `?`
+/// boxes on the simulator and devices when Basic text is selected.
+const List<String> overlayCjkFontFallback = [
+  'Apple SD Gothic Neo',
+  'Noto Sans KR',
+  'Noto Sans CJK KR',
+  'Malgun Gothic',
+  'Source Han Sans K',
+  'sans-serif',
+];
+
 /// True for runs that should use the system emoji face (not the pack font).
 ///
 /// Includes emoji blocks and dingbats like ✈ (U+2708) that packs use as icons;
@@ -540,10 +553,14 @@ TextStyle _baseTextStyle({
     shadows: shadows,
   );
   final resolved = OverlayFonts.resolve(fontFamily, base);
-  // Always append emoji fallbacks after the pack face so 🔔 etc. never become
-  // `?` when the locale / Google Font lacks color emoji.
+  // CJK then emoji after the pack face — DM Sans / Latin packs otherwise
+  // paint Hangul hints and 🔔 as `?`.
   final fallback = <String>[
     ...?resolved.fontFamilyFallback,
+    for (final face in overlayCjkFontFallback)
+      if (face != resolved.fontFamily &&
+          !(resolved.fontFamilyFallback?.contains(face) ?? false))
+        face,
     for (final face in overlayEmojiFontFallback)
       if (face != resolved.fontFamily &&
           !(resolved.fontFamilyFallback?.contains(face) ?? false))

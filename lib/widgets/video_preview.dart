@@ -172,11 +172,16 @@ class VideoPreviewWithOverlays extends StatefulWidget {
       VideoPreviewWithOverlaysState();
 }
 
+/// Which selection-chrome corner knob to resolve for coach marks.
+enum OverlayChromeKnobKind { delete, edit, duplicate, resizeRotate }
+
 /// Public state for [GlobalKey] pointer routing from [EditorScreen].
 class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
   /// Travel below this stays a tap instead of becoming a drag.
   /// Travel beyond this cancels a plain tap (select / open editor).
   static const _tapSlop = 18.0;
+
+  final _canvasKey = GlobalKey();
 
   /// Corner X / copy / edit may jitter more than [_tapSlop] before we treat
   /// the press as a cancelled drag-away.
@@ -269,6 +274,54 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
       if (live != null) return live;
     }
     return overlayBoxForFrame(overlay, frameWidth: _previewW);
+  }
+
+  /// Selected overlay's chrome knob in [ancestor] coordinates (coach marks).
+  Rect? chromeKnobRectIn(
+    RenderBox ancestor, {
+    required OverlayChromeKnobKind kind,
+  }) {
+    final overlay = _overlayById(widget.selectedOverlayId);
+    if (overlay == null || _previewW <= 0 || _previewH <= 0) return null;
+    // Inline edit hides the corner knobs.
+    if (overlay.id == widget.editingOverlayId && !overlay.isSticker) {
+      return null;
+    }
+    final box = _boxOf(overlay);
+    final scale = _canvasScreenScale;
+    final corners = OverlayGeometry.resolveChromeCorners(
+      previewW: _previewW,
+      previewH: _previewH,
+      box: box,
+      clampRect: _knobClampRect,
+      screenScale: scale,
+    );
+    final origin = OverlayGeometry.chromeTopLeft(
+      previewW: _previewW,
+      previewH: _previewH,
+      box: box,
+      screenScale: scale,
+    );
+    final localCenter = origin +
+        switch (kind) {
+          OverlayChromeKnobKind.delete => corners.delete,
+          OverlayChromeKnobKind.edit => corners.edit,
+          OverlayChromeKnobKind.duplicate => corners.duplicate,
+          OverlayChromeKnobKind.resizeRotate => corners.resizeRotate,
+        };
+    final knob = OverlayGeometry.knobSize / scale;
+    final local = Rect.fromCenter(
+      center: localCenter,
+      width: knob,
+      height: knob,
+    ).inflate(6);
+    final canvas =
+        _canvasKey.currentContext?.findRenderObject() as RenderBox?;
+    if (canvas == null || !canvas.hasSize) return null;
+    final topLeft = canvas.localToGlobal(local.topLeft, ancestor: ancestor);
+    final bottomRight =
+        canvas.localToGlobal(local.bottomRight, ancestor: ancestor);
+    return Rect.fromPoints(topLeft, bottomRight);
   }
 
   void _clearLiveGeometry() {
@@ -1018,6 +1071,7 @@ class VideoPreviewWithOverlaysState extends State<VideoPreviewWithOverlays> {
             _previewH = constraints.maxHeight;
 
             return OverflowHitStack(
+              key: _canvasKey,
               clipBehavior: Clip.none,
               fit: StackFit.expand,
               children: [

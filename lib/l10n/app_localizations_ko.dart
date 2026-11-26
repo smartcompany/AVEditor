@@ -335,6 +335,18 @@ class AppLocalizationsKo extends AppLocalizations {
   String get exportSuccess => '갤러리에 저장했습니다.';
 
   @override
+  String get reviewPromptTitle => 'EasyClip, 잘 쓰고 계신가요?';
+
+  @override
+  String get reviewPromptBody => '짧은 평가 한마디가 더 많은 크리에이터에게 앱을 알리는 데 도움이 돼요.';
+
+  @override
+  String get reviewPromptYes => '평가하기';
+
+  @override
+  String get reviewPromptNo => '나중에';
+
+  @override
   String get exportFailed => '내보내기에 실패했습니다.';
 
   @override
@@ -438,6 +450,47 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get settingsTitle => '설정';
+
+  @override
+  String get settingsNotificationsSection => '알림';
+
+  @override
+  String get settingsNotificationsMasterTitle => '알림 받기';
+
+  @override
+  String get settingsNotificationsMasterBody =>
+      'EasyClip 리마인더입니다. 끄면 모든 알림이 중지됩니다.';
+
+  @override
+  String get settingsNotificationsDraftTitle => '미완성 초안';
+
+  @override
+  String get settingsNotificationsDraftBody => '편집 중이던 클립을 이어서 만들도록 알려 줍니다.';
+
+  @override
+  String get settingsNotificationsShareTitle => '공유 알림';
+
+  @override
+  String get settingsNotificationsShareBody => '보내기 후 SNS에 올리도록 안내합니다.';
+
+  @override
+  String get settingsNotificationsCatalogTitle => '새 콘텐츠';
+
+  @override
+  String get settingsNotificationsCatalogBody => '새 전환·텍스트 스타일이 추가되면 알려 줍니다.';
+
+  @override
+  String get notificationPrefSheetTitle => '알림으로 이어서 편집해요';
+
+  @override
+  String get notificationPrefSheetBody =>
+      '받고 싶은 알림을 골라 주세요. 설정에서 언제든 바꿀 수 있어요.';
+
+  @override
+  String get notificationPrefSheetAllow => '알림 받기';
+
+  @override
+  String get notificationPrefSheetLater => '나중에';
 
   @override
   String get exportQualitySection => '보내기 품질';
@@ -657,6 +710,93 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get splitFailed => '클립을 분할하지 못했습니다.';
+
+  @override
+  String get onboardingSkip => '건너뛰기';
+
+  @override
+  String get onboardingNext => '다음';
+
+  @override
+  String get onboardingDone => '알겠어요';
+
+  @override
+  String get onboardingSplitTitle => '재생 위치에서 자르기';
+
+  @override
+  String get onboardingSplitBody => '원하는 순간으로 스크럽한 뒤 자르기를 누르면 클립이 나뉩니다.';
+
+  @override
+  String get onboardingTransitionTitle => '전환은 클립 사이에';
+
+  @override
+  String get onboardingTransitionBody =>
+      '자른 뒤 타임라인에서 클립 사이 표시를 누르면 전환 효과를 넣을 수 있어요.';
+
+  @override
+  String get onboardingTextTitle => '텍스트는 화면에서 움직이세요';
+
+  @override
+  String get onboardingTextBody =>
+      '텍스트를 추가한 뒤 미리보기에서 드래그하고, 핀치로 크기를 바꿔요. 나오는 타이밍은 타임라인에서 조절합니다.';
+
+  @override
+  String get onboardingDockTitle => '핸들로 미리보기 키우기';
+
+  @override
+  String get onboardingDockBody =>
+      '영상과 타임라인 사이 바를 위·아래로 끌면 도구를 숨기거나 미리보기를 크게 볼 수 있어요.';
+
+  @override
+  String get onboardingReorderTitle => '길게 눌러 순서 바꾸기';
+
+  @override
+  String get onboardingReorderBody =>
+      '잘린 클립을 타임라인에서 길게 누른 뒤 끌면 재생 순서를 바꿀 수 있어요.';
+
+  @override
+  String get onboardingCutTransitionTitle => '전환을 추가해 보세요';
+
+  @override
+  String get onboardingCutTransitionBody =>
+      '타임라인의 전환 버튼을 눌러 클립 사이에 전환 효과를 넣어 보세요.';
+
+  @override
+  String get onboardingTextDeleteTitle => '삭제';
+
+  @override
+  String get onboardingTextDeleteBody => '빨간 ✕를 누르면 이 텍스트가 영상에서 사라져요.';
+
+  @override
+  String get onboardingTextEditTitle => '스타일 편집';
+
+  @override
+  String get onboardingTextEditBody => '연필 버튼을 누르면 템플릿·색·효과를 바꿀 수 있어요.';
+
+  @override
+  String get onboardingTextDuplicateTitle => '복제';
+
+  @override
+  String get onboardingTextDuplicateBody => '같은 텍스트를 하나 더 만들어 빠르게 배치할 수 있어요.';
+
+  @override
+  String get onboardingTextResizeTitle => '크기·회전';
+
+  @override
+  String get onboardingTextResizeBody => '모서리 핸들을 끌면 크기와 각도를 조절할 수 있어요.';
+
+  @override
+  String get onboardingTextStudioTextTitle => '텍스트';
+
+  @override
+  String get onboardingTextStudioTextBody => '기본 텍스트나 스타일 효과를 골라 적용해요.';
+
+  @override
+  String get onboardingTextStudioTemplatesTitle => '텍스트 템플릿';
+
+  @override
+  String get onboardingTextStudioTemplatesBody =>
+      '레이아웃과 애니메이션이 있는 디자인을 한 번에 적용할 수 있어요.';
 
   @override
   String splitSuccess(String time) {
