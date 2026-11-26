@@ -73,8 +73,12 @@ class FcmPushService {
       if (settings.authorizationStatus == AuthorizationStatus.denied) {
         return;
       }
+      // OS prompt not shown yet — APNS/FCM won't be ready.
+      if (settings.authorizationStatus == AuthorizationStatus.notDetermined) {
+        return;
+      }
 
-      final token = await messaging.getToken();
+      final token = await _resolveFcmToken(messaging);
       if (token == null || token.isEmpty) return;
 
       await AnalyticsService.instance.init();
@@ -113,6 +117,58 @@ class FcmPushService {
     } catch (e, st) {
       debugPrint('[FcmPush] sync failed: $e\n$st');
     }
+  }
+
+  /// iOS needs APNS before FCM; poll briefly so cold start doesn't race.
+  Future<String?> _resolveFcmToken(FirebaseMessaging messaging) async {
+    if (Platform.isIOS) {
+      final apns = await _waitForApnsToken(messaging);
+      if (apns == null) {
+        debugPrint('[FcmPush] APNS token unavailable; skip FCM register');
+        return null;
+      }
+    }
+
+    try {
+      return await messaging.getToken();
+    } catch (e) {
+      final msg = e.toString();
+      if (Platform.isIOS && msg.contains('apns-token-not-set')) {
+        // One more short wait in case APNS landed between checks.
+        final apns = await _waitForApnsToken(
+          messaging,
+          attempts: const [
+            Duration(milliseconds: 500),
+            Duration(seconds: 1),
+            Duration(seconds: 2),
+          ],
+        );
+        if (apns == null) return null;
+        return messaging.getToken();
+      }
+      rethrow;
+    }
+  }
+
+  Future<String?> _waitForApnsToken(
+    FirebaseMessaging messaging, {
+    List<Duration> attempts = const [
+      Duration.zero,
+      Duration(milliseconds: 250),
+      Duration(milliseconds: 500),
+      Duration(seconds: 1),
+      Duration(seconds: 2),
+      Duration(seconds: 3),
+    ],
+  }) async {
+    for (final delay in attempts) {
+      if (delay > Duration.zero) {
+        await Future<void>.delayed(delay);
+      }
+      final token = await messaging.getAPNSToken();
+      if (token != null && token.isNotEmpty) return token;
+    }
+    return null;
   }
 
   String _appLocale() {
