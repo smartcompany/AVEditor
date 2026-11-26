@@ -60,6 +60,26 @@
   "rotateVideo": "Rotate video",
   "export": "Export",
   "uploadShorts": "Upload to YouTube",
+  "uploadShortsAndTikTok": "Upload to YouTube & TikTok",
+  "crossPostAlsoTikTok": "Also post to TikTok",
+  "crossPostAlsoYouTube": "Also upload to YouTube",
+  "shareTileWithTikTok": "Can post with TikTok",
+  "shareTileWithYouTube": "Can post with YouTube",
+  "crossPostTikTokOk": "Also posted to TikTok",
+  "crossPostTikTokOkPrivate": "Also posted to TikTok as Only me (app pending TikTok review)",
+  "crossPostYouTubeOk": "Also uploaded to YouTube",
+  "crossPostTikTokFailed": "YouTube uploaded, but TikTok failed: {message}",
+  "@crossPostTikTokFailed": {
+    "placeholders": {
+      "message": { "type": "String" }
+    }
+  },
+  "crossPostYouTubeFailed": "TikTok posted, but YouTube failed: {message}",
+  "@crossPostYouTubeFailed": {
+    "placeholders": {
+      "message": { "type": "String" }
+    }
+  },
   "saveToGallery": "Save to gallery",
   "saveToAlbum": "Save to album",
   "cancel": "Cancel",
@@ -316,6 +336,8 @@
   "exportComplete": "Export complete",
   "savedToDevice": "Saved to device",
   "shareContentTitle": "Share content",
+  "shareMyContent": "Share my content",
+  "sharePickFromAlbumHint": "Choose a video from your album to share.",
   "share": "Share",
   "shareAppMessage": "Edit short videos fast with EasyClip.\n{url}",
   "@shareAppMessage": {
@@ -664,8 +686,43 @@
   "tiktokBrandPolicy": "Branded Content Policy",
   "tiktokAnd": " and ",
   "tiktokPost": "Post",
+  "tiktokPostAndYouTube": "Post to TikTok & YouTube",
   "tiktokUploading": "Uploading {percent}%",
   "tiktokProcessing": "TikTok is processing…",
+  "youtubeExporting": "Preparing {percent}%",
+  "@youtubeExporting": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "youtubeUploading": "Uploading {percent}%",
+  "@youtubeUploading": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "youtubeFinishing": "Finishing…",
+  "crossPostUploadingYouTube": "YouTube {percent}%",
+  "@crossPostUploadingYouTube": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "crossPostUploadingTikTok": "TikTok {percent}%",
+  "@crossPostUploadingTikTok": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "crossPostProcessingTikTok": "TikTok is processing…",
   "tiktokDoneTitle": "Posted to TikTok",
   "tiktokDoneProcessing": "It may take a few minutes to appear on your profile.",
   "tiktokOpen": "Open TikTok",

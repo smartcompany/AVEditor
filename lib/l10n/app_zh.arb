@@ -46,6 +46,26 @@
   "rotateVideo": "旋转视频",
   "export": "导出",
   "uploadShorts": "上传到 YouTube",
+  "uploadShortsAndTikTok": "上传到 YouTube 和 TikTok",
+  "crossPostAlsoTikTok": "同时发布到 TikTok",
+  "crossPostAlsoYouTube": "同时上传到 YouTube",
+  "shareTileWithTikTok": "可同时发到 TikTok",
+  "shareTileWithYouTube": "可同时发到 YouTube",
+  "crossPostTikTokOk": "也已发布到 TikTok",
+  "crossPostTikTokOkPrivate": "也已发布到 TikTok（仅自己可见 · 应用审核前限制）",
+  "crossPostYouTubeOk": "也已上传到 YouTube",
+  "crossPostTikTokFailed": "YouTube 已上传，但 TikTok 失败：{message}",
+  "@crossPostTikTokFailed": {
+    "placeholders": {
+      "message": { "type": "String" }
+    }
+  },
+  "crossPostYouTubeFailed": "TikTok 已发布，但 YouTube 失败：{message}",
+  "@crossPostYouTubeFailed": {
+    "placeholders": {
+      "message": { "type": "String" }
+    }
+  },
   "saveToGallery": "保存到相册",
   "saveToAlbum": "保存到相册",
   "cancel": "取消",
@@ -243,6 +263,8 @@
   "exportComplete": "导出完成",
   "savedToDevice": "已保存到设备",
   "shareContentTitle": "分享内容",
+  "shareMyContent": "分享我的内容",
+  "sharePickFromAlbumHint": "从相册选择视频进行分享。",
   "share": "分享",
   "shareAppMessage": "用 EasyClip 快速剪辑短视频。\n{url}",
   "exportDone": "完成",
@@ -515,8 +537,15 @@
   "tiktokBrandPolicy": "品牌内容政策",
   "tiktokAnd": "和",
   "tiktokPost": "发布",
+  "tiktokPostAndYouTube": "发布到 TikTok 和 YouTube",
   "tiktokUploading": "正在上传 {percent}%",
   "tiktokProcessing": "TikTok 正在处理…",
+  "youtubeExporting": "准备中 {percent}%",
+  "youtubeUploading": "正在上传 {percent}%",
+  "youtubeFinishing": "收尾中…",
+  "crossPostUploadingYouTube": "YouTube {percent}%",
+  "crossPostUploadingTikTok": "TikTok {percent}%",
+  "crossPostProcessingTikTok": "TikTok 正在处理…",
   "tiktokDoneTitle": "已发布到 TikTok",
   "tiktokDoneProcessing": "可能需要几分钟才会显示在你的主页上。",
   "tiktokOpen": "在 TikTok 中查看",

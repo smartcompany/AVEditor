@@ -132,6 +132,40 @@ class AppLocalizationsZh extends AppLocalizations {
   String get uploadShorts => '上传到 YouTube';
 
   @override
+  String get uploadShortsAndTikTok => '上传到 YouTube 和 TikTok';
+
+  @override
+  String get crossPostAlsoTikTok => '同时发布到 TikTok';
+
+  @override
+  String get crossPostAlsoYouTube => '同时上传到 YouTube';
+
+  @override
+  String get shareTileWithTikTok => '可同时发到 TikTok';
+
+  @override
+  String get shareTileWithYouTube => '可同时发到 YouTube';
+
+  @override
+  String get crossPostTikTokOk => '也已发布到 TikTok';
+
+  @override
+  String get crossPostTikTokOkPrivate => '也已发布到 TikTok（仅自己可见 · 应用审核前限制）';
+
+  @override
+  String get crossPostYouTubeOk => '也已上传到 YouTube';
+
+  @override
+  String crossPostTikTokFailed(String message) {
+    return 'YouTube 已上传，但 TikTok 失败：$message';
+  }
+
+  @override
+  String crossPostYouTubeFailed(String message) {
+    return 'TikTok 已发布，但 YouTube 失败：$message';
+  }
+
+  @override
   String get saveToGallery => '保存到相册';
 
   @override
@@ -732,6 +766,12 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get shareContentTitle => '分享内容';
+
+  @override
+  String get shareMyContent => '分享我的内容';
+
+  @override
+  String get sharePickFromAlbumHint => '从相册选择视频进行分享。';
 
   @override
   String get share => '分享';
@@ -1335,12 +1375,41 @@ class AppLocalizationsZh extends AppLocalizations {
   String get tiktokPost => '发布';
 
   @override
+  String get tiktokPostAndYouTube => '发布到 TikTok 和 YouTube';
+
+  @override
   String tiktokUploading(int percent) {
     return '正在上传 $percent%';
   }
 
   @override
   String get tiktokProcessing => 'TikTok 正在处理…';
+
+  @override
+  String youtubeExporting(int percent) {
+    return '准备中 $percent%';
+  }
+
+  @override
+  String youtubeUploading(int percent) {
+    return '正在上传 $percent%';
+  }
+
+  @override
+  String get youtubeFinishing => '收尾中…';
+
+  @override
+  String crossPostUploadingYouTube(int percent) {
+    return 'YouTube $percent%';
+  }
+
+  @override
+  String crossPostUploadingTikTok(int percent) {
+    return 'TikTok $percent%';
+  }
+
+  @override
+  String get crossPostProcessingTikTok => 'TikTok 正在处理…';
 
   @override
   String get tiktokDoneTitle => '已发布到 TikTok';

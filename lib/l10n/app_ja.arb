@@ -46,6 +46,26 @@
   "rotateVideo": "動画を回転",
   "export": "書き出し",
   "uploadShorts": "YouTubeにアップロード",
+  "uploadShortsAndTikTok": "YouTubeとTikTokにアップロード",
+  "crossPostAlsoTikTok": "TikTokにも投稿",
+  "crossPostAlsoYouTube": "YouTubeにもアップロード",
+  "shareTileWithTikTok": "TikTokと同時投稿可",
+  "shareTileWithYouTube": "YouTubeと同時投稿可",
+  "crossPostTikTokOk": "TikTokにも投稿しました",
+  "crossPostTikTokOkPrivate": "TikTokにも投稿しました（自分のみ・審査前の制限）",
+  "crossPostYouTubeOk": "YouTubeにもアップロードしました",
+  "crossPostTikTokFailed": "YouTubeは完了、TikTokは失敗: {message}",
+  "@crossPostTikTokFailed": {
+    "placeholders": {
+      "message": { "type": "String" }
+    }
+  },
+  "crossPostYouTubeFailed": "TikTokは完了、YouTubeは失敗: {message}",
+  "@crossPostYouTubeFailed": {
+    "placeholders": {
+      "message": { "type": "String" }
+    }
+  },
   "saveToGallery": "ギャラリーに保存",
   "saveToAlbum": "アルバムに保存",
   "cancel": "キャンセル",
@@ -243,6 +263,8 @@
   "exportComplete": "書き出し完了",
   "savedToDevice": "デバイスに保存しました",
   "shareContentTitle": "コンテンツを共有",
+  "shareMyContent": "自分のコンテンツを共有",
+  "sharePickFromAlbumHint": "アルバムから動画を選んで共有します。",
   "share": "共有",
   "shareAppMessage": "EasyClipでショート動画をすばやく編集しよう。\n{url}",
   "exportDone": "完了",
@@ -515,8 +537,15 @@
   "tiktokBrandPolicy": "ブランドコンテンツポリシー",
   "tiktokAnd": "および",
   "tiktokPost": "投稿",
+  "tiktokPostAndYouTube": "TikTokとYouTubeに投稿",
   "tiktokUploading": "アップロード中 {percent}%",
   "tiktokProcessing": "TikTokで処理中…",
+  "youtubeExporting": "準備中 {percent}%",
+  "youtubeUploading": "アップロード中 {percent}%",
+  "youtubeFinishing": "仕上げ中…",
+  "crossPostUploadingYouTube": "YouTube {percent}%",
+  "crossPostUploadingTikTok": "TikTok {percent}%",
+  "crossPostProcessingTikTok": "TikTokで処理中…",
   "tiktokDoneTitle": "TikTokに投稿しました",
   "tiktokDoneProcessing": "プロフィールに表示されるまで数分かかる場合があります。",
   "tiktokOpen": "TikTokで見る",

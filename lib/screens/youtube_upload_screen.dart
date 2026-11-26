@@ -6,13 +6,17 @@ import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/video_project.dart';
 import 'package:aveditor/screens/thumbnail_editor_screen.dart';
+import 'package:aveditor/screens/tiktok_cover_picker_screen.dart';
 import 'package:aveditor/services/app_settings_service.dart';
 import 'package:aveditor/services/export_service.dart';
 import 'package:aveditor/services/export_share_service.dart';
+import 'package:aveditor/services/tiktok_auth_service.dart';
+import 'package:aveditor/services/tiktok_post_service.dart';
 import 'package:aveditor/services/youtube_auth_service.dart';
 import 'package:aveditor/services/youtube_errors.dart';
 import 'package:aveditor/services/youtube_upload_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
+import 'package:aveditor/utils/cross_post_privacy.dart';
 import 'package:aveditor/utils/logged_snackbar.dart';
 import 'package:aveditor/widgets/upload_form_chrome.dart';
 import 'package:flutter/material.dart';
@@ -47,6 +51,8 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
   bool _paidPromotion = false;
   bool _syntheticMedia = false;
   bool _busy = false;
+  _UploadBusyPhase _busyPhase = _UploadBusyPhase.idle;
+  double _busyProgress = 0;
   bool _moreOpen = false;
   String? _thumbnailPath;
   GoogleSignInAccount? _account;
@@ -58,6 +64,12 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
   /// Settings that could not be applied after the upload, if any.
   String? _partialSteps;
 
+  /// Shown on the done screen when dual-posting to TikTok.
+  String? _crossPostNote;
+
+  /// Open URL for a successful TikTok cross-post (done screen).
+  String? _tikTokCrossOpenUrl;
+
   VideoPlayerController? _preview;
   var _previewFailed = false;
 
@@ -66,11 +78,46 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
   final _auth = YouTubeAuthService();
   final _settings = const AppSettingsService();
 
+  // --- Optional TikTok cross-post ---
+  var _alsoTikTok = false;
+  final _tikTokAuth = TikTokAuthService();
+  final _tikTokPosts = TikTokPostService();
+  TikTokSession? _tikTokSession;
+  TikTokCreatorInfo? _tikTokCreator;
+  var _tikTokAccountLoading = false;
+  String? _tikTokPrivacy;
+  var _tikTokAllowComment = false;
+  var _tikTokAllowDuet = false;
+  var _tikTokAllowStitch = false;
+  var _tikTokDisclose = false;
+  var _tikTokYourBrand = false;
+  var _tikTokBranded = false;
+  var _tikTokCoverMs = 0;
+
+  static const _tikTokSelfOnly = 'SELF_ONLY';
+
   @override
   void initState() {
     super.initState();
     _openPreview();
     _restoreAccount();
+  }
+
+  bool get _tikTokDisclosureIncomplete =>
+      _tikTokDisclose && !_tikTokYourBrand && !_tikTokBranded;
+
+  bool get _tikTokReady =>
+      _tikTokCreator != null &&
+      _tikTokPrivacy != null &&
+      !_tikTokDisclosureIncomplete &&
+      !(_tikTokDisclose &&
+          _tikTokBranded &&
+          _tikTokPrivacy == _tikTokSelfOnly);
+
+  String? get _exportVideoPath {
+    final prepared = widget.preparedExportPath?.trim();
+    if (prepared != null && prepared.isNotEmpty) return prepared;
+    return widget.project.primaryVideoPath;
   }
 
   Future<void> _restoreAccount() async {
@@ -110,6 +157,218 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
   Future<GoogleSignInAccount?> _connectAccount() async {
     await _auth.signIn();
     return _auth.currentAccount();
+  }
+
+  Future<void> _setAlsoTikTok(bool value) async {
+    setState(() => _alsoTikTok = value);
+    if (!value) return;
+    setState(() => _tikTokAccountLoading = true);
+    try {
+      final session = await _tikTokAuth.currentSession();
+      if (session == null) {
+        if (!mounted) return;
+        setState(() {
+          _tikTokSession = null;
+          _tikTokCreator = null;
+          _tikTokAccountLoading = false;
+        });
+        return;
+      }
+      final creator = await _tikTokPosts.creatorInfo(session.accessToken);
+      if (!mounted) return;
+      setState(() {
+        _tikTokSession = session;
+        _tikTokCreator = creator;
+        // Prefer Only me first — unaudited TikTok apps reject public posts.
+        _tikTokPrivacy ??= creator.privacyOptions.contains(_tikTokSelfOnly)
+            ? _tikTokSelfOnly
+            : CrossPostPrivacy.youtubeToTikTok(
+                _privacy,
+                creator.privacyOptions,
+              );
+        _tikTokAccountLoading = false;
+      });
+    } catch (error) {
+      debugPrint('[YouTubeUpload] TikTok session load failed: $error');
+      if (!mounted) return;
+      setState(() {
+        _tikTokSession = null;
+        _tikTokCreator = null;
+        _tikTokAccountLoading = false;
+      });
+    }
+  }
+
+  Future<void> _connectTikTok({bool fresh = false}) async {
+    setState(() => _tikTokAccountLoading = true);
+    try {
+      if (fresh) await _tikTokAuth.signOut();
+      final session = await _tikTokAuth.signIn(freshAccount: fresh);
+      final creator = await _tikTokPosts.creatorInfo(session.accessToken);
+      if (!mounted) return;
+      setState(() {
+        _tikTokSession = session;
+        _tikTokCreator = creator;
+        _tikTokPrivacy ??= creator.privacyOptions.contains(_tikTokSelfOnly)
+            ? _tikTokSelfOnly
+            : CrossPostPrivacy.youtubeToTikTok(
+                _privacy,
+                creator.privacyOptions,
+              );
+      });
+    } catch (error) {
+      debugPrint('[YouTubeUpload] TikTok connect failed: $error');
+      if (!mounted) return;
+      showLoggedSnackBar(context, error.toString(), error: error);
+    } finally {
+      if (mounted) setState(() => _tikTokAccountLoading = false);
+    }
+  }
+
+  Future<void> _pickTikTokCover() async {
+    final path = _exportVideoPath;
+    if (path == null || path.isEmpty) return;
+    final nav = Navigator.of(context);
+    await _preview?.pause();
+    if (!mounted) return;
+    final picked = await nav.push<int>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => TikTokCoverPickerScreen(
+          videoPath: path,
+          initialMs: _tikTokCoverMs,
+        ),
+      ),
+    );
+    if (!mounted || picked == null) return;
+    setState(() => _tikTokCoverMs = picked);
+  }
+
+  void _setBusyProgress(_UploadBusyPhase phase, [double progress = 0]) {
+    final next = progress.clamp(0.0, 1.0);
+    final nextPercent = (next * 100).round();
+    final samePhase = _busyPhase == phase;
+    final samePercent = (_busyProgress * 100).round() == nextPercent;
+    if (samePhase && samePercent) return;
+    if (!mounted) return;
+    setState(() {
+      _busyPhase = phase;
+      _busyProgress = next;
+    });
+  }
+
+  String _busyStatusText(AppLocalizations l10n) {
+    final percent = (_busyProgress * 100).round();
+    return switch (_busyPhase) {
+      _UploadBusyPhase.exporting => l10n.youtubeExporting(percent),
+      _UploadBusyPhase.uploadingYouTube => _alsoTikTok
+          ? l10n.crossPostUploadingYouTube(percent)
+          : l10n.youtubeUploading(percent),
+      _UploadBusyPhase.finishingYouTube => l10n.youtubeFinishing,
+      _UploadBusyPhase.uploadingTikTok =>
+        l10n.crossPostUploadingTikTok(percent),
+      _UploadBusyPhase.processingTikTok => l10n.crossPostProcessingTikTok,
+      _UploadBusyPhase.idle => l10n.youtubeUploading(0),
+    };
+  }
+
+  /// Button fill: one platform = full bar; dual-post splits 50/50.
+  double get _overallBusyProgress {
+    final p = _busyProgress.clamp(0.0, 1.0);
+    if (_alsoTikTok) {
+      return switch (_busyPhase) {
+        _UploadBusyPhase.idle => 0,
+        _UploadBusyPhase.exporting => p * 0.08,
+        _UploadBusyPhase.uploadingYouTube => 0.08 + p * 0.40,
+        _UploadBusyPhase.finishingYouTube => 0.50,
+        _UploadBusyPhase.uploadingTikTok => 0.50 + p * 0.42,
+        _UploadBusyPhase.processingTikTok => 0.94,
+      };
+    }
+    return switch (_busyPhase) {
+      _UploadBusyPhase.idle => 0,
+      _UploadBusyPhase.exporting => p * 0.15,
+      _UploadBusyPhase.uploadingYouTube => 0.15 + p * 0.75,
+      _UploadBusyPhase.finishingYouTube => 0.96,
+      _UploadBusyPhase.uploadingTikTok ||
+      _UploadBusyPhase.processingTikTok => 1,
+    };
+  }
+
+  String _tikTokOpenUrl(TikTokPublishStatus status) {
+    final username = _tikTokCreator?.username ?? '';
+    final postId = status.postIds?.firstOrNull;
+    if (username.isEmpty) return 'https://www.tiktok.com/';
+    if (postId == null) return 'https://www.tiktok.com/@$username';
+    return 'https://www.tiktok.com/@$username/video/$postId';
+  }
+
+  /// Returns true when the post had to fall back to Only me (unaudited app).
+  Future<bool> _postToTikTok(String videoPath) async {
+    final session = _tikTokSession;
+    final privacy = _tikTokPrivacy;
+    final creator = _tikTokCreator;
+    if (session == null || privacy == null || creator == null) {
+      throw StateError('tiktok_not_ready');
+    }
+    final maxCover =
+        ((_preview?.value.duration.inMilliseconds ?? 1) - 1).clamp(0, 1 << 30);
+
+    Future<TikTokPublishStatus> publish(String privacyLevel) async {
+      final info = TikTokPostInfo(
+        title: _titleFromCaption(_descriptionController.text.trim()),
+        privacyLevel: privacyLevel,
+        allowComment: _tikTokAllowComment,
+        allowDuet: _tikTokAllowDuet,
+        allowStitch: _tikTokAllowStitch,
+        coverTimestampMs: _tikTokCoverMs.clamp(0, maxCover),
+        brandOrganic: _tikTokDisclose && _tikTokYourBrand,
+        brandedContent: _tikTokDisclose && _tikTokBranded,
+      );
+      _setBusyProgress(_UploadBusyPhase.uploadingTikTok, 0);
+      final publishId = await _tikTokPosts.publish(
+        accessToken: session.accessToken,
+        file: File(videoPath),
+        info: info,
+        onProgress: (value) =>
+            _setBusyProgress(_UploadBusyPhase.uploadingTikTok, value),
+      );
+      _setBusyProgress(_UploadBusyPhase.processingTikTok);
+      final status = await _tikTokPosts.waitForPublish(
+        session.accessToken,
+        publishId,
+      );
+      if (status.state == TikTokPublishState.failed) {
+        throw TikTokApiException(
+          'publish_failed',
+          message: status.failReason,
+        );
+      }
+      return status;
+    }
+
+    try {
+      final status = await publish(privacy);
+      _tikTokCrossOpenUrl = _tikTokOpenUrl(status);
+      return false;
+    } on TikTokApiException catch (error) {
+      // Unaudited TikTok apps may only Direct Post as SELF_ONLY.
+      if (error.code == 'unaudited_client_can_only_post_to_private_accounts' &&
+          privacy != _tikTokSelfOnly &&
+          (creator.privacyOptions.contains(_tikTokSelfOnly) ||
+              creator.privacyOptions.isEmpty)) {
+        debugPrint(
+          '[YouTubeUpload] TikTok unaudited — retry as SELF_ONLY',
+        );
+        final status = await publish(_tikTokSelfOnly);
+        _tikTokCrossOpenUrl = _tikTokOpenUrl(status);
+        if (mounted) {
+          setState(() => _tikTokPrivacy = _tikTokSelfOnly);
+        }
+        return true;
+      }
+      rethrow;
+    }
   }
 
   String _errorMessage(AppLocalizations l10n, YouTubeErrorKind kind) {
@@ -248,6 +507,10 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
       showLoggedSnackBar(context, l10n.uploadTitleHint);
       return;
     }
+    if (_alsoTikTok && !_tikTokReady) {
+      showLoggedSnackBar(context, l10n.tiktokConnectHelp);
+      return;
+    }
     final relatedRaw = _relatedController.text.trim();
     final relatedId = youtubeVideoId(relatedRaw);
     if (relatedRaw.isNotEmpty && relatedId == null) {
@@ -262,14 +525,19 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
       }
     }
 
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _busyPhase = _UploadBusyPhase.uploadingYouTube;
+      _busyProgress = 0;
+    });
     await _preview?.pause();
     debugPrint(
       '[YouTubeUpload] 시작 title="$title" '
       'privacy=$_privacy kids=$_madeForKids '
       'paid=$_paidPromotion synthetic=$_syntheticMedia '
       'tags=${tags.length} related=${relatedId ?? "none"} '
-      'thumbnail=${_thumbnailPath == null ? "auto" : "custom"}',
+      'thumbnail=${_thumbnailPath == null ? "auto" : "custom"} '
+      'alsoTikTok=$_alsoTikTok',
     );
     String? videoId;
     try {
@@ -294,11 +562,13 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
       } else {
         final quality = await _settings.getExportQualityProfile();
         debugPrint('[YouTubeUpload] 내보내기 시작 quality=${quality.name}');
+        _setBusyProgress(_UploadBusyPhase.exporting, 0);
         var lastExportBucket = -1;
         path = await _export.exportForPreset(
           widget.project,
           quality: quality,
           onProgress: (progress) {
+            _setBusyProgress(_UploadBusyPhase.exporting, progress);
             final percent = (progress.clamp(0.0, 1.0) * 100).round();
             final bucket = percent ~/ 10;
             if (bucket == lastExportBucket) return;
@@ -308,6 +578,7 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
         );
         debugPrint('[YouTubeUpload] 내보내기 완료 path=$path');
       }
+      _setBusyProgress(_UploadBusyPhase.uploadingYouTube, 0);
       videoId = await _upload.uploadProject(
         project: widget.project,
         exportedPath: path,
@@ -319,15 +590,46 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
         tags: tags,
         containsSyntheticMedia: _syntheticMedia,
         paidPromotion: _paidPromotion,
+        onProgress: (progress) =>
+            _setBusyProgress(_UploadBusyPhase.uploadingYouTube, progress),
       );
       debugPrint('[YouTubeUpload] 업로드 완료 videoId=$videoId');
       AnalyticsService.instance.log('youtube_upload_completed');
+      _setBusyProgress(_UploadBusyPhase.finishingYouTube);
       final followUp = await _applyDetails(token: token, videoId: videoId);
+
+      String? crossNote;
+      String? tikTokOpenUrl;
+      if (_alsoTikTok) {
+        try {
+          final privateFallback = await _postToTikTok(path);
+          AnalyticsService.instance.log('tiktok_post_completed', {
+            'from': 'youtube_cross',
+            'private_fallback': privateFallback,
+          });
+          crossNote = privateFallback
+              ? l10n.crossPostTikTokOkPrivate
+              : l10n.crossPostTikTokOk;
+          tikTokOpenUrl = _tikTokCrossOpenUrl;
+        } catch (error) {
+          debugPrint('[YouTubeUpload] TikTok cross-post failed: $error');
+          _tikTokCrossOpenUrl = null;
+          final message = error is TikTokApiException &&
+                  error.code ==
+                      'unaudited_client_can_only_post_to_private_accounts'
+              ? l10n.tiktokErrPrivateOnly
+              : '$error';
+          crossNote = l10n.crossPostTikTokFailed(message);
+        }
+      }
+
       if (!mounted) return;
       await _preview?.pause();
       setState(() {
         _uploadedId = videoId;
         _partialSteps = followUp;
+        _crossPostNote = crossNote;
+        _tikTokCrossOpenUrl = tikTokOpenUrl;
       });
     } catch (e, stack) {
       debugPrint('[YouTubeUpload] 실패: $e\n$stack');
@@ -346,7 +648,13 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
       // user doesn't have to tap again.
       if (switched && mounted) await _submit();
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _busyPhase = _UploadBusyPhase.idle;
+          _busyProgress = 0;
+        });
+      }
     }
   }
 
@@ -487,6 +795,139 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
             ),
           ],
           const SizedBox(height: 8),
+          UploadSurfaceCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                UploadCrossPostToggle(
+                  title: l10n.crossPostAlsoTikTok,
+                  value: _alsoTikTok,
+                  enabled: !_busy,
+                  onChanged: _setAlsoTikTok,
+                ),
+                if (_alsoTikTok) ...[
+                  const SizedBox(height: 8),
+                  _buildTikTokCrossAccount(l10n),
+                  if (_tikTokCreator != null) ...[
+                    const SizedBox(height: 12),
+                    UploadSectionLabel(l10n.uploadVisibility),
+                    const SizedBox(height: 8),
+                    UploadChoiceChips<String>(
+                      value: _tikTokPrivacy,
+                      enabled: !_busy,
+                      options: [
+                        for (final option in _tikTokCreator!.privacyOptions)
+                          (option, _tikTokPrivacyLabel(l10n, option)),
+                      ],
+                      onChanged: (value) {
+                        if (_tikTokDisclose &&
+                            _tikTokBranded &&
+                            value == _tikTokSelfOnly) {
+                          return;
+                        }
+                        setState(() => _tikTokPrivacy = value);
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    UploadToggleTile(
+                      title: l10n.tiktokAllowComment,
+                      value: _tikTokAllowComment,
+                      enabled: !_busy &&
+                          !(_tikTokCreator?.commentDisabled ?? false),
+                      onChanged: (v) =>
+                          setState(() => _tikTokAllowComment = v),
+                    ),
+                    UploadToggleTile(
+                      title: l10n.tiktokAllowDuet,
+                      value: _tikTokAllowDuet,
+                      enabled:
+                          !_busy && !(_tikTokCreator?.duetDisabled ?? false),
+                      onChanged: (v) => setState(() => _tikTokAllowDuet = v),
+                    ),
+                    UploadToggleTile(
+                      title: l10n.tiktokAllowStitch,
+                      value: _tikTokAllowStitch,
+                      enabled: !_busy &&
+                          !(_tikTokCreator?.stitchDisabled ?? false),
+                      onChanged: (v) =>
+                          setState(() => _tikTokAllowStitch = v),
+                    ),
+                    UploadToggleTile(
+                      title: l10n.tiktokDisclose,
+                      subtitle: l10n.tiktokDiscloseHelp,
+                      value: _tikTokDisclose,
+                      enabled: !_busy,
+                      onChanged: (v) => setState(() {
+                        _tikTokDisclose = v;
+                        if (!v) {
+                          _tikTokYourBrand = false;
+                          _tikTokBranded = false;
+                        }
+                      }),
+                    ),
+                    if (_tikTokDisclose) ...[
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        activeColor: AppTheme.accent,
+                        title: Text(
+                          l10n.tiktokYourBrand,
+                          style: GoogleFonts.dmSans(
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.ink,
+                          ),
+                        ),
+                        value: _tikTokYourBrand,
+                        onChanged: _busy
+                            ? null
+                            : (v) => setState(
+                                  () => _tikTokYourBrand = v ?? false,
+                                ),
+                      ),
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        activeColor: AppTheme.accent,
+                        title: Text(
+                          l10n.tiktokBrandedContent,
+                          style: GoogleFonts.dmSans(
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.ink,
+                          ),
+                        ),
+                        value: _tikTokBranded,
+                        onChanged: _busy
+                            ? null
+                            : (v) => setState(
+                                  () => _tikTokBranded = v ?? false,
+                                ),
+                      ),
+                    ],
+                    TextButton.icon(
+                      onPressed: _busy ? null : _pickTikTokCover,
+                      icon: const Icon(Icons.image_outlined, size: 18),
+                      label: Text(
+                        '${l10n.uploadThumbnailSelect} · '
+                        '${Duration(milliseconds: _tikTokCoverMs).inSeconds}s',
+                      ),
+                    ),
+                  ] else if (!_tikTokAccountLoading)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        l10n.tiktokConnectHelp,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 13,
+                          color: AppTheme.muted,
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
           TextButton.icon(
             onPressed: _busy
                 ? null
@@ -505,12 +946,83 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
           ),
           const SizedBox(height: 8),
           UploadGradientButton(
-            label: l10n.uploadShorts,
+            label: _alsoTikTok
+                ? l10n.uploadShortsAndTikTok
+                : l10n.uploadShorts,
             onPressed: _busy ? null : _submit,
             busy: _busy,
+            busyProgress: _busy ? _overallBusyProgress : null,
+            busyLabel: UploadBusyStatusLabel(_busyStatusText(l10n)),
           ),
         ],
       ),
+    );
+  }
+
+  String _tikTokPrivacyLabel(AppLocalizations l10n, String option) {
+    return switch (option) {
+      'PUBLIC_TO_EVERYONE' => l10n.tiktokPrivacyPublic,
+      'MUTUAL_FOLLOW_FRIENDS' => l10n.tiktokPrivacyFriends,
+      'FOLLOWER_OF_CREATOR' => l10n.tiktokPrivacyFollowers,
+      _tikTokSelfOnly => l10n.tiktokPrivacySelf,
+      _ => option,
+    };
+  }
+
+  Widget _buildTikTokCrossAccount(AppLocalizations l10n) {
+    final creator = _tikTokCreator;
+    return Row(
+      children: [
+        CircleAvatar(
+          radius: 16,
+          backgroundColor: AppTheme.surfaceElevated,
+          foregroundImage: creator == null || creator.avatarUrl.isEmpty
+              ? null
+              : NetworkImage(creator.avatarUrl),
+          child: const Icon(
+            Icons.person_outline,
+            size: 18,
+            color: AppTheme.muted,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            creator == null
+                ? (_tikTokAccountLoading ? '' : l10n.uploadAccountNone)
+                : (creator.nickname.isEmpty
+                    ? '@${creator.username}'
+                    : creator.nickname),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.dmSans(
+              fontWeight: FontWeight.w700,
+              color: AppTheme.ink,
+            ),
+          ),
+        ),
+        if (_tikTokAccountLoading)
+          const SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          )
+        else
+          TextButton(
+            onPressed: _busy
+                ? null
+                : () => _connectTikTok(fresh: creator != null),
+            child: Text(
+              creator == null
+                  ? l10n.uploadAccountConnect
+                  : l10n.uploadAccountSwitch,
+              style: GoogleFonts.dmSans(
+                color: AppTheme.accentCyan,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -569,6 +1081,14 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
             textAlign: TextAlign.center,
             style: GoogleFonts.dmSans(color: AppTheme.muted, fontSize: 14),
           ),
+          if (_crossPostNote != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _crossPostNote!,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.dmSans(color: AppTheme.muted, fontSize: 13),
+            ),
+          ],
           const SizedBox(height: 22),
           UploadSurfaceCard(
             padding: EdgeInsets.zero,
@@ -693,6 +1213,23 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
               mode: LaunchMode.externalApplication,
             ),
           ),
+          if (_tikTokCrossOpenUrl != null) ...[
+            const SizedBox(height: 10),
+            OutlinedButton(
+              onPressed: () => launchUrl(
+                Uri.parse(_tikTokCrossOpenUrl!),
+                mode: LaunchMode.externalApplication,
+              ),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+                foregroundColor: AppTheme.ink,
+              ),
+              child: Text(
+                l10n.tiktokOpen,
+                style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
           const SizedBox(height: 10),
           Row(
             children: [
@@ -911,7 +1448,12 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
                   fit: StackFit.expand,
                   children: [
                     if (showStill)
-                      Image.file(File(_thumbnailPath!), fit: BoxFit.cover)
+                      Image.file(
+                        File(_thumbnailPath!),
+                        key: ValueKey(_thumbnailPath),
+                        fit: BoxFit.cover,
+                        gaplessPlayback: false,
+                      )
                     else
                       FittedBox(
                         fit: BoxFit.cover,
@@ -985,4 +1527,13 @@ class _YouTubeUploadScreenState extends State<YouTubeUploadScreen> {
       ),
     );
   }
+}
+
+enum _UploadBusyPhase {
+  idle,
+  exporting,
+  uploadingYouTube,
+  finishingYouTube,
+  uploadingTikTok,
+  processingTikTok,
 }

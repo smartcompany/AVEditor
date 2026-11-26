@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:aveditor/l10n/l10n_extensions.dart';
@@ -8,7 +7,9 @@ import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/media_asset.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/video_project.dart';
+import 'package:aveditor/services/video_filmstrip_cache.dart';
 import 'package:aveditor/services/video_frame_grab.dart';
+import 'package:aveditor/services/video_probe_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/utils/logged_snackbar.dart';
 import 'package:aveditor/widgets/basic_text_edit_toolbar.dart';
@@ -139,6 +140,9 @@ class _ThumbnailEditorScreenState extends State<ThumbnailEditorScreen> {
   var _scrub = 0.0;
   var _dragging = false;
   var _heroRequest = 0;
+  /// When the project has no usable timeline (e.g. album-share stub), probe
+  /// the source file so strip + hero still scrub the original content.
+  var _probedDurationMs = 0;
   Uint8List? _hero;
   List<Uint8List?> _frames = const [];
   List<int> _frameMs = const [];
@@ -149,7 +153,7 @@ class _ThumbnailEditorScreenState extends State<ThumbnailEditorScreen> {
   @override
   void initState() {
     super.initState();
-    _loadFrames();
+    unawaited(_loadFrames());
   }
 
   int get _scrubMs {
@@ -186,6 +190,19 @@ class _ThumbnailEditorScreenState extends State<ThumbnailEditorScreen> {
     final request = ++_heroRequest;
     final sample = _sampleAt(_scrubMs);
     try {
+      // Prefer a fast cache tile for the strip scrub; refine with accurate
+      // decode only when confirming / when no strip tile exists.
+      final cached = await VideoFilmstripCache.instance.getBytes(
+        video: sample.path,
+        timeMs: sample.timeMs,
+        maxHeight: VideoFilmstripCache.stripMaxHeight,
+        maxWidth: VideoFilmstripCache.stripMaxHeight,
+        quality: VideoFilmstripCache.stripQuality,
+      );
+      if (!mounted || request != _heroRequest) return;
+      if (cached != null && cached.isNotEmpty) {
+        setState(() => _hero = cached);
+      }
       final bytes = await const VideoFrameGrab().jpegBytes(
         video: sample.path,
         timeMs: sample.timeMs,
@@ -203,25 +220,60 @@ class _ThumbnailEditorScreenState extends State<ThumbnailEditorScreen> {
   }
 
   Future<void> _loadFrames() async {
+    if (_projectTimelineMs <= 0) {
+      final probed = await const VideoProbeService().readDuration(
+        widget.project.primaryVideoPath,
+      );
+      if (!mounted) return;
+      if (probed != null && probed.inMilliseconds > 0) {
+        setState(() => _probedDurationMs = probed.inMilliseconds);
+      }
+    }
     final times = _frameTimes();
     final frames = List<Uint8List?>.filled(times.length, null);
     if (!mounted) return;
     setState(() => _frameMs = times);
+
+    // Same cache + parallel path as the share scrubber (accurate:false).
+    // Share → YouTube → this screen then reuses tiles already decoded.
     try {
+      final byPath = <String, List<int>>{};
+      final sampleAt = <int, ({String path, int timeMs})>{};
       for (var i = 0; i < times.length; i++) {
         final sample = _sampleAt(times[i]);
-        final bytes = await const VideoFrameGrab().jpegBytes(
+        sampleAt[i] = sample;
+        (byPath[sample.path] ??= <int>[]).add(i);
+        final hit = VideoFilmstripCache.instance.peek(
           video: sample.path,
           timeMs: sample.timeMs,
-          maxHeight: 360,
-          maxWidth: 360,
-          quality: 68,
-          accurate: true,
+          maxHeight: VideoFilmstripCache.stripMaxHeight,
+          quality: VideoFilmstripCache.stripQuality,
         );
-        if (!mounted) return;
-        if (bytes == null || bytes.isEmpty) continue;
-        frames[i] = bytes;
+        if (hit != null) frames[i] = hit;
+      }
+      if (frames.any((f) => f != null)) {
         setState(() => _frames = List<Uint8List?>.of(frames));
+      }
+
+      for (final entry in byPath.entries) {
+        final indexes = entry.value;
+        final pathTimes = [
+          for (final i in indexes) sampleAt[i]!.timeMs,
+        ];
+        await VideoFilmstripCache.instance.loadTimes(
+          video: entry.key,
+          timesMs: pathTimes,
+          maxHeight: VideoFilmstripCache.stripMaxHeight,
+          maxWidth: VideoFilmstripCache.stripMaxHeight,
+          quality: VideoFilmstripCache.stripQuality,
+          concurrency: 4,
+          onFrame: (localIndex, bytes) {
+            if (!mounted) return;
+            final frameIndex = indexes[localIndex];
+            frames[frameIndex] = bytes;
+            setState(() => _frames = List<Uint8List?>.of(frames));
+          },
+        );
       }
     } catch (error, stack) {
       debugPrint('[ThumbnailEditor] 프레임 실패: $error\n$stack');
@@ -245,10 +297,18 @@ class _ThumbnailEditorScreenState extends State<ThumbnailEditorScreen> {
     return [for (var i = 0; i < count; i++) (total * i / (count - 1)).round()];
   }
 
-  int get _timelineMaxMs {
+  int get _projectTimelineMs {
     final trimmed = widget.project.trimmedDuration.inMilliseconds;
     if (trimmed > 0) return trimmed;
+    final duration = widget.project.duration.inMilliseconds;
+    if (duration > 0) return duration;
     return 0;
+  }
+
+  int get _timelineMaxMs {
+    final projectMs = _projectTimelineMs;
+    if (projectMs > 0) return projectMs;
+    return _probedDurationMs;
   }
 
   /// Map packed timeline time → the clip file and local seek time.

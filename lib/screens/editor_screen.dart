@@ -6494,13 +6494,22 @@ class _ExportDockBusyOverlayState extends State<_ExportDockBusyOverlay>
           builder: (context, constraints) {
             final maxH = constraints.maxHeight;
             final maxW = constraints.maxWidth;
+            // Fullscreen collapse can leave a few pixels of dock height —
+            // keep the dimmer, skip the mascot until there is room.
+            if (!maxH.isFinite || maxH < 24) {
+              return const SizedBox.expand();
+            }
+
             // Compact dock (video maximized) — shrink mascot / drop label.
             final showLabel = maxH >= 110;
-            final mascot = showLabel
-                ? (maxH * 0.48).clamp(36.0, 78.0)
-                : (maxH * 0.72).clamp(28.0, 56.0);
-            final bounceAmp = showLabel ? 7.0 : 3.0;
+            final bounceAmp = showLabel ? 7.0 : (maxH >= 48 ? 3.0 : 0.0);
             final gap = showLabel ? 10.0 : 0.0;
+            final labelH = showLabel ? 24.0 : 0.0;
+            final budget =
+                (maxH - gap - labelH - bounceAmp * 2).clamp(16.0, maxH);
+            final mascot = showLabel
+                ? (maxH * 0.48).clamp(36.0, math.min(78.0, budget)).toDouble()
+                : (maxH * 0.55).clamp(16.0, math.min(56.0, budget)).toDouble();
 
             return Center(
               child: Padding(
@@ -6508,51 +6517,47 @@ class _ExportDockBusyOverlayState extends State<_ExportDockBusyOverlay>
                   horizontal: maxW < 200 ? 12 : 28,
                   vertical: 4,
                 ),
+                // Scale the intrinsic content down — never constrain the
+                // Column to a tiny maxHeight (that overflows before scale).
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxWidth: maxW,
-                      maxHeight: maxH,
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        AnimatedBuilder(
-                          animation: _motion,
-                          builder: (context, _) {
-                            final t = _motion.value;
-                            final bounce =
-                                math.sin(t * math.pi * 2) * bounceAmp;
-                            final wobble = math.sin(t * math.pi * 4) * 0.18;
-                            return Transform.translate(
-                              offset: Offset(0, bounce),
-                              child: Transform.rotate(
-                                angle: wobble,
-                                child: CustomPaint(
-                                  size: Size(mascot, mascot),
-                                  painter: _ScissorsMascotPainter(phase: t),
-                                ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AnimatedBuilder(
+                        animation: _motion,
+                        builder: (context, _) {
+                          final t = _motion.value;
+                          final bounce =
+                              math.sin(t * math.pi * 2) * bounceAmp;
+                          final wobble = math.sin(t * math.pi * 4) * 0.18;
+                          return Transform.translate(
+                            offset: Offset(0, bounce),
+                            child: Transform.rotate(
+                              angle: wobble,
+                              child: CustomPaint(
+                                size: Size(mascot, mascot),
+                                painter: _ScissorsMascotPainter(phase: t),
                               ),
-                            );
-                          },
-                        ),
-                        if (showLabel) ...[
-                          SizedBox(height: gap),
-                          Text(
-                            widget.label,
-                            textAlign: TextAlign.center,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.dmSans(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.ink,
                             ),
+                          );
+                        },
+                      ),
+                      if (showLabel) ...[
+                        SizedBox(height: gap),
+                        Text(
+                          widget.label,
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.dmSans(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.ink,
                           ),
-                        ],
+                        ),
                       ],
-                    ),
+                    ],
                   ),
                 ),
               ),

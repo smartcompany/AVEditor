@@ -133,6 +133,41 @@ class AppLocalizationsEn extends AppLocalizations {
   String get uploadShorts => 'Upload to YouTube';
 
   @override
+  String get uploadShortsAndTikTok => 'Upload to YouTube & TikTok';
+
+  @override
+  String get crossPostAlsoTikTok => 'Also post to TikTok';
+
+  @override
+  String get crossPostAlsoYouTube => 'Also upload to YouTube';
+
+  @override
+  String get shareTileWithTikTok => 'Can post with TikTok';
+
+  @override
+  String get shareTileWithYouTube => 'Can post with YouTube';
+
+  @override
+  String get crossPostTikTokOk => 'Also posted to TikTok';
+
+  @override
+  String get crossPostTikTokOkPrivate =>
+      'Also posted to TikTok as Only me (app pending TikTok review)';
+
+  @override
+  String get crossPostYouTubeOk => 'Also uploaded to YouTube';
+
+  @override
+  String crossPostTikTokFailed(String message) {
+    return 'YouTube uploaded, but TikTok failed: $message';
+  }
+
+  @override
+  String crossPostYouTubeFailed(String message) {
+    return 'TikTok posted, but YouTube failed: $message';
+  }
+
+  @override
   String get saveToGallery => 'Save to gallery';
 
   @override
@@ -760,6 +795,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get shareContentTitle => 'Share content';
 
   @override
+  String get shareMyContent => 'Share my content';
+
+  @override
+  String get sharePickFromAlbumHint =>
+      'Choose a video from your album to share.';
+
+  @override
   String get share => 'Share';
 
   @override
@@ -1384,12 +1426,41 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tiktokPost => 'Post';
 
   @override
+  String get tiktokPostAndYouTube => 'Post to TikTok & YouTube';
+
+  @override
   String tiktokUploading(int percent) {
     return 'Uploading $percent%';
   }
 
   @override
   String get tiktokProcessing => 'TikTok is processing…';
+
+  @override
+  String youtubeExporting(int percent) {
+    return 'Preparing $percent%';
+  }
+
+  @override
+  String youtubeUploading(int percent) {
+    return 'Uploading $percent%';
+  }
+
+  @override
+  String get youtubeFinishing => 'Finishing…';
+
+  @override
+  String crossPostUploadingYouTube(int percent) {
+    return 'YouTube $percent%';
+  }
+
+  @override
+  String crossPostUploadingTikTok(int percent) {
+    return 'TikTok $percent%';
+  }
+
+  @override
+  String get crossPostProcessingTikTok => 'TikTok is processing…';
 
   @override
   String get tiktokDoneTitle => 'Posted to TikTok';

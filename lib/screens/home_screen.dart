@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:aveditor/l10n/l10n_extensions.dart';
 import 'package:aveditor/navigation/editor_route.dart';
+import 'package:aveditor/screens/export_share_screen.dart';
 import 'package:aveditor/screens/settings_screen.dart';
 import 'package:aveditor/services/analytics_service.dart';
 import 'package:aveditor/services/export_share_service.dart';
@@ -116,6 +117,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _pickGallery() async {
     await _runPickBatch(() => _import.pickFromGallery(context));
+  }
+
+  Future<void> _openShareMyContent() async {
+    if (!mounted || _loading) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => const ExportShareScreen.pickFromAlbum(),
+      ),
+    );
   }
 
   Future<void> _pickFiles() async {
@@ -340,6 +351,15 @@ class _HomeScreenState extends State<HomeScreen> {
                       icon: Icons.videocam_outlined,
                       label: l10n.recordVideo,
                       onPressed: _pickCamera,
+                      outlined: true,
+                    ),
+                  ],
+                  if (PlatformHelper.supportsGallery) ...[
+                    const SizedBox(height: 12),
+                    _ActionButton(
+                      icon: Icons.ios_share_outlined,
+                      label: l10n.shareMyContent,
+                      onPressed: _openShareMyContent,
                       outlined: true,
                     ),
                   ],

@@ -132,6 +132,40 @@ class AppLocalizationsJa extends AppLocalizations {
   String get uploadShorts => 'YouTubeにアップロード';
 
   @override
+  String get uploadShortsAndTikTok => 'YouTubeとTikTokにアップロード';
+
+  @override
+  String get crossPostAlsoTikTok => 'TikTokにも投稿';
+
+  @override
+  String get crossPostAlsoYouTube => 'YouTubeにもアップロード';
+
+  @override
+  String get shareTileWithTikTok => 'TikTokと同時投稿可';
+
+  @override
+  String get shareTileWithYouTube => 'YouTubeと同時投稿可';
+
+  @override
+  String get crossPostTikTokOk => 'TikTokにも投稿しました';
+
+  @override
+  String get crossPostTikTokOkPrivate => 'TikTokにも投稿しました（自分のみ・審査前の制限）';
+
+  @override
+  String get crossPostYouTubeOk => 'YouTubeにもアップロードしました';
+
+  @override
+  String crossPostTikTokFailed(String message) {
+    return 'YouTubeは完了、TikTokは失敗: $message';
+  }
+
+  @override
+  String crossPostYouTubeFailed(String message) {
+    return 'TikTokは完了、YouTubeは失敗: $message';
+  }
+
+  @override
   String get saveToGallery => 'ギャラリーに保存';
 
   @override
@@ -741,6 +775,12 @@ class AppLocalizationsJa extends AppLocalizations {
   String get shareContentTitle => 'コンテンツを共有';
 
   @override
+  String get shareMyContent => '自分のコンテンツを共有';
+
+  @override
+  String get sharePickFromAlbumHint => 'アルバムから動画を選んで共有します。';
+
+  @override
   String get share => '共有';
 
   @override
@@ -1345,12 +1385,41 @@ class AppLocalizationsJa extends AppLocalizations {
   String get tiktokPost => '投稿';
 
   @override
+  String get tiktokPostAndYouTube => 'TikTokとYouTubeに投稿';
+
+  @override
   String tiktokUploading(int percent) {
     return 'アップロード中 $percent%';
   }
 
   @override
   String get tiktokProcessing => 'TikTokで処理中…';
+
+  @override
+  String youtubeExporting(int percent) {
+    return '準備中 $percent%';
+  }
+
+  @override
+  String youtubeUploading(int percent) {
+    return 'アップロード中 $percent%';
+  }
+
+  @override
+  String get youtubeFinishing => '仕上げ中…';
+
+  @override
+  String crossPostUploadingYouTube(int percent) {
+    return 'YouTube $percent%';
+  }
+
+  @override
+  String crossPostUploadingTikTok(int percent) {
+    return 'TikTok $percent%';
+  }
+
+  @override
+  String get crossPostProcessingTikTok => 'TikTokで処理中…';
 
   @override
   String get tiktokDoneTitle => 'TikTokに投稿しました';

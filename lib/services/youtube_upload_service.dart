@@ -24,6 +24,7 @@ class YouTubeUploadService {
     List<String> tags = const [],
     bool containsSyntheticMedia = false,
     bool paidPromotion = false,
+    void Function(double progress)? onProgress,
   }) async {
     final file = File(filePath);
     if (!await file.exists()) {
@@ -86,16 +87,25 @@ class YouTubeUploadService {
     request.contentLength = length;
     final responseFuture = _client.send(request);
     var sent = 0;
-    var lastBucket = -1;
+    var lastUiPercent = -1;
+    var lastLogBucket = -1;
+    onProgress?.call(0);
     await for (final chunk in file.openRead()) {
       request.sink.add(chunk);
       sent += chunk.length;
-      final percent = length == 0 ? 100 : (sent * 100 ~/ length);
+      final ratio = length == 0 ? 1.0 : (sent / length).clamp(0.0, 1.0);
+      final percent = (ratio * 100).round();
+      if (percent != lastUiPercent) {
+        lastUiPercent = percent;
+        onProgress?.call(ratio);
+      }
       final bucket = percent ~/ 10;
-      if (bucket == lastBucket) continue;
-      lastBucket = bucket;
-      debugPrint('[YouTubeUpload] 전송 $percent% ($sent/$length)');
+      if (bucket != lastLogBucket) {
+        lastLogBucket = bucket;
+        debugPrint('[YouTubeUpload] 전송 $percent% ($sent/$length)');
+      }
     }
+    onProgress?.call(1);
     unawaited(request.sink.close());
     final put = await responseFuture;
     final body = await put.stream.bytesToString();
@@ -129,6 +139,7 @@ class YouTubeUploadService {
     List<String> tags = const [],
     bool containsSyntheticMedia = false,
     bool paidPromotion = false,
+    void Function(double progress)? onProgress,
   }) {
     return uploadShort(
       filePath: exportedPath,
@@ -140,6 +151,7 @@ class YouTubeUploadService {
       tags: tags,
       containsSyntheticMedia: containsSyntheticMedia,
       paidPromotion: paidPromotion,
+      onProgress: onProgress,
     );
   }
 

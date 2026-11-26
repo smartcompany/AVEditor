@@ -20,7 +20,7 @@ class ShareTarget {
   }
 }
 
-/// Ordered share destinations. The first item is the large button.
+/// Ordered share destinations from the server catalog. Empty when unavailable.
 class ShareCatalogService {
   ShareCatalogService({http.Client? client})
     : _client = client ?? http.Client();
@@ -37,34 +37,15 @@ class ShareCatalogService {
           .timeout(const Duration(seconds: 8));
       if (response.statusCode == 200) {
         final targets = _parse(response.body);
-        if (targets.isNotEmpty) {
-          debugPrint('[ExportShare] 공유 목록 ${targets.length}개 (서버)');
-          return targets;
-        }
-      } else {
-        debugPrint('[ExportShare] 공유 목록 응답 ${response.statusCode}');
+        debugPrint('[ExportShare] 공유 목록 ${targets.length}개 (서버)');
+        return targets;
       }
+      debugPrint('[ExportShare] 공유 목록 응답 ${response.statusCode}');
     } catch (error, stack) {
       debugPrint('[ExportShare] 공유 목록 실패: $error\n$stack');
     }
-    debugPrint('[ExportShare] 공유 목록 기본값 사용');
-    return fallback;
+    return const [];
   }
-
-  static const fallback = <ShareTarget>[
-    ShareTarget(
-      kind: ShareTargetKind.youtube,
-      labels: {
-        'ko': 'YouTube',
-        'en': 'YouTube',
-        'ja': 'YouTube',
-        'zh': 'YouTube',
-      },
-    ),
-    ShareTarget(kind: ShareTargetKind.instagram, labels: {'en': 'Instagram'}),
-    ShareTarget(kind: ShareTargetKind.facebook, labels: {'en': 'Facebook'}),
-    ShareTarget(kind: ShareTargetKind.tiktok, labels: {'en': 'TikTok'}),
-  ];
 
   List<ShareTarget> _parse(String body) {
     final decoded = jsonDecode(body);

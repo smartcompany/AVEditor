@@ -1,12 +1,15 @@
 import 'dart:typed_data';
 
-import 'package:aveditor/services/video_frame_grab.dart';
+import 'package:aveditor/services/video_filmstrip_cache.dart';
 import 'package:aveditor/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 /// Filmstrip of frames from [videoPath] with a playhead. Tap or drag to seek
 /// [player]; playback pauses while dragging and resumes afterwards.
+///
+/// Frames come from [VideoFilmstripCache] so the YouTube thumbnail strip can
+/// reuse tiles already decoded on this scrubber.
 class VideoThumbnailScrubber extends StatefulWidget {
   const VideoThumbnailScrubber({
     super.key,
@@ -45,6 +48,7 @@ class _VideoThumbnailScrubberState extends State<VideoThumbnailScrubber> {
   late List<Uint8List?> _frames = List.filled(widget.frameCount, null);
   bool _dragging = false;
   bool _resumeAfterDrag = false;
+  var _loadGen = 0;
 
   /// Shown while dragging so the handle follows the finger even before the
   /// player reports the new position.
@@ -53,12 +57,17 @@ class _VideoThumbnailScrubberState extends State<VideoThumbnailScrubber> {
   @override
   void initState() {
     super.initState();
+    widget.player.addListener(_onPlayer);
     _loadFrames();
   }
 
   @override
   void didUpdateWidget(covariant VideoThumbnailScrubber oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.player != widget.player) {
+      oldWidget.player.removeListener(_onPlayer);
+      widget.player.addListener(_onPlayer);
+    }
     if (oldWidget.videoPath != widget.videoPath ||
         oldWidget.frameCount != widget.frameCount) {
       _frames = List.filled(widget.frameCount, null);
@@ -66,27 +75,57 @@ class _VideoThumbnailScrubberState extends State<VideoThumbnailScrubber> {
     }
   }
 
+  @override
+  void dispose() {
+    widget.player.removeListener(_onPlayer);
+    super.dispose();
+  }
+
+  void _onPlayer() {
+    if (!mounted) return;
+    if (widget.player.value.duration <= Duration.zero) return;
+    if (_frames.any((frame) => frame != null)) return;
+    _loadFrames();
+  }
+
   Future<void> _loadFrames() async {
     final path = widget.videoPath;
+    final duration = widget.player.value.duration;
     final times = VideoThumbnailScrubber.frameTimesMs(
-      widget.player.value.duration,
+      duration,
       widget.frameCount,
     );
-    const grab = VideoFrameGrab();
+    if (times.isEmpty) return;
+
+    final gen = ++_loadGen;
+    const maxHeight = VideoFilmstripCache.stripMaxHeight;
+    const quality = VideoFilmstripCache.stripQuality;
+
+    // Paint cache hits immediately, then fill the rest in parallel.
     for (var i = 0; i < times.length; i++) {
-      try {
-        final bytes = await grab.jpegBytes(
-          video: path,
-          timeMs: times[i],
-          maxHeight: (widget.height * 3).round(),
-          quality: 70,
-        );
-        if (!mounted || path != widget.videoPath) return;
-        if (bytes != null) setState(() => _frames[i] = bytes);
-      } catch (error) {
-        debugPrint('[Scrubber] 프레임 실패 ${times[i]}ms: $error');
-      }
+      final hit = VideoFilmstripCache.instance.peek(
+        video: path,
+        timeMs: times[i],
+        maxHeight: maxHeight,
+        quality: quality,
+      );
+      if (hit != null) _frames[i] = hit;
     }
+    if (mounted && _frames.any((f) => f != null)) {
+      setState(() {});
+    }
+
+    await VideoFilmstripCache.instance.loadTimes(
+      video: path,
+      timesMs: times,
+      maxHeight: maxHeight,
+      quality: quality,
+      concurrency: 4,
+      onFrame: (index, bytes) {
+        if (!mounted || gen != _loadGen || path != widget.videoPath) return;
+        setState(() => _frames[index] = bytes);
+      },
+    );
   }
 
   Future<void> _seekTo(double dx, double width) async {

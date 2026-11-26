@@ -46,6 +46,26 @@
   "rotateVideo": "영상 회전",
   "export": "내보내기",
   "uploadShorts": "YouTube에 업로드",
+  "uploadShortsAndTikTok": "YouTube·TikTok에 업로드",
+  "crossPostAlsoTikTok": "TikTok에도 게시",
+  "crossPostAlsoYouTube": "YouTube에도 업로드",
+  "shareTileWithTikTok": "TikTok과 함께 가능",
+  "shareTileWithYouTube": "YouTube와 함께 가능",
+  "crossPostTikTokOk": "TikTok에도 게시했어요",
+  "crossPostTikTokOkPrivate": "TikTok에도 게시했어요 (나만 보기 · 앱 심사 전 제한)",
+  "crossPostYouTubeOk": "YouTube에도 업로드했어요",
+  "crossPostTikTokFailed": "YouTube는 올렸지만 TikTok 실패: {message}",
+  "@crossPostTikTokFailed": {
+    "placeholders": {
+      "message": { "type": "String" }
+    }
+  },
+  "crossPostYouTubeFailed": "TikTok은 올렸지만 YouTube 실패: {message}",
+  "@crossPostYouTubeFailed": {
+    "placeholders": {
+      "message": { "type": "String" }
+    }
+  },
   "saveToGallery": "갤러리에 저장",
   "saveToAlbum": "앨범에 저장",
   "cancel": "취소",
@@ -243,6 +263,8 @@
   "exportComplete": "내보내기 완료",
   "savedToDevice": "장치에 저장됨",
   "shareContentTitle": "컨텐츠 공유",
+  "shareMyContent": "내 컨텐츠 공유",
+  "sharePickFromAlbumHint": "앨범에서 영상을 골라 공유하세요.",
   "share": "공유",
   "shareAppMessage": "EasyClip으로 짧은 영상을 빠르게 편집해 보세요.\n{url}",
   "exportDone": "완료",
@@ -515,8 +537,15 @@
   "tiktokBrandPolicy": "브랜드 콘텐츠 정책",
   "tiktokAnd": " 및 ",
   "tiktokPost": "게시",
+  "tiktokPostAndYouTube": "TikTok·YouTube에 게시",
   "tiktokUploading": "업로드 중 {percent}%",
   "tiktokProcessing": "TikTok에서 처리 중…",
+  "youtubeExporting": "준비 중 {percent}%",
+  "youtubeUploading": "업로드 중 {percent}%",
+  "youtubeFinishing": "마무리 중…",
+  "crossPostUploadingYouTube": "YouTube {percent}%",
+  "crossPostUploadingTikTok": "TikTok {percent}%",
+  "crossPostProcessingTikTok": "TikTok에서 처리 중…",
   "tiktokDoneTitle": "TikTok에 올렸어요",
   "tiktokDoneProcessing": "프로필에 나타나기까지 몇 분 걸릴 수 있어요.",
   "tiktokOpen": "TikTok에서 보기",

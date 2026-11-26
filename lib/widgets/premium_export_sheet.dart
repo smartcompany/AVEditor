@@ -58,8 +58,6 @@ class _PremiumExportSheetState extends State<_PremiumExportSheet> {
 
   bool _isUnlocked(PremiumUse use) => _unlocks.isUnlocked(use);
 
-  bool get _allUnlocked => widget.uses.every(_isUnlocked);
-
   Future<void> _watchAdFor(PremiumUse use) async {
     if (_busyKey != null) return;
     final key = EffectAdUnlockService.keyFor(use);
@@ -73,6 +71,11 @@ class _PremiumExportSheetState extends State<_PremiumExportSheet> {
     }
     await _unlocks.unlock(use);
     if (!mounted) return;
+    // Last required ad → continue export without a separate confirm button.
+    if (widget.uses.every(_isUnlocked)) {
+      Navigator.of(context).pop(PremiumExportChoice.continueWithUnlocks);
+      return;
+    }
     setState(() => _busyKey = null);
   }
 
@@ -146,19 +149,6 @@ class _PremiumExportSheetState extends State<_PremiumExportSheet> {
                 minimumSize: const Size.fromHeight(48),
               ),
             ),
-            if (_allUnlocked) ...[
-              const SizedBox(height: 8),
-              FilledButton.tonalIcon(
-                onPressed: _busyKey == null
-                    ? () => choose(PremiumExportChoice.continueWithUnlocks)
-                    : null,
-                icon: const Icon(Icons.check_circle_outline),
-                label: Text(l10n.premiumExportContinue),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                ),
-              ),
-            ],
             const SizedBox(height: 4),
             TextButton(
               onPressed: _busyKey == null

@@ -16,6 +16,8 @@ import 'package:aveditor/services/project_storage_service.dart';
 import 'package:aveditor/services/retention_notification_service.dart';
 import 'package:aveditor/services/share_catalog_service.dart';
 import 'package:aveditor/services/video_frame_grab.dart';
+import 'package:aveditor/services/video_import_service.dart';
+import 'package:aveditor/services/video_probe_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/utils/logged_snackbar.dart';
 import 'package:aveditor/widgets/video_thumbnail_scrubber.dart';
@@ -27,17 +29,29 @@ import 'package:video_player/video_player.dart';
 ///
 /// When [preparedExportPath] is set (export already finished in the editor),
 /// skips the encode stage and opens the share UI immediately.
+///
+/// [ExportShareScreen.pickFromAlbum] opens the same share UI empty so the user
+/// can choose a video from Photos first (home “share my content”).
 class ExportShareScreen extends StatefulWidget {
   const ExportShareScreen({
     super.key,
     required this.project,
     this.preparedExportPath,
-  });
+  }) : pickFromAlbum = false;
 
-  final VideoProject project;
+  /// Same destinations as post-export share; user picks the video from album.
+  const ExportShareScreen.pickFromAlbum({super.key})
+      : project = null,
+        preparedExportPath = null,
+        pickFromAlbum = true;
 
-  /// Absolute path of a finished export. Null → encode here (legacy).
+  final VideoProject? project;
+
+  /// Absolute path of a finished export. Null → encode here (legacy), unless
+  /// [pickFromAlbum] is true.
   final String? preparedExportPath;
+
+  final bool pickFromAlbum;
 
   @override
   State<ExportShareScreen> createState() => _ExportShareScreenState();
@@ -50,6 +64,8 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
   final _catalog = ShareCatalogService();
   final _share = ExportShareService();
   final _projects = const ProjectStorageService();
+  final _import = VideoImportService();
+  final _probe = const VideoProbeService();
 
   double _progress = 0;
   var _cancelled = false;
@@ -58,14 +74,19 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
   String? _error;
   var _savedToAlbum = false;
   var _savingToAlbum = false;
+  var _pickingAlbum = false;
 
   /// iOS Photos asset id of the saved export, for handing to Instagram.
   String? _photosAssetId;
-  List<ShareTarget> _targets = ShareCatalogService.fallback;
+  List<ShareTarget> _targets = const [];
   VideoPlayerController? _player;
+
+  /// Project for YouTube / thumbs. Album-pick fills this after a video is chosen.
+  late VideoProject _project;
 
   /// True while a pre-exported file is loading into the share UI (no encode stage).
   late final bool _fromPrepared;
+  late final bool _fromAlbumPick;
   var _preparingShareUi = false;
 
   @override
@@ -73,6 +94,13 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
     super.initState();
     _share.onFacebookResult = _onFacebookResult;
     _share.onTikTokResult = _onTikTokResult;
+    _fromAlbumPick = widget.pickFromAlbum;
+    _project = widget.project ??
+        VideoProject(
+          id: '_album_share',
+          sourcePath: '',
+          duration: Duration.zero,
+        );
     final prepared = widget.preparedExportPath?.trim();
     _fromPrepared = prepared != null && prepared.isNotEmpty;
     _preparingShareUi = _fromPrepared;
@@ -81,27 +109,100 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
       if (!mounted) return;
       if (_fromPrepared) {
         unawaited(_openPrepared(prepared!));
+      } else if (_fromAlbumPick) {
+        unawaited(_warmCatalog());
       } else {
         unawaited(_run());
       }
     });
   }
 
+  Future<void> _warmCatalog() async {
+    try {
+      final targets = await _catalog.load();
+      if (!mounted) return;
+      setState(() => _targets = targets);
+    } catch (error, stack) {
+      debugPrint('[ExportShare] catalog load failed: $error\n$stack');
+    }
+  }
+
+  Future<void> _pickAlbumVideo() async {
+    if (_pickingAlbum) return;
+    setState(() {
+      _pickingAlbum = true;
+      _error = null;
+    });
+    try {
+      final path = await _import.pickSingleVideoFromGallery();
+      if (!mounted) return;
+      if (path == null || path.isEmpty) {
+        setState(() => _pickingAlbum = false);
+        return;
+      }
+      final project = await _projectForOriginalVideo(path);
+      if (!mounted) return;
+      setState(() {
+        _pickingAlbum = false;
+        _preparingShareUi = true;
+        _exportedPath = null;
+        _error = null;
+        _project = project;
+      });
+      await _openPrepared(path);
+    } catch (error, stack) {
+      debugPrint('[ExportShare] album pick failed: $error\n$stack');
+      if (!mounted) return;
+      setState(() {
+        _pickingAlbum = false;
+        _preparingShareUi = false;
+        _error = error.toString();
+      });
+    }
+  }
+
+  /// Album / re-share path: treat the picked file as a one-clip project so
+  /// YouTube thumbnail scrubbing matches the post-export flow (original media).
+  Future<VideoProject> _projectForOriginalVideo(String path) async {
+    var duration = await _probe.readDuration(path) ?? Duration.zero;
+    if (duration <= Duration.zero) {
+      final probePlayer = VideoPlayerController.file(File(path));
+      try {
+        await probePlayer.initialize();
+        duration = probePlayer.value.duration;
+      } catch (error, stack) {
+        debugPrint('[ExportShare] duration probe failed: $error\n$stack');
+      } finally {
+        await probePlayer.dispose();
+      }
+    }
+    if (duration <= Duration.zero) {
+      duration = const Duration(seconds: 1);
+    }
+    return VideoProject(
+      id: '_album_share',
+      sourcePath: path,
+      duration: duration,
+    );
+  }
+
   Future<void> _openPrepared(String path) async {
     final catalogFuture = _catalog.load();
     final thumbFuture = _loadThumb();
     try {
-      unawaited(_projects.markExported(widget.project.id));
-      unawaited(RetentionNotificationService.instance.cancelDraftAbandon());
-      if (mounted) {
-        final l10n = context.l10n;
-        unawaited(
-          RetentionNotificationService.instance.scheduleShareNudge(
-            projectId: widget.project.id,
-            title: l10n.pushShareTitle,
-            body: l10n.pushShareBody,
-          ),
-        );
+      if (!_fromAlbumPick) {
+        unawaited(_projects.markExported(_project.id));
+        unawaited(RetentionNotificationService.instance.cancelDraftAbandon());
+        if (mounted) {
+          final l10n = context.l10n;
+          unawaited(
+            RetentionNotificationService.instance.scheduleShareNudge(
+              projectId: _project.id,
+              title: l10n.pushShareTitle,
+              body: l10n.pushShareBody,
+            ),
+          );
+        }
       }
       await thumbFuture;
       final targets = await catalogFuture;
@@ -112,15 +213,33 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
         await player.dispose();
         return;
       }
+      // Prefer player duration when probe was short/wrong (album share).
+      final played = player.value.duration;
+      if (_fromAlbumPick &&
+          played > Duration.zero &&
+          (_project.duration - played).abs() > const Duration(milliseconds: 250)) {
+        _project = VideoProject(
+          id: '_album_share',
+          sourcePath: path,
+          duration: played,
+        );
+      }
+      final previous = _player;
       setState(() {
         _exportedPath = path;
         _targets = targets;
         _player = player;
         _progress = 1;
         _preparingShareUi = false;
+        _error = null;
+        // Already from Photos — don't claim "saved" or duplicate the asset.
+        if (_fromAlbumPick) _savedToAlbum = false;
       });
+      await previous?.dispose();
       // Gallery save belongs with the share screen so the status line is true.
-      unawaited(_saveToAlbumIfNeeded());
+      if (!_fromAlbumPick) {
+        unawaited(_saveToAlbumIfNeeded());
+      }
     } catch (error, stack) {
       debugPrint('[ExportShare] prepared open failed: $error\n$stack');
       if (!mounted) return;
@@ -171,14 +290,16 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
   }
 
   Future<void> _loadThumb() async {
-    final segments = widget.project.segments;
+    final source = _project.sourcePath.trim();
+    if (source.isEmpty) return;
+    final segments = _project.segments;
     final timeMs = segments.isEmpty
         ? 0
         : segments.first.start.inMilliseconds +
               segments.first.duration.inMilliseconds ~/ 2;
     try {
       final path = await const VideoFrameGrab().jpegFile(
-        video: widget.project.sourcePath,
+        video: source,
         timeMs: timeMs,
         maxHeight: 1280,
         quality: 85,
@@ -201,7 +322,7 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
         'quality': quality.name,
       });
       final path = await _export.exportToFile(
-        widget.project,
+        _project,
         quality: quality,
         onProgress: (value) {
           final next = value.clamp(0.0, 1.0);
@@ -214,14 +335,14 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
       AnalyticsService.instance.log('export_completed', {
         'seconds': DateTime.now().difference(started).inSeconds,
       });
-      unawaited(_projects.markExported(widget.project.id));
+      unawaited(_projects.markExported(_project.id));
       unawaited(RetentionNotificationService.instance.cancelDraftAbandon());
       // Priority 2: nudge to share if they leave without posting.
       if (mounted) {
         final l10n = context.l10n;
         unawaited(
           RetentionNotificationService.instance.scheduleShareNudge(
-            projectId: widget.project.id,
+            projectId: _project.id,
             title: l10n.pushShareTitle,
             body: l10n.pushShareBody,
           ),
@@ -275,6 +396,8 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
     final path = _exportedPath;
     if (path == null || _savingToAlbum) return false;
     if (_savedToAlbum) return true;
+    // Album-picked videos are already in Photos; sharing uses the file path.
+    if (_fromAlbumPick) return true;
     setState(() => _savingToAlbum = true);
     try {
       final assetId = await _save.saveExportedVideo(path);
@@ -319,7 +442,7 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => YouTubeUploadScreen(
-            project: widget.project,
+            project: _project,
             preparedExportPath: path,
           ),
         ),
@@ -333,6 +456,7 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
         MaterialPageRoute<void>(
           builder: (_) => TikTokUploadScreen(
             videoPath: path,
+            project: _project,
             onFinishInApp: () => _shareToTikTokApp(path),
           ),
         ),
@@ -385,12 +509,12 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
     final ready = _exportedPath != null && _error == null;
     // Prepared exports already finished encode in the editor — never show the
     // old conversion progress flash while the share player boots.
-    final showShareChrome = ready || _fromPrepared;
+    final showShareChrome = ready || _fromPrepared || _fromAlbumPick;
     final title = showShareChrome ? l10n.shareContentTitle : l10n.exporting;
 
     return PopScope(
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop || ready || _fromPrepared) return;
+        if (!didPop || ready || _fromPrepared || _fromAlbumPick) return;
         _cancelExportWork();
       },
       child: Scaffold(
@@ -407,7 +531,17 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
               ),
           ],
         ),
-        body: ready
+        body: _fromAlbumPick
+            ? (_preparingShareUi
+                  ? const Center(
+                      child: SizedBox(
+                        width: 28,
+                        height: 28,
+                        child: CircularProgressIndicator(strokeWidth: 2.5),
+                      ),
+                    )
+                  : _buildSaved(l10n))
+            : ready
             ? _buildSaved(l10n)
             : _error != null
             ? _buildError(l10n)
@@ -465,12 +599,15 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
 
   Widget _buildSaved(AppLocalizations l10n) {
     final language = Localizations.localeOf(context).languageCode;
+    final ready = _exportedPath != null && _error == null;
     final buttons = [
       for (final target in _targets)
         _shareTile(
           label: target.labelFor(language, _fallbackLabel(l10n, target.kind)),
+          subtitle: _shareSubtitle(l10n, target.kind),
           glyph: _glyph(target.kind, size: 28),
-          onTap: () => _onTarget(target),
+          onTap: ready ? () => _onTarget(target) : () {},
+          enabled: ready,
         ),
     ];
 
@@ -485,18 +622,24 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
           child: Column(
             children: [
-              // The video takes all the room the share buttons leave.
-              Expanded(child: _buildPlayer()),
-              if (_player != null && _exportedPath != null) ...[
-                const SizedBox(height: 18),
-                VideoThumbnailScrubber(
-                  player: _player!,
-                  videoPath: _exportedPath!,
-                ),
-              ],
+              // Preview + scrubber: in album mode, tap either to (re)pick.
+              Expanded(child: _buildPlayer(l10n)),
+              const SizedBox(height: 18),
+              _buildScrubberArea(l10n),
               if (_savedToAlbum) ...[
                 const SizedBox(height: 12),
                 _SavedToDeviceLine(label: l10n.savedToDevice),
+              ],
+              if (_fromAlbumPick && _error != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  l10n.exportFailedWithMessage(_error!),
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 13,
+                    color: AppTheme.accent,
+                  ),
+                ),
               ],
               const SizedBox(height: 16),
               // Equal-weight 2×2 share grid (no YouTube-primary CTA).
@@ -521,7 +664,87 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
     );
   }
 
-  Widget _buildPlayer() {
+  Widget _buildScrubberArea(AppLocalizations l10n) {
+    final hasVideo = _player != null && _exportedPath != null;
+    if (hasVideo && !_fromAlbumPick) {
+      return VideoThumbnailScrubber(
+        player: _player!,
+        videoPath: _exportedPath!,
+      );
+    }
+    if (hasVideo && _fromAlbumPick) {
+      // Scrub works; a thin pick strip above keeps re-select obvious.
+      return Column(
+        children: [
+          Material(
+            color: AppTheme.surfaceElevated,
+            borderRadius: BorderRadius.circular(10),
+            child: InkWell(
+              onTap: _pickingAlbum ? null : _pickAlbumVideo,
+              borderRadius: BorderRadius.circular(10),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.photo_library_outlined,
+                      size: 18,
+                      color: AppTheme.ink.withValues(alpha: 0.7),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        l10n.pickFromGallery,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.ink.withValues(alpha: 0.85),
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right,
+                      size: 18,
+                      color: AppTheme.ink.withValues(alpha: 0.45),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          VideoThumbnailScrubber(
+            player: _player!,
+            videoPath: _exportedPath!,
+          ),
+        ],
+      );
+    }
+    if (!_fromAlbumPick) return const SizedBox.shrink();
+    return Material(
+      color: AppTheme.surfaceElevated,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: _pickingAlbum ? null : _pickAlbumVideo,
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          height: 56,
+          child: Center(
+            child: Text(
+              l10n.sharePickFromAlbumHint,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.dmSans(
+                fontSize: 13,
+                color: AppTheme.ink.withValues(alpha: 0.65),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlayer(AppLocalizations l10n) {
     final player = _player;
     final ready = player != null && player.value.isInitialized;
     final size = ready ? player.value.size : Size.zero;
@@ -531,31 +754,80 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
     return Center(
       child: AspectRatio(
         aspectRatio: aspect,
-        child: GestureDetector(
-          onTap: _togglePlay,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: ColoredBox(
-              color: Colors.black,
-              child: ready
-                  ? Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        VideoPlayer(player),
-                        if (!player.value.isPlaying)
-                          const Center(
-                            child: Icon(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: ColoredBox(
+            color: Colors.black,
+            child: ready
+                ? Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: _togglePlay,
+                        child: VideoPlayer(player),
+                      ),
+                      if (!player.value.isPlaying)
+                        Center(
+                          child: GestureDetector(
+                            onTap: _togglePlay,
+                            child: const Icon(
                               Icons.play_circle_fill,
                               size: 64,
                               color: Colors.white,
                             ),
                           ),
-                      ],
-                    )
-                  : const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                    ],
+                  )
+                : _fromAlbumPick
+                ? Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _pickingAlbum ? null : _pickAlbumVideo,
+                      child: Center(
+                        child: _pickingAlbum
+                            ? const SizedBox(
+                                width: 28,
+                                height: 28,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Padding(
+                                padding: const EdgeInsets.all(20),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.video_library_outlined,
+                                      size: 44,
+                                      color: Colors.white.withValues(
+                                        alpha: 0.85,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      l10n.sharePickFromAlbumHint,
+                                      textAlign: TextAlign.center,
+                                      style: GoogleFonts.dmSans(
+                                        fontSize: 14,
+                                        height: 1.35,
+                                        color: Colors.white.withValues(
+                                          alpha: 0.9,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                      ),
                     ),
-            ),
+                  )
+                : const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
           ),
         ),
       ),
@@ -566,38 +838,71 @@ class _ExportShareScreenState extends State<ExportShareScreen> {
     required String label,
     required Widget glyph,
     required VoidCallback onTap,
+    String? subtitle,
+    bool enabled = true,
   }) {
-    return Material(
-      color: AppTheme.surfaceElevated,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: onTap,
+    final hasSubtitle = subtitle != null && subtitle.isNotEmpty;
+    return Opacity(
+      opacity: enabled ? 1 : 0.4,
+      child: Material(
+        color: AppTheme.surfaceElevated,
         borderRadius: BorderRadius.circular(14),
-        child: SizedBox(
-          height: 56,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
-              children: [
-                glyph,
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          borderRadius: BorderRadius.circular(14),
+          child: SizedBox(
+            height: hasSubtitle ? 64 : 56,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                children: [
+                  glyph,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (hasSubtitle) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            subtitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: AppTheme.ink.withValues(alpha: 0.55),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
       ),
     );
+  }
+
+  String? _shareSubtitle(AppLocalizations l10n, ShareTargetKind kind) {
+    return switch (kind) {
+      ShareTargetKind.youtube => l10n.shareTileWithTikTok,
+      ShareTargetKind.tiktok => l10n.shareTileWithYouTube,
+      _ => null,
+    };
   }
 
   String _fallbackLabel(AppLocalizations l10n, ShareTargetKind kind) {

@@ -129,16 +129,16 @@ class UploadSurfaceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppTheme.surface.withValues(alpha: 0.92),
+    // Material (not DecoratedBox) so ListTile / CheckboxListTile ink & splash
+    // paint on this ancestor instead of being covered by a colored box.
+    return Material(
+      color: AppTheme.surface.withValues(alpha: 0.92),
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.muted.withValues(alpha: 0.22)),
+        side: BorderSide(color: AppTheme.muted.withValues(alpha: 0.22)),
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(padding: padding, child: child),
-      ),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(padding: padding, child: child),
     );
   }
 }
@@ -225,6 +225,45 @@ class _Chip extends StatelessWidget {
   }
 }
 
+/// Checkbox to also post to a second platform (YouTube ↔ TikTok).
+class UploadCrossPostToggle extends StatelessWidget {
+  const UploadCrossPostToggle({
+    super.key,
+    required this.title,
+    required this.value,
+    required this.onChanged,
+    this.enabled = true,
+  });
+
+  final String title;
+  final bool value;
+  final bool enabled;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: enabled ? 1 : 0.45,
+      child: CheckboxListTile(
+        contentPadding: EdgeInsets.zero,
+        controlAffinity: ListTileControlAffinity.leading,
+        activeColor: AppTheme.accent,
+        title: Text(
+          title,
+          style: GoogleFonts.dmSans(
+            fontWeight: FontWeight.w700,
+            color: AppTheme.ink,
+          ),
+        ),
+        value: value,
+        onChanged: enabled
+            ? (next) => onChanged(next ?? false)
+            : null,
+      ),
+    );
+  }
+}
+
 class UploadToggleTile extends StatelessWidget {
   const UploadToggleTile({
     super.key,
@@ -288,6 +327,25 @@ class UploadToggleTile extends StatelessWidget {
   }
 }
 
+/// Percent / phase text shown on [UploadGradientButton] while posting.
+class UploadBusyStatusLabel extends StatelessWidget {
+  const UploadBusyStatusLabel(this.text, {super.key});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      textAlign: TextAlign.center,
+      style: GoogleFonts.spaceGrotesk(
+        fontWeight: FontWeight.w700,
+        color: AppTheme.ink,
+      ),
+    );
+  }
+}
+
 class UploadGradientButton extends StatelessWidget {
   const UploadGradientButton({
     super.key,
@@ -295,6 +353,7 @@ class UploadGradientButton extends StatelessWidget {
     required this.onPressed,
     this.busy = false,
     this.busyLabel,
+    this.busyProgress,
   });
 
   final String label;
@@ -302,24 +361,29 @@ class UploadGradientButton extends StatelessWidget {
   final bool busy;
   final Widget? busyLabel;
 
+  /// Overall job progress `0…1` while [busy]. Cross-post maps each
+  /// platform to half so YouTube 100% reads as ~50% until TikTok finishes.
+  final double? busyProgress;
+
   @override
   Widget build(BuildContext context) {
     final enabled = onPressed != null && !busy;
     return Opacity(
       opacity: enabled || busy ? 1 : 0.4,
-      child: DecoratedBox(
-        decoration: AppTheme.brandGradientDecoration(borderRadius: 14),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: enabled ? onPressed : null,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: enabled ? onPressed : null,
+          borderRadius: BorderRadius.circular(14),
+          child: ClipRRect(
             borderRadius: BorderRadius.circular(14),
             child: SizedBox(
               width: double.infinity,
               height: 52,
-              child: Center(
-                child: busy
-                    ? (busyLabel ??
+              child: busy
+                  ? _BusyFill(
+                      progress: busyProgress ?? 0,
+                      child: busyLabel ??
                           const SizedBox(
                             width: 22,
                             height: 22,
@@ -327,20 +391,90 @@ class UploadGradientButton extends StatelessWidget {
                               strokeWidth: 2.2,
                               color: AppTheme.ink,
                             ),
-                          ))
-                    : Text(
-                        label,
-                        style: GoogleFonts.spaceGrotesk(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.ink,
+                          ),
+                    )
+                  : DecoratedBox(
+                      decoration: AppTheme.brandGradientDecoration(
+                        borderRadius: 14,
+                      ),
+                      child: Center(
+                        child: Text(
+                          label,
+                          style: GoogleFonts.spaceGrotesk(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.ink,
+                          ),
                         ),
                       ),
-              ),
+                    ),
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _BusyFill extends StatelessWidget {
+  const _BusyFill({required this.progress, required this.child});
+
+  final double progress;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final target = progress.clamp(0.0, 1.0);
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(end: target),
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, label) {
+        final fill = value <= 0 ? 0.0 : value.clamp(0.04, 1.0);
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            const ColoredBox(color: AppTheme.surfaceElevated),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FractionallySizedBox(
+                widthFactor: fill,
+                heightFactor: 1,
+                child: const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: AppTheme.brandGradientHorizontal,
+                  ),
+                ),
+              ),
+            ),
+            if (fill > 0 && fill < 1)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: FractionallySizedBox(
+                  widthFactor: fill,
+                  heightFactor: 1,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Container(
+                      width: 20,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.white.withValues(alpha: 0.0),
+                            Colors.white.withValues(alpha: 0.2),
+                            Colors.white.withValues(alpha: 0.0),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            Center(child: label),
+          ],
+        );
+      },
+      child: child,
     );
   }
 }

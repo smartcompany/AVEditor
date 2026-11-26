@@ -336,6 +336,66 @@ abstract class AppLocalizations {
   /// **'Upload to YouTube'**
   String get uploadShorts;
 
+  /// No description provided for @uploadShortsAndTikTok.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload to YouTube & TikTok'**
+  String get uploadShortsAndTikTok;
+
+  /// No description provided for @crossPostAlsoTikTok.
+  ///
+  /// In en, this message translates to:
+  /// **'Also post to TikTok'**
+  String get crossPostAlsoTikTok;
+
+  /// No description provided for @crossPostAlsoYouTube.
+  ///
+  /// In en, this message translates to:
+  /// **'Also upload to YouTube'**
+  String get crossPostAlsoYouTube;
+
+  /// No description provided for @shareTileWithTikTok.
+  ///
+  /// In en, this message translates to:
+  /// **'Can post with TikTok'**
+  String get shareTileWithTikTok;
+
+  /// No description provided for @shareTileWithYouTube.
+  ///
+  /// In en, this message translates to:
+  /// **'Can post with YouTube'**
+  String get shareTileWithYouTube;
+
+  /// No description provided for @crossPostTikTokOk.
+  ///
+  /// In en, this message translates to:
+  /// **'Also posted to TikTok'**
+  String get crossPostTikTokOk;
+
+  /// No description provided for @crossPostTikTokOkPrivate.
+  ///
+  /// In en, this message translates to:
+  /// **'Also posted to TikTok as Only me (app pending TikTok review)'**
+  String get crossPostTikTokOkPrivate;
+
+  /// No description provided for @crossPostYouTubeOk.
+  ///
+  /// In en, this message translates to:
+  /// **'Also uploaded to YouTube'**
+  String get crossPostYouTubeOk;
+
+  /// No description provided for @crossPostTikTokFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'YouTube uploaded, but TikTok failed: {message}'**
+  String crossPostTikTokFailed(String message);
+
+  /// No description provided for @crossPostYouTubeFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'TikTok posted, but YouTube failed: {message}'**
+  String crossPostYouTubeFailed(String message);
+
   /// No description provided for @saveToGallery.
   ///
   /// In en, this message translates to:
@@ -1476,6 +1536,18 @@ abstract class AppLocalizations {
   /// **'Share content'**
   String get shareContentTitle;
 
+  /// No description provided for @shareMyContent.
+  ///
+  /// In en, this message translates to:
+  /// **'Share my content'**
+  String get shareMyContent;
+
+  /// No description provided for @sharePickFromAlbumHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a video from your album to share.'**
+  String get sharePickFromAlbumHint;
+
   /// No description provided for @share.
   ///
   /// In en, this message translates to:
@@ -2538,6 +2610,12 @@ abstract class AppLocalizations {
   /// **'Post'**
   String get tiktokPost;
 
+  /// No description provided for @tiktokPostAndYouTube.
+  ///
+  /// In en, this message translates to:
+  /// **'Post to TikTok & YouTube'**
+  String get tiktokPostAndYouTube;
+
   /// No description provided for @tiktokUploading.
   ///
   /// In en, this message translates to:
@@ -2549,6 +2627,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'TikTok is processing…'**
   String get tiktokProcessing;
+
+  /// No description provided for @youtubeExporting.
+  ///
+  /// In en, this message translates to:
+  /// **'Preparing {percent}%'**
+  String youtubeExporting(int percent);
+
+  /// No description provided for @youtubeUploading.
+  ///
+  /// In en, this message translates to:
+  /// **'Uploading {percent}%'**
+  String youtubeUploading(int percent);
+
+  /// No description provided for @youtubeFinishing.
+  ///
+  /// In en, this message translates to:
+  /// **'Finishing…'**
+  String get youtubeFinishing;
+
+  /// No description provided for @crossPostUploadingYouTube.
+  ///
+  /// In en, this message translates to:
+  /// **'YouTube {percent}%'**
+  String crossPostUploadingYouTube(int percent);
+
+  /// No description provided for @crossPostUploadingTikTok.
+  ///
+  /// In en, this message translates to:
+  /// **'TikTok {percent}%'**
+  String crossPostUploadingTikTok(int percent);
+
+  /// No description provided for @crossPostProcessingTikTok.
+  ///
+  /// In en, this message translates to:
+  /// **'TikTok is processing…'**
+  String get crossPostProcessingTikTok;
 
   /// No description provided for @tiktokDoneTitle.
   ///

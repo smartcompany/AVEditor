@@ -57,6 +57,15 @@ class VideoImportService {
     return MediaPickBatch(paths: paths);
   }
 
+  /// Single video from the system gallery picker (share / re-post flows).
+  /// Null when the user cancels.
+  Future<String?> pickSingleVideoFromGallery() async {
+    if (Platform.isMacOS) return null;
+    final file = await _picker.pickVideo(source: ImageSource.gallery);
+    if (file == null) return null;
+    return materializeImport(file);
+  }
+
   /// Camera still returns a single video path list.
   Future<List<String>> pickFromCamera() async {
     if (Platform.isMacOS) {
