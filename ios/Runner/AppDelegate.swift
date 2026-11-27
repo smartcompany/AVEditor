@@ -21,6 +21,24 @@ import UIKit
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
+  override func application(
+    _ application: UIApplication,
+    didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+  ) {
+    // Forward to FlutterAppDelegate so firebase_messaging receives the APNS token.
+    super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
+    let hex = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
+    NSLog("[APNs] registered token=%@", hex)
+  }
+
+  override func application(
+    _ application: UIApplication,
+    didFailToRegisterForRemoteNotificationsWithError error: Error
+  ) {
+    super.application(application, didFailToRegisterForRemoteNotificationsWithError: error)
+    NSLog("[APNs] register failed: %@", error.localizedDescription)
+  }
+
   /// Non-scene / fallback path for Facebook + TikTok return URLs.
   override func application(
     _ app: UIApplication,
@@ -64,6 +82,11 @@ import UIKit
       forPlugin: "MediaShareChannel"
     ) {
       MediaShareChannel.register(messenger: registrar.messenger())
+    }
+    // Register after plugins so firebase_messaging can receive the APNS callback
+    // (simulator + device). Calling this in didFinishLaunching is too early.
+    DispatchQueue.main.async {
+      UIApplication.shared.registerForRemoteNotifications()
     }
   }
 }

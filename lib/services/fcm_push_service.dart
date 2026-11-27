@@ -69,12 +69,26 @@ class FcmPushService {
     if (kIsWeb || !(Platform.isIOS || Platform.isAndroid)) return;
     try {
       final messaging = FirebaseMessaging.instance;
-      final settings = await messaging.getNotificationSettings();
+      var settings = await messaging.getNotificationSettings();
       if (settings.authorizationStatus == AuthorizationStatus.denied) {
         return;
       }
-      // OS prompt not shown yet — APNS/FCM won't be ready.
+      // Soft pre-permission sheet owns the first OS prompt.
       if (settings.authorizationStatus == AuthorizationStatus.notDetermined) {
+        return;
+      }
+
+      // Local-notifications permission alone does not register for APNs.
+      // Ask Firebase again (no second dialog when already authorized) so the
+      // plugin registers for remote notifications — required on simulator too.
+      settings = await messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+        provisional: false,
+      );
+      if (settings.authorizationStatus == AuthorizationStatus.denied ||
+          settings.authorizationStatus == AuthorizationStatus.notDetermined) {
         return;
       }
 
