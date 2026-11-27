@@ -9,11 +9,13 @@ import 'package:aveditor/services/analytics_service.dart';
 import 'package:aveditor/services/export_share_service.dart';
 import 'package:aveditor/services/media_pick_batch.dart';
 import 'package:aveditor/services/project_storage_service.dart';
+import 'package:aveditor/services/retention_notification_service.dart';
 import 'package:aveditor/services/video_import_service.dart';
 import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/utils/logged_snackbar.dart';
 import 'package:aveditor/utils/platform_helper.dart';
 import 'package:aveditor/widgets/convert_progress_view.dart';
+import 'package:aveditor/widgets/notification_preference_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -113,6 +115,17 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       await _loadProjects();
     }
+    // Soft notification prefs: after first return from the editor to Home
+    // (never before the soft popup — draft scheduling waits for this).
+    if (!mounted) return;
+    await NotificationPreferenceSheet.ensurePrompted(context);
+    if (!mounted) return;
+    final l10n = context.l10n;
+    await RetentionNotificationService.instance.flushPendingDraftAbandon(
+      title: l10n.pushDraftTitle,
+      body24: l10n.pushDraftBody24,
+      body72: l10n.pushDraftBody72,
+    );
   }
 
   Future<void> _pickGallery() async {

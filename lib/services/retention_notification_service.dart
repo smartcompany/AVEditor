@@ -29,6 +29,7 @@ class RetentionNotificationService {
   static const idCatalogDrop = 3001;
 
   static const _prefsDraftProject = 'retention_draft_project_id';
+  static const _prefsPendingDraft = 'retention_pending_draft_project_id';
   static const _prefsShareProject = 'retention_share_project_id';
   static const _prefsTransitionVer = 'retention_notified_transition_ver';
   static const _prefsTextVer = 'retention_notified_text_ver';
@@ -94,7 +95,11 @@ class RetentionNotificationService {
     onNotificationTap?.call(payload);
   }
 
+  Future<bool> _softPromptSeen() => _settings.hasSeenNotificationPrefPrompt();
+
   Future<bool> requestPermissionIfNeeded() async {
+    // Soft pref popup on Home must run before the OS dialog.
+    if (!await _softPromptSeen()) return false;
     if (!_ready) await ensureInitialized();
     if (kIsWeb) return false;
     if (Platform.isAndroid) {
@@ -199,8 +204,48 @@ class RetentionNotificationService {
   }) async {
     if (!await _categoryAllowed(PushNotificationCategory.draft)) {
       await cancelDraftAbandon();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_prefsPendingDraft);
       return;
     }
+    // Soft pref popup hasn't been shown yet — stash and let Home prompt first.
+    if (!await _softPromptSeen()) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_prefsPendingDraft, projectId);
+      return;
+    }
+    await _scheduleDraftAbandonNow(
+      projectId: projectId,
+      title: title,
+      body24: body24,
+      body72: body72,
+    );
+  }
+
+  /// After the Home soft-pref popup, schedule any draft left while prompting.
+  Future<void> flushPendingDraftAbandon({
+    required String title,
+    required String body24,
+    required String body72,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final projectId = prefs.getString(_prefsPendingDraft);
+    if (projectId == null || projectId.isEmpty) return;
+    await prefs.remove(_prefsPendingDraft);
+    await scheduleDraftAbandon(
+      projectId: projectId,
+      title: title,
+      body24: body24,
+      body72: body72,
+    );
+  }
+
+  Future<void> _scheduleDraftAbandonNow({
+    required String projectId,
+    required String title,
+    required String body24,
+    required String body72,
+  }) async {
     await requestPermissionIfNeeded();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefsDraftProject, projectId);

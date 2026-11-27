@@ -60,7 +60,6 @@ import 'package:aveditor/services/transition_engine.dart';
 import 'package:aveditor/theme/app_theme.dart';
 import 'package:aveditor/services/composition_segments.dart';
 import 'package:aveditor/services/native_video_engine.dart';
-import 'package:aveditor/widgets/notification_preference_sheet.dart';
 import 'package:aveditor/widgets/overlay_fonts.dart';
 import 'package:aveditor/widgets/overlay_text_layout.dart';
 import 'package:aveditor/widgets/video_preview.dart';
@@ -5107,11 +5106,9 @@ class _EditorScreenState extends State<EditorScreen>
         _namingProject = false;
       }
     }
-    // Priority 1: unfinished draft → soft pref sheet (once) → OS → 24h/72h.
+    // Priority 1: unfinished draft → 24h/72h (soft pref prompt is on Home).
     final leaving = _project;
     if (leaving != null && leaving.isDraft && mounted) {
-      await NotificationPreferenceSheet.ensurePrompted(context);
-      if (!mounted) return;
       final l10n = context.l10n;
       unawaited(
         RetentionNotificationService.instance.scheduleDraftAbandon(

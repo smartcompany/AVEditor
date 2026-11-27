@@ -8,25 +8,34 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 /// Soft pre-permission: pick notification kinds, then (only if opted in)
-/// request the OS alert permission.
+/// request the OS alert permission. Shown as a centered popup on Home.
 class NotificationPreferenceSheet extends StatefulWidget {
   const NotificationPreferenceSheet({super.key});
 
-  /// Shows once before the first draft-reminder schedule. No-ops if already
-  /// seen (also marked when the user changes Settings → Notifications).
+  /// Shows once when returning from the editor to Home. No-ops if already seen
+  /// (also marked when the user changes Settings → Notifications).
   static Future<void> ensurePrompted(BuildContext context) async {
     final settings = const AppSettingsService();
     if (await settings.hasSeenNotificationPrefPrompt()) return;
     if (!context.mounted) return;
-    await showModalBottomSheet<void>(
+
+    // Wait one frame so the editor route is fully gone before presenting.
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    if (!context.mounted) return;
+    await WidgetsBinding.instance.endOfFrame;
+    if (!context.mounted) return;
+
+    await showDialog<void>(
       context: context,
-      isScrollControlled: true,
-      isDismissible: true,
-      enableDrag: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => const NotificationPreferenceSheet(),
+      barrierDismissible: true,
+      useRootNavigator: true,
+      builder: (_) => const Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: NotificationPreferenceSheet(),
+      ),
     );
-    // Swipe-dismiss without a button → same as "Later".
+    // Dismiss without a button → same as "Later".
     if (!await settings.hasSeenNotificationPrefPrompt()) {
       await settings.setNotificationMasterEnabled(false);
       await settings.setSeenNotificationPrefPrompt(true);
@@ -109,17 +118,18 @@ class _NotificationPreferenceSheetState
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final bottom = MediaQuery.paddingOf(context).bottom;
 
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        color: AppTheme.surfaceElevated,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(20, 12, 20, 12 + bottom),
+    return Material(
+      color: AppTheme.surfaceElevated,
+      borderRadius: BorderRadius.circular(20),
+      clipBehavior: Clip.antiAlias,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 420,
+          maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
           child: !_loaded
               ? const SizedBox(
                   height: 220,
@@ -129,17 +139,6 @@ class _NotificationPreferenceSheetState
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Center(
-                      child: Container(
-                        width: 36,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: AppTheme.muted.withValues(alpha: 0.45),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
                     Text(
                       l10n.notificationPrefSheetTitle,
                       style: GoogleFonts.dmSans(
