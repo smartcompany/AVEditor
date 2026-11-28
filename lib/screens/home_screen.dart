@@ -162,10 +162,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final batch = await pick();
       if (batch.isEmpty) return;
-      await _createProjectFromPaths(
-        batch.paths,
-        imageHoldDuration: batch.imageHoldDuration,
-      );
+      await _createProjectFromBatch(batch);
     } catch (e, st) {
       if (!mounted) return;
       final detail = e.toString();
@@ -180,7 +177,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final paths = await pick();
       if (paths.isEmpty) return;
-      await _createProjectFromPaths(paths);
+      await _createProjectFromBatch(MediaPickBatch.paths(paths));
     } catch (e, st) {
       if (!mounted) return;
       final detail = e.toString();
@@ -191,13 +188,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _createProjectFromPaths(
-    List<String> paths, {
-    Duration? imageHoldDuration,
-  }) async {
+  Future<void> _createProjectFromBatch(MediaPickBatch batch) async {
     try {
-      for (final path in paths) {
-        if (!File(path).existsSync()) {
+      for (final item in batch.items) {
+        if (!File(item.path).existsSync()) {
           throw StateError('file not found');
         }
       }
@@ -208,8 +202,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _convertProgress = null;
       });
       final projectId = await _projectStorage.createFromImports(
-        paths,
-        imageHoldDuration: imageHoldDuration,
+        batch,
         onProgress: _onConvertProgress,
       );
       AnalyticsService.instance.log('project_created');
