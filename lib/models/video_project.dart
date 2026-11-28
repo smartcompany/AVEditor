@@ -16,6 +16,10 @@ const int kProjectFileVersion = 2;
 /// Legacy single-file name still accepted when migrating v1 projects.
 const String kProjectSourceFileName = 'source.mp4';
 
+/// Empty marker that anchors [VideoProject.projectDir] when media is referenced
+/// from the system library (absolute paths outside the project folder).
+const String kProjectAnchorFileName = 'project.anchor';
+
 /// Directory under the project folder for per-clip media files.
 const String kProjectMediaDirName = 'media';
 

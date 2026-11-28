@@ -8,10 +8,12 @@ import 'package:aveditor/models/media_asset.dart';
 import 'package:aveditor/models/text_overlay.dart';
 import 'package:aveditor/models/video_project.dart';
 import 'package:aveditor/services/media_concat_service.dart';
+import 'package:aveditor/services/media_pick_batch.dart';
 import 'package:aveditor/services/playback_fallback_transcoder.dart';
 import 'package:aveditor/services/project_storage_service.dart';
 import 'package:aveditor/utils/clip_segment_ops.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -396,7 +398,7 @@ void main() {
       await image.writeAsBytes(List<int>.filled(128, 5));
 
       final id = await service.createFromImports(
-        [video.path, image.path, video.path],
+        MediaPickBatch.paths([video.path, image.path, video.path]),
         concat: _FakeMediaConcat(),
       );
       final loaded = (await service.load(id))!;
@@ -434,6 +436,68 @@ void main() {
         asset: loaded.mediaAssets[1],
       )!;
       expect(extended.end, const Duration(seconds: 12));
+    });
+
+    test('gallery library reference skips Documents copy', () async {
+      final video = File('${tempRoot.path}/library_clip.mp4');
+      await video.writeAsBytes(List<int>.filled(4096, 9));
+
+      final id = await service.createFromImports(
+        MediaPickBatch(
+          items: [
+            MediaPickItem(
+              path: video.path,
+              libraryAssetId: 'photos-asset-1',
+              duration: const Duration(seconds: 12),
+              copyIntoProject: false,
+            ),
+          ],
+        ),
+        concat: _FakeMediaConcat(),
+      );
+      final loaded = (await service.load(id))!;
+      final asset = loaded.mediaAssets.single;
+
+      expect(asset.libraryAssetId, 'photos-asset-1');
+      expect(asset.fileName, video.path);
+      expect(p.isAbsolute(asset.fileName), isTrue);
+      expect(loaded.primaryVideoPath, video.path);
+      expect(p.basename(loaded.sourcePath), kProjectAnchorFileName);
+      expect(loaded.projectDir, endsWith('/projects/$id'));
+      expect(loaded.duration, const Duration(seconds: 12));
+
+      // No byte copy under media/ — only the project anchor + json.
+      final mediaDir = Directory(
+        '${tempRoot.path}/aveditor/projects/$id/media',
+      );
+      final mediaFiles = mediaDir.existsSync()
+          ? mediaDir
+              .listSync()
+              .whereType<File>()
+              .map((f) => p.basename(f.path))
+              .toList()
+          : <String>[];
+      expect(mediaFiles, isEmpty);
+      expect(await File(video.path).length(), 4096);
+    });
+
+    test('MediaAsset round-trips libraryAssetId', () {
+      final asset = MediaAsset(
+        id: 'a1',
+        fileName: '/tmp/session.mov',
+        kind: MediaAssetKind.video,
+        duration: const Duration(seconds: 3),
+        libraryAssetId: 'lib-99',
+      );
+      final restored = MediaAsset.fromJson(asset.toJson());
+      expect(restored.libraryAssetId, 'lib-99');
+      expect(restored.isLibraryReference, isTrue);
+      expect(
+        MediaAsset.fromJson(
+          asset.copyWith(clearLibraryAssetId: true).toJson(),
+        ).libraryAssetId,
+        isNull,
+      );
     });
   });
 

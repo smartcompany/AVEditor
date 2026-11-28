@@ -28,6 +28,7 @@ import 'package:aveditor/services/editor_history.dart';
 import 'package:aveditor/services/audio_waveform_service.dart';
 import 'package:aveditor/services/export_service.dart';
 import 'package:aveditor/services/media_concat_service.dart';
+import 'package:aveditor/services/media_pick_batch.dart';
 import 'package:aveditor/services/music_storage_service.dart';
 import 'package:aveditor/services/project_storage_service.dart';
 import 'package:aveditor/services/video_import_service.dart';
@@ -927,13 +928,7 @@ class _EditorScreenState extends State<EditorScreen>
         return;
       }
 
-      // Wait for timeline frames before revealing — no opening spinner page.
-      await _loadFilmstrip(project);
-      if (!mounted || !_ownsEngine) {
-        await controller?.dispose();
-        return;
-      }
-
+      // Reveal immediately — CapCut-style. Filmstrip fills in asynchronously.
       setState(() {
         _ready = true;
         _errorMessage = null;
@@ -945,6 +940,7 @@ class _EditorScreenState extends State<EditorScreen>
         _sourceAudioDurations.clear();
       });
       widget.onReady?.call();
+      unawaited(_loadFilmstrip(project));
       unawaited(_maybeStartOnboarding());
       unawaited(_loadMusicWaveforms(project));
       unawaited(_loadSourceAudioWaveforms(project));
@@ -1030,15 +1026,12 @@ class _EditorScreenState extends State<EditorScreen>
     final project = _project;
     if (project == null || _appendingMedia || _exporting) return;
 
-    List<String> paths;
-    Duration? imageHoldDuration;
+    late final MediaPickBatch batch;
     try {
       if (PlatformHelper.supportsGallery) {
-        final batch = await _import.pickFromGallery(context);
-        paths = batch.paths;
-        imageHoldDuration = batch.imageHoldDuration;
+        batch = await _import.pickFromGallery(context);
       } else if (PlatformHelper.supportsFilePicker) {
-        paths = await _import.pickFromFiles();
+        batch = MediaPickBatch.paths(await _import.pickFromFiles());
       } else {
         return;
       }
@@ -1051,7 +1044,7 @@ class _EditorScreenState extends State<EditorScreen>
       showLoggedSnackBar(context, message, error: e, stackTrace: st);
       return;
     }
-    if (!mounted || paths.isEmpty) return;
+    if (!mounted || batch.isEmpty) return;
 
     final joinAt = exportTimelineDuration(project.segments);
     final priorAssetIds = project.mediaAssets.map((a) => a.id).toSet();
@@ -1065,8 +1058,7 @@ class _EditorScreenState extends State<EditorScreen>
     try {
       final updated = await _projectStorage.appendImports(
         project,
-        paths,
-        imageHoldDuration: imageHoldDuration,
+        batch,
         onProgress: (p) {
           if (!mounted) return;
           setState(() => _convertProgress = p.clamp(0.0, 1.0));
@@ -2317,7 +2309,7 @@ class _EditorScreenState extends State<EditorScreen>
     if (project == null) return;
     if (_slotAux != null && _slotAux!.value.isInitialized) return;
 
-    final aux = VideoPlayerController.file(File(project.sourcePath));
+    final aux = VideoPlayerController.file(File(project.primaryVideoPath));
     await aux.initialize();
     aux.setLooping(false);
     await aux.setVolume(0);
@@ -2597,8 +2589,10 @@ class _EditorScreenState extends State<EditorScreen>
     }
 
     if (assets.isEmpty) {
-      if (!MediaConcatService.isImagePath(project.sourcePath)) {
-        final wave = await decodePath(project.sourcePath);
+      final legacyPath = project.primaryVideoPath;
+      if (p.basename(legacyPath) != kProjectAnchorFileName &&
+          !MediaConcatService.isImagePath(legacyPath)) {
+        final wave = await decodePath(legacyPath);
         if (wave != null) {
           anyAudio = true;
           final duration = wave.duration > Duration.zero

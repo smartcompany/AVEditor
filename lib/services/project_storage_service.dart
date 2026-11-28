@@ -4,7 +4,9 @@ import 'dart:io';
 import 'package:aveditor/models/clip_segment.dart';
 import 'package:aveditor/models/media_asset.dart';
 import 'package:aveditor/models/video_project.dart';
+import 'package:aveditor/services/library_media_resolver.dart';
 import 'package:aveditor/services/media_concat_service.dart';
+import 'package:aveditor/services/media_pick_batch.dart';
 import 'package:aveditor/services/video_frame_grab.dart';
 import 'package:aveditor/services/playback_fallback_transcoder.dart';
 import 'package:aveditor/utils/av_editor_log.dart';
@@ -50,12 +52,17 @@ class ProjectSummary {
   }
 }
 
-/// Persists edit projects as JSON + a copied source video on disk.
+/// Persists edit projects as JSON + media (copied or library-referenced).
 class ProjectStorageService {
-  const ProjectStorageService({this.rootOverride, this.transcoder});
+  const ProjectStorageService({
+    this.rootOverride,
+    this.transcoder,
+    this.libraryResolver = const LibraryMediaResolver(),
+  });
 
   final Directory? rootOverride;
   final PlaybackFallbackTranscoder? transcoder;
+  final LibraryMediaResolver libraryResolver;
 
   static const _rootDirName = 'aveditor';
   static const _indexFileName = 'index.json';
@@ -67,7 +74,7 @@ class ProjectStorageService {
     MediaConcatService? concat,
   }) {
     return createFromImports(
-      [pickedPath],
+      MediaPickBatch.paths([pickedPath]),
       onProgress: onProgress,
       concat: concat,
     );
@@ -75,19 +82,16 @@ class ProjectStorageService {
 
   /// Creates a project from one or more videos/images in pick order.
   ///
-  /// Each pick is copied into `media/<id>.<ext>` as its own [MediaAsset].
-  /// Images hold [kDefaultImageHoldDuration] on the timeline (no bake/concat).
+  /// Gallery library picks ([MediaPickItem.copyIntoProject] false) store a
+  /// reference — no Documents byte copy. Camera / file picks still copy into
+  /// `media/<id>.<ext>`. Images hold [kDefaultImageHoldDuration] (no bake).
   Future<String> createFromImports(
-    List<String> pickedPaths, {
-    Duration? imageHoldDuration,
+    MediaPickBatch batch, {
     void Function(double progress)? onProgress,
     MediaConcatService? concat,
   }) async {
-    final paths = [
-      for (final path in pickedPaths)
-        if (path.trim().isNotEmpty) path.trim(),
-    ];
-    if (paths.isEmpty) throw StateError('empty_video');
+    final items = batch.items;
+    if (items.isEmpty) throw StateError('empty_video');
 
     final id = const Uuid().v4();
     final dir = await _projectDir(id);
@@ -98,65 +102,30 @@ class ProjectStorageService {
     final probe = concat ?? const MediaConcatService();
     final mediaAssets = <MediaAsset>[];
     final segments = <ClipSegment>[];
-    String? primaryPath;
 
-    for (var i = 0; i < paths.length; i++) {
-      onProgress?.call(i / (paths.length + 1));
-      final pickedPath = paths[i];
-      final picked = File(pickedPath);
-      if (!await picked.exists() || await picked.length() == 0) {
-        throw StateError('empty_video');
-      }
-
-      final isImage = MediaConcatService.isImagePath(pickedPath);
-      final assetId = const Uuid().v4();
-      final ext = p.extension(pickedPath);
-      final relativeName =
-          p.join(kProjectMediaDirName, '$assetId${ext.isEmpty ? (isImage ? '.jpg' : '.mp4') : ext}');
-      final destPath = p.join(dir.path, relativeName);
-      await picked.copy(destPath);
-      if (!await File(destPath).exists() || await File(destPath).length() == 0) {
-        throw StateError('empty_video');
-      }
-
-      Duration assetDuration = Duration.zero;
-      if (!isImage) {
-        assetDuration =
-            await probe.probeDuration(destPath) ?? Duration.zero;
-        if (assetDuration <= Duration.zero) {
-          throw StateError('empty_video');
-        }
-      }
-
-      final asset = MediaAsset(
-        id: assetId,
-        fileName: relativeName,
-        kind: isImage ? MediaAssetKind.image : MediaAssetKind.video,
-        duration: assetDuration,
+    for (var i = 0; i < items.length; i++) {
+      onProgress?.call(i / (items.length + 1));
+      final imported = await _importItem(
+        items[i],
+        projectDir: dir,
+        probe: probe,
+        imageHoldDuration: batch.imageHoldDuration,
       );
-      mediaAssets.add(asset);
-      primaryPath ??= destPath;
-
-      final imageHold = imageHoldDuration ?? kDefaultImageHoldDuration;
-      final clipEnd = isImage ? imageHold : assetDuration;
-      segments.add(
-        ClipSegment(
-          mediaId: assetId,
-          start: Duration.zero,
-          end: clipEnd,
-        ),
-      );
+      mediaAssets.add(imported.asset);
+      segments.add(imported.segment);
     }
 
-    if (segments.isEmpty || primaryPath == null) {
+    if (segments.isEmpty || mediaAssets.isEmpty) {
       throw StateError('empty_video');
     }
     onProgress?.call(1);
 
+    final sourcePath = await _anchorSourcePath(dir, mediaAssets: mediaAssets);
+
     final packed = exportTimelineDuration(segments);
     final project = VideoProject(
       id: id,
-      sourcePath: primaryPath,
+      sourcePath: sourcePath,
       duration: packed,
       segments: segments,
       mediaAssets: mediaAssets,
@@ -166,22 +135,17 @@ class ProjectStorageService {
     return stored.id;
   }
 
-  /// Copies [pickedPaths] into [project] and appends clips after the last segment.
+  /// Appends picks to [project] after the last segment.
   ///
-  /// [imageHoldDuration] overrides [kDefaultImageHoldDuration] for stills in
-  /// this batch (used by background templates — typically 5s).
+  /// Gallery library references skip the Documents copy; other picks copy.
   Future<VideoProject> appendImports(
     VideoProject project,
-    List<String> pickedPaths, {
+    MediaPickBatch batch, {
     void Function(double progress)? onProgress,
     MediaConcatService? concat,
-    Duration? imageHoldDuration,
   }) async {
-    final paths = [
-      for (final path in pickedPaths)
-        if (path.trim().isNotEmpty) path.trim(),
-    ];
-    if (paths.isEmpty) return project;
+    final items = batch.items;
+    if (items.isEmpty) return project;
 
     final dir = await _projectDir(project.id);
     if (!await dir.exists()) {
@@ -194,50 +158,16 @@ class ProjectStorageService {
     final added = <MediaAsset>[];
     final newSegments = <ClipSegment>[];
 
-    for (var i = 0; i < paths.length; i++) {
-      onProgress?.call(i / (paths.length + 1));
-      final pickedPath = paths[i];
-      final picked = File(pickedPath);
-      if (!await picked.exists() || await picked.length() == 0) {
-        throw StateError('empty_video');
-      }
-
-      final isImage = MediaConcatService.isImagePath(pickedPath);
-      final assetId = const Uuid().v4();
-      final ext = p.extension(pickedPath);
-      final relativeName = p.join(
-        kProjectMediaDirName,
-        '$assetId${ext.isEmpty ? (isImage ? '.jpg' : '.mp4') : ext}',
+    for (var i = 0; i < items.length; i++) {
+      onProgress?.call(i / (items.length + 1));
+      final imported = await _importItem(
+        items[i],
+        projectDir: dir,
+        probe: probe,
+        imageHoldDuration: batch.imageHoldDuration,
       );
-      final destPath = p.join(dir.path, relativeName);
-      await picked.copy(destPath);
-      if (!await File(destPath).exists() || await File(destPath).length() == 0) {
-        throw StateError('empty_video');
-      }
-
-      Duration assetDuration = Duration.zero;
-      if (!isImage) {
-        assetDuration = await probe.probeDuration(destPath) ?? Duration.zero;
-        if (assetDuration <= Duration.zero) {
-          throw StateError('empty_video');
-        }
-      }
-
-      final asset = MediaAsset(
-        id: assetId,
-        fileName: relativeName,
-        kind: isImage ? MediaAssetKind.image : MediaAssetKind.video,
-        duration: assetDuration,
-      );
-      added.add(asset);
-      final imageHold = imageHoldDuration ?? kDefaultImageHoldDuration;
-      newSegments.add(
-        ClipSegment(
-          mediaId: assetId,
-          start: Duration.zero,
-          end: isImage ? imageHold : assetDuration,
-        ),
-      );
+      added.add(imported.asset);
+      newSegments.add(imported.segment);
     }
 
     if (added.isEmpty) return project;
@@ -249,11 +179,154 @@ class ProjectStorageService {
       project.duration = packed;
     }
 
-    onProgress?.call(paths.length / (paths.length + 1));
-    final playable = await ensurePlayableSource(project, onProgress: onProgress);
+    // Keep projectDir stable if sourcePath was only a library session file.
+    final anchored = await _anchorSourcePath(
+      dir,
+      mediaAssets: project.mediaAssets,
+    );
+    final withSource = anchored == project.sourcePath
+        ? project
+        : project.withSourcePath(anchored);
+
+    onProgress?.call(items.length / (items.length + 1));
+    final playable =
+        await ensurePlayableSource(withSource, onProgress: onProgress);
     await save(playable);
     onProgress?.call(1);
     return playable;
+  }
+
+  Future<({MediaAsset asset, ClipSegment segment})> _importItem(
+    MediaPickItem item, {
+    required Directory projectDir,
+    required MediaConcatService probe,
+    Duration? imageHoldDuration,
+  }) async {
+    final pickedPath = item.path.trim();
+    final picked = File(pickedPath);
+    if (!await picked.exists() || await picked.length() == 0) {
+      throw StateError('empty_video');
+    }
+
+    final isImage = MediaConcatService.isImagePath(pickedPath);
+    final assetId = const Uuid().v4();
+    final reference = !item.copyIntoProject &&
+        item.libraryAssetId != null &&
+        item.libraryAssetId!.trim().isNotEmpty;
+
+    late final String storedName;
+    late final String playablePath;
+    if (reference) {
+      // CapCut-style: keep the session path; durable key is libraryAssetId.
+      storedName = pickedPath;
+      playablePath = pickedPath;
+      avEditorLog(
+        'store library reference id=${item.libraryAssetId} path=$pickedPath',
+      );
+    } else {
+      final ext = p.extension(pickedPath);
+      storedName = p.join(
+        kProjectMediaDirName,
+        '$assetId${ext.isEmpty ? (isImage ? '.jpg' : '.mp4') : ext}',
+      );
+      playablePath = p.join(projectDir.path, storedName);
+      await picked.copy(playablePath);
+      if (!await File(playablePath).exists() ||
+          await File(playablePath).length() == 0) {
+        throw StateError('empty_video');
+      }
+    }
+
+    Duration assetDuration = Duration.zero;
+    if (!isImage) {
+      final known = item.duration;
+      if (known != null && known > Duration.zero) {
+        assetDuration = known;
+      } else {
+        assetDuration =
+            await probe.probeDuration(playablePath) ?? Duration.zero;
+      }
+      if (assetDuration <= Duration.zero) {
+        throw StateError('empty_video');
+      }
+    }
+
+    final asset = MediaAsset(
+      id: assetId,
+      fileName: storedName,
+      kind: isImage ? MediaAssetKind.image : MediaAssetKind.video,
+      duration: assetDuration,
+      libraryAssetId: reference ? item.libraryAssetId!.trim() : null,
+    );
+    final imageHold = imageHoldDuration ?? kDefaultImageHoldDuration;
+    final segment = ClipSegment(
+      mediaId: assetId,
+      start: Duration.zero,
+      end: isImage ? imageHold : assetDuration,
+    );
+    return (asset: asset, segment: segment);
+  }
+
+  /// Project-folder anchor so [VideoProject.projectDir] stays stable when media
+  /// paths are absolute library session files outside Documents.
+  Future<String> _anchorSourcePath(
+    Directory dir, {
+    required List<MediaAsset> mediaAssets,
+  }) async {
+    // Prefer an in-project copied file so sourcePath remains playable.
+    for (final asset in mediaAssets) {
+      if (p.isAbsolute(asset.fileName)) continue;
+      final path = p.join(dir.path, asset.fileName);
+      if (await File(path).exists()) return path;
+    }
+
+    final anchorPath = p.join(dir.path, kProjectAnchorFileName);
+    final anchor = File(anchorPath);
+    if (!await anchor.exists()) {
+      await anchor.create();
+    }
+    return anchorPath;
+  }
+
+  /// Re-resolves gallery library assets whose session paths expired.
+  Future<VideoProject> resolveLibraryReferences(VideoProject project) async {
+    var changed = false;
+    final nextAssets = <MediaAsset>[];
+    for (final asset in project.mediaAssets) {
+      if (!asset.isLibraryReference) {
+        nextAssets.add(asset);
+        continue;
+      }
+      final current = project.absoluteMediaPath(asset);
+      if (await File(current).exists() && await File(current).length() > 0) {
+        nextAssets.add(asset);
+        continue;
+      }
+      final resolved = await libraryResolver.resolve(asset.libraryAssetId!);
+      if (resolved == null ||
+          !await File(resolved).exists() ||
+          await File(resolved).length() == 0) {
+        avEditorLog(
+          'library media unavailable id=${asset.libraryAssetId} '
+          'asset=${asset.id}',
+        );
+        nextAssets.add(asset);
+        continue;
+      }
+      avEditorLog(
+        'library media re-resolved id=${asset.libraryAssetId} path=$resolved',
+      );
+      nextAssets.add(asset.copyWith(fileName: resolved));
+      changed = true;
+    }
+    if (!changed) return project;
+    final dir = await _projectDir(project.id);
+    final anchored = await _anchorSourcePath(dir, mediaAssets: nextAssets);
+    final updated =
+        project.copyWith(mediaAssets: nextAssets).withSourcePath(anchored);
+    // Persist new session paths without bumping updatedAt (not a user edit).
+    await _writeProjectJson(updated);
+    return updated;
   }
 
   /// Replaces unplayable video assets with H.264 SDR copies in place.
@@ -277,7 +350,6 @@ class ProjectStorageService {
 
     var changed = false;
     final nextAssets = <MediaAsset>[];
-    String? primaryPath = project.sourcePath;
     for (var i = 0; i < project.mediaAssets.length; i++) {
       final asset = project.mediaAssets[i];
       if (asset.isImage) {
@@ -287,33 +359,73 @@ class ProjectStorageService {
       final path = project.absoluteMediaPath(asset);
       if (!await converter.shouldReplace(path)) {
         nextAssets.add(asset);
-        primaryPath ??= path;
         continue;
       }
       avEditorLog('store playable media ${asset.fileName}');
-      final output = await converter.transcode(
+      // Library references must land inside the project folder after convert.
+      final transcodeInput = await _materializeForTranscode(
+        project,
+        asset,
         path,
+      );
+      final output = await converter.transcode(
+        transcodeInput,
         onProgress: onProgress == null
             ? null
             : (t) => onProgress((i + t) / project.mediaAssets.length),
       );
-      if (output == path) {
+      if (output == path && !asset.isLibraryReference) {
         nextAssets.add(asset);
-        primaryPath ??= path;
         continue;
       }
       // Transcoder writes beside the source; point the asset at the new file.
-      final relative = p.relative(output, from: project.projectDir);
-      nextAssets.add(asset.copyWith(fileName: relative));
-      primaryPath = output;
+      final normalizedRoot = p.normalize(project.projectDir);
+      final normalizedOut = p.normalize(output);
+      final relative =
+          normalizedOut == normalizedRoot ||
+              normalizedOut.startsWith('$normalizedRoot${p.separator}')
+          ? p.relative(output, from: project.projectDir)
+          : output;
+      nextAssets.add(
+        asset.copyWith(
+          fileName: relative,
+          clearLibraryAssetId: true,
+        ),
+      );
       changed = true;
     }
     if (!changed) return project;
-    final updated = project.copyWith(mediaAssets: nextAssets).withSourcePath(
-          primaryPath ?? project.sourcePath,
-        );
+    final dir = await _projectDir(project.id);
+    final anchored = await _anchorSourcePath(dir, mediaAssets: nextAssets);
+    final updated =
+        project.copyWith(mediaAssets: nextAssets).withSourcePath(anchored);
     await save(updated);
     return updated;
+  }
+
+  /// Copies a library-referenced file into `media/` before Android transcode.
+  Future<String> _materializeForTranscode(
+    VideoProject project,
+    MediaAsset asset,
+    String path,
+  ) async {
+    if (!asset.isLibraryReference && !p.isAbsolute(asset.fileName)) {
+      return path;
+    }
+    final ext = p.extension(path);
+    final relative = p.join(
+      kProjectMediaDirName,
+      '${asset.id}${ext.isEmpty ? '.mp4' : ext}',
+    );
+    final dest = p.join(project.projectDir, relative);
+    final destFile = File(dest);
+    if (!await destFile.parent.exists()) {
+      await destFile.parent.create(recursive: true);
+    }
+    if (p.normalize(path) != p.normalize(dest)) {
+      await File(path).copy(dest);
+    }
+    return dest;
   }
 
   Future<VideoProject?> load(String projectId) async {
@@ -324,9 +436,11 @@ class ProjectStorageService {
     final dir = await _projectDir(projectId);
     final sourceFileName =
         json['sourceFileName'] as String? ?? kProjectSourceFileName;
-    var sourcePath = p.join(dir.path, sourceFileName);
+    var sourcePath = p.isAbsolute(sourceFileName)
+        ? sourceFileName
+        : p.join(dir.path, sourceFileName);
 
-    // v2: primary file may live under media/.
+    // v2: primary file may live under media/, or be an absolute library path.
     if (!await File(sourcePath).exists()) {
       final mediaJson = json['mediaAssets'] as List<dynamic>?;
       if (mediaJson != null) {
@@ -342,9 +456,23 @@ class ProjectStorageService {
         }
       }
     }
+
+    // Library-only projects keep a project.anchor marker for projectDir.
+    if (!await File(sourcePath).exists()) {
+      final anchor = p.join(dir.path, kProjectAnchorFileName);
+      if (await File(anchor).exists()) {
+        sourcePath = anchor;
+      } else if (json['mediaAssets'] is List &&
+          (json['mediaAssets'] as List).isNotEmpty) {
+        // Create the anchor so projectDir resolves; media may re-resolve below.
+        await File(anchor).create();
+        sourcePath = anchor;
+      }
+    }
     if (!await File(sourcePath).exists()) return null;
 
-    return VideoProject.fromJson(json, sourcePath: sourcePath);
+    final project = VideoProject.fromJson(json, sourcePath: sourcePath);
+    return resolveLibraryReferences(project);
   }
 
   Future<ProjectSummary?> loadLastSummary() async {
@@ -377,11 +505,16 @@ class ProjectStorageService {
     final project = await load(projectId);
     if (project == null) return null;
 
+    final primary = project.primaryVideoPath;
+    final sourceExists = await File(primary).exists() &&
+        await File(primary).length() > 0 &&
+        p.basename(primary) != kProjectAnchorFileName;
+
     return ProjectSummary(
       id: project.id,
       updatedAt: project.updatedAt,
       overlayCount: project.overlays.length,
-      sourceExists: await File(project.sourcePath).exists(),
+      sourceExists: sourceExists,
       name: project.name,
       coverTimeMs: project.segments.isEmpty
           ? 0
@@ -480,17 +613,20 @@ class ProjectStorageService {
 
   Future<void> save(VideoProject project) async {
     project.touch();
+    await _writeProjectJson(project);
+    await _setLastProjectId(project.id);
+  }
+
+  Future<void> _writeProjectJson(VideoProject project) async {
     final dir = await _projectDir(project.id);
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }
-
     final file = await _projectFile(project.id);
     await file.writeAsString(
       const JsonEncoder.withIndent('  ').convert(project.toJson()),
       flush: true,
     );
-    await _setLastProjectId(project.id);
   }
 
   Future<void> delete(String projectId) async {

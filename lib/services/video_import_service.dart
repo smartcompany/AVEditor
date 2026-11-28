@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:photo_manager/photo_manager.dart';
 
 /// Picks videos and images from gallery, camera, or filesystem.
 class VideoImportService {
@@ -23,38 +24,56 @@ class VideoImportService {
   ];
 
   /// Custom gallery multi-select (library + background templates).
-  /// Empty [MediaPickBatch.paths] when cancelled.
+  /// Empty [MediaPickBatch.items] when cancelled.
+  ///
+  /// Gallery library picks are **referenced** (no temp/Documents byte copy).
+  /// Background templates and camera/file picks still materialize copies.
   Future<MediaPickBatch> pickFromGallery(BuildContext context) async {
     final result = await GalleryPickerScreen.open(context);
     if (result == null || result.isEmpty) {
-      return const MediaPickBatch(paths: []);
+      return const MediaPickBatch(items: []);
     }
 
     if (result.backgroundPaths.isNotEmpty) {
-      return MediaPickBatch(
-        paths: List<String>.from(result.backgroundPaths),
+      return MediaPickBatch.paths(
+        result.backgroundPaths,
         imageHoldDuration: result.imageHoldDuration,
       );
     }
 
-    final files = <XFile>[];
+    final items = <MediaPickItem>[];
     for (final asset in result.assets) {
-      var file = await asset.originFile;
-      file ??= await asset.file;
-      if (file == null || !await file.exists() || await file.length() == 0) {
-        avEditorLog('gallery asset unresolved id=${asset.id}');
-        throw StateError('empty_video');
-      }
-      files.add(
-        XFile(
-          file.path,
-          mimeType: asset.mimeType,
-          name: asset.title ?? p.basename(file.path),
-        ),
-      );
+      items.add(await _galleryReference(asset));
     }
-    final paths = await _materializeAll(files);
-    return MediaPickBatch(paths: paths);
+    return MediaPickBatch(items: items);
+  }
+
+  /// Resolve a Photos asset to a session-playable path without copying into
+  /// app Documents. Prefers the local playable file over a full original export.
+  Future<MediaPickItem> _galleryReference(AssetEntity asset) async {
+    // CapCut-style: do not force originFile (full original export — slow).
+    var file = await asset.file;
+    file ??= await asset.originFile;
+    if (file == null || !await file.exists() || await file.length() == 0) {
+      avEditorLog('gallery asset unresolved id=${asset.id}');
+      throw StateError('empty_video');
+    }
+
+    Duration? duration;
+    if (asset.type == AssetType.video && asset.duration > 0) {
+      duration = Duration(seconds: asset.duration);
+    }
+
+    avEditorLog(
+      'gallery reference id=${asset.id} bytes=${await file.length()} '
+      'durationMs=${duration?.inMilliseconds ?? -1} path=${file.path}',
+    );
+    return MediaPickItem(
+      path: file.path,
+      libraryAssetId: asset.id,
+      duration: duration,
+      copyIntoProject: false,
+    );
   }
 
   /// Single video from the system gallery picker (share / re-post flows).
@@ -103,8 +122,9 @@ class VideoImportService {
 
   /// Copies the picker result into an app-owned temp file.
   ///
-  /// Gallery/camera paths are often ephemeral (Photos export, content URIs).
-  /// Reusing them directly leads to intermittent "could not open video" errors.
+  /// Camera / file-picker / share paths can be ephemeral (content URIs).
+  /// Gallery library picks skip this and use [MediaPickItem.copyIntoProject]
+  /// false instead.
   Future<String> materializeImport(XFile file) async {
     final dir = await getTemporaryDirectory();
     final ext = _extensionFor(file);
